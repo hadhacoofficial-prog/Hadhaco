@@ -29,7 +29,10 @@ services:
       APP_ENV: production
       REDIS_URL: "redis://:${REDIS_PASSWORD}@hadha-redis:6379/0"
       ALLOWED_ORIGINS: "https://hadha.co,https://www.hadha.co"
-      ALLOWED_HOSTS: "hadha.co,www.hadha.co"
+      # hadha-backend allows the SSR frontend container to call the backend
+      # directly over the Docker-internal network without being rejected by
+      # TrustedHostMiddleware (Node.js fetch sets Host to the URL hostname).
+      ALLOWED_HOSTS: "hadha.co,www.hadha.co,hadha-backend"
     expose:
       - "8000"
     depends_on:
@@ -73,6 +76,10 @@ services:
     environment:
       NODE_ENV: production
       PORT: "3000"
+      # SSR loaders call this URL directly over the Docker-internal network.
+      # Must NOT be exposed to the browser — browser uses VITE_API_BASE_URL
+      # (baked at build time via Dockerfile ARG) which goes through nginx.
+      SERVER_API_BASE_URL: "http://hadha-backend:8000/api/v1"
     expose:
       - "3000"
     depends_on:

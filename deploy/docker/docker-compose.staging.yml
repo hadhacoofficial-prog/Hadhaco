@@ -19,7 +19,7 @@ services:
       # Include Redis password in URL — overrides env_file value
       REDIS_URL: "redis://:${REDIS_PASSWORD}@hadha-staging-redis:6379/0"
       ALLOWED_ORIGINS: "https://staging.hadha.co"
-      ALLOWED_HOSTS: "staging.hadha.co"
+      ALLOWED_HOSTS: "staging.hadha.co,hadha-staging-backend"
     expose:
       - "8000"
     depends_on:
@@ -54,6 +54,7 @@ services:
     environment:
       NODE_ENV: production
       PORT: "3000"
+      SERVER_API_BASE_URL: "http://hadha-staging-backend:8000/api/v1"
     expose:
       - "3000"
     depends_on:

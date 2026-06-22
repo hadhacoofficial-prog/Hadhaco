@@ -1,12 +1,22 @@
 /**
- * Typed access to client-side env vars. Server-only secrets must NOT
- * be read here — use `process.env.*` inside a `.server.ts` file.
+ * Typed access to env vars. Works in both SSR (Node.js/Nitro) and browser.
+ *
+ * apiBaseUrl picks the correct URL for the execution context:
+ *   - SSR  → process.env.SERVER_API_BASE_URL (runtime, Docker-internal network)
+ *   - Browser → import.meta.env.VITE_API_BASE_URL (baked at build time)
+ *
+ * This prevents SSR from calling localhost:8000 (unreachable inside the
+ * frontend container) or making external HTTPS round-trips through nginx.
  */
 const DEFAULT_API_BASE_URL = "http://localhost:8000/api/v1";
 
+const isSsr = typeof window === "undefined";
+
 export const ENV = {
-  /** FastAPI backend base URL, e.g. `http://localhost:8000/api/v1`. */
-  apiBaseUrl: (import.meta.env.VITE_API_BASE_URL as string | undefined) ?? DEFAULT_API_BASE_URL,
+  /** FastAPI backend base URL — auto-selected for SSR vs browser context. */
+  apiBaseUrl: isSsr
+    ? (process.env["SERVER_API_BASE_URL"] ?? DEFAULT_API_BASE_URL)
+    : ((import.meta.env.VITE_API_BASE_URL as string | undefined) ?? DEFAULT_API_BASE_URL),
   supabaseUrl: import.meta.env.VITE_SUPABASE_URL as string | undefined,
   supabasePublishableKey: import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY as string | undefined,
   supabaseProjectId: import.meta.env.VITE_SUPABASE_PROJECT_ID as string | undefined,

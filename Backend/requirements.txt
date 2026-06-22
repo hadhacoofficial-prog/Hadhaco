@@ -1,10 +1,13 @@
 # ── Web Framework ────────────────────────────────────────────────────────────
-# TODO: fastapi must be upgraded to a version that pulls starlette>=1.3.1.
-# FastAPI 0.115.5 pins starlette<0.42.0, making it impossible to fix the
-# starlette CVEs (CVE-2026-48817/48818, CVE-2026-54282/54283) without this.
-# Run: pip install "fastapi" "starlette>=1.3.1" --dry-run
-# to find the minimum compatible FastAPI version, then pin it here.
-fastapi==0.115.5
+# starlette is unpinned here so pip can satisfy the >=1.3.1 floor below.
+# FastAPI is unpinned so pip can find the first version whose starlette
+# dependency allows >=1.3.1. After a successful pip install run:
+#   pip freeze | grep -E "^fastapi==|^starlette=="
+# and replace both lines with the resolved ==X.Y.Z pins for reproducible builds.
+fastapi
+# PYSEC-2026-161, CVE-2025-54121, CVE-2025-62727,
+# CVE-2026-48817, CVE-2026-48818, CVE-2026-54282, CVE-2026-54283 — fix: 1.3.1
+starlette>=1.3.1
 uvicorn[standard]==0.32.1
 # CVE-2024-53981, CVE-2026-24486, CVE-2026-40347, CVE-2026-42561,
 # CVE-2026-53538, CVE-2026-53539, CVE-2026-53540 — fix: 0.0.31

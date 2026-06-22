@@ -44,6 +44,16 @@ RUN npm ci --legacy-peer-deps
 
 COPY . .
 
+# Without ARG declarations Docker silently drops --build-arg values, so Vite
+# falls back to the hardcoded DEFAULT_API_BASE_URL ("http://localhost:8000").
+# ENV is required to promote the ARG into the build environment that Vite reads.
+ARG VITE_API_BASE_URL
+ARG VITE_SUPABASE_URL
+ARG VITE_SUPABASE_ANON_KEY
+ENV VITE_API_BASE_URL=$VITE_API_BASE_URL
+ENV VITE_SUPABASE_URL=$VITE_SUPABASE_URL
+ENV VITE_SUPABASE_ANON_KEY=$VITE_SUPABASE_ANON_KEY
+
 # vite.config.ts hardcodes preset: "vercel" so we must use the docker config
 # explicitly — NITRO_PRESET env alone doesn't override the file-level preset.
 RUN npx vite build --config vite.config.docker.ts
