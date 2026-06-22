@@ -60,9 +60,26 @@ class Settings(BaseSettings):
 
     # ── Database ───────────────────────────────────────────────────────────────
     DATABASE_URL: str
-    DATABASE_POOL_SIZE: int = 20
-    DATABASE_MAX_OVERFLOW: int = 10
+
+    # Optional — point to the Supabase Transaction Pooler (port 6543).
+    # When set, Alembic uses this URL instead of DATABASE_URL so migrations
+    # go through the transaction-mode PgBouncer and never contend with the
+    # FastAPI session-pooler connections. Falls back to DATABASE_URL when
+    # not provided (safe but risks EMAXCONNSESSION under load).
+    # See DEVOPS.md § "Database Connection Architecture".
+    ALEMBIC_DATABASE_URL: str = ""
+
+    # pool_size=5 + max_overflow=2 → at most 7 server connections per process.
+    # The previous defaults (20 + 10 = 30) saturated Supabase's session-mode
+    # client limit, causing EMAXCONNSESSION whenever migrations ran alongside
+    # the running backend. Supabase session pooler has a per-plan client cap;
+    # 7 connections per worker leaves headroom for migrations and health checks.
+    DATABASE_POOL_SIZE: int = 5
+    DATABASE_MAX_OVERFLOW: int = 2
     DATABASE_POOL_TIMEOUT: int = 30
+    # Recycle idle connections after 30 minutes. Prevents stale TCP connections
+    # from accumulating when traffic drops and the pool stays open but idle.
+    DATABASE_POOL_RECYCLE: int = 1800
 
     # ── Redis ──────────────────────────────────────────────────────────────────
     REDIS_URL: str

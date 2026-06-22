@@ -11,10 +11,18 @@ from app.core.config import settings
 
 engine = create_async_engine(
     settings.DATABASE_URL,
+    # pool_size / max_overflow: see config.py for why these are intentionally
+    # small (5+2=7) rather than the previous 20+10=30.
     pool_size=settings.DATABASE_POOL_SIZE,
     max_overflow=settings.DATABASE_MAX_OVERFLOW,
     pool_timeout=settings.DATABASE_POOL_TIMEOUT,
-    pool_pre_ping=True,  # verify connections on checkout
+    # Recycle connections that have been idle longer than 30 minutes. This
+    # prevents asyncpg from holding stale TCP sockets that the Supabase
+    # session pooler may have already dropped from its side.
+    pool_recycle=settings.DATABASE_POOL_RECYCLE,
+    # Issue a lightweight SELECT 1 on each connection before handing it to a
+    # request. Catches dead connections without waiting for a request to fail.
+    pool_pre_ping=True,
     echo=False,
 )
 

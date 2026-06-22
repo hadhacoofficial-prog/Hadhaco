@@ -337,10 +337,38 @@ step_end
 # STEP 7: Database migrations
 # Uses a deterministic container name so stale containers from failed runs
 # are cleaned up before starting a new migration.
+#
+# Connection routing:
+#   ALEMBIC_DATABASE_URL (in ENV_FILE, port 6543) → Supabase Transaction Pooler
+#     Migrations go through a separate PgBouncer pool path that does NOT
+#     compete with the FastAPI app's Session Pooler slots. This prevents the
+#     EMAXCONNSESSION error that occurs when pool_size connections from the
+#     running backend fill all session-mode client slots before the migration
+#     container can open even one connection.
+#   DATABASE_URL fallback (port 5432) → Session Pooler
+#     Used when ALEMBIC_DATABASE_URL is not in the env file. Functional but
+#     risks EMAXCONNSESSION under load. Add ALEMBIC_DATABASE_URL to fix it.
+#
+# The migration container:
+#   • uses NullPool (no client-side pool — one connection for the run)
+#   • connects, runs all pending migrations in a single transaction, disconnects
+#   • exits 0 on success, non-zero on failure
+#   • --rm removes the container automatically on exit (no orphan containers)
 # =============================================================================
 step_start "Database migrations (Supabase)"
 log "Image   : ${BACKEND_IMAGE}"
 log "Command : alembic -c alembic/alembic.ini upgrade head"
+
+# Log which connection mode will be active inside the container.
+# grep -c returns 0 (line count) when not found, 1+ when found.
+if grep -q '^ALEMBIC_DATABASE_URL=' "${ENV_FILE}" 2>/dev/null; then
+  log "Pool routing : ALEMBIC_DATABASE_URL → Transaction Pooler (port 6543) ✓"
+else
+  log "[WARN] ALEMBIC_DATABASE_URL not set in ${ENV_FILE}"
+  log "[WARN] Migrations will use DATABASE_URL (Session Pooler, port 5432)"
+  log "[WARN] This risks EMAXCONNSESSION if the backend pool is near capacity."
+  log "[WARN] Add ALEMBIC_DATABASE_URL=<transaction-pooler-url> to ${ENV_FILE} to fix."
+fi
 
 # Remove any stale migration container from a previous failed run
 if docker inspect "${MIGRATION_CONTAINER}" >/dev/null 2>&1; then

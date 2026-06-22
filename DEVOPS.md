@@ -400,7 +400,155 @@ docker stats --no-stream
 
 ---
 
+## Database Connection Architecture
+
+Supabase exposes three ways to connect to its PostgreSQL server. Understanding which mode each component uses — and why — is essential for preventing `EMAXCONNSESSION` during deployments.
+
+### Connection mode comparison
+
+| Mode | Host/Port | PgBouncer mode | Per-connection cost | Supports SET / PREPARE / LISTEN |
+|------|-----------|---------------|--------------------|---------------------------------|
+| **Direct** | `db.PROJECT.supabase.co:5432` | Bypassed entirely | One `max_connections` slot for session lifetime | Yes — full Postgres |
+| **Session Pooler** | `*.pooler.supabase.com:5432` | Session mode | One backend per client for session lifetime | Yes — full Postgres |
+| **Transaction Pooler** | `*.pooler.supabase.com:6543` | Transaction mode | Backend returned to pool after every COMMIT | No SET, no named PREPARE, no LISTEN |
+
+### FastAPI uses the Session Pooler (`DATABASE_URL`, port 5432)
+
+The application uses SQLAlchemy's `AsyncEngine` with a client-side connection pool (`pool_size=5, max_overflow=2`). Session mode is correct here because:
+
+- asyncpg caches named prepared statements per connection. Transaction mode would reject them.
+- `SET search_path`, advisory locks, and similar session-scoped operations require a stable backend assignment.
+- PgBouncer session mode acts as a transparent proxy — the connection is yours for its lifetime.
+
+### Alembic uses the Transaction Pooler (`ALEMBIC_DATABASE_URL`, port 6543)
+
+Migrations use `NullPool` (no client-side pool) and run as a one-shot Docker container. Transaction mode is correct here because:
+
+- Alembic DDL statements (`CREATE TABLE`, `ALTER TABLE`, etc.) do not use prepared statements.
+- `NullPool` + transaction mode = the single connection is released back to PgBouncer the moment the migration transaction commits, before the container even exits.
+- Critically, the migration's connection goes through a **separate PgBouncer pool path** that does not compete with the FastAPI app's session-mode client slots. This is what prevents `EMAXCONNSESSION`.
+
+### Why NullPool prevents connection exhaustion
+
+```
+Without NullPool (hypothetical):
+  FastAPI pool:    20 idle session connections held open → 20 PgBouncer slots used
+  Migration pool:  1 persistent connection               → +1 slot → EMAXCONNSESSION
+
+With NullPool + Transaction Pooler (current):
+  FastAPI pool:    5 idle session connections (port 5432) → 5 session-mode slots
+  Migration:       1 connection (port 6543)               → separate transaction pool
+  Result:          zero contention
+```
+
+### Configuration
+
+Add both URLs to `/opt/hadha/.env.production`:
+
+```env
+# Session Pooler — used by the FastAPI runtime
+DATABASE_URL=postgresql+asyncpg://postgres.PROJECT_REF:PASSWORD@aws-0-REGION.pooler.supabase.com:5432/postgres
+
+# Transaction Pooler — used only by Alembic migrations
+# Get this from: Supabase Dashboard → Project → Settings → Database → Connection string → Transaction
+ALEMBIC_DATABASE_URL=postgresql+asyncpg://postgres.PROJECT_REF:PASSWORD@aws-0-REGION.pooler.supabase.com:6543/postgres
+```
+
+`ALEMBIC_DATABASE_URL` is optional. If omitted, Alembic falls back to `DATABASE_URL`. This preserves backward compatibility for environments that haven't yet added the variable, but will risk `EMAXCONNSESSION` under load.
+
+### Pool settings (FastAPI)
+
+```python
+pool_size=5        # Idle connections held open per worker process
+max_overflow=2     # Extra connections allowed under burst (capped at 7 total)
+pool_timeout=30    # Wait up to 30s for a slot before raising OperationalError
+pool_recycle=1800  # Recycle connections idle >30min (prevents stale TCP sockets)
+pool_pre_ping=True # Run SELECT 1 on checkout to discard dead connections silently
+```
+
+The previous defaults (`pool_size=20, max_overflow=10`) held 30 connections open permanently, saturating Supabase's session-mode client limit before the migration container could connect.
+
+### How to rotate Supabase database credentials
+
+1. Generate a new password in **Supabase Dashboard → Project Settings → Database → Reset password**.
+2. Update `/opt/hadha/.env.production`:
+   ```bash
+   # Replace the password in both URLs
+   sed -i "s|:OLD_PASSWORD@|:NEW_PASSWORD@|g" /opt/hadha/.env.production
+   ```
+3. Redeploy to pick up the new credentials:
+   ```bash
+   /opt/hadha/scripts/deploy.sh production "${CURRENT_IMAGE_TAG}"
+   ```
+4. Update `DATABASE_URL` and `ALEMBIC_DATABASE_URL` in any CI/CD secrets or `.env` files in secure storage.
+
+---
+
 ## Troubleshooting
+
+### EMAXCONNSESSION — max clients reached in session mode
+
+This error comes from PgBouncer when the Session Pooler's `max_client_conn` limit is hit.
+
+**Diagnosis:**
+
+```bash
+# On the VPS — check how many active connections the backend holds
+docker exec hadha-backend python -c "
+import asyncio
+from sqlalchemy import text
+from app.core.database import engine
+
+async def check():
+    async with engine.connect() as conn:
+        result = await conn.execute(text(
+            \"SELECT count(*) FROM pg_stat_activity WHERE application_name LIKE '%asyncpg%'\"
+        ))
+        print('Active asyncpg connections:', result.scalar())
+
+asyncio.run(check())
+"
+
+# Check pool status via SQLAlchemy
+docker exec hadha-backend python -c "
+from app.core.database import engine
+p = engine.pool
+print(f'pool size:      {p.size()}')
+print(f'checked out:    {p.checkedout()}')
+print(f'overflow:       {p.overflow()}')
+print(f'checked in:     {p.checkedin()}')
+"
+```
+
+**Immediate fix — free up session slots:**
+
+```bash
+# Restart the backend to drain the connection pool
+docker compose -f /opt/hadha/docker-compose.production.yml restart backend
+
+# Then re-run the migration manually
+docker run --rm \
+  --env-file /opt/hadha/.env.production \
+  --network hadha-internal \
+  ghcr.io/hadhacoofficial-prog/hadha-backend:latest \
+  alembic -c alembic/alembic.ini upgrade head
+```
+
+**Permanent fix:**
+
+1. Add `ALEMBIC_DATABASE_URL` pointing to the Transaction Pooler (port 6543) to `.env.production`.
+2. Verify `DATABASE_POOL_SIZE=5` and `DATABASE_MAX_OVERFLOW=2` are not overridden in the env file.
+3. Redeploy.
+
+**Verify the fix is active:**
+
+```bash
+# The migration log should show:
+# [alembic] Pool type : Transaction Pooler (ALEMBIC_DATABASE_URL, port 6543)
+# NOT:
+# [alembic] Pool type : Session Pooler fallback (DATABASE_URL ...)
+docker logs hadha-migration 2>/dev/null | grep "Pool type"
+```
 
 ### Deployment fails with "health check timed out"
 
