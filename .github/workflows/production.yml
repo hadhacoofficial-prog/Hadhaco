@@ -147,7 +147,7 @@ jobs:
             NODE_ENV=production
             VITE_API_BASE_URL=https://hadha.co/api/v1
             VITE_SUPABASE_URL=${{ secrets.SUPABASE_URL }}
-            VITE_SUPABASE_ANON_KEY=${{ secrets.SUPABASE_ANON_KEY }}
+            VITE_SUPABASE_PUBLISHABLE_KEY=${{ secrets.SUPABASE_ANON_KEY }}
           tags: ${{ steps.tags.outputs.frontend_tags }}
           labels: |
             org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}

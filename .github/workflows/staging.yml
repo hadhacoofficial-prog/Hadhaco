@@ -97,7 +97,7 @@ jobs:
             NITRO_PRESET=node
             VITE_API_BASE_URL=https://staging.hadha.co/api/v1
             VITE_SUPABASE_URL=${{ secrets.SUPABASE_URL }}
-            VITE_SUPABASE_ANON_KEY=${{ secrets.SUPABASE_ANON_KEY }}
+            VITE_SUPABASE_PUBLISHABLE_KEY=${{ secrets.SUPABASE_ANON_KEY }}
           tags: |
             ${{ steps.meta.outputs.frontend_image }}
             ${{ env.REGISTRY }}/${{ env.FRONTEND_IMAGE_NAME }}:develop-latest
