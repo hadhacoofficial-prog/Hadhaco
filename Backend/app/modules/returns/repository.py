@@ -14,7 +14,9 @@ class ReturnRepository:
         result = await db.execute(select(Return).where(Return.id == return_id))
         return result.scalar_one_or_none()
 
-    async def list_for_customer(self, db: AsyncSession, customer_id: uuid.UUID) -> list[Return]:
+    async def list_for_customer(
+        self, db: AsyncSession, customer_id: uuid.UUID
+    ) -> list[Return]:
         result = await db.execute(
             select(Return)
             .where(Return.customer_id == customer_id)
@@ -22,9 +24,14 @@ class ReturnRepository:
         )
         return list(result.scalars().all())
 
-    async def list_all(self, db: AsyncSession, offset: int = 0, limit: int = 50) -> list[Return]:
+    async def list_all(
+        self, db: AsyncSession, offset: int = 0, limit: int = 50
+    ) -> list[Return]:
         result = await db.execute(
-            select(Return).order_by(Return.created_at.desc()).offset(offset).limit(limit)
+            select(Return)
+            .order_by(Return.created_at.desc())
+            .offset(offset)
+            .limit(limit)
         )
         return list(result.scalars().all())
 
@@ -50,7 +57,9 @@ class ReturnRepository:
         await db.flush()
         return ret
 
-    async def is_within_return_window(self, db: AsyncSession, order_id: uuid.UUID) -> bool:
+    async def is_within_return_window(
+        self, db: AsyncSession, order_id: uuid.UUID
+    ) -> bool:
         result = await db.execute(
             text("""
                 SELECT 1 FROM orders

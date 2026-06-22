@@ -38,10 +38,14 @@ class ReturnService:
         await db.refresh(ret)
         return ret
 
-    async def list_customer_returns(self, db: AsyncSession, customer_id: uuid.UUID) -> list[Return]:
+    async def list_customer_returns(
+        self, db: AsyncSession, customer_id: uuid.UUID
+    ) -> list[Return]:
         return await self._repo.list_for_customer(db, customer_id)
 
-    async def list_all(self, db: AsyncSession, offset: int = 0, limit: int = 50) -> list[Return]:
+    async def list_all(
+        self, db: AsyncSession, offset: int = 0, limit: int = 50
+    ) -> list[Return]:
         return await self._repo.list_all(db, offset=offset, limit=limit)
 
     async def admin_update_status(

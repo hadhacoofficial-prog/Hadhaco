@@ -64,7 +64,11 @@ _SEED: list[dict] = [
         "type": "collection_showcase",
         "title": "Featured Collection",
         "order": 30,
-        "config": {"title": "Featured Collection", "grid_size": "3", "card_style": "overlay"},
+        "config": {
+            "title": "Featured Collection",
+            "grid_size": "3",
+            "card_style": "overlay",
+        },
     },
     {
         "key": "featured_products",
@@ -213,7 +217,12 @@ def upgrade() -> None:
     )
     op.add_column(
         "landing_sections",
-        sa.Column("draft_config", JSONB(), server_default=sa.text("'{}'::jsonb"), nullable=False),
+        sa.Column(
+            "draft_config",
+            JSONB(),
+            server_default=sa.text("'{}'::jsonb"),
+            nullable=False,
+        ),
     )
     op.add_column(
         "landing_sections",
@@ -258,7 +267,9 @@ def upgrade() -> None:
         ),
         sa.Column("sort_order", sa.Integer(), server_default="0", nullable=False),
         sa.Column("is_enabled", sa.Boolean(), server_default=sa.true(), nullable=False),
-        sa.Column("config", JSONB(), server_default=sa.text("'{}'::jsonb"), nullable=False),
+        sa.Column(
+            "config", JSONB(), server_default=sa.text("'{}'::jsonb"), nullable=False
+        ),
         sa.Column(
             "created_at",
             sa.DateTime(timezone=True),
@@ -293,7 +304,9 @@ def upgrade() -> None:
         sa.Column("thumbnail_url", sa.Text(), nullable=True),
         sa.Column("folder", sa.String(255), server_default="/", nullable=False),
         sa.Column("alt_text", sa.Text(), nullable=True),
-        sa.Column("tags", sa.ARRAY(sa.Text()), server_default=sa.text("'{}'"), nullable=False),
+        sa.Column(
+            "tags", sa.ARRAY(sa.Text()), server_default=sa.text("'{}'"), nullable=False
+        ),
         sa.Column(
             "metadata",
             JSONB(),

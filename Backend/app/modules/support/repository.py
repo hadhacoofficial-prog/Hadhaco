@@ -23,8 +23,12 @@ class SupportRepository:
         await db.flush()
         return m
 
-    async def get_ticket(self, db: AsyncSession, ticket_id: uuid.UUID) -> SupportTicket | None:
-        result = await db.execute(select(SupportTicket).where(SupportTicket.id == ticket_id))
+    async def get_ticket(
+        self, db: AsyncSession, ticket_id: uuid.UUID
+    ) -> SupportTicket | None:
+        result = await db.execute(
+            select(SupportTicket).where(SupportTicket.id == ticket_id)
+        )
         return result.scalar_one_or_none()
 
     async def list_for_customer(
@@ -38,7 +42,12 @@ class SupportRepository:
         return list(result.scalars().all())
 
     async def list_all(
-        self, db: AsyncSession, *, status: str | None = None, offset: int = 0, limit: int = 50
+        self,
+        db: AsyncSession,
+        *,
+        status: str | None = None,
+        offset: int = 0,
+        limit: int = 50,
     ) -> list[SupportTicket]:
         q = select(SupportTicket).order_by(SupportTicket.created_at.desc())
         if status:

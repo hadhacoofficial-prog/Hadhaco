@@ -7,7 +7,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import settings
 from app.core.constants import UserRole
 from app.core.exceptions import AuthenticationError, AuthorizationError, NotFoundError
-from app.modules.dev_auth.schemas import DevLoginResponse, DevSessionPayload, DevUserPayload
+from app.modules.dev_auth.schemas import (
+    DevLoginResponse,
+    DevSessionPayload,
+    DevUserPayload,
+)
 from app.modules.profiles.repository import ProfileRepository
 
 log = structlog.get_logger(__name__)
@@ -25,7 +29,9 @@ def _split_name(full_name: str | None) -> tuple[str | None, str | None]:
 
 
 class DevAuthService:
-    async def login(self, db: AsyncSession, email: str, password: str) -> DevLoginResponse:
+    async def login(
+        self, db: AsyncSession, email: str, password: str
+    ) -> DevLoginResponse:
         supabase_data = await self._supabase_sign_in(email, password)
 
         supabase_user = supabase_data.get("user") or {}
@@ -41,7 +47,9 @@ class DevAuthService:
             raise AuthorizationError("Account is inactive", code="ACCOUNT_INACTIVE")
 
         if profile.role not in _ADMIN_ROLES:
-            log.warning("dev_auth_non_admin", user_id=user_id, role=profile.role, email=email)
+            log.warning(
+                "dev_auth_non_admin", user_id=user_id, role=profile.role, email=email
+            )
             raise AuthorizationError(
                 f"Dev auth is restricted to admin accounts. Role '{profile.role}' is not permitted.",
                 code="DEV_AUTH_ADMIN_ONLY",
@@ -91,7 +99,9 @@ class DevAuthService:
             raise AuthenticationError("Invalid email or password")
 
         if resp.status_code != 200:
-            log.error("dev_auth_supabase_error", status=resp.status_code, body=resp.text)
+            log.error(
+                "dev_auth_supabase_error", status=resp.status_code, body=resp.text
+            )
             raise AuthenticationError("Authentication service error")
 
         return resp.json()

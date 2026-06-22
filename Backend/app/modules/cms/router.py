@@ -64,7 +64,9 @@ async def get_homepage(
 ):
     data = await _svc.get_homepage(db, redis)
     payload = ok(
-        HomepageDataOut(**data), ResponseCode.CMS_HOMEPAGE_FETCHED, "Homepage data fetched"
+        HomepageDataOut(**data),
+        ResponseCode.CMS_HOMEPAGE_FETCHED,
+        "Homepage data fetched",
     )
     import json as _json
 
@@ -93,7 +95,9 @@ async def list_banners(db: AsyncSession = Depends(get_db), _=Depends(require_adm
     return ok(result, ResponseCode.CMS_BANNER_LISTED, "Banners listed")
 
 
-@router.post("/admin/banners", response_model=BaseSuccessResponse[BannerOut], status_code=201)
+@router.post(
+    "/admin/banners", response_model=BaseSuccessResponse[BannerOut], status_code=201
+)
 async def create_banner(
     data: BannerCreate, db: AsyncSession = Depends(get_db), _=Depends(require_admin)
 ):
@@ -103,7 +107,9 @@ async def create_banner(
     return created(result, ResponseCode.CMS_BANNER_CREATED, "Banner created")
 
 
-@router.patch("/admin/banners/{banner_id}", response_model=BaseSuccessResponse[BannerOut])
+@router.patch(
+    "/admin/banners/{banner_id}", response_model=BaseSuccessResponse[BannerOut]
+)
 async def update_banner(
     banner_id: uuid.UUID,
     data: BannerUpdate,
@@ -125,7 +131,9 @@ async def delete_banner(
 # ── Admin: sections list + reorder ─────────────────────────────────────────────
 
 
-@router.get("/admin/sections", response_model=BaseSuccessResponse[list[AdminSectionOut]])
+@router.get(
+    "/admin/sections", response_model=BaseSuccessResponse[list[AdminSectionOut]]
+)
 async def list_sections(db: AsyncSession = Depends(get_db), _=Depends(require_admin)):
     results = await _svc.list_sections_with_items(db)
     out = [
@@ -149,17 +157,22 @@ async def reorder_sections(
 # ── Admin: single section ──────────────────────────────────────────────────────
 
 
-@router.get("/admin/sections/{section_key}", response_model=BaseSuccessResponse[AdminSectionOut])
+@router.get(
+    "/admin/sections/{section_key}", response_model=BaseSuccessResponse[AdminSectionOut]
+)
 async def get_section(
     section_key: str, db: AsyncSession = Depends(get_db), _=Depends(require_admin)
 ):
     result = await _svc.get_section(db, section_key)
-    out = AdminSectionOut.model_validate({**result["section"].__dict__, "items": result["items"]})
+    out = AdminSectionOut.model_validate(
+        {**result["section"].__dict__, "items": result["items"]}
+    )
     return ok(out, ResponseCode.CMS_SECTION_FETCHED, "Section fetched")
 
 
 @router.patch(
-    "/admin/sections/{section_key}", response_model=BaseSuccessResponse[LandingSectionOut]
+    "/admin/sections/{section_key}",
+    response_model=BaseSuccessResponse[LandingSectionOut],
 )
 async def update_section(
     section_key: str,
@@ -172,7 +185,8 @@ async def update_section(
 
 
 @router.patch(
-    "/admin/sections/{section_key}/draft", response_model=BaseSuccessResponse[LandingSectionOut]
+    "/admin/sections/{section_key}/draft",
+    response_model=BaseSuccessResponse[LandingSectionOut],
 )
 async def save_draft(
     section_key: str,
@@ -185,7 +199,8 @@ async def save_draft(
 
 
 @router.post(
-    "/admin/sections/{section_key}/publish", response_model=BaseSuccessResponse[LandingSectionOut]
+    "/admin/sections/{section_key}/publish",
+    response_model=BaseSuccessResponse[LandingSectionOut],
 )
 async def publish_section(
     section_key: str,
@@ -199,7 +214,8 @@ async def publish_section(
 
 
 @router.post(
-    "/admin/sections/{section_key}/toggle", response_model=BaseSuccessResponse[LandingSectionOut]
+    "/admin/sections/{section_key}/toggle",
+    response_model=BaseSuccessResponse[LandingSectionOut],
 )
 async def toggle_section(
     section_key: str,
@@ -244,7 +260,8 @@ async def rollback_version(
 
 
 @router.get(
-    "/admin/sections/{section_key}/items", response_model=BaseSuccessResponse[list[SectionItemOut]]
+    "/admin/sections/{section_key}/items",
+    response_model=BaseSuccessResponse[list[SectionItemOut]],
 )
 async def list_items(
     section_key: str, db: AsyncSession = Depends(get_db), _=Depends(require_admin)
@@ -286,7 +303,8 @@ async def update_item(
 
 
 @router.delete(
-    "/admin/sections/{section_key}/items/{item_id}", response_model=BaseSuccessResponse[None]
+    "/admin/sections/{section_key}/items/{item_id}",
+    response_model=BaseSuccessResponse[None],
 )
 async def delete_item(
     section_key: str,
@@ -299,7 +317,8 @@ async def delete_item(
 
 
 @router.post(
-    "/admin/sections/{section_key}/items/reorder", response_model=BaseSuccessResponse[None]
+    "/admin/sections/{section_key}/items/reorder",
+    response_model=BaseSuccessResponse[None],
 )
 async def reorder_items(
     section_key: str,
@@ -337,7 +356,9 @@ async def list_media(
 
 
 @router.post(
-    "/admin/media/upload", response_model=BaseSuccessResponse[CmsMediaOut], status_code=201
+    "/admin/media/upload",
+    response_model=BaseSuccessResponse[CmsMediaOut],
+    status_code=201,
 )
 async def upload_media(
     file: Annotated[UploadFile, File()],
@@ -352,7 +373,9 @@ async def upload_media(
     return created(result, ResponseCode.CMS_MEDIA_UPLOADED, "Media uploaded")
 
 
-@router.patch("/admin/media/{media_id}", response_model=BaseSuccessResponse[CmsMediaOut])
+@router.patch(
+    "/admin/media/{media_id}", response_model=BaseSuccessResponse[CmsMediaOut]
+)
 async def update_media(
     media_id: uuid.UUID,
     data: CmsMediaUpdate,
@@ -387,7 +410,9 @@ async def invalidate_cache(
     return ok(None, ResponseCode.CMS_CACHE_INVALIDATED, "Cache invalidated")
 
 
-@router.get("/admin/publish-log", response_model=BaseSuccessResponse[list[PublishLogOut]])
+@router.get(
+    "/admin/publish-log", response_model=BaseSuccessResponse[list[PublishLogOut]]
+)
 async def get_publish_log(
     limit: int = Query(50, ge=1, le=200),
     db: AsyncSession = Depends(get_db),
@@ -400,7 +425,9 @@ async def get_publish_log(
 # ── Admin: pages ───────────────────────────────────────────────────────────────
 
 
-@router.post("/admin/pages", response_model=BaseSuccessResponse[CmsPageOut], status_code=201)
+@router.post(
+    "/admin/pages", response_model=BaseSuccessResponse[CmsPageOut], status_code=201
+)
 async def create_page(
     data: CmsPageCreate, db: AsyncSession = Depends(get_db), _=Depends(require_admin)
 ):

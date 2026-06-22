@@ -38,13 +38,17 @@ async def upload_product_image(
         raise HTTPException(status_code=404, detail="Product not found")
 
     if file.content_type not in _ALLOWED_TYPES:
-        raise HTTPException(status_code=422, detail=f"Unsupported image type: {file.content_type}")
+        raise HTTPException(
+            status_code=422, detail=f"Unsupported image type: {file.content_type}"
+        )
 
     file_bytes = await file.read()
     if len(file_bytes) > _MAX_SIZE:
         raise HTTPException(status_code=413, detail="Image exceeds 10 MB limit")
 
-    urls = _media.upload_product_image(file_bytes, file.filename or "upload.jpg", product_id)
+    urls = _media.upload_product_image(
+        file_bytes, file.filename or "upload.jpg", product_id
+    )
 
     img = await _product_repo.add_image(
         db,

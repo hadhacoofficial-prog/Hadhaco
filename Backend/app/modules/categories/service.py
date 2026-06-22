@@ -74,7 +74,10 @@ class CategoryService:
             if gender:
                 buckets[gender] = [
                     NavCategoryItem(
-                        id=child.id, name=child.name, slug=child.slug, image_url=child.image_url
+                        id=child.id,
+                        name=child.name,
+                        slug=child.slug,
+                        image_url=child.image_url,
                     )
                     for child in node.children
                 ]
@@ -121,7 +124,9 @@ class CategoryService:
         await self._repo.soft_delete(db, cat_id)
 
 
-def _build_tree(cats: list[Category], parent_id: uuid.UUID | None) -> list[CategoryTreeNode]:
+def _build_tree(
+    cats: list[Category], parent_id: uuid.UUID | None
+) -> list[CategoryTreeNode]:
     nodes = []
     for c in cats:
         if c.parent_id == parent_id:

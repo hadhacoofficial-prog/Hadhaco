@@ -5,7 +5,12 @@ from sqlalchemy import and_, func, or_, select, text, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from app.modules.catalog.models import Product, ProductAttribute, ProductImage, ProductVariant
+from app.modules.catalog.models import (
+    Product,
+    ProductAttribute,
+    ProductImage,
+    ProductVariant,
+)
 
 
 class ProductRepository:
@@ -142,7 +147,9 @@ class ProductRepository:
         return img
 
     async def delete_image(self, db: AsyncSession, image_id: uuid.UUID) -> bool:
-        result = await db.execute(select(ProductImage).where(ProductImage.id == image_id))
+        result = await db.execute(
+            select(ProductImage).where(ProductImage.id == image_id)
+        )
         img = result.scalar_one_or_none()
         if not img:
             return False
@@ -160,20 +167,28 @@ class ProductRepository:
         )
         # Set new primary
         await db.execute(
-            update(ProductImage).where(ProductImage.id == image_id).values(is_primary=True)
+            update(ProductImage)
+            .where(ProductImage.id == image_id)
+            .values(is_primary=True)
         )
 
     # ---------- Variants ----------
 
-    async def add_variant(self, db: AsyncSession, data: dict[str, Any]) -> ProductVariant:
+    async def add_variant(
+        self, db: AsyncSession, data: dict[str, Any]
+    ) -> ProductVariant:
         variant = ProductVariant(**data)
         db.add(variant)
         await db.flush()
         await db.refresh(variant)
         return variant
 
-    async def get_variant(self, db: AsyncSession, variant_id: uuid.UUID) -> ProductVariant | None:
-        result = await db.execute(select(ProductVariant).where(ProductVariant.id == variant_id))
+    async def get_variant(
+        self, db: AsyncSession, variant_id: uuid.UUID
+    ) -> ProductVariant | None:
+        result = await db.execute(
+            select(ProductVariant).where(ProductVariant.id == variant_id)
+        )
         return result.scalar_one_or_none()
 
     async def update_variant(
@@ -185,7 +200,9 @@ class ProductRepository:
         return await self.get_variant(db, variant_id)
 
     async def delete_variant(self, db: AsyncSession, variant_id: uuid.UUID) -> bool:
-        result = await db.execute(select(ProductVariant).where(ProductVariant.id == variant_id))
+        result = await db.execute(
+            select(ProductVariant).where(ProductVariant.id == variant_id)
+        )
         v = result.scalar_one_or_none()
         if not v:
             return False
@@ -195,7 +212,12 @@ class ProductRepository:
     # ---------- Attributes ----------
 
     async def upsert_attribute(
-        self, db: AsyncSession, product_id: uuid.UUID, name: str, value: str, sort_order: int = 0
+        self,
+        db: AsyncSession,
+        product_id: uuid.UUID,
+        name: str,
+        value: str,
+        sort_order: int = 0,
     ) -> ProductAttribute:
         result = await db.execute(
             select(ProductAttribute).where(
@@ -219,7 +241,9 @@ class ProductRepository:
         await db.flush()
         return attr
 
-    async def delete_attribute(self, db: AsyncSession, product_id: uuid.UUID, name: str) -> bool:
+    async def delete_attribute(
+        self, db: AsyncSession, product_id: uuid.UUID, name: str
+    ) -> bool:
         result = await db.execute(
             select(ProductAttribute).where(
                 ProductAttribute.product_id == product_id,
@@ -234,7 +258,9 @@ class ProductRepository:
 
     # ---------- Stock ----------
 
-    async def adjust_stock(self, db: AsyncSession, product_id: uuid.UUID, delta: int) -> int:
+    async def adjust_stock(
+        self, db: AsyncSession, product_id: uuid.UUID, delta: int
+    ) -> int:
         """Atomically adjusts stock. Returns new quantity."""
         result = await db.execute(
             text(

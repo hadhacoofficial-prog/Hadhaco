@@ -98,7 +98,9 @@ def create_app() -> FastAPI:
     app.add_middleware(
         RequestLoggingMiddleware
     )  # innermost: runs after RequestID has bound context
-    app.add_middleware(RequestIDMiddleware)  # binds request_id, method, path to context vars
+    app.add_middleware(
+        RequestIDMiddleware
+    )  # binds request_id, method, path to context vars
     app.add_middleware(SecurityHeadersMiddleware)
     app.add_middleware(AuditMiddleware)
 

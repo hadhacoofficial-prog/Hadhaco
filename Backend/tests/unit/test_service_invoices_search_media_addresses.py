@@ -25,7 +25,9 @@ class TestInvoiceService:
         mock_order.id = uuid.uuid4()
 
         with patch.object(
-            PaymentRepository, "get_invoice_for_order", AsyncMock(return_value=mock_invoice)
+            PaymentRepository,
+            "get_invoice_for_order",
+            AsyncMock(return_value=mock_invoice),
         ):
             result = await self.svc.generate_and_store(db, mock_order)
 
@@ -60,14 +62,20 @@ class TestInvoiceService:
         mock_r2 = MagicMock()
 
         with (
-            patch.object(PaymentRepository, "get_invoice_for_order", AsyncMock(return_value=None)),
             patch.object(
-                PaymentRepository, "generate_invoice_number", AsyncMock(return_value="INV-0002")
+                PaymentRepository, "get_invoice_for_order", AsyncMock(return_value=None)
+            ),
+            patch.object(
+                PaymentRepository,
+                "generate_invoice_number",
+                AsyncMock(return_value="INV-0002"),
             ),
             patch("app.modules.invoices.service._build_pdf", return_value=b"%PDF fake"),
             patch("app.modules.invoices.service._r2_client", return_value=mock_r2),
             patch.object(
-                PaymentRepository, "create_invoice", AsyncMock(return_value=mock_created_invoice)
+                PaymentRepository,
+                "create_invoice",
+                AsyncMock(return_value=mock_created_invoice),
             ),
         ):
             result = await self.svc.generate_and_store(db, mock_order)
@@ -91,7 +99,9 @@ class TestInvoiceService:
         db = AsyncMock()
         mock_order = MagicMock()
         mock_order.user_id = uuid.uuid4()  # different from caller
-        with patch.object(OrderRepository, "get_by_id", AsyncMock(return_value=mock_order)):
+        with patch.object(
+            OrderRepository, "get_by_id", AsyncMock(return_value=mock_order)
+        ):
             with pytest.raises(NotFoundError):
                 await self.svc.get_download_url(db, uuid.uuid4(), uuid.uuid4())
 
@@ -104,8 +114,12 @@ class TestInvoiceService:
         mock_order = MagicMock()
         mock_order.user_id = user_id
         with (
-            patch.object(OrderRepository, "get_by_id", AsyncMock(return_value=mock_order)),
-            patch.object(PaymentRepository, "get_invoice_for_order", AsyncMock(return_value=None)),
+            patch.object(
+                OrderRepository, "get_by_id", AsyncMock(return_value=mock_order)
+            ),
+            patch.object(
+                PaymentRepository, "get_invoice_for_order", AsyncMock(return_value=None)
+            ),
         ):
             with pytest.raises(NotFoundError):
                 await self.svc.get_download_url(db, uuid.uuid4(), user_id)
@@ -121,9 +135,13 @@ class TestInvoiceService:
         mock_invoice = MagicMock()
         mock_invoice.pdf_r2_key = None
         with (
-            patch.object(OrderRepository, "get_by_id", AsyncMock(return_value=mock_order)),
             patch.object(
-                PaymentRepository, "get_invoice_for_order", AsyncMock(return_value=mock_invoice)
+                OrderRepository, "get_by_id", AsyncMock(return_value=mock_order)
+            ),
+            patch.object(
+                PaymentRepository,
+                "get_invoice_for_order",
+                AsyncMock(return_value=mock_invoice),
             ),
         ):
             with pytest.raises(NotFoundError):
@@ -139,12 +157,18 @@ class TestInvoiceService:
         mock_invoice = MagicMock()
         mock_invoice.pdf_r2_key = "invoices/order-id/INV-0001.pdf"
         mock_r2 = MagicMock()
-        mock_r2.generate_presigned_url.return_value = "https://presigned.example.com/invoice.pdf"
+        mock_r2.generate_presigned_url.return_value = (
+            "https://presigned.example.com/invoice.pdf"
+        )
 
         with (
-            patch.object(OrderRepository, "get_by_id", AsyncMock(return_value=mock_order)),
             patch.object(
-                PaymentRepository, "get_invoice_for_order", AsyncMock(return_value=mock_invoice)
+                OrderRepository, "get_by_id", AsyncMock(return_value=mock_order)
+            ),
+            patch.object(
+                PaymentRepository,
+                "get_invoice_for_order",
+                AsyncMock(return_value=mock_invoice),
             ),
             patch("app.modules.invoices.service._r2_client", return_value=mock_r2),
         ):
@@ -224,7 +248,9 @@ class TestSearchService:
         mock_items_result = MagicMock()
         mock_items_result.fetchall.return_value = [mock_row]
 
-        db.execute = AsyncMock(side_effect=[mock_fts_count, mock_ilike_count, mock_items_result])
+        db.execute = AsyncMock(
+            side_effect=[mock_fts_count, mock_ilike_count, mock_items_result]
+        )
         result = await self.svc.full_text_search(db, "bangle")
 
         assert result["total"] == 1
@@ -291,7 +317,9 @@ class TestSearchService:
 
     async def test_record_search_executes_insert(self):
         db = AsyncMock()
-        await self.svc.record_search(db, "silver ring", user_id="user-123", result_count=5)
+        await self.svc.record_search(
+            db, "silver ring", user_id="user-123", result_count=5
+        )
         db.execute.assert_awaited_once()
 
     async def test_trending_searches_returns_list(self):
@@ -394,7 +422,9 @@ class TestMediaService:
 
     def test_get_presigned_upload_url_returns_url(self):
         mock_r2 = MagicMock()
-        mock_r2.generate_presigned_url.return_value = "https://r2.example.com/upload?signed=1"
+        mock_r2.generate_presigned_url.return_value = (
+            "https://r2.example.com/upload?signed=1"
+        )
         with patch("app.modules.media.service._get_r2_client", return_value=mock_r2):
             result = self.svc.get_presigned_upload_url("products/key.jpg", "image/jpeg")
         assert result == "https://r2.example.com/upload?signed=1"
@@ -411,7 +441,10 @@ class TestAddressService:
 
     async def test_list_returns_empty_when_no_addresses(self):
         db = AsyncMock()
-        with patch("app.modules.addresses.service._repo.list_for_user", AsyncMock(return_value=[])):
+        with patch(
+            "app.modules.addresses.service._repo.list_for_user",
+            AsyncMock(return_value=[]),
+        ):
             result = await self.svc.list(db, uuid.uuid4())
         assert result == []
 
@@ -448,9 +481,17 @@ class TestAddressService:
         mock_addr = MagicMock()
 
         with (
-            patch("app.modules.addresses.service._repo.count_for_user", AsyncMock(return_value=0)),
-            patch("app.modules.addresses.service._repo.clear_default", AsyncMock()) as mock_clear,
-            patch("app.modules.addresses.service._repo.create", AsyncMock(return_value=mock_addr)),
+            patch(
+                "app.modules.addresses.service._repo.count_for_user",
+                AsyncMock(return_value=0),
+            ),
+            patch(
+                "app.modules.addresses.service._repo.clear_default", AsyncMock()
+            ) as mock_clear,
+            patch(
+                "app.modules.addresses.service._repo.create",
+                AsyncMock(return_value=mock_addr),
+            ),
             patch(
                 "app.modules.addresses.schemas.AddressResponse.model_validate",
                 return_value=MagicMock(),
@@ -478,9 +519,13 @@ class TestAddressService:
         from app.modules.addresses.schemas import AddressUpdateRequest
 
         db = AsyncMock()
-        with patch("app.modules.addresses.service._repo.get", AsyncMock(return_value=None)):
+        with patch(
+            "app.modules.addresses.service._repo.get", AsyncMock(return_value=None)
+        ):
             with pytest.raises(NotFoundError):
-                await self.svc.update(db, uuid.uuid4(), uuid.uuid4(), AddressUpdateRequest())
+                await self.svc.update(
+                    db, uuid.uuid4(), uuid.uuid4(), AddressUpdateRequest()
+                )
 
     async def test_update_success_without_default_change(self):
         from app.modules.addresses.schemas import AddressUpdateRequest
@@ -489,9 +534,13 @@ class TestAddressService:
         mock_existing = MagicMock()
         mock_updated = MagicMock()
         with (
-            patch("app.modules.addresses.service._repo.get", AsyncMock(return_value=mock_existing)),
             patch(
-                "app.modules.addresses.service._repo.update", AsyncMock(return_value=mock_updated)
+                "app.modules.addresses.service._repo.get",
+                AsyncMock(return_value=mock_existing),
+            ),
+            patch(
+                "app.modules.addresses.service._repo.update",
+                AsyncMock(return_value=mock_updated),
             ),
             patch(
                 "app.modules.addresses.schemas.AddressResponse.model_validate",
@@ -506,7 +555,9 @@ class TestAddressService:
         from app.core.exceptions import NotFoundError
 
         db = AsyncMock()
-        with patch("app.modules.addresses.service._repo.get", AsyncMock(return_value=None)):
+        with patch(
+            "app.modules.addresses.service._repo.get", AsyncMock(return_value=None)
+        ):
             with pytest.raises(NotFoundError):
                 await self.svc.set_default(db, uuid.uuid4(), uuid.uuid4())
 
@@ -516,10 +567,16 @@ class TestAddressService:
         mock_existing.type = "shipping"
         mock_updated = MagicMock()
         with (
-            patch("app.modules.addresses.service._repo.get", AsyncMock(return_value=mock_existing)),
-            patch("app.modules.addresses.service._repo.clear_default", AsyncMock()) as mock_clear,
             patch(
-                "app.modules.addresses.service._repo.update", AsyncMock(return_value=mock_updated)
+                "app.modules.addresses.service._repo.get",
+                AsyncMock(return_value=mock_existing),
+            ),
+            patch(
+                "app.modules.addresses.service._repo.clear_default", AsyncMock()
+            ) as mock_clear,
+            patch(
+                "app.modules.addresses.service._repo.update",
+                AsyncMock(return_value=mock_updated),
             ),
             patch(
                 "app.modules.addresses.schemas.AddressResponse.model_validate",
@@ -533,7 +590,9 @@ class TestAddressService:
         from app.core.exceptions import NotFoundError
 
         db = AsyncMock()
-        with patch("app.modules.addresses.service._repo.get", AsyncMock(return_value=None)):
+        with patch(
+            "app.modules.addresses.service._repo.get", AsyncMock(return_value=None)
+        ):
             with pytest.raises(NotFoundError):
                 await self.svc.delete(db, uuid.uuid4(), uuid.uuid4())
 
@@ -541,8 +600,13 @@ class TestAddressService:
         db = AsyncMock()
         mock_existing = MagicMock()
         with (
-            patch("app.modules.addresses.service._repo.get", AsyncMock(return_value=mock_existing)),
-            patch("app.modules.addresses.service._repo.soft_delete", AsyncMock()) as mock_del,
+            patch(
+                "app.modules.addresses.service._repo.get",
+                AsyncMock(return_value=mock_existing),
+            ),
+            patch(
+                "app.modules.addresses.service._repo.soft_delete", AsyncMock()
+            ) as mock_del,
         ):
             await self.svc.delete(db, uuid.uuid4(), uuid.uuid4())
         mock_del.assert_awaited_once()

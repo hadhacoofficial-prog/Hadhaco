@@ -7,7 +7,10 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import httpx
 import pytest
 
-from app.modules.notifications.providers.msg91_sms import MSG91SMSProvider, _normalize_mobile
+from app.modules.notifications.providers.msg91_sms import (
+    MSG91SMSProvider,
+    _normalize_mobile,
+)
 
 # ─── _normalize_mobile ────────────────────────────────────────────────────────
 
@@ -43,18 +46,29 @@ class TestMSG91SMSProvider:
     async def test_send_sms_success_returns_request_id(self):
         mock_response = MagicMock()
         mock_response.status_code = 200
-        mock_response.json.return_value = {"type": "success", "request_id": "req-abc123"}
+        mock_response.json.return_value = {
+            "type": "success",
+            "request_id": "req-abc123",
+        }
         mock_response.raise_for_status = MagicMock()
 
         with (
-            patch("app.modules.notifications.providers.msg91_sms.settings") as mock_settings,
-            patch("httpx.AsyncClient.post", new_callable=AsyncMock, return_value=mock_response),
+            patch(
+                "app.modules.notifications.providers.msg91_sms.settings"
+            ) as mock_settings,
+            patch(
+                "httpx.AsyncClient.post",
+                new_callable=AsyncMock,
+                return_value=mock_response,
+            ),
         ):
             mock_settings.MSG91_API_KEY = "test-api-key"
             mock_settings.MSG91_SENDER_ID = "HADHA"
             mock_settings.MSG91_TEMPLATE_ID = "tpl-001"
 
-            result = await self.provider.send_sms(to="+919876543210", body="Your order is placed")
+            result = await self.provider.send_sms(
+                to="+919876543210", body="Your order is placed"
+            )
 
         assert result == "req-abc123"
 
@@ -67,8 +81,14 @@ class TestMSG91SMSProvider:
         )
 
         with (
-            patch("app.modules.notifications.providers.msg91_sms.settings") as mock_settings,
-            patch("httpx.AsyncClient.post", new_callable=AsyncMock, return_value=mock_response),
+            patch(
+                "app.modules.notifications.providers.msg91_sms.settings"
+            ) as mock_settings,
+            patch(
+                "httpx.AsyncClient.post",
+                new_callable=AsyncMock,
+                return_value=mock_response,
+            ),
         ):
             mock_settings.MSG91_API_KEY = "bad-key"
             mock_settings.MSG91_SENDER_ID = "HADHA"
@@ -80,12 +100,21 @@ class TestMSG91SMSProvider:
     async def test_send_sms_raises_on_api_rejection(self):
         mock_response = MagicMock()
         mock_response.status_code = 200
-        mock_response.json.return_value = {"type": "error", "message": "Invalid template"}
+        mock_response.json.return_value = {
+            "type": "error",
+            "message": "Invalid template",
+        }
         mock_response.raise_for_status = MagicMock()
 
         with (
-            patch("app.modules.notifications.providers.msg91_sms.settings") as mock_settings,
-            patch("httpx.AsyncClient.post", new_callable=AsyncMock, return_value=mock_response),
+            patch(
+                "app.modules.notifications.providers.msg91_sms.settings"
+            ) as mock_settings,
+            patch(
+                "httpx.AsyncClient.post",
+                new_callable=AsyncMock,
+                return_value=mock_response,
+            ),
         ):
             mock_settings.MSG91_API_KEY = "test-key"
             mock_settings.MSG91_SENDER_ID = "HADHA"
@@ -105,8 +134,12 @@ class TestMSG91SMSProvider:
             return mock_resp
 
         with (
-            patch("app.modules.notifications.providers.msg91_sms.settings") as mock_settings,
-            patch("httpx.AsyncClient.post", new_callable=AsyncMock, side_effect=_fake_post),
+            patch(
+                "app.modules.notifications.providers.msg91_sms.settings"
+            ) as mock_settings,
+            patch(
+                "httpx.AsyncClient.post", new_callable=AsyncMock, side_effect=_fake_post
+            ),
         ):
             mock_settings.MSG91_API_KEY = "key"
             mock_settings.MSG91_SENDER_ID = "HADHA"

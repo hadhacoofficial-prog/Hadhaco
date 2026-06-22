@@ -42,24 +42,33 @@ class NotificationLogOut(BaseModel):
 
 
 @router.get("/preferences", response_model=BaseSuccessResponse[list[PreferenceOut]])
-async def get_preferences(db: AsyncSession = Depends(get_db), user=Depends(get_current_user)):
+async def get_preferences(
+    db: AsyncSession = Depends(get_db), user=Depends(get_current_user)
+):
     result = await db.execute(
         select(NotificationPreference).where(NotificationPreference.user_id == user.id)
     )
     prefs = list(result.scalars().all())
     return ok(
-        prefs, ResponseCode.NOTIFICATION_PREFERENCES_FETCHED, "Preferences fetched successfully"
+        prefs,
+        ResponseCode.NOTIFICATION_PREFERENCES_FETCHED,
+        "Preferences fetched successfully",
     )
 
 
 @router.put("/preferences", response_model=BaseSuccessResponse[PreferenceOut])
 async def upsert_preference(
-    data: PreferenceIn, db: AsyncSession = Depends(get_db), user=Depends(get_current_user)
+    data: PreferenceIn,
+    db: AsyncSession = Depends(get_db),
+    user=Depends(get_current_user),
 ):
     stmt = (
         insert(NotificationPreference)
         .values(
-            user_id=user.id, channel=data.channel, event_type=data.event_type, enabled=data.enabled
+            user_id=user.id,
+            channel=data.channel,
+            event_type=data.event_type,
+            enabled=data.enabled,
         )
         .on_conflict_do_update(
             index_elements=["user_id", "channel", "event_type"],
@@ -71,7 +80,9 @@ async def upsert_preference(
     await db.commit()
     pref = result.scalar_one()
     return ok(
-        pref, ResponseCode.NOTIFICATION_PREFERENCE_UPSERTED, "Preference updated successfully"
+        pref,
+        ResponseCode.NOTIFICATION_PREFERENCE_UPSERTED,
+        "Preference updated successfully",
     )
 
 
@@ -88,4 +99,8 @@ async def list_logs(
         q = q.where(NotificationLog.status == status)
     result = await db.execute(q.offset(offset).limit(limit))
     logs = list(result.scalars().all())
-    return ok(logs, ResponseCode.NOTIFICATION_LOGS_LISTED, "Notification logs listed successfully")
+    return ok(
+        logs,
+        ResponseCode.NOTIFICATION_LOGS_LISTED,
+        "Notification logs listed successfully",
+    )

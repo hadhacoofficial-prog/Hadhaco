@@ -33,7 +33,9 @@ class AuditRepository:
         if date_to:
             query = query.where(AuditLog.created_at < date_to)
 
-        total = (await db.execute(select(func.count()).select_from(query.subquery()))).scalar_one()
+        total = (
+            await db.execute(select(func.count()).select_from(query.subquery()))
+        ).scalar_one()
 
         rows = await db.execute(
             query.order_by(AuditLog.created_at.desc())

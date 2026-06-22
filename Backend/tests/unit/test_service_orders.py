@@ -20,7 +20,9 @@ class TestOrderServiceGetOrder:
         from app.core.exceptions import NotFoundError
 
         db = AsyncMock()
-        with patch("app.modules.orders.service._repo.get_by_id", AsyncMock(return_value=None)):
+        with patch(
+            "app.modules.orders.service._repo.get_by_id", AsyncMock(return_value=None)
+        ):
             with pytest.raises(NotFoundError):
                 await self.svc.get_order(db, uuid.uuid4())
 
@@ -31,7 +33,8 @@ class TestOrderServiceGetOrder:
         mock_order = MagicMock()
         mock_order.user_id = uuid.uuid4()
         with patch(
-            "app.modules.orders.service._repo.get_by_id", AsyncMock(return_value=mock_order)
+            "app.modules.orders.service._repo.get_by_id",
+            AsyncMock(return_value=mock_order),
         ):
             with pytest.raises(NotFoundError):
                 await self.svc.get_order(db, uuid.uuid4(), user_id=uuid.uuid4())
@@ -43,10 +46,12 @@ class TestOrderServiceGetOrder:
         mock_order.user_id = user_id
         mock_order.id = uuid.uuid4()
         with patch(
-            "app.modules.orders.service._repo.get_by_id", AsyncMock(return_value=mock_order)
+            "app.modules.orders.service._repo.get_by_id",
+            AsyncMock(return_value=mock_order),
         ):
             with patch(
-                "app.modules.orders.schemas.OrderResponse.model_validate", return_value=MagicMock()
+                "app.modules.orders.schemas.OrderResponse.model_validate",
+                return_value=MagicMock(),
             ):
                 result = await self.svc.get_order(db, mock_order.id)
         assert result is not None
@@ -61,7 +66,8 @@ class TestOrderServiceList:
     async def test_list_my_orders_empty(self):
         db = AsyncMock()
         with patch(
-            "app.modules.orders.service._repo.list_for_user", AsyncMock(return_value=([], 0))
+            "app.modules.orders.service._repo.list_for_user",
+            AsyncMock(return_value=([], 0)),
         ):
             result = await self.svc.list_my_orders(db, uuid.uuid4())
         assert result.total == 0
@@ -82,7 +88,9 @@ class TestOrderServiceList:
             "app.modules.orders.service._repo.list_for_user",
             AsyncMock(return_value=([mock_order], 1)),
         ):
-            result = await self.svc.list_my_orders(db, uuid.uuid4(), page=1, page_size=10)
+            result = await self.svc.list_my_orders(
+                db, uuid.uuid4(), page=1, page_size=10
+            )
         assert result.total == 1
         assert len(result.items) == 1
         assert result.total_pages == 1
@@ -90,9 +98,12 @@ class TestOrderServiceList:
     async def test_list_my_orders_pagination(self):
         db = AsyncMock()
         with patch(
-            "app.modules.orders.service._repo.list_for_user", AsyncMock(return_value=([], 25))
+            "app.modules.orders.service._repo.list_for_user",
+            AsyncMock(return_value=([], 25)),
         ):
-            result = await self.svc.list_my_orders(db, uuid.uuid4(), page=2, page_size=10)
+            result = await self.svc.list_my_orders(
+                db, uuid.uuid4(), page=2, page_size=10
+            )
         assert result.page == 2
         assert result.page_size == 10
         assert result.total == 25
@@ -100,7 +111,9 @@ class TestOrderServiceList:
 
     async def test_admin_list_orders_empty(self):
         db = AsyncMock()
-        with patch("app.modules.orders.service._repo.list_all", AsyncMock(return_value=([], 0))):
+        with patch(
+            "app.modules.orders.service._repo.list_all", AsyncMock(return_value=([], 0))
+        ):
             result = await self.svc.admin_list_orders(db)
         assert result.total == 0
 
@@ -114,7 +127,8 @@ class TestOrderServiceList:
         mock_order.total = Decimal("500.00")
         mock_order.created_at = datetime.now(UTC)
         with patch(
-            "app.modules.orders.service._repo.list_all", AsyncMock(return_value=([mock_order], 1))
+            "app.modules.orders.service._repo.list_all",
+            AsyncMock(return_value=([mock_order], 1)),
         ):
             result = await self.svc.admin_list_orders(db)
         assert result.total == 1
@@ -130,10 +144,15 @@ class TestOrderServiceCancel:
         from app.core.exceptions import NotFoundError
 
         db = AsyncMock()
-        with patch("app.modules.orders.service._repo.get_by_id", AsyncMock(return_value=None)):
+        with patch(
+            "app.modules.orders.service._repo.get_by_id", AsyncMock(return_value=None)
+        ):
             with pytest.raises(NotFoundError):
                 await self.svc.cancel_order(
-                    db, uuid.uuid4(), uuid.uuid4(), CancelOrderRequest(reason="changed mind")
+                    db,
+                    uuid.uuid4(),
+                    uuid.uuid4(),
+                    CancelOrderRequest(reason="changed mind"),
                 )
 
     async def test_cancel_raises_404_for_wrong_user(self):
@@ -145,7 +164,8 @@ class TestOrderServiceCancel:
         mock_order = MagicMock()
         mock_order.user_id = owner
         with patch(
-            "app.modules.orders.service._repo.get_by_id", AsyncMock(return_value=mock_order)
+            "app.modules.orders.service._repo.get_by_id",
+            AsyncMock(return_value=mock_order),
         ):
             with pytest.raises(NotFoundError):
                 await self.svc.cancel_order(
@@ -161,7 +181,8 @@ class TestOrderServiceCancel:
         mock_order.user_id = user_id
         mock_order.status = "shipped"
         with patch(
-            "app.modules.orders.service._repo.get_by_id", AsyncMock(return_value=mock_order)
+            "app.modules.orders.service._repo.get_by_id",
+            AsyncMock(return_value=mock_order),
         ):
             with pytest.raises(ValidationError):
                 await self.svc.cancel_order(
@@ -177,7 +198,8 @@ class TestOrderServiceCancel:
         mock_order.user_id = user_id
         mock_order.status = "delivered"
         with patch(
-            "app.modules.orders.service._repo.get_by_id", AsyncMock(return_value=mock_order)
+            "app.modules.orders.service._repo.get_by_id",
+            AsyncMock(return_value=mock_order),
         ):
             with pytest.raises(ValidationError):
                 await self.svc.cancel_order(
@@ -195,7 +217,9 @@ class TestOrderServiceUpdateStatus:
         from app.core.exceptions import NotFoundError
 
         db = AsyncMock()
-        with patch("app.modules.orders.service._repo.get_by_id", AsyncMock(return_value=None)):
+        with patch(
+            "app.modules.orders.service._repo.get_by_id", AsyncMock(return_value=None)
+        ):
             with pytest.raises(NotFoundError):
                 await self.svc.update_status(
                     db, uuid.uuid4(), UpdateOrderStatusRequest(status="confirmed")
@@ -210,11 +234,18 @@ class TestOrderServiceUpdateStatus:
         mock_order.status = "pending"
         mock_updated = MagicMock()
         with (
-            patch("app.modules.orders.service._repo.get_by_id", AsyncMock(return_value=mock_order)),
-            patch("app.modules.orders.service._repo.update", AsyncMock(return_value=mock_updated)),
+            patch(
+                "app.modules.orders.service._repo.get_by_id",
+                AsyncMock(return_value=mock_order),
+            ),
+            patch(
+                "app.modules.orders.service._repo.update",
+                AsyncMock(return_value=mock_updated),
+            ),
             patch("app.modules.orders.service.event_bus.publish", AsyncMock()),
             patch(
-                "app.modules.orders.schemas.OrderResponse.model_validate", return_value=MagicMock()
+                "app.modules.orders.schemas.OrderResponse.model_validate",
+                return_value=MagicMock(),
             ),
         ):
             result = await self.svc.update_status(
@@ -235,13 +266,19 @@ class TestOrderServiceUpdateStatus:
             return MagicMock()
 
         with (
-            patch("app.modules.orders.service._repo.get_by_id", AsyncMock(return_value=mock_order)),
+            patch(
+                "app.modules.orders.service._repo.get_by_id",
+                AsyncMock(return_value=mock_order),
+            ),
             patch("app.modules.orders.service._repo.update", capture_update),
             patch("app.modules.orders.service.event_bus.publish", AsyncMock()),
             patch(
-                "app.modules.orders.schemas.OrderResponse.model_validate", return_value=MagicMock()
+                "app.modules.orders.schemas.OrderResponse.model_validate",
+                return_value=MagicMock(),
             ),
         ):
-            await self.svc.update_status(db, order_id, UpdateOrderStatusRequest(status="cancelled"))
+            await self.svc.update_status(
+                db, order_id, UpdateOrderStatusRequest(status="cancelled")
+            )
         assert "cancelled_at" in captured_data
         assert captured_data["status"] == "cancelled"

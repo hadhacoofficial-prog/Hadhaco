@@ -85,7 +85,11 @@ class CmsMediaService:
         media_id = uuid.uuid4()
         original_filename = file.filename or "upload"
         safe_folder = folder.strip("/") or "cms"
-        ext = original_filename.rsplit(".", 1)[-1].lower() if "." in original_filename else "bin"
+        ext = (
+            original_filename.rsplit(".", 1)[-1].lower()
+            if "." in original_filename
+            else "bin"
+        )
         key = f"{safe_folder}/{media_id}.{ext}"
 
         client = _r2()

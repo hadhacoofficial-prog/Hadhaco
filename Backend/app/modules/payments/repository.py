@@ -16,15 +16,23 @@ class PaymentRepository:
         await db.refresh(p)
         return p
 
-    async def get_by_id(self, db: AsyncSession, payment_id: uuid.UUID) -> Payment | None:
+    async def get_by_id(
+        self, db: AsyncSession, payment_id: uuid.UUID
+    ) -> Payment | None:
         result = await db.execute(select(Payment).where(Payment.id == payment_id))
         return result.scalar_one_or_none()
 
-    async def get_by_razorpay_order_id(self, db: AsyncSession, rzp_order_id: str) -> Payment | None:
-        result = await db.execute(select(Payment).where(Payment.razorpay_order_id == rzp_order_id))
+    async def get_by_razorpay_order_id(
+        self, db: AsyncSession, rzp_order_id: str
+    ) -> Payment | None:
+        result = await db.execute(
+            select(Payment).where(Payment.razorpay_order_id == rzp_order_id)
+        )
         return result.scalar_one_or_none()
 
-    async def get_for_order(self, db: AsyncSession, order_id: uuid.UUID) -> Payment | None:
+    async def get_for_order(
+        self, db: AsyncSession, order_id: uuid.UUID
+    ) -> Payment | None:
         result = await db.execute(
             select(Payment)
             .where(Payment.order_id == order_id)
@@ -53,9 +61,13 @@ class PaymentRepository:
         result = await db.execute(select(Refund).where(Refund.id == refund_id))
         return result.scalar_one_or_none()
 
-    async def get_refunds_for_order(self, db: AsyncSession, order_id: uuid.UUID) -> list[Refund]:
+    async def get_refunds_for_order(
+        self, db: AsyncSession, order_id: uuid.UUID
+    ) -> list[Refund]:
         result = await db.execute(
-            select(Refund).where(Refund.order_id == order_id).order_by(Refund.created_at.desc())
+            select(Refund)
+            .where(Refund.order_id == order_id)
+            .order_by(Refund.created_at.desc())
         )
         return list(result.scalars().all())
 
@@ -68,7 +80,9 @@ class PaymentRepository:
         await db.refresh(inv)
         return inv
 
-    async def get_invoice_for_order(self, db: AsyncSession, order_id: uuid.UUID) -> Invoice | None:
+    async def get_invoice_for_order(
+        self, db: AsyncSession, order_id: uuid.UUID
+    ) -> Invoice | None:
         result = await db.execute(select(Invoice).where(Invoice.order_id == order_id))
         return result.scalar_one_or_none()
 
@@ -80,7 +94,9 @@ class PaymentRepository:
         now = datetime.now(UTC)
         prefix = f"INV-{now.year}{now.month:02d}-"
         count_result = await db.execute(
-            select(func.count(Invoice.id)).where(Invoice.invoice_number.like(f"{prefix}%"))
+            select(func.count(Invoice.id)).where(
+                Invoice.invoice_number.like(f"{prefix}%")
+            )
         )
         seq = count_result.scalar_one() + 1
         return f"{prefix}{seq:06d}"

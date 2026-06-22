@@ -44,8 +44,12 @@ class WishlistService:
             db, wishlist.id, payload.product_id, payload.variant_id
         )
         if already_in:
-            await _repo.remove_item(db, wishlist.id, payload.product_id, payload.variant_id)
+            await _repo.remove_item(
+                db, wishlist.id, payload.product_id, payload.variant_id
+            )
             return {"action": "removed", "product_id": str(payload.product_id)}
         else:
-            await _repo.add_item(db, wishlist.id, payload.product_id, payload.variant_id)
+            await _repo.add_item(
+                db, wishlist.id, payload.product_id, payload.variant_id
+            )
             return {"action": "added", "product_id": str(payload.product_id)}

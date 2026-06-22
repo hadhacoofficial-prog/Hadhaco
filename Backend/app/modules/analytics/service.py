@@ -38,10 +38,18 @@ class AnalyticsService:
     async def get_dashboard(
         self, db: AsyncSession, *, from_date: date, to_date: date
     ) -> dict[str, Any]:
-        summary = await self._repo.get_dashboard(db, from_date=from_date, to_date=to_date)
-        by_day = await self._repo.get_revenue_by_day(db, from_date=from_date, to_date=to_date)
-        by_status = await self._repo.get_orders_by_status(db, from_date=from_date, to_date=to_date)
-        top = await self._repo.get_top_products(db, from_date=from_date, to_date=to_date)
+        summary = await self._repo.get_dashboard(
+            db, from_date=from_date, to_date=to_date
+        )
+        by_day = await self._repo.get_revenue_by_day(
+            db, from_date=from_date, to_date=to_date
+        )
+        by_status = await self._repo.get_orders_by_status(
+            db, from_date=from_date, to_date=to_date
+        )
+        top = await self._repo.get_top_products(
+            db, from_date=from_date, to_date=to_date
+        )
         return {
             "revenue": {"total": float(summary.get("revenue", 0))},
             "orders": {"total": int(summary.get("total_orders", 0))},

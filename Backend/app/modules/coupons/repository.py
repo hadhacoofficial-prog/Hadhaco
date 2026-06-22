@@ -16,7 +16,9 @@ class CouponRepository:
         result = await db.execute(select(Coupon).where(Coupon.id == coupon_id))
         return result.scalar_one_or_none()
 
-    async def list_all(self, db: AsyncSession, *, is_active: bool | None = None) -> list[Coupon]:
+    async def list_all(
+        self, db: AsyncSession, *, is_active: bool | None = None
+    ) -> list[Coupon]:
         q = select(Coupon).order_by(Coupon.created_at.desc())
         if is_active is not None:
             q = q.where(Coupon.is_active == is_active)
@@ -37,7 +39,9 @@ class CouponRepository:
 
     async def increment_usage(self, db: AsyncSession, coupon_id: uuid.UUID) -> None:
         await db.execute(
-            update(Coupon).where(Coupon.id == coupon_id).values(usage_count=Coupon.usage_count + 1)
+            update(Coupon)
+            .where(Coupon.id == coupon_id)
+            .values(usage_count=Coupon.usage_count + 1)
         )
 
     async def get_user_usage_count(
@@ -73,7 +77,11 @@ class CouponRepository:
         return usage
 
     async def update_usage_order_id(
-        self, db: AsyncSession, coupon_id: uuid.UUID, user_id: uuid.UUID, order_id: uuid.UUID
+        self,
+        db: AsyncSession,
+        coupon_id: uuid.UUID,
+        user_id: uuid.UUID,
+        order_id: uuid.UUID,
     ) -> None:
         await db.execute(
             update(CouponUsage)

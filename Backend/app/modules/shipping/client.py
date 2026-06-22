@@ -70,7 +70,9 @@ class DeliveryOneClient:
             resp.raise_for_status()
             return resp.json()
 
-    async def get_rates(self, weight_grams: int, pincode_from: str, pincode_to: str) -> list[dict]:
+    async def get_rates(
+        self, weight_grams: int, pincode_from: str, pincode_to: str
+    ) -> list[dict]:
         """POST /rates — returns available service options with pricing."""
         async with httpx.AsyncClient(timeout=_TIMEOUT) as client:
             resp = await client.post(

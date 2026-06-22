@@ -33,7 +33,9 @@ async def create_payment_order(
     current_user: Profile = Depends(get_current_user),
 ):
     result = await _service.create_razorpay_order(db, current_user.id, payload)
-    return ok(result, ResponseCode.PAYMENT_ORDER_CREATED, "Payment order created successfully")
+    return ok(
+        result, ResponseCode.PAYMENT_ORDER_CREATED, "Payment order created successfully"
+    )
 
 
 @router.post(

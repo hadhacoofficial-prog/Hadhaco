@@ -7,7 +7,11 @@ import pytest
 from fastapi import HTTPException
 
 from app.modules.returns.repository import ReturnRepository
-from app.modules.returns.schemas import AdminReturnStatusUpdate, ReturnCreate, ReturnItemCreate
+from app.modules.returns.schemas import (
+    AdminReturnStatusUpdate,
+    ReturnCreate,
+    ReturnItemCreate,
+)
 from app.modules.support.repository import SupportRepository
 from app.modules.support.schemas import AdminTicketUpdate, MessageCreate
 
@@ -20,7 +24,9 @@ class TestSupportServiceReply:
 
     async def test_reply_raises_404_when_ticket_missing(self):
         db = AsyncMock()
-        with patch.object(SupportRepository, "get_ticket", AsyncMock(return_value=None)):
+        with patch.object(
+            SupportRepository, "get_ticket", AsyncMock(return_value=None)
+        ):
             with pytest.raises(HTTPException) as exc:
                 await self.svc.reply(
                     db,
@@ -36,7 +42,9 @@ class TestSupportServiceReply:
         mock_ticket.customer_id = uuid.uuid4()  # ticket owner
         mock_ticket.status = "open"
         caller_id = uuid.uuid4()  # different user
-        with patch.object(SupportRepository, "get_ticket", AsyncMock(return_value=mock_ticket)):
+        with patch.object(
+            SupportRepository, "get_ticket", AsyncMock(return_value=mock_ticket)
+        ):
             with pytest.raises(HTTPException) as exc:
                 await self.svc.reply(
                     db,
@@ -58,9 +66,15 @@ class TestSupportServiceReply:
         mock_msg = MagicMock()
 
         with (
-            patch.object(SupportRepository, "get_ticket", AsyncMock(return_value=mock_ticket)),
-            patch.object(SupportRepository, "add_message", AsyncMock(return_value=mock_msg)),
-            patch.object(SupportRepository, "update_ticket", AsyncMock(return_value=mock_ticket)),
+            patch.object(
+                SupportRepository, "get_ticket", AsyncMock(return_value=mock_ticket)
+            ),
+            patch.object(
+                SupportRepository, "add_message", AsyncMock(return_value=mock_msg)
+            ),
+            patch.object(
+                SupportRepository, "update_ticket", AsyncMock(return_value=mock_ticket)
+            ),
         ):
             db.commit = AsyncMock()
             db.refresh = AsyncMock()
@@ -85,8 +99,12 @@ class TestSupportServiceReply:
         mock_msg = MagicMock()
 
         with (
-            patch.object(SupportRepository, "get_ticket", AsyncMock(return_value=mock_ticket)),
-            patch.object(SupportRepository, "add_message", AsyncMock(return_value=mock_msg)),
+            patch.object(
+                SupportRepository, "get_ticket", AsyncMock(return_value=mock_ticket)
+            ),
+            patch.object(
+                SupportRepository, "add_message", AsyncMock(return_value=mock_msg)
+            ),
         ):
             db.commit = AsyncMock()
             db.refresh = AsyncMock()
@@ -109,25 +127,35 @@ class TestSupportServiceGetTicket:
 
     async def test_get_ticket_raises_404_when_not_found(self):
         db = AsyncMock()
-        with patch.object(SupportRepository, "get_ticket", AsyncMock(return_value=None)):
+        with patch.object(
+            SupportRepository, "get_ticket", AsyncMock(return_value=None)
+        ):
             with pytest.raises(HTTPException) as exc:
-                await self.svc.get_ticket(db, uuid.uuid4(), viewer_id=uuid.uuid4(), is_admin=False)
+                await self.svc.get_ticket(
+                    db, uuid.uuid4(), viewer_id=uuid.uuid4(), is_admin=False
+                )
         assert exc.value.status_code == 404
 
     async def test_get_ticket_raises_403_when_not_customers_ticket(self):
         db = AsyncMock()
         mock_ticket = MagicMock()
         mock_ticket.customer_id = uuid.uuid4()
-        with patch.object(SupportRepository, "get_ticket", AsyncMock(return_value=mock_ticket)):
+        with patch.object(
+            SupportRepository, "get_ticket", AsyncMock(return_value=mock_ticket)
+        ):
             with pytest.raises(HTTPException) as exc:
-                await self.svc.get_ticket(db, uuid.uuid4(), viewer_id=uuid.uuid4(), is_admin=False)
+                await self.svc.get_ticket(
+                    db, uuid.uuid4(), viewer_id=uuid.uuid4(), is_admin=False
+                )
         assert exc.value.status_code == 403
 
     async def test_get_ticket_admin_can_view_any_ticket(self):
         db = AsyncMock()
         mock_ticket = MagicMock()
         mock_ticket.customer_id = uuid.uuid4()
-        with patch.object(SupportRepository, "get_ticket", AsyncMock(return_value=mock_ticket)):
+        with patch.object(
+            SupportRepository, "get_ticket", AsyncMock(return_value=mock_ticket)
+        ):
             result = await self.svc.get_ticket(
                 db, uuid.uuid4(), viewer_id=uuid.uuid4(), is_admin=True
             )
@@ -135,7 +163,9 @@ class TestSupportServiceGetTicket:
 
     async def test_admin_update_raises_404_when_not_found(self):
         db = AsyncMock()
-        with patch.object(SupportRepository, "get_ticket", AsyncMock(return_value=None)):
+        with patch.object(
+            SupportRepository, "get_ticket", AsyncMock(return_value=None)
+        ):
             with pytest.raises(HTTPException) as exc:
                 await self.svc.admin_update(
                     db, ticket_id=uuid.uuid4(), data=AdminTicketUpdate(status="closed")
@@ -144,7 +174,9 @@ class TestSupportServiceGetTicket:
 
     async def test_list_customer_tickets_delegates_to_repo(self):
         db = AsyncMock()
-        with patch.object(SupportRepository, "list_for_customer", AsyncMock(return_value=[])):
+        with patch.object(
+            SupportRepository, "list_for_customer", AsyncMock(return_value=[])
+        ):
             result = await self.svc.list_customer_tickets(db, uuid.uuid4())
         assert result == []
 
@@ -169,7 +201,9 @@ class TestReturnService:
                         reason="defective",
                         items=[
                             ReturnItemCreate(
-                                order_item_id=uuid.uuid4(), quantity=1, reason="defective"
+                                order_item_id=uuid.uuid4(),
+                                quantity=1,
+                                reason="defective",
                             )
                         ],
                     ),
@@ -181,7 +215,11 @@ class TestReturnService:
         mock_ret = MagicMock()
         mock_ret.id = uuid.uuid4()
         with (
-            patch.object(ReturnRepository, "is_within_return_window", AsyncMock(return_value=True)),
+            patch.object(
+                ReturnRepository,
+                "is_within_return_window",
+                AsyncMock(return_value=True),
+            ),
             patch.object(ReturnRepository, "create", AsyncMock(return_value=mock_ret)),
             patch.object(ReturnRepository, "add_item", AsyncMock()),
         ):
@@ -194,7 +232,9 @@ class TestReturnService:
                     order_id=uuid.uuid4(),
                     reason="defective",
                     items=[
-                        ReturnItemCreate(order_item_id=uuid.uuid4(), quantity=1, reason="defective")
+                        ReturnItemCreate(
+                            order_item_id=uuid.uuid4(), quantity=1, reason="defective"
+                        )
                     ],
                 ),
             )
@@ -218,7 +258,9 @@ class TestReturnService:
         mock_updated = MagicMock()
         with (
             patch.object(ReturnRepository, "get", AsyncMock(return_value=mock_ret)),
-            patch.object(ReturnRepository, "update_status", AsyncMock(return_value=mock_updated)),
+            patch.object(
+                ReturnRepository, "update_status", AsyncMock(return_value=mock_updated)
+            ),
         ):
             db.commit = AsyncMock()
             db.refresh = AsyncMock()
@@ -232,7 +274,9 @@ class TestReturnService:
 
     async def test_list_customer_returns_delegates_to_repo(self):
         db = AsyncMock()
-        with patch.object(ReturnRepository, "list_for_customer", AsyncMock(return_value=[])):
+        with patch.object(
+            ReturnRepository, "list_for_customer", AsyncMock(return_value=[])
+        ):
             result = await self.svc.list_customer_returns(db, uuid.uuid4())
         assert result == []
 

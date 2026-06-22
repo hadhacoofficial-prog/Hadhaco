@@ -56,7 +56,9 @@ class TestInventoryAlertsWorker:
         mock_db.execute = AsyncMock(return_value=mock_result)
 
         with (
-            patch("app.workers.inventory_alerts.AsyncSessionLocal", return_value=mock_db),
+            patch(
+                "app.workers.inventory_alerts.AsyncSessionLocal", return_value=mock_db
+            ),
             patch("app.workers.inventory_alerts.event_bus.publish", AsyncMock()),
         ):
             await worker.run()
@@ -85,7 +87,9 @@ class TestInventoryAlertsWorker:
             published_events.append(event)
 
         with (
-            patch("app.workers.inventory_alerts.AsyncSessionLocal", return_value=mock_db),
+            patch(
+                "app.workers.inventory_alerts.AsyncSessionLocal", return_value=mock_db
+            ),
             patch("app.workers.inventory_alerts.event_bus.publish", capture_publish),
         ):
             await worker.run()
@@ -102,7 +106,9 @@ class TestNotificationRetryWorker:
         mock_retry = AsyncMock()
 
         with (
-            patch("app.workers.notification_retry.AsyncSessionLocal", return_value=mock_db),
+            patch(
+                "app.workers.notification_retry.AsyncSessionLocal", return_value=mock_db
+            ),
             patch.object(type(worker._svc), "retry_pending", mock_retry),
         ):
             await worker.run()
@@ -124,7 +130,9 @@ class TestPartitionManagerWorker:
         mock_db.execute = capture_execute
         mock_db.commit = AsyncMock()
 
-        with patch("app.workers.partition_manager.AsyncSessionLocal", return_value=mock_db):
+        with patch(
+            "app.workers.partition_manager.AsyncSessionLocal", return_value=mock_db
+        ):
             await worker.run()
 
         assert len(execute_calls) == 2
@@ -140,7 +148,9 @@ class TestReviewReminderWorker:
         mock_db.execute = AsyncMock(return_value=mock_result)
 
         with (
-            patch("app.workers.review_reminder.AsyncSessionLocal", return_value=mock_db),
+            patch(
+                "app.workers.review_reminder.AsyncSessionLocal", return_value=mock_db
+            ),
             patch("app.workers.review_reminder.event_bus.publish", AsyncMock()),
         ):
             await worker.run()
@@ -167,8 +177,14 @@ class TestReviewReminderWorker:
             published_events.append(event)
 
         with (
-            patch("app.workers.review_reminder.AsyncSessionLocal", return_value=mock_db),
-            patch.object(type(worker._review_repo), "has_any_review", AsyncMock(return_value=True)),
+            patch(
+                "app.workers.review_reminder.AsyncSessionLocal", return_value=mock_db
+            ),
+            patch.object(
+                type(worker._review_repo),
+                "has_any_review",
+                AsyncMock(return_value=True),
+            ),
             patch("app.workers.review_reminder.event_bus.publish", capture_publish),
         ):
             await worker.run()

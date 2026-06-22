@@ -23,7 +23,9 @@ class AddressService:
     ) -> AddressResponse:
         count = await _repo.count_for_user(db, user_id)
         if count >= _MAX_ADDRESSES:
-            raise ConflictError(f"Maximum {_MAX_ADDRESSES} addresses allowed per account")
+            raise ConflictError(
+                f"Maximum {_MAX_ADDRESSES} addresses allowed per account"
+            )
 
         if payload.is_default:
             await _repo.clear_default(db, user_id, payload.type)
@@ -65,7 +67,9 @@ class AddressService:
         addr = await _repo.update(db, address_id, {"is_default": True})
         return AddressResponse.model_validate(addr)
 
-    async def delete(self, db: AsyncSession, user_id: uuid.UUID, address_id: uuid.UUID) -> None:
+    async def delete(
+        self, db: AsyncSession, user_id: uuid.UUID, address_id: uuid.UUID
+    ) -> None:
         existing = await _repo.get(db, address_id, user_id)
         if not existing:
             raise NotFoundError("Address not found")

@@ -39,7 +39,9 @@ class QueueService:
             misfire_grace_time=60,
         )
 
-    def add_cron_job(self, fn: Callable[[], Awaitable[None]], *, cron: str, job_id: str) -> None:
+    def add_cron_job(
+        self, fn: Callable[[], Awaitable[None]], *, cron: str, job_id: str
+    ) -> None:
         self._scheduler.add_job(
             fn,
             CronTrigger.from_crontab(cron, timezone="UTC"),
@@ -74,7 +76,9 @@ def build_queue() -> QueueService:
     queue = QueueService()
     queue.add_interval_job(cms_publish.run, seconds=60, job_id="cms_publish")
     queue.add_interval_job(
-        shipment_sync.run, seconds=settings.SHIPMENT_SYNC_INTERVAL, job_id="shipment_sync"
+        shipment_sync.run,
+        seconds=settings.SHIPMENT_SYNC_INTERVAL,
+        job_id="shipment_sync",
     )
     queue.add_interval_job(
         notification_retry.run,
@@ -82,13 +86,19 @@ def build_queue() -> QueueService:
         job_id="notification_retry",
     )
     queue.add_interval_job(
-        abandoned_cart.run, seconds=settings.ABANDONED_CART_INTERVAL, job_id="abandoned_cart"
+        abandoned_cart.run,
+        seconds=settings.ABANDONED_CART_INTERVAL,
+        job_id="abandoned_cart",
     )
     queue.add_interval_job(
-        inventory_alerts.run, seconds=settings.INVENTORY_ALERT_INTERVAL, job_id="inventory_alerts"
+        inventory_alerts.run,
+        seconds=settings.INVENTORY_ALERT_INTERVAL,
+        job_id="inventory_alerts",
     )
     # Hourly sweep; the worker itself only emails for orders delivered ≥ REVIEW_REMINDER_DELAY_HOURS ago.
     queue.add_interval_job(review_reminder.run, seconds=3600, job_id="review_reminder")
     # First day of each month, 00:10 UTC — create next month's partitions.
-    queue.add_cron_job(partition_manager.run, cron="10 0 1 * *", job_id="partition_manager")
+    queue.add_cron_job(
+        partition_manager.run, cron="10 0 1 * *", job_id="partition_manager"
+    )
     return queue

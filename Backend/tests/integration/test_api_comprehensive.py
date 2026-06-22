@@ -35,7 +35,9 @@ class TestAuthRequiredEndpoints:
         assert (await client.post("/api/v1/orders", json={})).status_code == 401
 
     async def test_coupon_validate_requires_auth(self, client):
-        r = await client.post("/api/v1/coupons/validate", json={"code": "X", "order_subtotal": 500})
+        r = await client.post(
+            "/api/v1/coupons/validate", json={"code": "X", "order_subtotal": 500}
+        )
         assert r.status_code == 401
 
     async def test_create_payment_order_requires_auth(self, client):
@@ -100,7 +102,9 @@ class TestAdminRequiredEndpoints:
         assert (await client.post("/api/v1/admin/coupons", json={})).status_code == 401
 
     async def test_admin_inventory_low_stock_requires_auth(self, client):
-        assert (await client.get("/api/v1/admin/inventory/low-stock")).status_code == 401
+        assert (
+            await client.get("/api/v1/admin/inventory/low-stock")
+        ).status_code == 401
 
     async def test_admin_reviews_pending_requires_auth(self, client):
         assert (await client.get("/api/v1/reviews/admin/pending")).status_code == 401
@@ -109,16 +113,22 @@ class TestAdminRequiredEndpoints:
         assert (await client.get("/api/v1/cms/admin/banners")).status_code == 401
 
     async def test_admin_cms_banners_create_requires_auth(self, client):
-        assert (await client.post("/api/v1/cms/admin/banners", json={})).status_code == 401
+        assert (
+            await client.post("/api/v1/cms/admin/banners", json={})
+        ).status_code == 401
 
     async def test_admin_analytics_dashboard_requires_auth(self, client):
-        assert (await client.get("/api/v1/analytics/admin/dashboard")).status_code == 401
+        assert (
+            await client.get("/api/v1/analytics/admin/dashboard")
+        ).status_code == 401
 
     async def test_admin_audit_logs_requires_auth(self, client):
         assert (await client.get("/api/v1/admin/audit-logs")).status_code == 401
 
     async def test_admin_categories_create_requires_auth(self, client):
-        assert (await client.post("/api/v1/admin/categories", json={})).status_code == 401
+        assert (
+            await client.post("/api/v1/admin/categories", json={})
+        ).status_code == 401
 
     async def test_admin_support_tickets_requires_auth(self, client):
         assert (await client.get("/api/v1/support/admin/tickets")).status_code == 401
@@ -133,7 +143,9 @@ class TestAdminRequiredEndpoints:
         assert (await client.post("/api/v1/auth/admin/2fa/setup")).status_code == 401
 
     async def test_validate_2fa_requires_admin(self, client):
-        assert (await client.post("/api/v1/auth/admin/2fa/validate", json={})).status_code == 401
+        assert (
+            await client.post("/api/v1/auth/admin/2fa/validate", json={})
+        ).status_code == 401
 
 
 class TestQueryParamValidation:
@@ -187,11 +199,15 @@ class TestWebhookEndpoints:
     """Webhook endpoints reject missing/invalid signatures before processing."""
 
     async def test_razorpay_webhook_missing_signature_returns_400(self, client):
-        resp = await client.post("/api/v1/webhooks/razorpay", json={"event": "payment.captured"})
+        resp = await client.post(
+            "/api/v1/webhooks/razorpay", json={"event": "payment.captured"}
+        )
         assert resp.status_code == 400
 
     async def test_delivery_webhook_missing_signature_returns_400(self, client):
-        resp = await client.post("/api/v1/webhooks/delivery-one", json={"status": "delivered"})
+        resp = await client.post(
+            "/api/v1/webhooks/delivery-one", json={"status": "delivered"}
+        )
         assert resp.status_code == 400
 
 

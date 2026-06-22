@@ -26,7 +26,9 @@ class TestWebhookServiceRecordEvent:
         mock_result = MagicMock()
         mock_result.scalar_one_or_none.return_value = mock_existing
         db.execute = AsyncMock(return_value=mock_result)
-        result = await self.svc._record_event(db, "razorpay", "payment.captured", "evt_abc", "{}")
+        result = await self.svc._record_event(
+            db, "razorpay", "payment.captured", "evt_abc", "{}"
+        )
         assert result is None
 
     async def test_record_event_creates_new_when_no_duplicate(self):
@@ -36,7 +38,9 @@ class TestWebhookServiceRecordEvent:
         mock_result = MagicMock()
         mock_result.scalar_one_or_none.return_value = None
         db.execute = AsyncMock(return_value=mock_result)
-        result = await self.svc._record_event(db, "razorpay", "payment.captured", "evt_new", "{}")
+        result = await self.svc._record_event(
+            db, "razorpay", "payment.captured", "evt_new", "{}"
+        )
         db.add.assert_called_once()
         assert result is not None
 
@@ -60,7 +64,8 @@ class TestWebhookServiceRazorpay:
     async def test_handle_razorpay_rejects_invalid_signature(self):
         db = AsyncMock()
         with patch(
-            "app.modules.webhooks.service.verify_razorpay_webhook_signature", return_value=False
+            "app.modules.webhooks.service.verify_razorpay_webhook_signature",
+            return_value=False,
         ):
             result = await self.svc.handle_razorpay(db, b"{}", "bad_sig")
         assert result == {"status": "invalid_signature"}
@@ -68,7 +73,8 @@ class TestWebhookServiceRazorpay:
     async def test_handle_razorpay_rejects_invalid_json(self):
         db = AsyncMock()
         with patch(
-            "app.modules.webhooks.service.verify_razorpay_webhook_signature", return_value=True
+            "app.modules.webhooks.service.verify_razorpay_webhook_signature",
+            return_value=True,
         ):
             result = await self.svc.handle_razorpay(db, b"not-json", "sig")
         assert result == {"status": "invalid_payload"}
@@ -78,7 +84,8 @@ class TestWebhookServiceRazorpay:
         body = json.dumps({"event": "payment.captured", "id": "evt_dup"}).encode()
         with (
             patch(
-                "app.modules.webhooks.service.verify_razorpay_webhook_signature", return_value=True
+                "app.modules.webhooks.service.verify_razorpay_webhook_signature",
+                return_value=True,
             ),
             patch.object(self.svc, "_record_event", AsyncMock(return_value=None)),
         ):
@@ -92,10 +99,15 @@ class TestWebhookServiceRazorpay:
         mock_event_row.id = uuid.uuid4()
         with (
             patch(
-                "app.modules.webhooks.service.verify_razorpay_webhook_signature", return_value=True
+                "app.modules.webhooks.service.verify_razorpay_webhook_signature",
+                return_value=True,
             ),
-            patch.object(self.svc, "_record_event", AsyncMock(return_value=mock_event_row)),
-            patch.object(self.svc, "_on_payment_captured", AsyncMock()) as mock_captured,
+            patch.object(
+                self.svc, "_record_event", AsyncMock(return_value=mock_event_row)
+            ),
+            patch.object(
+                self.svc, "_on_payment_captured", AsyncMock()
+            ) as mock_captured,
             patch.object(self.svc, "_mark_processed", AsyncMock()),
         ):
             result = await self.svc.handle_razorpay(db, body, "sig")
@@ -109,9 +121,12 @@ class TestWebhookServiceRazorpay:
         mock_event_row.id = uuid.uuid4()
         with (
             patch(
-                "app.modules.webhooks.service.verify_razorpay_webhook_signature", return_value=True
+                "app.modules.webhooks.service.verify_razorpay_webhook_signature",
+                return_value=True,
             ),
-            patch.object(self.svc, "_record_event", AsyncMock(return_value=mock_event_row)),
+            patch.object(
+                self.svc, "_record_event", AsyncMock(return_value=mock_event_row)
+            ),
             patch.object(self.svc, "_on_payment_failed", AsyncMock()) as mock_failed,
             patch.object(self.svc, "_mark_processed", AsyncMock()),
         ):
@@ -125,9 +140,12 @@ class TestWebhookServiceRazorpay:
         mock_event_row.id = uuid.uuid4()
         with (
             patch(
-                "app.modules.webhooks.service.verify_razorpay_webhook_signature", return_value=True
+                "app.modules.webhooks.service.verify_razorpay_webhook_signature",
+                return_value=True,
             ),
-            patch.object(self.svc, "_record_event", AsyncMock(return_value=mock_event_row)),
+            patch.object(
+                self.svc, "_record_event", AsyncMock(return_value=mock_event_row)
+            ),
             patch.object(self.svc, "_on_refund_event", AsyncMock()) as mock_refund,
             patch.object(self.svc, "_mark_processed", AsyncMock()),
         ):
@@ -141,9 +159,12 @@ class TestWebhookServiceRazorpay:
         mock_event_row.id = uuid.uuid4()
         with (
             patch(
-                "app.modules.webhooks.service.verify_razorpay_webhook_signature", return_value=True
+                "app.modules.webhooks.service.verify_razorpay_webhook_signature",
+                return_value=True,
             ),
-            patch.object(self.svc, "_record_event", AsyncMock(return_value=mock_event_row)),
+            patch.object(
+                self.svc, "_record_event", AsyncMock(return_value=mock_event_row)
+            ),
         ):
             result = await self.svc.handle_razorpay(db, body, "sig")
         assert result == {"status": "ignored"}
@@ -155,11 +176,16 @@ class TestWebhookServiceRazorpay:
         mock_event_row.id = uuid.uuid4()
         with (
             patch(
-                "app.modules.webhooks.service.verify_razorpay_webhook_signature", return_value=True
+                "app.modules.webhooks.service.verify_razorpay_webhook_signature",
+                return_value=True,
             ),
-            patch.object(self.svc, "_record_event", AsyncMock(return_value=mock_event_row)),
             patch.object(
-                self.svc, "_on_payment_captured", AsyncMock(side_effect=Exception("DB error"))
+                self.svc, "_record_event", AsyncMock(return_value=mock_event_row)
+            ),
+            patch.object(
+                self.svc,
+                "_on_payment_captured",
+                AsyncMock(side_effect=Exception("DB error")),
             ),
             patch.object(self.svc, "_mark_failed", AsyncMock()) as mock_failed,
         ):
@@ -178,7 +204,13 @@ class TestWebhookServiceOnPaymentCaptured:
         db = AsyncMock()
         payload = {
             "payload": {
-                "payment": {"entity": {"id": "pay_abc", "order_id": "order_abc", "method": "upi"}}
+                "payment": {
+                    "entity": {
+                        "id": "pay_abc",
+                        "order_id": "order_abc",
+                        "method": "upi",
+                    }
+                }
             }
         }
         from app.modules.payments.repository import PaymentRepository
@@ -192,7 +224,13 @@ class TestWebhookServiceOnPaymentCaptured:
         db = AsyncMock()
         payload = {
             "payload": {
-                "payment": {"entity": {"id": "pay_abc", "order_id": "order_abc", "method": "upi"}}
+                "payment": {
+                    "entity": {
+                        "id": "pay_abc",
+                        "order_id": "order_abc",
+                        "method": "upi",
+                    }
+                }
             }
         }
         from app.modules.payments.repository import PaymentRepository
@@ -200,7 +238,9 @@ class TestWebhookServiceOnPaymentCaptured:
         mock_payment = MagicMock()
         mock_payment.status = "captured"
         with patch.object(
-            PaymentRepository, "get_by_razorpay_order_id", AsyncMock(return_value=mock_payment)
+            PaymentRepository,
+            "get_by_razorpay_order_id",
+            AsyncMock(return_value=mock_payment),
         ):
             await self.svc._on_payment_captured(db, payload)
 
@@ -208,7 +248,13 @@ class TestWebhookServiceOnPaymentCaptured:
         db = AsyncMock()
         payload = {
             "payload": {
-                "payment": {"entity": {"id": "pay_xyz", "order_id": "order_xyz", "method": "card"}}
+                "payment": {
+                    "entity": {
+                        "id": "pay_xyz",
+                        "order_id": "order_xyz",
+                        "method": "card",
+                    }
+                }
             }
         }
         from app.core.events import event_bus
@@ -225,11 +271,15 @@ class TestWebhookServiceOnPaymentCaptured:
 
         with (
             patch.object(
-                PaymentRepository, "get_by_razorpay_order_id", AsyncMock(return_value=mock_payment)
+                PaymentRepository,
+                "get_by_razorpay_order_id",
+                AsyncMock(return_value=mock_payment),
             ),
             patch.object(PaymentRepository, "update", AsyncMock()),
             patch.object(OrderRepository, "update", AsyncMock()),
-            patch.object(OrderRepository, "get_by_id", AsyncMock(return_value=mock_order)),
+            patch.object(
+                OrderRepository, "get_by_id", AsyncMock(return_value=mock_order)
+            ),
             patch.object(InvoiceService, "generate_and_store", AsyncMock()),
             patch.object(event_bus, "publish", AsyncMock()),
         ):
@@ -247,7 +297,10 @@ class TestWebhookServiceOnPaymentFailed:
         payload = {
             "payload": {
                 "payment": {
-                    "entity": {"order_id": "no_order", "error_description": "Card declined"}
+                    "entity": {
+                        "order_id": "no_order",
+                        "error_description": "Card declined",
+                    }
                 }
             }
         }
@@ -263,7 +316,10 @@ class TestWebhookServiceOnPaymentFailed:
         payload = {
             "payload": {
                 "payment": {
-                    "entity": {"order_id": "order_abc", "error_description": "Card declined"}
+                    "entity": {
+                        "order_id": "order_abc",
+                        "error_description": "Card declined",
+                    }
                 }
             }
         }
@@ -275,7 +331,9 @@ class TestWebhookServiceOnPaymentFailed:
         mock_payment.order_id = uuid.uuid4()
         with (
             patch.object(
-                PaymentRepository, "get_by_razorpay_order_id", AsyncMock(return_value=mock_payment)
+                PaymentRepository,
+                "get_by_razorpay_order_id",
+                AsyncMock(return_value=mock_payment),
             ),
             patch.object(PaymentRepository, "update", AsyncMock()),
             patch.object(event_bus, "publish", AsyncMock()) as mock_pub,
@@ -295,7 +353,9 @@ class TestWebhookServiceOnRefundEvent:
         mock_result = MagicMock()
         mock_result.scalar_one_or_none.return_value = None
         db.execute = AsyncMock(return_value=mock_result)
-        payload = {"payload": {"refund": {"entity": {"id": "ref_abc", "amount": 50000}}}}
+        payload = {
+            "payload": {"refund": {"entity": {"id": "ref_abc", "amount": 50000}}}
+        }
         await self.svc._on_refund_event(db, payload, "refund.processed")
 
     async def test_on_refund_processed_updates_and_publishes_event(self):
@@ -309,7 +369,9 @@ class TestWebhookServiceOnRefundEvent:
         mock_result = MagicMock()
         mock_result.scalar_one_or_none.return_value = mock_refund
         db.execute = AsyncMock(return_value=mock_result)
-        payload = {"payload": {"refund": {"entity": {"id": "ref_xyz", "amount": 50000}}}}
+        payload = {
+            "payload": {"refund": {"entity": {"id": "ref_xyz", "amount": 50000}}}
+        }
         with (
             patch.object(PaymentRepository, "update_refund", AsyncMock()),
             patch.object(event_bus, "publish", AsyncMock()) as mock_pub,
@@ -323,7 +385,9 @@ class TestWebhookServiceOnRefundEvent:
         mock_result = MagicMock()
         mock_result.scalar_one_or_none.return_value = mock_refund
         db.execute = AsyncMock(return_value=mock_result)
-        payload = {"payload": {"refund": {"entity": {"id": "ref_xyz", "amount": 50000}}}}
+        payload = {
+            "payload": {"refund": {"entity": {"id": "ref_xyz", "amount": 50000}}}
+        }
         # refund.created event should NOT update or publish
         from app.core.events import event_bus
 
@@ -341,7 +405,8 @@ class TestWebhookServiceDeliveryOne:
     async def test_handle_delivery_one_rejects_invalid_signature(self):
         db = AsyncMock()
         with patch(
-            "app.modules.webhooks.service.verify_delivery_one_webhook_signature", return_value=False
+            "app.modules.webhooks.service.verify_delivery_one_webhook_signature",
+            return_value=False,
         ):
             result = await self.svc.handle_delivery_one(db, b"{}", "bad_sig")
         assert result == {"status": "invalid_signature"}
@@ -349,7 +414,8 @@ class TestWebhookServiceDeliveryOne:
     async def test_handle_delivery_one_rejects_invalid_json(self):
         db = AsyncMock()
         with patch(
-            "app.modules.webhooks.service.verify_delivery_one_webhook_signature", return_value=True
+            "app.modules.webhooks.service.verify_delivery_one_webhook_signature",
+            return_value=True,
         ):
             result = await self.svc.handle_delivery_one(db, b"not-json", "sig")
         assert result == {"status": "invalid_payload"}
@@ -377,7 +443,9 @@ class TestWebhookServiceDeliveryOne:
                 "app.modules.webhooks.service.verify_delivery_one_webhook_signature",
                 return_value=True,
             ),
-            patch.object(self.svc, "_record_event", AsyncMock(return_value=mock_event_row)),
+            patch.object(
+                self.svc, "_record_event", AsyncMock(return_value=mock_event_row)
+            ),
             patch.object(self.svc, "_on_shipment_event", AsyncMock()),
             patch.object(self.svc, "_mark_processed", AsyncMock()) as mock_proc,
         ):
@@ -395,9 +463,13 @@ class TestWebhookServiceDeliveryOne:
                 "app.modules.webhooks.service.verify_delivery_one_webhook_signature",
                 return_value=True,
             ),
-            patch.object(self.svc, "_record_event", AsyncMock(return_value=mock_event_row)),
             patch.object(
-                self.svc, "_on_shipment_event", AsyncMock(side_effect=Exception("DB error"))
+                self.svc, "_record_event", AsyncMock(return_value=mock_event_row)
+            ),
+            patch.object(
+                self.svc,
+                "_on_shipment_event",
+                AsyncMock(side_effect=Exception("DB error")),
             ),
             patch.object(self.svc, "_mark_failed", AsyncMock()) as mock_failed,
         ):
@@ -420,8 +492,12 @@ class TestWebhookServiceOnShipmentEvent:
         from app.modules.orders.repository import OrderRepository
 
         db = AsyncMock()
-        payload = {"data": {"order_reference": "ORD-NOT-FOUND", "tracking_number": "AWB-123"}}
-        with patch.object(OrderRepository, "get_by_order_number", AsyncMock(return_value=None)):
+        payload = {
+            "data": {"order_reference": "ORD-NOT-FOUND", "tracking_number": "AWB-123"}
+        }
+        with patch.object(
+            OrderRepository, "get_by_order_number", AsyncMock(return_value=None)
+        ):
             await self.svc._on_shipment_event(db, payload, "shipment.dispatched")
 
     async def test_on_shipment_dispatched_updates_order(self):
@@ -436,7 +512,9 @@ class TestWebhookServiceOnShipmentEvent:
         mock_order.status = "processing"
         with (
             patch.object(
-                OrderRepository, "get_by_order_number", AsyncMock(return_value=mock_order)
+                OrderRepository,
+                "get_by_order_number",
+                AsyncMock(return_value=mock_order),
             ),
             patch.object(OrderRepository, "update", AsyncMock()) as mock_upd,
             patch.object(event_bus, "publish", AsyncMock()),
@@ -461,7 +539,9 @@ class TestWebhookServiceOnShipmentEvent:
 
         with (
             patch.object(
-                OrderRepository, "get_by_order_number", AsyncMock(return_value=mock_order)
+                OrderRepository,
+                "get_by_order_number",
+                AsyncMock(return_value=mock_order),
             ),
             patch.object(OrderRepository, "update", capture_update),
             patch.object(event_bus, "publish", AsyncMock()),
@@ -478,7 +558,9 @@ class TestWebhookServiceOnShipmentEvent:
         mock_order.id = uuid.uuid4()
         with (
             patch.object(
-                OrderRepository, "get_by_order_number", AsyncMock(return_value=mock_order)
+                OrderRepository,
+                "get_by_order_number",
+                AsyncMock(return_value=mock_order),
             ),
             patch.object(OrderRepository, "update", AsyncMock()) as mock_upd,
         ):

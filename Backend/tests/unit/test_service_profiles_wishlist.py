@@ -27,15 +27,21 @@ class TestProfileService:
     async def test_get_profile_returns_profile(self):
         db = AsyncMock()
         mock_profile = MagicMock()
-        with patch.object(ProfileRepository, "get_by_id", AsyncMock(return_value=mock_profile)):
+        with patch.object(
+            ProfileRepository, "get_by_id", AsyncMock(return_value=mock_profile)
+        ):
             result = await self.svc.get_profile(db, uuid.uuid4())
         assert result is mock_profile
 
     async def test_update_profile_returns_current_when_no_data(self):
         db = AsyncMock()
         mock_profile = MagicMock()
-        with patch.object(ProfileRepository, "get_by_id", AsyncMock(return_value=mock_profile)):
-            result = await self.svc.update_profile(db, uuid.uuid4(), ProfileUpdateRequest())
+        with patch.object(
+            ProfileRepository, "get_by_id", AsyncMock(return_value=mock_profile)
+        ):
+            result = await self.svc.update_profile(
+                db, uuid.uuid4(), ProfileUpdateRequest()
+            )
         assert result is mock_profile
 
     async def test_update_profile_raises_404_when_not_found(self):
@@ -51,7 +57,9 @@ class TestProfileService:
     async def test_update_profile_success(self):
         db = AsyncMock()
         mock_profile = MagicMock()
-        with patch.object(ProfileRepository, "update", AsyncMock(return_value=mock_profile)):
+        with patch.object(
+            ProfileRepository, "update", AsyncMock(return_value=mock_profile)
+        ):
             result = await self.svc.update_profile(
                 db, uuid.uuid4(), ProfileUpdateRequest(full_name="Alice")
             )
@@ -63,12 +71,16 @@ class TestProfileService:
         db = AsyncMock()
         with patch.object(ProfileRepository, "update", AsyncMock(return_value=None)):
             with pytest.raises(NotFoundError):
-                await self.svc.update_avatar(db, uuid.uuid4(), "https://example.com/avatar.jpg")
+                await self.svc.update_avatar(
+                    db, uuid.uuid4(), "https://example.com/avatar.jpg"
+                )
 
     async def test_update_avatar_success(self):
         db = AsyncMock()
         mock_profile = MagicMock()
-        with patch.object(ProfileRepository, "update", AsyncMock(return_value=mock_profile)):
+        with patch.object(
+            ProfileRepository, "update", AsyncMock(return_value=mock_profile)
+        ):
             result = await self.svc.update_avatar(
                 db, uuid.uuid4(), "https://example.com/avatar.jpg"
             )
@@ -81,7 +93,9 @@ class TestProfileService:
         db = AsyncMock()
         with patch.object(ProfileRepository, "get_by_id", AsyncMock(return_value=None)):
             with pytest.raises(NotFoundError):
-                await self.svc.change_role(db, uuid.uuid4(), UserRole.ADMIN, uuid.uuid4())
+                await self.svc.change_role(
+                    db, uuid.uuid4(), UserRole.ADMIN, uuid.uuid4()
+                )
 
     async def test_set_status_raises_404_when_not_found(self):
         from app.core.exceptions import NotFoundError
@@ -93,14 +107,18 @@ class TestProfileService:
 
     async def test_list_users_empty_returns_response(self):
         db = AsyncMock()
-        with patch.object(ProfileRepository, "list_paginated", AsyncMock(return_value=([], 0))):
+        with patch.object(
+            ProfileRepository, "list_paginated", AsyncMock(return_value=([], 0))
+        ):
             result = await self.svc.list_users(db)
         assert result.total == 0
         assert result.items == []
 
     async def test_list_users_pagination_params(self):
         db = AsyncMock()
-        with patch.object(ProfileRepository, "list_paginated", AsyncMock(return_value=([], 100))):
+        with patch.object(
+            ProfileRepository, "list_paginated", AsyncMock(return_value=([], 100))
+        ):
             result = await self.svc.list_users(db, page=3, page_size=20)
         assert result.page == 3
         assert result.page_size == 20
@@ -124,7 +142,8 @@ class TestWishlistService:
         db = AsyncMock()
         wishlist = self._make_wishlist()
         with patch(
-            "app.modules.wishlist.service._repo.get_or_create", AsyncMock(return_value=wishlist)
+            "app.modules.wishlist.service._repo.get_or_create",
+            AsyncMock(return_value=wishlist),
         ):
             result = await self.svc.get(db, uuid.uuid4())
         assert result.total == 0
@@ -147,7 +166,8 @@ class TestWishlistService:
         wishlist = self._make_wishlist(items=[MagicMock()])
         with (
             patch(
-                "app.modules.wishlist.service._repo.get_or_create", AsyncMock(return_value=wishlist)
+                "app.modules.wishlist.service._repo.get_or_create",
+                AsyncMock(return_value=wishlist),
             ),
             patch("app.modules.wishlist.service.WishlistItemResponse", mock_schema_cls),
         ):
@@ -162,10 +182,12 @@ class TestWishlistService:
 
         with (
             patch(
-                "app.modules.wishlist.service._repo.get_or_create", AsyncMock(return_value=wishlist)
+                "app.modules.wishlist.service._repo.get_or_create",
+                AsyncMock(return_value=wishlist),
             ),
             patch(
-                "app.modules.wishlist.service._repo.is_in_wishlist", AsyncMock(return_value=True)
+                "app.modules.wishlist.service._repo.is_in_wishlist",
+                AsyncMock(return_value=True),
             ),
             patch("app.modules.wishlist.service._repo.remove_item", AsyncMock()),
         ):
@@ -183,10 +205,12 @@ class TestWishlistService:
 
         with (
             patch(
-                "app.modules.wishlist.service._repo.get_or_create", AsyncMock(return_value=wishlist)
+                "app.modules.wishlist.service._repo.get_or_create",
+                AsyncMock(return_value=wishlist),
             ),
             patch(
-                "app.modules.wishlist.service._repo.is_in_wishlist", AsyncMock(return_value=False)
+                "app.modules.wishlist.service._repo.is_in_wishlist",
+                AsyncMock(return_value=False),
             ),
             patch("app.modules.wishlist.service._repo.add_item", AsyncMock()),
         ):

@@ -33,7 +33,9 @@ class ReviewService:
             db, product_id=data.product_id, user_id=user_id
         )
         if existing and existing.deleted_at is None:
-            raise HTTPException(status.HTTP_409_CONFLICT, "You have already reviewed this product")
+            raise HTTPException(
+                status.HTTP_409_CONFLICT, "You have already reviewed this product"
+            )
 
         is_verified = await self._repo.has_delivered_order_item(
             db, user_id=user_id, product_id=data.product_id
@@ -120,7 +122,9 @@ class ReviewService:
         if not review or not review.is_approved:
             raise HTTPException(status.HTTP_404_NOT_FOUND, "Review not found")
         if review.user_id == user_id:
-            raise HTTPException(status.HTTP_400_BAD_REQUEST, "Cannot vote on your own review")
+            raise HTTPException(
+                status.HTTP_400_BAD_REQUEST, "Cannot vote on your own review"
+            )
         vote = await self._repo.upsert_vote(
             db, review_id=review_id, user_id=user_id, is_helpful=is_helpful
         )
@@ -129,18 +133,24 @@ class ReviewService:
 
     # ── Admin ─────────────────────────────────────────────────────────────────
 
-    async def admin_action(self, db: AsyncSession, *, review_id: uuid.UUID, action: str) -> Review:
+    async def admin_action(
+        self, db: AsyncSession, *, review_id: uuid.UUID, action: str
+    ) -> Review:
         review = await self._repo.get_by_id(db, review_id)
         if not review:
             raise HTTPException(status.HTTP_404_NOT_FOUND, "Review not found")
         if action == "approve":
-            review = await self._repo.update(db, review, {"is_approved": True, "is_flagged": False})
+            review = await self._repo.update(
+                db, review, {"is_approved": True, "is_flagged": False}
+            )
         elif action == "reject":
             await self._repo.soft_delete(db, review)
         elif action == "flag":
             review = await self._repo.update(db, review, {"is_flagged": True})
         else:
-            raise HTTPException(status.HTTP_400_BAD_REQUEST, f"Unknown action: {action}")
+            raise HTTPException(
+                status.HTTP_400_BAD_REQUEST, f"Unknown action: {action}"
+            )
         await db.commit()
         await db.refresh(review)
         return review
@@ -188,4 +198,6 @@ class ReviewService:
             url = await self._media.upload_bytes(
                 content, key=key, content_type=upload.content_type or "image/jpeg"
             )
-            await self._repo.add_image(db, review_id=review_id, url=url, r2_key=key, sort_order=i)
+            await self._repo.add_image(
+                db, review_id=review_id, url=url, r2_key=key, sort_order=i
+            )

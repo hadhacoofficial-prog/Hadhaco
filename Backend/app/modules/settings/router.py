@@ -19,7 +19,9 @@ _svc = SettingsService()
 @router.get("/flags", response_model=BaseSuccessResponse[list[FeatureFlagOut]])
 async def list_flags(db: AsyncSession = Depends(get_db), _=Depends(require_admin)):
     result = await _svc.list_flags(db)
-    return ok(result, ResponseCode.SETTINGS_FLAGS_LISTED, "Feature flags listed successfully")
+    return ok(
+        result, ResponseCode.SETTINGS_FLAGS_LISTED, "Feature flags listed successfully"
+    )
 
 
 @router.put("/flags/{key}", response_model=BaseSuccessResponse[FeatureFlagOut])
@@ -29,5 +31,9 @@ async def set_flag(
     db: AsyncSession = Depends(get_db),
     admin=Depends(require_admin),
 ):
-    result = await _svc.set_flag(db, key=key, data=data, updated_by=uuid.UUID(admin["sub"]))
-    return ok(result, ResponseCode.SETTINGS_FLAG_UPDATED, "Feature flag updated successfully")
+    result = await _svc.set_flag(
+        db, key=key, data=data, updated_by=uuid.UUID(admin["sub"])
+    )
+    return ok(
+        result, ResponseCode.SETTINGS_FLAG_UPDATED, "Feature flag updated successfully"
+    )

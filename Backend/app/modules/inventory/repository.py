@@ -48,7 +48,9 @@ class InventoryRepository:
         )
         return [dict(r._mapping) for r in result.fetchall()]
 
-    async def get_stock_snapshot(self, db: AsyncSession, product_id: uuid.UUID) -> dict | None:
+    async def get_stock_snapshot(
+        self, db: AsyncSession, product_id: uuid.UUID
+    ) -> dict | None:
         result = await db.execute(
             text(
                 "SELECT stock_quantity, low_stock_threshold, track_inventory, allow_backorder "

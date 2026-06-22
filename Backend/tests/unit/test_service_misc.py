@@ -80,7 +80,9 @@ class TestAnalyticsService:
         with patch.object(AnalyticsRepository, "record", AsyncMock()):
             await self.svc.track(
                 db,
-                request=TrackEventRequest(event_type="product_view", product_id=uuid.uuid4()),
+                request=TrackEventRequest(
+                    event_type="product_view", product_id=uuid.uuid4()
+                ),
                 user_id=None,
                 ip_address="1.2.3.4",
                 user_agent="Mozilla",
@@ -95,11 +97,19 @@ class TestAnalyticsService:
                 "get_dashboard",
                 AsyncMock(return_value={"revenue": 500, "total_orders": 10, "aov": 50}),
             ),
-            patch.object(AnalyticsRepository, "get_revenue_by_day", AsyncMock(return_value=[])),
-            patch.object(AnalyticsRepository, "get_orders_by_status", AsyncMock(return_value={})),
-            patch.object(AnalyticsRepository, "get_top_products", AsyncMock(return_value=[])),
+            patch.object(
+                AnalyticsRepository, "get_revenue_by_day", AsyncMock(return_value=[])
+            ),
+            patch.object(
+                AnalyticsRepository, "get_orders_by_status", AsyncMock(return_value={})
+            ),
+            patch.object(
+                AnalyticsRepository, "get_top_products", AsyncMock(return_value=[])
+            ),
         ):
-            result = await self.svc.get_dashboard(db, from_date=date.today(), to_date=date.today())
+            result = await self.svc.get_dashboard(
+                db, from_date=date.today(), to_date=date.today()
+            )
         assert "revenue" in result
         assert result["revenue"]["total"] == 500.0
         assert "orders" in result
@@ -134,7 +144,9 @@ class TestFraudService:
 
     async def test_list_signals_delegates_to_repo(self):
         db = AsyncMock()
-        with patch.object(FraudRepository, "list_unresolved", AsyncMock(return_value=[])):
+        with patch.object(
+            FraudRepository, "list_unresolved", AsyncMock(return_value=[])
+        ):
             result = await self.svc.list_signals(db, offset=0, limit=20)
         assert result == []
 
@@ -146,7 +158,9 @@ class TestFraudService:
         mock_resolved = MagicMock()
         with (
             patch.object(FraudRepository, "get", AsyncMock(return_value=mock_signal)),
-            patch.object(FraudRepository, "update", AsyncMock(return_value=mock_resolved)),
+            patch.object(
+                FraudRepository, "update", AsyncMock(return_value=mock_resolved)
+            ),
         ):
             db.commit = AsyncMock()
             db.refresh = AsyncMock()
@@ -173,7 +187,8 @@ class TestCollectionService:
 
         db = AsyncMock()
         with patch(
-            "app.modules.collections.service._repo.get_by_slug", AsyncMock(return_value=None)
+            "app.modules.collections.service._repo.get_by_slug",
+            AsyncMock(return_value=None),
         ):
             with pytest.raises(NotFoundError):
                 await self.svc.get_by_slug(db, "no-such-slug")
@@ -184,17 +199,23 @@ class TestCollectionService:
 
         db = AsyncMock()
         with patch(
-            "app.modules.collections.service._repo.get_by_slug", AsyncMock(return_value=MagicMock())
+            "app.modules.collections.service._repo.get_by_slug",
+            AsyncMock(return_value=MagicMock()),
         ):
             with pytest.raises(ConflictError):
-                await self.svc.create(db, CollectionCreateRequest(name="Silver", slug="silver"))
+                await self.svc.create(
+                    db, CollectionCreateRequest(name="Silver", slug="silver")
+                )
 
     async def test_update_raises_404_when_not_found(self):
         from app.core.exceptions import NotFoundError
         from app.modules.collections.schemas import CollectionUpdateRequest
 
         db = AsyncMock()
-        with patch("app.modules.collections.service._repo.get_by_id", AsyncMock(return_value=None)):
+        with patch(
+            "app.modules.collections.service._repo.get_by_id",
+            AsyncMock(return_value=None),
+        ):
             with pytest.raises(NotFoundError):
                 await self.svc.update(db, uuid.uuid4(), CollectionUpdateRequest())
 
@@ -202,13 +223,19 @@ class TestCollectionService:
         from app.core.exceptions import NotFoundError
 
         db = AsyncMock()
-        with patch("app.modules.collections.service._repo.get_by_id", AsyncMock(return_value=None)):
+        with patch(
+            "app.modules.collections.service._repo.get_by_id",
+            AsyncMock(return_value=None),
+        ):
             with pytest.raises(NotFoundError):
                 await self.svc.delete(db, uuid.uuid4())
 
     async def test_list_active_returns_empty_list(self):
         db = AsyncMock()
-        with patch("app.modules.collections.service._repo.list_active", AsyncMock(return_value=[])):
+        with patch(
+            "app.modules.collections.service._repo.list_active",
+            AsyncMock(return_value=[]),
+        ):
             result = await self.svc.list_active(db)
         assert result == []
 
@@ -234,7 +261,9 @@ class TestCartServiceErrorPaths:
         from app.modules.cart.schemas import UpdateCartItemRequest
 
         db = AsyncMock()
-        with patch("app.modules.cart.service._repo.get_by_id", AsyncMock(return_value=None)):
+        with patch(
+            "app.modules.cart.service._repo.get_by_id", AsyncMock(return_value=None)
+        ):
             with pytest.raises(NotFoundError):
                 await self.svc.update_item(
                     db, uuid.uuid4(), uuid.uuid4(), UpdateCartItemRequest(quantity=2)
@@ -248,7 +277,10 @@ class TestCartServiceErrorPaths:
         mock_cart = MagicMock()
         mock_cart.user_id = uuid.uuid4()
         mock_cart.items = []
-        with patch("app.modules.cart.service._repo.get_by_id", AsyncMock(return_value=mock_cart)):
+        with patch(
+            "app.modules.cart.service._repo.get_by_id",
+            AsyncMock(return_value=mock_cart),
+        ):
             with pytest.raises(NotFoundError):
                 await self.svc.update_item(
                     db,
@@ -267,7 +299,10 @@ class TestCartServiceErrorPaths:
         mock_cart = MagicMock()
         mock_cart.user_id = user_id
         mock_cart.items = []  # no items
-        with patch("app.modules.cart.service._repo.get_by_id", AsyncMock(return_value=mock_cart)):
+        with patch(
+            "app.modules.cart.service._repo.get_by_id",
+            AsyncMock(return_value=mock_cart),
+        ):
             with pytest.raises(NotFoundError):
                 await self.svc.update_item(
                     db,
@@ -281,7 +316,9 @@ class TestCartServiceErrorPaths:
         from app.core.exceptions import NotFoundError
 
         db = AsyncMock()
-        with patch("app.modules.cart.service._repo.get_by_id", AsyncMock(return_value=None)):
+        with patch(
+            "app.modules.cart.service._repo.get_by_id", AsyncMock(return_value=None)
+        ):
             with pytest.raises(NotFoundError):
                 await self.svc.remove_item(db, uuid.uuid4(), uuid.uuid4())
 
@@ -291,9 +328,14 @@ class TestCartServiceErrorPaths:
         db = AsyncMock()
         mock_cart = MagicMock()
         mock_cart.user_id = uuid.uuid4()
-        with patch("app.modules.cart.service._repo.get_by_id", AsyncMock(return_value=mock_cart)):
+        with patch(
+            "app.modules.cart.service._repo.get_by_id",
+            AsyncMock(return_value=mock_cart),
+        ):
             with pytest.raises(NotFoundError):
-                await self.svc.remove_item(db, uuid.uuid4(), uuid.uuid4(), user_id=uuid.uuid4())
+                await self.svc.remove_item(
+                    db, uuid.uuid4(), uuid.uuid4(), user_id=uuid.uuid4()
+                )
 
 
 # ─── AuthService ──────────────────────────────────────────────────────────────
@@ -319,7 +361,9 @@ class TestAuthService:
         db = AsyncMock()
         mock_profile = MagicMock()
         mock_profile.is_active = False
-        with patch.object(ProfileRepository, "get_by_id", AsyncMock(return_value=mock_profile)):
+        with patch.object(
+            ProfileRepository, "get_by_id", AsyncMock(return_value=mock_profile)
+        ):
             with pytest.raises(AuthorizationError):
                 await self.svc.verify_token_and_get_profile(db, str(uuid.uuid4()))
 
@@ -327,7 +371,9 @@ class TestAuthService:
         db = AsyncMock()
         mock_profile = MagicMock()
         mock_profile.is_active = True
-        with patch.object(ProfileRepository, "get_by_id", AsyncMock(return_value=mock_profile)):
+        with patch.object(
+            ProfileRepository, "get_by_id", AsyncMock(return_value=mock_profile)
+        ):
             result = await self.svc.verify_token_and_get_profile(db, str(uuid.uuid4()))
         assert result is mock_profile
 
@@ -343,7 +389,9 @@ class TestSettingsService:
 
     async def test_is_feature_enabled_returns_false_when_flag_missing(self):
         db = AsyncMock()
-        with patch("app.modules.settings.service._repo.get_flag", AsyncMock(return_value=None)):
+        with patch(
+            "app.modules.settings.service._repo.get_flag", AsyncMock(return_value=None)
+        ):
             result = await self.svc.is_feature_enabled(db, "my_feature")
         assert result is False
 
@@ -352,14 +400,17 @@ class TestSettingsService:
         mock_flag = MagicMock()
         mock_flag.value = True
         with patch(
-            "app.modules.settings.service._repo.get_flag", AsyncMock(return_value=mock_flag)
+            "app.modules.settings.service._repo.get_flag",
+            AsyncMock(return_value=mock_flag),
         ):
             result = await self.svc.is_feature_enabled(db, "my_feature")
         assert result is True
 
     async def test_list_flags_returns_empty(self):
         db = AsyncMock()
-        with patch("app.modules.settings.service._repo.list_flags", AsyncMock(return_value=[])):
+        with patch(
+            "app.modules.settings.service._repo.list_flags", AsyncMock(return_value=[])
+        ):
             result = await self.svc.list_flags(db)
         assert result == []
 
@@ -369,7 +420,8 @@ class TestSettingsService:
         db = AsyncMock()
         mock_flag = MagicMock()
         with patch(
-            "app.modules.settings.service._repo.upsert_flag", AsyncMock(return_value=mock_flag)
+            "app.modules.settings.service._repo.upsert_flag",
+            AsyncMock(return_value=mock_flag),
         ):
             result = await self.svc.set_flag(
                 db,

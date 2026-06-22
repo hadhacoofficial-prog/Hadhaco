@@ -43,7 +43,9 @@ class TestAuthGuards:
         assert resp.status_code == 401
 
     async def test_invalid_bearer_rejected(self, client):
-        resp = await client.get("/api/v1/me", headers={"Authorization": "Bearer not-a-real-token"})
+        resp = await client.get(
+            "/api/v1/me", headers={"Authorization": "Bearer not-a-real-token"}
+        )
         assert resp.status_code == 401
 
     async def test_webhook_missing_signature_rejected(self, client):

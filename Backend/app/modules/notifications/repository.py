@@ -36,7 +36,11 @@ class NotificationRepository:
         return log
 
     async def mark_sent(
-        self, db: AsyncSession, log: NotificationLog, provider_message_id: str, provider: str
+        self,
+        db: AsyncSession,
+        log: NotificationLog,
+        provider_message_id: str,
+        provider: str,
     ) -> None:
         log.status = "sent"
         log.provider = provider
@@ -45,13 +49,17 @@ class NotificationRepository:
         db.add(log)
         await db.flush()
 
-    async def mark_failed(self, db: AsyncSession, log: NotificationLog, error: str) -> None:
+    async def mark_failed(
+        self, db: AsyncSession, log: NotificationLog, error: str
+    ) -> None:
         """Increment attempt count and schedule exponential-backoff retry."""
         log.attempt_count += 1
         attempt = log.attempt_count
         if attempt < len(_RETRY_DELAYS):
             log.status = "retrying"
-            log.next_retry_at = datetime.now(UTC) + timedelta(minutes=_RETRY_DELAYS[attempt - 1])
+            log.next_retry_at = datetime.now(UTC) + timedelta(
+                minutes=_RETRY_DELAYS[attempt - 1]
+            )
         else:
             log.status = "failed"
             log.next_retry_at = None
@@ -87,7 +95,9 @@ class NotificationRepository:
         self, db: AsyncSession, user_id: uuid.UUID
     ) -> NotificationPreference | None:
         result = await db.execute(
-            select(NotificationPreference).where(NotificationPreference.user_id == user_id)
+            select(NotificationPreference).where(
+                NotificationPreference.user_id == user_id
+            )
         )
         return result.scalar_one_or_none()
 

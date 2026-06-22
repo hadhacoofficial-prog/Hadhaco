@@ -21,7 +21,9 @@ _repo = ProductRepository()
 
 
 class CatalogService:
-    async def get_by_id(self, db: AsyncSession, product_id: uuid.UUID) -> ProductResponse:
+    async def get_by_id(
+        self, db: AsyncSession, product_id: uuid.UUID
+    ) -> ProductResponse:
         product = await _repo.get_by_id(db, product_id)
         if not product:
             raise NotFoundError("Product not found")
@@ -104,7 +106,9 @@ class CatalogService:
             total_pages=math.ceil(total / page_size) if total else 0,
         )
 
-    async def create(self, db: AsyncSession, payload: ProductCreateRequest) -> ProductResponse:
+    async def create(
+        self, db: AsyncSession, payload: ProductCreateRequest
+    ) -> ProductResponse:
         if await _repo.get_by_sku(db, payload.sku):
             raise ConflictError("Product with this SKU already exists")
         if await _repo.get_by_slug(db, payload.slug):
@@ -161,7 +165,10 @@ class CatalogService:
     # ---------- Variants ----------
 
     async def add_variant(
-        self, db: AsyncSession, product_id: uuid.UUID, payload: ProductVariantCreateRequest
+        self,
+        db: AsyncSession,
+        product_id: uuid.UUID,
+        payload: ProductVariantCreateRequest,
     ):
         product = await _repo.get_by_id(db, product_id)
         if not product:
@@ -173,12 +180,17 @@ class CatalogService:
         return await _repo.add_variant(db, data)
 
     async def update_variant(
-        self, db: AsyncSession, variant_id: uuid.UUID, payload: ProductVariantUpdateRequest
+        self,
+        db: AsyncSession,
+        variant_id: uuid.UUID,
+        payload: ProductVariantUpdateRequest,
     ):
         variant = await _repo.get_variant(db, variant_id)
         if not variant:
             raise NotFoundError("Variant not found")
-        return await _repo.update_variant(db, variant_id, payload.model_dump(exclude_unset=True))
+        return await _repo.update_variant(
+            db, variant_id, payload.model_dump(exclude_unset=True)
+        )
 
     async def delete_variant(self, db: AsyncSession, variant_id: uuid.UUID) -> None:
         if not await _repo.delete_variant(db, variant_id):
@@ -187,7 +199,10 @@ class CatalogService:
     # ---------- Attributes ----------
 
     async def upsert_attribute(
-        self, db: AsyncSession, product_id: uuid.UUID, payload: ProductAttributeCreateRequest
+        self,
+        db: AsyncSession,
+        product_id: uuid.UUID,
+        payload: ProductAttributeCreateRequest,
     ):
         product = await _repo.get_by_id(db, product_id)
         if not product:
@@ -196,7 +211,9 @@ class CatalogService:
             db, product_id, payload.name, payload.value, payload.sort_order
         )
 
-    async def delete_attribute(self, db: AsyncSession, product_id: uuid.UUID, name: str) -> None:
+    async def delete_attribute(
+        self, db: AsyncSession, product_id: uuid.UUID, name: str
+    ) -> None:
         if not await _repo.delete_attribute(db, product_id, name):
             raise NotFoundError("Attribute not found")
 

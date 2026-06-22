@@ -121,7 +121,9 @@ class TestCMSRepository:
 
     async def test_create_banner(self):
         db = _db()
-        await self.repo.create_banner(db, name="sale", banner_type="hero", is_active=True)
+        await self.repo.create_banner(
+            db, name="sale", banner_type="hero", is_active=True
+        )
         db.add.assert_called_once()
         db.flush.assert_awaited_once()
 
@@ -192,13 +194,17 @@ class TestNotificationRepository:
 
     async def test_get_template_returns_none(self):
         db = _db(_scalar_one_or_none(None))
-        result = await self.repo.get_template(db, event_type="order_confirmed", channel="email")
+        result = await self.repo.get_template(
+            db, event_type="order_confirmed", channel="email"
+        )
         assert result is None
 
     async def test_get_template_returns_template(self):
         mock_tpl = MagicMock()
         db = _db(_scalar_one_or_none(mock_tpl))
-        result = await self.repo.get_template(db, event_type="order_confirmed", channel="email")
+        result = await self.repo.get_template(
+            db, event_type="order_confirmed", channel="email"
+        )
         assert result is mock_tpl
 
     async def test_create_log_adds_to_db(self):
@@ -272,7 +278,9 @@ class TestPaymentRepository:
 
     async def test_create_adds_and_returns(self):
         db = _db()
-        await self.repo.create(db, {"order_id": uuid.uuid4(), "amount": 1000, "currency": "INR"})
+        await self.repo.create(
+            db, {"order_id": uuid.uuid4(), "amount": 1000, "currency": "INR"}
+        )
         db.add.assert_called_once()
         db.flush.assert_awaited_once()
 
@@ -314,7 +322,9 @@ class TestPaymentRepository:
     async def test_update_refund(self):
         mock_refund = MagicMock()
         db = _db(MagicMock(), _scalar_one_or_none(mock_refund))
-        result = await self.repo.update_refund(db, uuid.uuid4(), {"status": "processed"})
+        result = await self.repo.update_refund(
+            db, uuid.uuid4(), {"status": "processed"}
+        )
         assert result is mock_refund
 
     async def test_get_refunds_for_order(self):
@@ -417,7 +427,9 @@ class TestCartRepository:
         mock_result = MagicMock()
         mock_result.scalar_one_or_none.return_value = existing
         db.execute = AsyncMock(return_value=mock_result)
-        result = await self.repo.upsert_item(db, uuid.uuid4(), uuid.uuid4(), None, 2, 599.0)
+        result = await self.repo.upsert_item(
+            db, uuid.uuid4(), uuid.uuid4(), None, 2, 599.0
+        )
         assert result is existing
         assert existing.quantity == 5  # 3 + 2
 
@@ -534,7 +546,12 @@ class TestShipmentRepository:
     async def test_add_event_adds_to_db(self):
         db = _db()
         await self.repo.add_event(
-            db, {"shipment_id": uuid.uuid4(), "status": "in_transit", "description": "On the way"}
+            db,
+            {
+                "shipment_id": uuid.uuid4(),
+                "status": "in_transit",
+                "description": "On the way",
+            },
         )
         db.add.assert_called_once()
 
@@ -578,7 +595,11 @@ class TestSettingsRepository:
         db.execute = AsyncMock(return_value=mock_result)
         db.flush = AsyncMock()
         result = await self.repo.upsert_flag(
-            db, key="enable_cod", value=True, description="Cash on delivery", updated_by=None
+            db,
+            key="enable_cod",
+            value=True,
+            description="Cash on delivery",
+            updated_by=None,
         )
         assert result is mock_flag
 
@@ -596,7 +617,9 @@ class TestAnalyticsRepository:
         db = AsyncMock()
         db.add = MagicMock()
         db.flush = AsyncMock()
-        await self.repo.record(db, event_type="page_view", user_id=None, session_id="abc")
+        await self.repo.record(
+            db, event_type="page_view", user_id=None, session_id="abc"
+        )
         db.add.assert_called_once()
         db.flush.assert_awaited_once()
 

@@ -47,7 +47,11 @@ async def dashboard(db: AsyncSession = Depends(get_db), _=Depends(require_admin)
         unresolved_fraud_signals=row["unresolved_fraud_signals"],
         low_stock_products=row["low_stock_products"],
     )
-    return ok(stats, ResponseCode.ADMIN_DASHBOARD_FETCHED, "Dashboard stats fetched successfully")
+    return ok(
+        stats,
+        ResponseCode.ADMIN_DASHBOARD_FETCHED,
+        "Dashboard stats fetched successfully",
+    )
 
 
 @router.get("/audit-logs", response_model=BaseSuccessResponse[AuditLogPage])
@@ -78,4 +82,6 @@ async def list_audit_logs(
         page=page,
         page_size=page_size,
     )
-    return ok(result, ResponseCode.ADMIN_AUDIT_LOGS_FETCHED, "Audit logs fetched successfully")
+    return ok(
+        result, ResponseCode.ADMIN_AUDIT_LOGS_FETCHED, "Audit logs fetched successfully"
+    )

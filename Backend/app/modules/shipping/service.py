@@ -58,7 +58,9 @@ class ShippingService:
         if not order:
             raise NotFoundError("Order not found")
         if order.status not in ("confirmed", "processing"):
-            raise ValidationError(f"Cannot create shipment for order in '{order.status}' status")
+            raise ValidationError(
+                f"Cannot create shipment for order in '{order.status}' status"
+            )
 
         # Calculate total weight from order items if not provided
         weight = payload.weight_grams
@@ -110,7 +112,11 @@ class ShippingService:
             status = "created"
             raw = json.dumps(response)
         except Exception as exc:
-            log.error("delivery_one_create_shipment_failed", order_id=str(order_id), error=str(exc))
+            log.error(
+                "delivery_one_create_shipment_failed",
+                order_id=str(order_id),
+                error=str(exc),
+            )
             # Record failed shipment so admin can retry
             shipment = await _repo.create(
                 db,
@@ -143,13 +149,17 @@ class ShippingService:
         if provider_id:
             try:
                 label_bytes = await _client.get_label(provider_id)
-                label_url, r2_key = await self._upload_label(label_bytes, order_id, shipment.id)
+                label_url, r2_key = await self._upload_label(
+                    label_bytes, order_id, shipment.id
+                )
                 await _repo.update(
                     db, shipment.id, {"label_url": label_url, "label_r2_key": r2_key}
                 )
                 shipment = await _repo.get_by_id(db, shipment.id)
             except Exception as exc:
-                log.warning("label_fetch_failed", shipment_id=str(shipment.id), error=str(exc))
+                log.warning(
+                    "label_fetch_failed", shipment_id=str(shipment.id), error=str(exc)
+                )
 
         # Update order status to processing
         from app.modules.orders.repository import OrderRepository
@@ -290,12 +300,16 @@ class ShippingService:
         await self.track(db, shipment.awb_number)
         await db.commit()
 
-    async def cancel_shipment(self, db, order_id: uuid.UUID, reason: str = "") -> ShipmentResponse:
+    async def cancel_shipment(
+        self, db, order_id: uuid.UUID, reason: str = ""
+    ) -> ShipmentResponse:
         shipment = await _repo.get_for_order(db, order_id)
         if not shipment:
             raise NotFoundError("Shipment not found")
         if shipment.status in ("delivered", "cancelled"):
-            raise ValidationError(f"Cannot cancel shipment with status '{shipment.status}'")
+            raise ValidationError(
+                f"Cannot cancel shipment with status '{shipment.status}'"
+            )
 
         if shipment.provider_shipment_id:
             try:
@@ -314,7 +328,9 @@ class ShippingService:
         )
         return ShipmentResponse.model_validate(updated)
 
-    async def get_rates(self, weight_grams: int, pincode_to: str) -> list[ShippingRateResponse]:
+    async def get_rates(
+        self, weight_grams: int, pincode_to: str
+    ) -> list[ShippingRateResponse]:
         try:
             rates = await _client.get_rates(weight_grams, _PICKUP_PINCODE, pincode_to)
             return [
@@ -387,7 +403,11 @@ async def _on_payment_captured(event) -> None:
             except ConflictError:
                 pass  # Already exists
             except Exception as exc:
-                log.error("auto_create_shipment_failed", order_id=event.order_id, error=str(exc))
+                log.error(
+                    "auto_create_shipment_failed",
+                    order_id=event.order_id,
+                    error=str(exc),
+                )
 
 
 def register_shipping_listeners() -> None:

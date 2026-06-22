@@ -22,7 +22,9 @@ from app.core.database import Base
 class Product(Base):
     __tablename__ = "products"
 
-    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
     sku: Mapped[str] = mapped_column(String(100), nullable=False, unique=True)
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     slug: Mapped[str] = mapped_column(String(255), nullable=False, unique=True)
@@ -46,24 +48,48 @@ class Product(Base):
 
     # Pricing
     base_price: Mapped[float] = mapped_column(Numeric(12, 2), nullable=False)
-    compare_at_price: Mapped[float | None] = mapped_column(Numeric(12, 2), nullable=True)
+    compare_at_price: Mapped[float | None] = mapped_column(
+        Numeric(12, 2), nullable=True
+    )
     cost_price: Mapped[float | None] = mapped_column(Numeric(12, 2), nullable=True)
-    tax_rate: Mapped[float] = mapped_column(Numeric(5, 2), nullable=False, server_default="3.0")
+    tax_rate: Mapped[float] = mapped_column(
+        Numeric(5, 2), nullable=False, server_default="3.0"
+    )
     hsn_code: Mapped[str | None] = mapped_column(String(20), nullable=True)
 
     # Inventory
-    track_inventory: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="true")
-    allow_backorder: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="false")
-    low_stock_threshold: Mapped[int] = mapped_column(Integer, nullable=False, server_default="5")
-    stock_quantity: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
+    track_inventory: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, server_default="true"
+    )
+    allow_backorder: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, server_default="false"
+    )
+    low_stock_threshold: Mapped[int] = mapped_column(
+        Integer, nullable=False, server_default="5"
+    )
+    stock_quantity: Mapped[int] = mapped_column(
+        Integer, nullable=False, server_default="0"
+    )
 
     # Status / flags
-    status: Mapped[str] = mapped_column(String(20), nullable=False, server_default="draft")
-    is_featured: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="false")
-    is_new_arrival: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="false")
-    is_best_seller: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="false")
-    is_customizable: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="false")
-    requires_shipping: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="true")
+    status: Mapped[str] = mapped_column(
+        String(20), nullable=False, server_default="draft"
+    )
+    is_featured: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, server_default="false"
+    )
+    is_new_arrival: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, server_default="false"
+    )
+    is_best_seller: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, server_default="false"
+    )
+    is_customizable: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, server_default="false"
+    )
+    requires_shipping: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, server_default="true"
+    )
 
     # Dimensions (for shipping)
     length_cm: Mapped[float | None] = mapped_column(Numeric(8, 2), nullable=True)
@@ -83,17 +109,27 @@ class Product(Base):
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now()
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+        onupdate=func.now(),
     )
-    published_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
-    deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    published_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    deleted_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
 
     # Relationships
     category: Mapped["Category | None"] = relationship(  # noqa: F821
         "Category", foreign_keys=[category_id], lazy="select"
     )
     variants: Mapped[list["ProductVariant"]] = relationship(
-        "ProductVariant", back_populates="product", cascade="all, delete-orphan", lazy="select"
+        "ProductVariant",
+        back_populates="product",
+        cascade="all, delete-orphan",
+        lazy="select",
     )
     images: Mapped[list["ProductImage"]] = relationship(
         "ProductImage",
@@ -103,7 +139,10 @@ class Product(Base):
         lazy="select",
     )
     attributes: Mapped[list["ProductAttribute"]] = relationship(
-        "ProductAttribute", back_populates="product", cascade="all, delete-orphan", lazy="select"
+        "ProductAttribute",
+        back_populates="product",
+        cascade="all, delete-orphan",
+        lazy="select",
     )
 
     __table_args__ = (
@@ -120,25 +159,36 @@ class Product(Base):
 class ProductVariant(Base):
     __tablename__ = "product_variants"
 
-    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
     product_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("products.id", ondelete="CASCADE"), nullable=False
+        UUID(as_uuid=True),
+        ForeignKey("products.id", ondelete="CASCADE"),
+        nullable=False,
     )
     sku: Mapped[str] = mapped_column(String(100), nullable=False, unique=True)
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     price_adjustment: Mapped[float] = mapped_column(
         Numeric(12, 2), nullable=False, server_default="0"
     )
-    stock_quantity: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
+    stock_quantity: Mapped[int] = mapped_column(
+        Integer, nullable=False, server_default="0"
+    )
     weight_grams: Mapped[float | None] = mapped_column(Numeric(10, 3), nullable=True)
-    is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="true")
+    is_active: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, server_default="true"
+    )
     sort_order: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
 
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now()
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+        onupdate=func.now(),
     )
 
     product: Mapped["Product"] = relationship("Product", back_populates="variants")
@@ -152,15 +202,21 @@ class ProductVariant(Base):
 class ProductImage(Base):
     __tablename__ = "product_images"
 
-    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
     product_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("products.id", ondelete="CASCADE"), nullable=False
+        UUID(as_uuid=True),
+        ForeignKey("products.id", ondelete="CASCADE"),
+        nullable=False,
     )
     url: Mapped[str] = mapped_column(String(1024), nullable=False)
     thumbnail_url: Mapped[str | None] = mapped_column(String(1024), nullable=True)
     medium_url: Mapped[str | None] = mapped_column(String(1024), nullable=True)
     alt_text: Mapped[str | None] = mapped_column(String(255), nullable=True)
-    is_primary: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="false")
+    is_primary: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, server_default="false"
+    )
     sort_order: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
 
     created_at: Mapped[datetime] = mapped_column(
@@ -175,9 +231,13 @@ class ProductImage(Base):
 class ProductAttribute(Base):
     __tablename__ = "product_attributes"
 
-    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
     product_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("products.id", ondelete="CASCADE"), nullable=False
+        UUID(as_uuid=True),
+        ForeignKey("products.id", ondelete="CASCADE"),
+        nullable=False,
     )
     name: Mapped[str] = mapped_column(String(100), nullable=False)
     value: Mapped[str] = mapped_column(String(500), nullable=False)
@@ -187,5 +247,7 @@ class ProductAttribute(Base):
 
     __table_args__ = (
         Index("idx_product_attributes_product_id", "product_id"),
-        UniqueConstraint("product_id", "name", name="uq_product_attributes_product_name"),
+        UniqueConstraint(
+            "product_id", "name", name="uq_product_attributes_product_name"
+        ),
     )

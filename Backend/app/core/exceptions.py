@@ -81,7 +81,9 @@ def _error_response(
 
 def register_exception_handlers(app: FastAPI) -> None:
     @app.exception_handler(HadhaException)
-    async def hadha_exception_handler(request: Request, exc: HadhaException) -> JSONResponse:
+    async def hadha_exception_handler(
+        request: Request, exc: HadhaException
+    ) -> JSONResponse:
         return _error_response(
             status_code=exc.status_code,  # type: ignore[attr-defined]
             message=exc.message,
@@ -112,7 +114,9 @@ def register_exception_handlers(app: FastAPI) -> None:
         )
 
     @app.exception_handler(405)
-    async def method_not_allowed_handler(request: Request, exc: Exception) -> JSONResponse:
+    async def method_not_allowed_handler(
+        request: Request, exc: Exception
+    ) -> JSONResponse:
         return _error_response(
             status_code=status.HTTP_405_METHOD_NOT_ALLOWED,
             message="Method not allowed",
@@ -120,7 +124,9 @@ def register_exception_handlers(app: FastAPI) -> None:
         )
 
     @app.exception_handler(Exception)
-    async def unhandled_exception_handler(request: Request, exc: Exception) -> JSONResponse:
+    async def unhandled_exception_handler(
+        request: Request, exc: Exception
+    ) -> JSONResponse:
         import structlog
 
         log = structlog.get_logger()

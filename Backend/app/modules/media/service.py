@@ -78,7 +78,11 @@ class MediaService:
         base_key = f"products/{product_id}/{image_id}"
 
         # Upload original
-        ext = original_filename.rsplit(".", 1)[-1].lower() if "." in original_filename else "jpg"
+        ext = (
+            original_filename.rsplit(".", 1)[-1].lower()
+            if "." in original_filename
+            else "jpg"
+        )
         original_key = f"{base_key}/original.{ext}"
         client.put_object(
             Bucket=bucket,
@@ -140,7 +144,9 @@ class MediaService:
                 Delete={"Objects": [{"Key": o["Key"]} for o in objects["Contents"]]},
             )
 
-    def get_presigned_upload_url(self, key: str, content_type: str, expires_in: int = 300) -> str:
+    def get_presigned_upload_url(
+        self, key: str, content_type: str, expires_in: int = 300
+    ) -> str:
         """Generate a presigned PUT URL for direct browser-to-R2 uploads."""
         client = _get_r2_client()
         return client.generate_presigned_url(

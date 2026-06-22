@@ -17,8 +17,7 @@ class ReviewRepository:
     ) -> bool:
         """Return True if user has a delivered order containing this product."""
         result = await db.execute(
-            text(
-                """
+            text("""
                 SELECT 1
                 FROM order_items oi
                 JOIN orders o ON o.id = oi.order_id
@@ -27,8 +26,7 @@ class ReviewRepository:
                   AND o.status = 'delivered'
                   AND o.deleted_at IS NULL
                 LIMIT 1
-                """
-            ),
+                """),
             {"user_id": user_id, "product_id": product_id},
         )
         return result.fetchone() is not None
@@ -72,7 +70,9 @@ class ReviewRepository:
         await db.refresh(review)
         return review
 
-    async def update(self, db: AsyncSession, review: Review, data: dict[str, Any]) -> Review:
+    async def update(
+        self, db: AsyncSession, review: Review, data: dict[str, Any]
+    ) -> Review:
         for k, v in data.items():
             setattr(review, k, v)
         db.add(review)
@@ -126,8 +126,7 @@ class ReviewRepository:
         self, db: AsyncSession, product_id: uuid.UUID
     ) -> dict[str, Any] | None:
         row = await db.execute(
-            text(
-                """
+            text("""
                 SELECT
                     product_id,
                     COUNT(*)                                    AS review_count,
@@ -142,8 +141,7 @@ class ReviewRepository:
                   AND is_approved = true
                   AND deleted_at IS NULL
                 GROUP BY product_id
-                """
-            ),
+                """),
             {"product_id": product_id},
         )
         r = row.fetchone()
@@ -162,7 +160,9 @@ class ReviewRepository:
         r2_key: str | None,
         sort_order: int = 0,
     ) -> ReviewImage:
-        img = ReviewImage(review_id=review_id, url=url, r2_key=r2_key, sort_order=sort_order)
+        img = ReviewImage(
+            review_id=review_id, url=url, r2_key=r2_key, sort_order=sort_order
+        )
         db.add(img)
         await db.flush()
         return img
@@ -183,13 +183,20 @@ class ReviewRepository:
         return result.scalar_one_or_none()
 
     async def upsert_vote(
-        self, db: AsyncSession, *, review_id: uuid.UUID, user_id: uuid.UUID, is_helpful: bool
+        self,
+        db: AsyncSession,
+        *,
+        review_id: uuid.UUID,
+        user_id: uuid.UUID,
+        is_helpful: bool,
     ) -> ReviewVote:
         vote = await self.get_vote(db, review_id=review_id, user_id=user_id)
         if vote:
             vote.is_helpful = is_helpful
         else:
-            vote = ReviewVote(review_id=review_id, user_id=user_id, is_helpful=is_helpful)
+            vote = ReviewVote(
+                review_id=review_id, user_id=user_id, is_helpful=is_helpful
+            )
             db.add(vote)
         await db.flush()
         await self._sync_helpful_count(db, review_id)
@@ -202,4 +209,6 @@ class ReviewRepository:
             )
         )
         count = result.scalar() or 0
-        await db.execute(update(Review).where(Review.id == review_id).values(helpful_count=count))
+        await db.execute(
+            update(Review).where(Review.id == review_id).values(helpful_count=count)
+        )

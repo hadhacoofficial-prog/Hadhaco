@@ -45,7 +45,9 @@ class AuditMiddleware(BaseHTTPMiddleware):
             path=request.url.path,
             status_code=response.status_code,
             duration_ms=duration_ms,
-            ip=request.headers.get("X-Forwarded-For", getattr(request.client, "host", "unknown")),
+            ip=request.headers.get(
+                "X-Forwarded-For", getattr(request.client, "host", "unknown")
+            ),
             user_agent=request.headers.get("User-Agent", ""),
         )
 

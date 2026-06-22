@@ -55,7 +55,10 @@ class CMSService:
 
         data = await self._build_homepage(db)
         await safe_redis_setex(
-            redis, _HOMEPAGE_CACHE_KEY, _HOMEPAGE_CACHE_TTL, json.dumps(data, default=str)
+            redis,
+            _HOMEPAGE_CACHE_KEY,
+            _HOMEPAGE_CACHE_TTL,
+            json.dumps(data, default=str),
         )
         return data
 
@@ -317,7 +320,9 @@ class CMSService:
         item = await self._repo.get_item(db, item_id)
         if not item or item.section_id != s.id:
             raise HTTPException(status.HTTP_404_NOT_FOUND, "Item not found")
-        item = await self._repo.update_item(db, item, data.model_dump(exclude_unset=True))
+        item = await self._repo.update_item(
+            db, item, data.model_dump(exclude_unset=True)
+        )
         await db.commit()
         await db.refresh(item)
         return item

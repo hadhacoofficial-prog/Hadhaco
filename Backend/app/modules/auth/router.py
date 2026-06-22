@@ -70,7 +70,9 @@ async def force_logout(
     db: AsyncSession = Depends(get_db),
 ) -> BaseSuccessResponse[None]:
     await _svc.force_logout(db, user_id)
-    return ok(None, ResponseCode.AUTH_FORCE_LOGOUT_SUCCESS, f"User {user_id} logged out")
+    return ok(
+        None, ResponseCode.AUTH_FORCE_LOGOUT_SUCCESS, f"User {user_id} logged out"
+    )
 
 
 # ── Admin 2FA endpoints ────────────────────────────────────────────────────────
@@ -86,7 +88,9 @@ async def setup_2fa(
     db: AsyncSession = Depends(get_db),
 ) -> BaseSuccessResponse[Setup2FAResponse]:
     data = await _svc.setup_2fa(db, str(current_user.id), current_user.email)
-    return ok(Setup2FAResponse(**data), ResponseCode.AUTH_2FA_SETUP, "2FA setup initiated")
+    return ok(
+        Setup2FAResponse(**data), ResponseCode.AUTH_2FA_SETUP, "2FA setup initiated"
+    )
 
 
 @router.post(
@@ -99,7 +103,9 @@ async def verify_2fa(
     current_user: Profile = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ) -> BaseSuccessResponse[Verify2FAResponse]:
-    backup_codes = await _svc.verify_and_activate_2fa(db, str(current_user.id), body.totp_code)
+    backup_codes = await _svc.verify_and_activate_2fa(
+        db, str(current_user.id), body.totp_code
+    )
     return ok(
         Verify2FAResponse(
             message="2FA activated successfully. Save your backup codes — they will not be shown again.",
@@ -121,4 +127,8 @@ async def validate_2fa(
     db: AsyncSession = Depends(get_db),
 ) -> BaseSuccessResponse[Validate2FAResponse]:
     valid = await _svc.validate_2fa(db, str(current_user.id), body.totp_code)
-    return ok(Validate2FAResponse(valid=valid), ResponseCode.AUTH_2FA_VALID, "2FA code validated")
+    return ok(
+        Validate2FAResponse(valid=valid),
+        ResponseCode.AUTH_2FA_VALID,
+        "2FA code validated",
+    )

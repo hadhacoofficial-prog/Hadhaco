@@ -15,7 +15,9 @@ class FraudService:
     def __init__(self) -> None:
         self._repo = FraudRepository()
 
-    async def record_signal(self, db: AsyncSession, data: FraudSignalCreate) -> FraudSignal:
+    async def record_signal(
+        self, db: AsyncSession, data: FraudSignalCreate
+    ) -> FraudSignal:
         signal = await self._repo.create(
             db,
             user_id=data.user_id,
@@ -29,7 +31,9 @@ class FraudService:
         await db.refresh(signal)
         return signal
 
-    async def list_signals(self, db: AsyncSession, *, offset: int, limit: int) -> list[FraudSignal]:
+    async def list_signals(
+        self, db: AsyncSession, *, offset: int, limit: int
+    ) -> list[FraudSignal]:
         return await self._repo.list_unresolved(db, offset=offset, limit=limit)
 
     async def resolve_signal(

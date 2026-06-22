@@ -380,7 +380,9 @@ class TestOrderRepository:
 
     async def test_list_for_user_with_status_filter(self):
         db = _db(_scalar_one(0), _scalars_result([]))
-        items, total = await self.repo.list_for_user(db, uuid.uuid4(), status="confirmed")
+        items, total = await self.repo.list_for_user(
+            db, uuid.uuid4(), status="confirmed"
+        )
         assert total == 0
 
     async def test_list_all_with_no_filters(self):
@@ -541,7 +543,11 @@ class TestReviewRepository:
 
     async def test_rating_summary_returns_dict_when_found(self):
         mock_row = MagicMock()
-        mock_row._mapping = {"product_id": uuid.uuid4(), "review_count": 5, "average_rating": 4.2}
+        mock_row._mapping = {
+            "product_id": uuid.uuid4(),
+            "review_count": 5,
+            "average_rating": 4.2,
+        }
         db = _db(_fetchone(mock_row))
         result = await self.repo.rating_summary(db, uuid.uuid4())
         assert result is not None
@@ -595,7 +601,9 @@ class TestInventoryRepository:
 
     async def test_list_for_product_with_type_filter(self):
         db = _db(_scalar_one(0), _scalars_result([]))
-        items, total = await self.repo.list_for_product(db, uuid.uuid4(), movement_type="sale")
+        items, total = await self.repo.list_for_product(
+            db, uuid.uuid4(), movement_type="sale"
+        )
         assert total == 0
 
 
@@ -629,7 +637,9 @@ class TestCollectionRepository:
     async def test_create_adds_and_refreshes(self):
         db = AsyncMock()
         db.add = MagicMock()
-        await self.repo.create(db, {"id": uuid.uuid4(), "name": "Silver", "slug": "silver"})
+        await self.repo.create(
+            db, {"id": uuid.uuid4(), "name": "Silver", "slug": "silver"}
+        )
         db.add.assert_called_once()
 
     async def test_update_executes_and_refetches(self):
@@ -764,7 +774,9 @@ class TestCategoryRepository:
     async def test_create_adds_and_refreshes(self):
         db = AsyncMock()
         db.add = MagicMock()
-        await self.repo.create(db, {"id": uuid.uuid4(), "name": "Rings", "slug": "rings"})
+        await self.repo.create(
+            db, {"id": uuid.uuid4(), "name": "Rings", "slug": "rings"}
+        )
         db.add.assert_called_once()
 
     async def test_update_executes_and_refetches(self):

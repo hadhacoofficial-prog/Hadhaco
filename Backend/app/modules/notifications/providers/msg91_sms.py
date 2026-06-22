@@ -72,7 +72,9 @@ class MSG91SMSProvider(NotificationProvider):
 
         if data.get("type") != "success":
             log.error("msg91_api_error", response=data)
-            raise RuntimeError(f"MSG91 rejected the request: {data.get('message', data)}")
+            raise RuntimeError(
+                f"MSG91 rejected the request: {data.get('message', data)}"
+            )
 
         request_id: str = data.get("request_id", "")
         log.info("sms_sent", request_id=request_id)

@@ -17,7 +17,9 @@ class FraudRepository:
         return signal
 
     async def get(self, db: AsyncSession, signal_id: uuid.UUID) -> FraudSignal | None:
-        result = await db.execute(select(FraudSignal).where(FraudSignal.id == signal_id))
+        result = await db.execute(
+            select(FraudSignal).where(FraudSignal.id == signal_id)
+        )
         return result.scalar_one_or_none()
 
     async def list_unresolved(

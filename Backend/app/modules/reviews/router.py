@@ -27,19 +27,24 @@ _svc = ReviewService()
 # ── Public ────────────────────────────────────────────────────────────────────
 
 
-@router.get("/products/{product_id}", response_model=BaseSuccessResponse[list[ReviewOut]])
+@router.get(
+    "/products/{product_id}", response_model=BaseSuccessResponse[list[ReviewOut]]
+)
 async def list_product_reviews(
     product_id: uuid.UUID,
     offset: int = Query(0, ge=0),
     limit: int = Query(20, ge=1, le=100),
     db: AsyncSession = Depends(get_db),
 ):
-    result = await _svc.list_product_reviews(db, product_id=product_id, offset=offset, limit=limit)
+    result = await _svc.list_product_reviews(
+        db, product_id=product_id, offset=offset, limit=limit
+    )
     return ok(result, ResponseCode.REVIEW_LISTED, "Reviews listed successfully")
 
 
 @router.get(
-    "/products/{product_id}/summary", response_model=BaseSuccessResponse[ProductRatingSummary]
+    "/products/{product_id}/summary",
+    response_model=BaseSuccessResponse[ProductRatingSummary],
 )
 async def product_rating_summary(
     product_id: uuid.UUID,
@@ -59,7 +64,11 @@ async def product_rating_summary(
         )
     else:
         summary = ProductRatingSummary(**data)
-    return ok(summary, ResponseCode.REVIEW_SUMMARY_FETCHED, "Rating summary fetched successfully")
+    return ok(
+        summary,
+        ResponseCode.REVIEW_SUMMARY_FETCHED,
+        "Rating summary fetched successfully",
+    )
 
 
 # ── Customer (auth required) ──────────────────────────────────────────────────
@@ -74,8 +83,12 @@ async def submit_review(
 ):
     from app.common.responses import created
 
-    result = await _svc.submit_review(db, user_id=user.id, data=data, images=images or None)
-    return created(result, ResponseCode.REVIEW_SUBMITTED, "Review submitted successfully")
+    result = await _svc.submit_review(
+        db, user_id=user.id, data=data, images=images or None
+    )
+    return created(
+        result, ResponseCode.REVIEW_SUBMITTED, "Review submitted successfully"
+    )
 
 
 @router.patch("/{review_id}", response_model=BaseSuccessResponse[ReviewOut])
@@ -89,7 +102,9 @@ async def edit_review(
     return ok(result, ResponseCode.REVIEW_UPDATED, "Review updated successfully")
 
 
-@router.delete("/{review_id}", response_model=BaseSuccessResponse[None], status_code=200)
+@router.delete(
+    "/{review_id}", response_model=BaseSuccessResponse[None], status_code=200
+)
 async def delete_review(
     review_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
@@ -106,7 +121,9 @@ async def vote_review(
     db: AsyncSession = Depends(get_db),
     user=Depends(get_current_user),
 ):
-    result = await _svc.vote(db, review_id=review_id, user_id=user.id, is_helpful=body.is_helpful)
+    result = await _svc.vote(
+        db, review_id=review_id, user_id=user.id, is_helpful=body.is_helpful
+    )
     return ok(result, ResponseCode.REVIEW_VOTED, "Vote recorded successfully")
 
 
@@ -121,7 +138,11 @@ async def list_pending_reviews(
     _=Depends(require_admin),
 ):
     result = await _svc.list_pending(db, offset=offset, limit=limit)
-    return ok(result, ResponseCode.REVIEW_PENDING_LISTED, "Pending reviews listed successfully")
+    return ok(
+        result,
+        ResponseCode.REVIEW_PENDING_LISTED,
+        "Pending reviews listed successfully",
+    )
 
 
 @router.post("/admin/{review_id}/action", response_model=BaseSuccessResponse[ReviewOut])
@@ -132,4 +153,6 @@ async def admin_review_action(
     _=Depends(require_admin),
 ):
     result = await _svc.admin_action(db, review_id=review_id, action=body.action)
-    return ok(result, ResponseCode.REVIEW_ACTION_APPLIED, "Review action applied successfully")
+    return ok(
+        result, ResponseCode.REVIEW_ACTION_APPLIED, "Review action applied successfully"
+    )

@@ -51,7 +51,9 @@ class NotificationService:
         recipient: str,
         context: dict[str, Any],
     ) -> None:
-        template = await self._repo.get_template(db, event_type=event_type, channel="email")
+        template = await self._repo.get_template(
+            db, event_type=event_type, channel="email"
+        )
         if not template:
             logger.warning("no_email_template", event_type=event_type)
             return
@@ -70,7 +72,9 @@ class NotificationService:
         await db.commit()
 
         try:
-            msg_id = await self._email_primary.send_email(to=recipient, subject=subject, html=html)
+            msg_id = await self._email_primary.send_email(
+                to=recipient, subject=subject, html=html
+            )
             await self._repo.mark_sent(db, log, msg_id, "resend")
             await db.commit()
         except (ResendAuthError, ResendDomainError) as err:
@@ -86,7 +90,10 @@ class NotificationService:
             await db.commit()
         except Exception as err:
             logger.error(
-                "email_send_failed", event_type=event_type, recipient=recipient, error=str(err)
+                "email_send_failed",
+                event_type=event_type,
+                recipient=recipient,
+                error=str(err),
             )
             await self._repo.mark_failed(db, log, str(err))
             await db.commit()
@@ -108,7 +115,9 @@ class NotificationService:
             )
             return
 
-        template = await self._repo.get_template(db, event_type=event_type, channel="sms")
+        template = await self._repo.get_template(
+            db, event_type=event_type, channel="sms"
+        )
         if not template:
             logger.warning("no_sms_template", event_type=event_type)
             return
@@ -127,11 +136,19 @@ class NotificationService:
         try:
             msg_id = await self._sms.send_sms(to=recipient, body=body)
             await self._repo.mark_sent(db, log, msg_id, "msg91")
-            logger.info("sms_sent", event_type=event_type, recipient=recipient, request_id=msg_id)
+            logger.info(
+                "sms_sent",
+                event_type=event_type,
+                recipient=recipient,
+                request_id=msg_id,
+            )
             await db.commit()
         except Exception as err:
             logger.error(
-                "sms_send_failed", event_type=event_type, recipient=recipient, error=str(err)
+                "sms_send_failed",
+                event_type=event_type,
+                recipient=recipient,
+                error=str(err),
             )
             await self._repo.mark_failed(db, log, str(err))
             await db.commit()
@@ -142,29 +159,39 @@ class NotificationService:
             await self._retry_log(db, log)
 
     async def _retry_log(self, db: AsyncSession, log: NotificationLog) -> None:
-        template = await self._repo.get_template(db, event_type=log.event_type, channel=log.channel)
+        template = await self._repo.get_template(
+            db, event_type=log.event_type, channel=log.channel
+        )
         if not template:
             return
         try:
             if log.channel == "email":
                 msg_id = await self._email_primary.send_email(
-                    to=log.recipient, subject=template.subject or "", html=template.template_body
+                    to=log.recipient,
+                    subject=template.subject or "",
+                    html=template.template_body,
                 )
                 await self._repo.mark_sent(db, log, msg_id, "resend")
             elif log.channel == "sms":
                 if not settings.SMS_ENABLED:
                     logger.info("sms_retry_skipped_disabled", log_id=str(log.id))
                     return
-                msg_id = await self._sms.send_sms(to=log.recipient, body=template.template_body)
+                msg_id = await self._sms.send_sms(
+                    to=log.recipient, body=template.template_body
+                )
                 await self._repo.mark_sent(db, log, msg_id, "msg91")
             await db.commit()
         except (ResendAuthError, ResendDomainError) as err:
             # Config errors won't fix themselves on retry — permanently fail.
-            logger.error("retry_provider_config_error", log_id=str(log.id), error=str(err))
+            logger.error(
+                "retry_provider_config_error", log_id=str(log.id), error=str(err)
+            )
             await self._repo.mark_permanently_failed(db, log, str(err))
             await db.commit()
         except Exception as err:
-            logger.error("retry_failed", log_id=str(log.id), channel=log.channel, error=str(err))
+            logger.error(
+                "retry_failed", log_id=str(log.id), channel=log.channel, error=str(err)
+            )
             await self._repo.mark_failed(db, log, str(err))
             await db.commit()
 

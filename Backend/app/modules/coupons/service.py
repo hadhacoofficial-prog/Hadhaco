@@ -44,7 +44,9 @@ class CouponService:
         coupons = await _repo.list_all(db, is_active=is_active)
         return [CouponResponse.model_validate(c) for c in coupons]
 
-    async def create(self, db: AsyncSession, payload: CouponCreateRequest) -> CouponResponse:
+    async def create(
+        self, db: AsyncSession, payload: CouponCreateRequest
+    ) -> CouponResponse:
         existing = await _repo.get_by_code(db, payload.code)
         if existing:
             raise ConflictError(f"Coupon code '{payload.code}' already exists")
@@ -63,7 +65,9 @@ class CouponService:
         coupon = await _repo.get_by_id(db, coupon_id)
         if not coupon:
             raise NotFoundError("Coupon not found")
-        updated = await _repo.update(db, coupon_id, payload.model_dump(exclude_unset=True))
+        updated = await _repo.update(
+            db, coupon_id, payload.model_dump(exclude_unset=True)
+        )
         return CouponResponse.model_validate(updated)
 
     async def validate(
@@ -114,7 +118,9 @@ class CouponService:
         user_usage = await _repo.get_user_usage_count(db, coupon.id, user_id)
         if user_usage >= coupon.per_user_limit:
             return CouponValidateResponse(
-                valid=False, discount_amount=0, message="You have already used this coupon"
+                valid=False,
+                discount_amount=0,
+                message="You have already used this coupon",
             )
 
         discount = _calculate_discount(coupon, subtotal)
@@ -142,7 +148,9 @@ class CouponService:
             raise ValidationError(result.message)
 
         coupon = await _repo.get_by_code(db, code)
-        await _repo.record_usage(db, coupon.id, user_id, result.discount_amount, order_id=None)
+        await _repo.record_usage(
+            db, coupon.id, user_id, result.discount_amount, order_id=None
+        )
         await _repo.increment_usage(db, coupon.id)
         return result.discount_amount, coupon.id
 

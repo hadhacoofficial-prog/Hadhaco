@@ -59,7 +59,9 @@ class WebhookService:
             )
         )
 
-    async def _mark_failed(self, db: AsyncSession, event_id: uuid.UUID, error: str) -> None:
+    async def _mark_failed(
+        self, db: AsyncSession, event_id: uuid.UUID, error: str
+    ) -> None:
         await db.execute(
             update(WebhookEvent)
             .where(WebhookEvent.id == event_id)
@@ -88,7 +90,9 @@ class WebhookService:
         event_type: str = payload.get("event", "unknown")
         event_id: str | None = payload.get("id")
 
-        event_row = await self._record_event(db, "razorpay", event_type, event_id, body.decode())
+        event_row = await self._record_event(
+            db, "razorpay", event_type, event_id, body.decode()
+        )
         if event_row is None:
             return {"status": "already_processed"}
 
@@ -109,7 +113,9 @@ class WebhookService:
 
             await self._mark_processed(db, event_row.id)
         except Exception as exc:
-            log.error("razorpay_webhook_handler_error", event_type=event_type, error=str(exc))
+            log.error(
+                "razorpay_webhook_handler_error", event_type=event_type, error=str(exc)
+            )
             await self._mark_failed(db, event_row.id, str(exc))
 
         return {"status": "ok"}
@@ -200,7 +206,9 @@ class WebhookService:
             )
         )
 
-    async def _on_refund_event(self, db: AsyncSession, payload: dict, event_type: str) -> None:
+    async def _on_refund_event(
+        self, db: AsyncSession, payload: dict, event_type: str
+    ) -> None:
         rzp_refund = payload.get("payload", {}).get("refund", {}).get("entity", {})
         rzp_refund_id: str = rzp_refund.get("id", "")
         amount_paise: int = rzp_refund.get("amount", 0)
@@ -211,7 +219,9 @@ class WebhookService:
         from app.modules.payments.models import Refund
         from app.modules.payments.repository import PaymentRepository
 
-        result = await db.execute(select(Refund).where(Refund.razorpay_refund_id == rzp_refund_id))
+        result = await db.execute(
+            select(Refund).where(Refund.razorpay_refund_id == rzp_refund_id)
+        )
         refund = result.scalar_one_or_none()
         if refund and event_type == "refund.processed":
             from app.modules.payments.repository import PaymentRepository
@@ -263,12 +273,16 @@ class WebhookService:
             await self._on_shipment_event(db, payload, event_type)
             await self._mark_processed(db, event_row.id)
         except Exception as exc:
-            log.error("delivery_one_webhook_error", event_type=event_type, error=str(exc))
+            log.error(
+                "delivery_one_webhook_error", event_type=event_type, error=str(exc)
+            )
             await self._mark_failed(db, event_row.id, str(exc))
 
         return {"status": "ok"}
 
-    async def _on_shipment_event(self, db: AsyncSession, payload: dict, event_type: str) -> None:
+    async def _on_shipment_event(
+        self, db: AsyncSession, payload: dict, event_type: str
+    ) -> None:
         data = payload.get("data", {})
         order_number: str = data.get("order_reference", "")
         tracking_number: str = data.get("tracking_number", "")

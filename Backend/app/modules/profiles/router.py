@@ -110,7 +110,9 @@ async def list_users(
     return ok(result, ResponseCode.USER_LISTED, "Users listed successfully")
 
 
-@router.patch("/admin/users/{user_id}/role", response_model=BaseSuccessResponse[ProfileResponse])
+@router.patch(
+    "/admin/users/{user_id}/role", response_model=BaseSuccessResponse[ProfileResponse]
+)
 async def change_user_role(
     user_id: str,
     data: AdminUserRoleUpdateRequest,
@@ -127,7 +129,9 @@ async def change_user_role(
     )
 
 
-@router.patch("/admin/users/{user_id}/status", response_model=BaseSuccessResponse[ProfileResponse])
+@router.patch(
+    "/admin/users/{user_id}/status", response_model=BaseSuccessResponse[ProfileResponse]
+)
 async def set_user_status(
     user_id: str,
     data: AdminUserStatusUpdateRequest,

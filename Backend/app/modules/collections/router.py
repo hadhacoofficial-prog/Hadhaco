@@ -42,16 +42,22 @@ async def admin_list_collections(db: AsyncSession = Depends(get_db)):
     )
 
 
-@router.get("/collections", response_model=BaseSuccessResponse[list[CollectionResponse]])
+@router.get(
+    "/collections", response_model=BaseSuccessResponse[list[CollectionResponse]]
+)
 async def list_collections(db: AsyncSession = Depends(get_db)):
     result = await _service.list_active(db)
     return ok(result, ResponseCode.COLLECTION_LISTED, "Collections listed successfully")
 
 
-@router.get("/collections/{slug}", response_model=BaseSuccessResponse[CollectionResponse])
+@router.get(
+    "/collections/{slug}", response_model=BaseSuccessResponse[CollectionResponse]
+)
 async def get_collection(slug: str, db: AsyncSession = Depends(get_db)):
     result = await _service.get_by_slug(db, slug)
-    return ok(result, ResponseCode.COLLECTION_FETCHED, "Collection fetched successfully")
+    return ok(
+        result, ResponseCode.COLLECTION_FETCHED, "Collection fetched successfully"
+    )
 
 
 @router.post(
@@ -67,7 +73,9 @@ async def create_collection(
     from app.common.responses import created
 
     result = await _service.create(db, payload)
-    return created(result, ResponseCode.COLLECTION_CREATED, "Collection created successfully")
+    return created(
+        result, ResponseCode.COLLECTION_CREATED, "Collection created successfully"
+    )
 
 
 @router.patch(
@@ -81,7 +89,9 @@ async def update_collection(
     db: AsyncSession = Depends(get_db),
 ):
     result = await _service.update(db, col_id, payload)
-    return ok(result, ResponseCode.COLLECTION_UPDATED, "Collection updated successfully")
+    return ok(
+        result, ResponseCode.COLLECTION_UPDATED, "Collection updated successfully"
+    )
 
 
 @router.delete(
@@ -110,7 +120,9 @@ async def add_products_to_collection(
     db: AsyncSession = Depends(get_db),
 ):
     await _service.add_products(db, col_id, payload)
-    return ok(None, ResponseCode.COLLECTION_PRODUCTS_ADDED, "Products added to collection")
+    return ok(
+        None, ResponseCode.COLLECTION_PRODUCTS_ADDED, "Products added to collection"
+    )
 
 
 @router.delete(
@@ -125,4 +137,6 @@ async def remove_product_from_collection(
     db: AsyncSession = Depends(get_db),
 ):
     await _service.remove_product(db, col_id, product_id)
-    return deleted(ResponseCode.COLLECTION_PRODUCT_REMOVED, "Product removed from collection")
+    return deleted(
+        ResponseCode.COLLECTION_PRODUCT_REMOVED, "Product removed from collection"
+    )

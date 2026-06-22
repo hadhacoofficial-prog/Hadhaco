@@ -31,7 +31,9 @@ def fix_policies(text: str) -> str:
         if prev and f"DROP POLICY IF EXISTS {name}" in prev[-1]:
             continue
         out.append(text[last : m.start()])
-        out.append(f"DROP POLICY IF EXISTS {name} ON {table};\nCREATE POLICY {name} ON {table}")
+        out.append(
+            f"DROP POLICY IF EXISTS {name} ON {table};\nCREATE POLICY {name} ON {table}"
+        )
         last = m.end()
     out.append(text[last:])
     return "".join(out)

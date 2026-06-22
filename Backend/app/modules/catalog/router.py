@@ -31,7 +31,9 @@ _PRODUCT_LIST_TTL = 300  # 5 minutes — catalog changes via admin only
 
 
 def _product_list_cache_key(**params) -> str:
-    h = hashlib.sha256(json.dumps(params, sort_keys=True, default=str).encode()).hexdigest()[:12]
+    h = hashlib.sha256(
+        json.dumps(params, sort_keys=True, default=str).encode()
+    ).hexdigest()[:12]
     return f"products:list:v1:{h}"
 
 
@@ -72,7 +74,9 @@ async def list_products(
     min_price: float | None = None,
     max_price: float | None = None,
     search: str | None = Query(None, max_length=200),
-    sort_by: str = Query("created_at", pattern="^(created_at|base_price|name|stock_quantity)$"),
+    sort_by: str = Query(
+        "created_at", pattern="^(created_at|base_price|name|stock_quantity)$"
+    ),
     sort_dir: str = Query("desc", pattern="^(asc|desc)$"),
     db: AsyncSession = Depends(get_db),
     redis: aioredis.Redis = Depends(get_redis),
@@ -126,7 +130,9 @@ async def list_products(
         sort_by=sort_by,
         sort_dir=sort_dir,
     )
-    await safe_redis_setex(redis, cache_key, _PRODUCT_LIST_TTL, result.model_dump_json())
+    await safe_redis_setex(
+        redis, cache_key, _PRODUCT_LIST_TTL, result.model_dump_json()
+    )
     return ok(result, ResponseCode.PRODUCT_LISTED, "Products listed successfully")
 
 
@@ -333,7 +339,9 @@ async def upsert_attribute(
     db: AsyncSession = Depends(get_db),
 ):
     await _service.upsert_attribute(db, product_id, payload)
-    return ok(None, ResponseCode.PRODUCT_ATTRIBUTE_UPSERTED, "Attribute upserted successfully")
+    return ok(
+        None, ResponseCode.PRODUCT_ATTRIBUTE_UPSERTED, "Attribute upserted successfully"
+    )
 
 
 @router.delete(
@@ -348,7 +356,9 @@ async def delete_attribute(
     db: AsyncSession = Depends(get_db),
 ):
     await _service.delete_attribute(db, product_id, attr_name)
-    return deleted(ResponseCode.PRODUCT_ATTRIBUTE_DELETED, "Attribute deleted successfully")
+    return deleted(
+        ResponseCode.PRODUCT_ATTRIBUTE_DELETED, "Attribute deleted successfully"
+    )
 
 
 # ---------- Stock ----------
@@ -359,7 +369,9 @@ async def delete_attribute(
     response_model=BaseSuccessResponse[list],
     dependencies=[Depends(require_admin)],
 )
-async def get_product_collections(product_id: uuid.UUID, db: AsyncSession = Depends(get_db)):
+async def get_product_collections(
+    product_id: uuid.UUID, db: AsyncSession = Depends(get_db)
+):
     from sqlalchemy import select as sa_select
 
     from app.modules.collections.models import Collection, ProductCollection
@@ -368,11 +380,15 @@ async def get_product_collections(product_id: uuid.UUID, db: AsyncSession = Depe
     result = await db.execute(
         sa_select(Collection)
         .join(ProductCollection, ProductCollection.collection_id == Collection.id)
-        .where(ProductCollection.product_id == product_id, Collection.deleted_at.is_(None))
+        .where(
+            ProductCollection.product_id == product_id, Collection.deleted_at.is_(None)
+        )
     )
     cols = list(result.scalars().all())
     return ok(
-        [CR.model_validate(c) for c in cols], ResponseCode.COLLECTION_LISTED, "Product collections"
+        [CR.model_validate(c) for c in cols],
+        ResponseCode.COLLECTION_LISTED,
+        "Product collections",
     )
 
 

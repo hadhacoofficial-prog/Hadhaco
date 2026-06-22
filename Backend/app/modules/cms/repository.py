@@ -25,7 +25,9 @@ class CMSRepository:
     async def get_active_banners(
         self, db: AsyncSession, banner_type: str | None = None
     ) -> list[Banner]:
-        q = select(Banner).where(Banner.is_active.is_(True), Banner.deleted_at.is_(None))
+        q = select(Banner).where(
+            Banner.is_active.is_(True), Banner.deleted_at.is_(None)
+        )
         if banner_type:
             q = q.where(Banner.banner_type == banner_type)
         result = await db.execute(q.order_by(Banner.sort_order))
@@ -43,7 +45,9 @@ class CMSRepository:
         await db.flush()
         return b
 
-    async def update_banner(self, db: AsyncSession, banner: Banner, data: dict[str, Any]) -> Banner:
+    async def update_banner(
+        self, db: AsyncSession, banner: Banner, data: dict[str, Any]
+    ) -> Banner:
         for k, v in data.items():
             setattr(banner, k, v)
         db.add(banner)
@@ -66,17 +70,25 @@ class CMSRepository:
         return list(result.scalars().all())
 
     async def get_all_sections(self, db: AsyncSession) -> list[LandingSection]:
-        result = await db.execute(select(LandingSection).order_by(LandingSection.sort_order))
+        result = await db.execute(
+            select(LandingSection).order_by(LandingSection.sort_order)
+        )
         return list(result.scalars().all())
 
-    async def get_section_by_key(self, db: AsyncSession, key: str) -> LandingSection | None:
-        result = await db.execute(select(LandingSection).where(LandingSection.section_key == key))
+    async def get_section_by_key(
+        self, db: AsyncSession, key: str
+    ) -> LandingSection | None:
+        result = await db.execute(
+            select(LandingSection).where(LandingSection.section_key == key)
+        )
         return result.scalar_one_or_none()
 
     async def get_section_by_id(
         self, db: AsyncSession, section_id: uuid.UUID
     ) -> LandingSection | None:
-        result = await db.execute(select(LandingSection).where(LandingSection.id == section_id))
+        result = await db.execute(
+            select(LandingSection).where(LandingSection.id == section_id)
+        )
         return result.scalar_one_or_none()
 
     async def update_section(
@@ -109,8 +121,12 @@ class CMSRepository:
         )
         return list(result.scalars().all())
 
-    async def get_item(self, db: AsyncSession, item_id: uuid.UUID) -> CmsSectionItem | None:
-        result = await db.execute(select(CmsSectionItem).where(CmsSectionItem.id == item_id))
+    async def get_item(
+        self, db: AsyncSession, item_id: uuid.UUID
+    ) -> CmsSectionItem | None:
+        result = await db.execute(
+            select(CmsSectionItem).where(CmsSectionItem.id == item_id)
+        )
         return result.scalar_one_or_none()
 
     async def create_item(
@@ -205,7 +221,9 @@ class CMSRepository:
         await db.flush()
         return entry
 
-    async def get_publish_log(self, db: AsyncSession, limit: int = 50) -> list[CmsPublishLog]:
+    async def get_publish_log(
+        self, db: AsyncSession, limit: int = 50
+    ) -> list[CmsPublishLog]:
         result = await db.execute(
             select(CmsPublishLog).order_by(CmsPublishLog.created_at.desc()).limit(limit)
         )
@@ -221,7 +239,9 @@ class CMSRepository:
 
     async def get_media(self, db: AsyncSession, media_id: uuid.UUID) -> CmsMedia | None:
         result = await db.execute(
-            select(CmsMedia).where(CmsMedia.id == media_id, CmsMedia.deleted_at.is_(None))
+            select(CmsMedia).where(
+                CmsMedia.id == media_id, CmsMedia.deleted_at.is_(None)
+            )
         )
         return result.scalar_one_or_none()
 
@@ -241,7 +261,9 @@ class CMSRepository:
         count_q = select(func.count()).select_from(q.subquery())
         total = (await db.execute(count_q)).scalar_one()
         result = await db.execute(
-            q.order_by(CmsMedia.created_at.desc()).offset((page - 1) * page_size).limit(page_size)
+            q.order_by(CmsMedia.created_at.desc())
+            .offset((page - 1) * page_size)
+            .limit(page_size)
         )
         return list(result.scalars().all()), total
 
@@ -278,14 +300,18 @@ class CMSRepository:
         await db.flush()
         return p
 
-    async def update_page(self, db: AsyncSession, page: CmsPage, data: dict[str, Any]) -> CmsPage:
+    async def update_page(
+        self, db: AsyncSession, page: CmsPage, data: dict[str, Any]
+    ) -> CmsPage:
         for k, v in data.items():
             setattr(page, k, v)
         db.add(page)
         await db.flush()
         return page
 
-    async def get_page_by_id(self, db: AsyncSession, page_id: uuid.UUID) -> CmsPage | None:
+    async def get_page_by_id(
+        self, db: AsyncSession, page_id: uuid.UUID
+    ) -> CmsPage | None:
         result = await db.execute(
             select(CmsPage).where(CmsPage.id == page_id, CmsPage.deleted_at.is_(None))
         )
@@ -298,7 +324,9 @@ class CMSRepository:
         return result.scalar_one_or_none()
 
     async def get_public_settings(self, db: AsyncSession) -> list[AppSetting]:
-        result = await db.execute(select(AppSetting).where(AppSetting.is_public.is_(True)))
+        result = await db.execute(
+            select(AppSetting).where(AppSetting.is_public.is_(True))
+        )
         return list(result.scalars().all())
 
     async def get_all_settings(self, db: AsyncSession) -> list[AppSetting]:

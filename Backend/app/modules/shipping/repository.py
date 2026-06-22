@@ -9,7 +9,9 @@ from app.modules.shipping.models import Shipment, ShipmentEvent
 
 
 class ShipmentRepository:
-    async def get_for_order(self, db: AsyncSession, order_id: uuid.UUID) -> Shipment | None:
+    async def get_for_order(
+        self, db: AsyncSession, order_id: uuid.UUID
+    ) -> Shipment | None:
         result = await db.execute(
             select(Shipment)
             .where(Shipment.order_id == order_id)
@@ -17,7 +19,9 @@ class ShipmentRepository:
         )
         return result.scalar_one_or_none()
 
-    async def get_by_id(self, db: AsyncSession, shipment_id: uuid.UUID) -> Shipment | None:
+    async def get_by_id(
+        self, db: AsyncSession, shipment_id: uuid.UUID
+    ) -> Shipment | None:
         result = await db.execute(
             select(Shipment)
             .where(Shipment.id == shipment_id)
@@ -43,7 +47,9 @@ class ShipmentRepository:
     async def update(
         self, db: AsyncSession, shipment_id: uuid.UUID, data: dict[str, Any]
     ) -> Shipment | None:
-        await db.execute(update(Shipment).where(Shipment.id == shipment_id).values(**data))
+        await db.execute(
+            update(Shipment).where(Shipment.id == shipment_id).values(**data)
+        )
         return await self.get_by_id(db, shipment_id)
 
     async def add_event(self, db: AsyncSession, data: dict[str, Any]) -> ShipmentEvent:
@@ -56,7 +62,9 @@ class ShipmentRepository:
         """Return shipments in transit for polling."""
         result = await db.execute(
             select(Shipment).where(
-                Shipment.status.in_(["created", "picked_up", "in_transit", "out_for_delivery"])
+                Shipment.status.in_(
+                    ["created", "picked_up", "in_transit", "out_for_delivery"]
+                )
             )
         )
         return list(result.scalars().all())

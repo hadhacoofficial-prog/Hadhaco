@@ -8,7 +8,9 @@ from app.modules.profiles.models import Profile
 
 
 class ProfileRepository:
-    async def get_by_id(self, db: AsyncSession, user_id: str | uuid.UUID) -> Profile | None:
+    async def get_by_id(
+        self, db: AsyncSession, user_id: str | uuid.UUID
+    ) -> Profile | None:
         result = await db.execute(
             select(Profile).where(
                 Profile.id == user_id,

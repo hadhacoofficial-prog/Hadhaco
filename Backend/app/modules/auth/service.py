@@ -21,7 +21,9 @@ from app.modules.profiles.models import Admin2FA, AdminSession, Profile
 
 
 class AuthService:
-    async def verify_token_and_get_profile(self, db: AsyncSession, user_id: str) -> Profile:
+    async def verify_token_and_get_profile(
+        self, db: AsyncSession, user_id: str
+    ) -> Profile:
         from app.modules.profiles.repository import ProfileRepository
 
         repo = ProfileRepository()
@@ -54,7 +56,9 @@ class AuthService:
         img = qrcode.make(uri)
         buffer = io.BytesIO()
         img.save(buffer, format="PNG")
-        qr_data_url = "data:image/png;base64," + base64.b64encode(buffer.getvalue()).decode()
+        qr_data_url = (
+            "data:image/png;base64," + base64.b64encode(buffer.getvalue()).decode()
+        )
 
         encrypted_secret = encrypt_value(secret)
 
@@ -66,7 +70,9 @@ class AuthService:
             await db.execute(
                 update(Admin2FA)
                 .where(Admin2FA.user_id == user_id)
-                .values(totp_secret=encrypted_secret, is_enabled=False, backup_codes="[]")
+                .values(
+                    totp_secret=encrypted_secret, is_enabled=False, backup_codes="[]"
+                )
             )
         else:
             db.add(
@@ -115,7 +121,9 @@ class AuthService:
         )
         return plain_codes
 
-    async def validate_2fa(self, db: AsyncSession, user_id: str, totp_code: str) -> bool:
+    async def validate_2fa(
+        self, db: AsyncSession, user_id: str, totp_code: str
+    ) -> bool:
         """
         Validate TOTP code on every admin login. Also accepts backup codes.
         Consumes backup code if matched (removes from list).

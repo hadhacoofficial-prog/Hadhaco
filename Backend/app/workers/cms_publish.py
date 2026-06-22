@@ -46,7 +46,9 @@ async def run() -> None:
                     section.version_number = (section.version_number or 0) + 1
                     published += 1
                 except Exception:
-                    log.exception("cms_publish_section_failed", section_key=section.section_key)
+                    log.exception(
+                        "cms_publish_section_failed", section_key=section.section_key
+                    )
 
             await db.commit()
 

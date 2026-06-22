@@ -55,7 +55,11 @@ async def get_shipping_rates(
     pincode: str = Query(..., min_length=6, max_length=6),
 ):
     result = await _service.get_rates(weight_grams, pincode)
-    return ok(result, ResponseCode.SHIPPING_RATES_FETCHED, "Shipping rates fetched successfully")
+    return ok(
+        result,
+        ResponseCode.SHIPPING_RATES_FETCHED,
+        "Shipping rates fetched successfully",
+    )
 
 
 # ── Admin ─────────────────────────────────────────────────────────────────────
@@ -76,7 +80,9 @@ async def create_shipment(
 
     payload.order_id = order_id
     result = await _service.create_shipment(db, order_id, payload)
-    return created(result, ResponseCode.SHIPMENT_CREATED, "Shipment created successfully")
+    return created(
+        result, ResponseCode.SHIPMENT_CREATED, "Shipment created successfully"
+    )
 
 
 @router.get(
@@ -100,4 +106,6 @@ async def cancel_shipment(
     db: AsyncSession = Depends(get_db),
 ):
     result = await _service.cancel_shipment(db, order_id, reason)
-    return ok(result, ResponseCode.SHIPMENT_CANCELLED, "Shipment cancelled successfully")
+    return ok(
+        result, ResponseCode.SHIPMENT_CANCELLED, "Shipment cancelled successfully"
+    )

@@ -58,9 +58,21 @@ def _parse_profile_from_cache(data: dict):
         role=data["role"],
         is_active=data["is_active"],
         is_verified=data["is_verified"],
-        deleted_at=datetime.fromisoformat(data["deleted_at"]) if data.get("deleted_at") else None,
-        created_at=datetime.fromisoformat(data["created_at"]) if data.get("created_at") else None,
-        updated_at=datetime.fromisoformat(data["updated_at"]) if data.get("updated_at") else None,
+        deleted_at=(
+            datetime.fromisoformat(data["deleted_at"])
+            if data.get("deleted_at")
+            else None
+        ),
+        created_at=(
+            datetime.fromisoformat(data["created_at"])
+            if data.get("created_at")
+            else None
+        ),
+        updated_at=(
+            datetime.fromisoformat(data["updated_at"])
+            if data.get("updated_at")
+            else None
+        ),
     )
 
 

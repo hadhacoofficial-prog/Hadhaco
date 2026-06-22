@@ -6,7 +6,12 @@ from app.common.response_codes import ResponseCode
 from app.common.responses import BaseSuccessResponse, deleted, ok
 from app.core.database import get_db
 from app.core.dependencies import require_admin
-from app.core.redis import get_redis, safe_redis_delete, safe_redis_get, safe_redis_setex
+from app.core.redis import (
+    get_redis,
+    safe_redis_delete,
+    safe_redis_get,
+    safe_redis_setex,
+)
 from app.modules.categories.schemas import (
     CategoryCreateRequest,
     CategoryResponse,
@@ -42,7 +47,9 @@ async def list_categories(db: AsyncSession = Depends(get_db)):
     return ok(result, ResponseCode.CATEGORY_LISTED, "Categories fetched successfully")
 
 
-@router.get("/categories/navbar", response_model=BaseSuccessResponse[NavbarCategoriesResponse])
+@router.get(
+    "/categories/navbar", response_model=BaseSuccessResponse[NavbarCategoriesResponse]
+)
 async def navbar_categories(
     db: AsyncSession = Depends(get_db),
     redis: aioredis.Redis = Depends(get_redis),
@@ -61,12 +68,15 @@ async def navbar_categories(
         )
 
     result = await _svc.get_navbar(db)
-    await safe_redis_setex(redis, _NAVBAR_CACHE_KEY, _NAVBAR_TTL, result.model_dump_json())
+    await safe_redis_setex(
+        redis, _NAVBAR_CACHE_KEY, _NAVBAR_TTL, result.model_dump_json()
+    )
     return ok(result, ResponseCode.CATEGORY_LISTED, "Categories fetched successfully")
 
 
 @router.get(
-    "/categories/navigation", response_model=BaseSuccessResponse[NavigationCategoriesResponse]
+    "/categories/navigation",
+    response_model=BaseSuccessResponse[NavigationCategoriesResponse],
 )
 async def navigation_categories(
     db: AsyncSession = Depends(get_db),
@@ -88,7 +98,11 @@ async def navigation_categories(
 
     result = await _svc.get_navigation(db)
     await safe_redis_setex(redis, _NAV_CACHE_KEY, _NAV_TTL, result.model_dump_json())
-    return ok(result, ResponseCode.CATEGORY_LISTED, "Navigation categories fetched successfully")
+    return ok(
+        result,
+        ResponseCode.CATEGORY_LISTED,
+        "Navigation categories fetched successfully",
+    )
 
 
 # ── Admin endpoints ───────────────────────────────────────────────────────────
@@ -116,7 +130,9 @@ async def create_category(
     )
 
 
-@router.patch("/admin/categories/{cat_id}", response_model=BaseSuccessResponse[CategoryResponse])
+@router.patch(
+    "/admin/categories/{cat_id}", response_model=BaseSuccessResponse[CategoryResponse]
+)
 async def update_category(
     cat_id: str,
     data: CategoryUpdateRequest,

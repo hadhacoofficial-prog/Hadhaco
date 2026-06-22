@@ -35,7 +35,9 @@ async def track_event(
     ip = request.client.host if request.client else None
     ua = request.headers.get("User-Agent")
     await _svc.track(db, request=body, user_id=user_id, ip_address=ip, user_agent=ua)
-    return accepted(None, ResponseCode.ANALYTICS_EVENT_TRACKED, "Event tracked successfully")
+    return accepted(
+        None, ResponseCode.ANALYTICS_EVENT_TRACKED, "Event tracked successfully"
+    )
 
 
 @router.get("/admin/dashboard", response_model=BaseSuccessResponse[dict])
@@ -50,5 +52,7 @@ async def admin_dashboard(
     td = to_date or today
     result = await _svc.get_dashboard(db, from_date=fd, to_date=td)
     return ok(
-        result, ResponseCode.ANALYTICS_DASHBOARD_FETCHED, "Dashboard data fetched successfully"
+        result,
+        ResponseCode.ANALYTICS_DASHBOARD_FETCHED,
+        "Dashboard data fetched successfully",
     )

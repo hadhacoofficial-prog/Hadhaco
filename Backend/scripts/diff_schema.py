@@ -68,7 +68,9 @@ def parse_sql_tables() -> dict[str, tuple[str, set[str]]]:
 def main() -> None:
     import_all_models()
     sql_tables = parse_sql_tables()
-    orm_tables = {t.name: {c.name for c in t.columns} for t in Base.metadata.tables.values()}
+    orm_tables = {
+        t.name: {c.name for c in t.columns} for t in Base.metadata.tables.values()
+    }
 
     missing_tables = sorted(set(orm_tables) - set(sql_tables))
     if missing_tables:

@@ -16,10 +16,19 @@ class SettingsService:
         return await _repo.list_flags(db)
 
     async def set_flag(
-        self, db: AsyncSession, *, key: str, data: FeatureFlagUpdate, updated_by: uuid.UUID
+        self,
+        db: AsyncSession,
+        *,
+        key: str,
+        data: FeatureFlagUpdate,
+        updated_by: uuid.UUID,
     ) -> FeatureFlag:
         flag = await _repo.upsert_flag(
-            db, key=key, value=data.value, description=data.description, updated_by=updated_by
+            db,
+            key=key,
+            value=data.value,
+            description=data.description,
+            updated_by=updated_by,
         )
         await db.commit()
         return flag

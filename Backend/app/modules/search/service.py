@@ -22,7 +22,13 @@ class SearchService:
         Falls back to ILIKE if no FTS results.
         """
         if not query or not query.strip():
-            return {"items": [], "total": 0, "page": page, "page_size": page_size, "total_pages": 0}
+            return {
+                "items": [],
+                "total": 0,
+                "page": page,
+                "page_size": page_size,
+                "total_pages": 0,
+            }
 
         safe_query = query.strip()[:200]
         offset = (page - 1) * page_size
@@ -107,7 +113,9 @@ class SearchService:
             "total_pages": math.ceil(total / page_size) if total else 0,
         }
 
-    async def autocomplete(self, db: AsyncSession, query: str, limit: int = 8) -> list[str]:
+    async def autocomplete(
+        self, db: AsyncSession, query: str, limit: int = 8
+    ) -> list[str]:
         """Return product name suggestions for autocomplete."""
         if not query or len(query) < 2:
             return []
@@ -137,7 +145,11 @@ class SearchService:
                 "INSERT INTO search_history (id, user_id, query, result_count, created_at) "
                 "VALUES (gen_random_uuid(), :user_id, :query, :result_count, now())"
             ),
-            {"user_id": user_id, "query": query.strip()[:200], "result_count": result_count},
+            {
+                "user_id": user_id,
+                "query": query.strip()[:200],
+                "result_count": result_count,
+            },
         )
 
     async def trending_searches(self, db: AsyncSession, limit: int = 10) -> list[dict]:

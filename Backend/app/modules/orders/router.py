@@ -105,7 +105,9 @@ async def verify_order_payment(
     current_user: Profile = Depends(get_current_user),
 ):
     result = await _service.verify_and_fulfill(db, current_user.id, payload)
-    return ok(result, ResponseCode.ORDER_CREATED, "Payment verified and order confirmed")
+    return ok(
+        result, ResponseCode.ORDER_CREATED, "Payment verified and order confirmed"
+    )
 
 
 @router.post(
@@ -173,4 +175,6 @@ async def update_order_status(
     db: AsyncSession = Depends(get_db),
 ):
     result = await _service.update_status(db, order_id, payload)
-    return ok(result, ResponseCode.ORDER_STATUS_UPDATED, "Order status updated successfully")
+    return ok(
+        result, ResponseCode.ORDER_STATUS_UPDATED, "Order status updated successfully"
+    )

@@ -40,18 +40,24 @@ def main() -> int:
         ):
             created.add(norm(m.group(1)))
         for m in re.finditer(
-            r"CREATE OR REPLACE (?:VIEW|MATERIALIZED VIEW)\s+(?:public\.)?([a-z_0-9]+)", text, re.I
+            r"CREATE OR REPLACE (?:VIEW|MATERIALIZED VIEW)\s+(?:public\.)?([a-z_0-9]+)",
+            text,
+            re.I,
         ):
             created.add(norm(m.group(1)))
 
-        for m in re.finditer(r"\bREFERENCES\s+((?:public\.|auth\.)?[a-z_0-9]+)", text, re.I):
+        for m in re.finditer(
+            r"\bREFERENCES\s+((?:public\.|auth\.)?[a-z_0-9]+)", text, re.I
+        ):
             ref = m.group(1).lower()
             ref = ref if ref.startswith("auth.") else norm(ref)
             if ref not in created:
                 problems.append(f"{fname}: FK references missing table {ref}")
 
         for m in re.finditer(
-            r"ALTER TABLE\s+(?:ONLY\s+)?((?:public\.)?[a-z_0-9]+)\s+ENABLE ROW", text, re.I
+            r"ALTER TABLE\s+(?:ONLY\s+)?((?:public\.)?[a-z_0-9]+)\s+ENABLE ROW",
+            text,
+            re.I,
         ):
             if norm(m.group(1)) not in created:
                 problems.append(f"{fname}: RLS on missing table {m.group(1)}")

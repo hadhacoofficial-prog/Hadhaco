@@ -37,9 +37,13 @@ class TestCollectionServiceSuccessPaths:
         mock_col = MagicMock()
         with (
             patch(
-                "app.modules.collections.service._repo.get_by_slug", AsyncMock(return_value=None)
+                "app.modules.collections.service._repo.get_by_slug",
+                AsyncMock(return_value=None),
             ),
-            patch("app.modules.collections.service._repo.create", AsyncMock(return_value=mock_col)),
+            patch(
+                "app.modules.collections.service._repo.create",
+                AsyncMock(return_value=mock_col),
+            ),
             patch(
                 "app.modules.collections.service.CollectionResponse.model_validate",
                 return_value=MagicMock(),
@@ -63,17 +67,21 @@ class TestCollectionServiceSuccessPaths:
                 AsyncMock(return_value=mock_existing),
             ),
             patch(
-                "app.modules.collections.service._repo.get_by_slug", AsyncMock(return_value=None)
+                "app.modules.collections.service._repo.get_by_slug",
+                AsyncMock(return_value=None),
             ),
             patch(
-                "app.modules.collections.service._repo.update", AsyncMock(return_value=mock_updated)
+                "app.modules.collections.service._repo.update",
+                AsyncMock(return_value=mock_updated),
             ),
             patch(
                 "app.modules.collections.service.CollectionResponse.model_validate",
                 return_value=MagicMock(),
             ),
         ):
-            await self.svc.update(db, uuid.uuid4(), CollectionUpdateRequest(slug="new-slug"))
+            await self.svc.update(
+                db, uuid.uuid4(), CollectionUpdateRequest(slug="new-slug")
+            )
 
     async def test_update_raises_conflict_when_slug_taken(self):
         from app.core.exceptions import ConflictError
@@ -94,7 +102,9 @@ class TestCollectionServiceSuccessPaths:
             ),
         ):
             with pytest.raises(ConflictError):
-                await self.svc.update(db, uuid.uuid4(), CollectionUpdateRequest(slug="taken-slug"))
+                await self.svc.update(
+                    db, uuid.uuid4(), CollectionUpdateRequest(slug="taken-slug")
+                )
 
     async def test_delete_calls_soft_delete(self):
         db = AsyncMock()
@@ -104,7 +114,9 @@ class TestCollectionServiceSuccessPaths:
                 "app.modules.collections.service._repo.get_by_id",
                 AsyncMock(return_value=mock_existing),
             ),
-            patch("app.modules.collections.service._repo.soft_delete", AsyncMock()) as mock_del,
+            patch(
+                "app.modules.collections.service._repo.soft_delete", AsyncMock()
+            ) as mock_del,
         ):
             await self.svc.delete(db, uuid.uuid4())
         mock_del.assert_awaited_once()
@@ -119,12 +131,16 @@ class TestCollectionServiceSuccessPaths:
                 "app.modules.collections.service._repo.get_by_id",
                 AsyncMock(return_value=mock_existing),
             ),
-            patch("app.modules.collections.service._repo.add_products", AsyncMock()) as mock_add,
+            patch(
+                "app.modules.collections.service._repo.add_products", AsyncMock()
+            ) as mock_add,
         ):
             await self.svc.add_products(
                 db,
                 uuid.uuid4(),
-                AddProductsToCollectionRequest(product_ids=[uuid.uuid4(), uuid.uuid4()]),
+                AddProductsToCollectionRequest(
+                    product_ids=[uuid.uuid4(), uuid.uuid4()]
+                ),
             )
         mock_add.assert_awaited_once()
 
@@ -133,10 +149,15 @@ class TestCollectionServiceSuccessPaths:
         from app.modules.collections.schemas import AddProductsToCollectionRequest
 
         db = AsyncMock()
-        with patch("app.modules.collections.service._repo.get_by_id", AsyncMock(return_value=None)):
+        with patch(
+            "app.modules.collections.service._repo.get_by_id",
+            AsyncMock(return_value=None),
+        ):
             with pytest.raises(NotFoundError):
                 await self.svc.add_products(
-                    db, uuid.uuid4(), AddProductsToCollectionRequest(product_ids=[uuid.uuid4()])
+                    db,
+                    uuid.uuid4(),
+                    AddProductsToCollectionRequest(product_ids=[uuid.uuid4()]),
                 )
 
     async def test_remove_product_calls_repo(self):
@@ -147,7 +168,9 @@ class TestCollectionServiceSuccessPaths:
                 "app.modules.collections.service._repo.get_by_id",
                 AsyncMock(return_value=mock_existing),
             ),
-            patch("app.modules.collections.service._repo.remove_product", AsyncMock()) as mock_rm,
+            patch(
+                "app.modules.collections.service._repo.remove_product", AsyncMock()
+            ) as mock_rm,
         ):
             await self.svc.remove_product(db, uuid.uuid4(), uuid.uuid4())
         mock_rm.assert_awaited_once()
@@ -156,7 +179,10 @@ class TestCollectionServiceSuccessPaths:
         from app.core.exceptions import NotFoundError
 
         db = AsyncMock()
-        with patch("app.modules.collections.service._repo.get_by_id", AsyncMock(return_value=None)):
+        with patch(
+            "app.modules.collections.service._repo.get_by_id",
+            AsyncMock(return_value=None),
+        ):
             with pytest.raises(NotFoundError):
                 await self.svc.remove_product(db, uuid.uuid4(), uuid.uuid4())
 
@@ -238,7 +264,10 @@ class TestAuthService2FA:
         db.execute = AsyncMock(return_value=mock_result)
 
         with (
-            patch("app.modules.auth.service.decrypt_value", return_value="JBSWY3DPEHPK3PXP"),
+            patch(
+                "app.modules.auth.service.decrypt_value",
+                return_value="JBSWY3DPEHPK3PXP",
+            ),
             patch("app.modules.auth.service.pyotp.TOTP") as mock_totp_cls,
         ):
             mock_totp = MagicMock()
@@ -258,17 +287,23 @@ class TestAuthService2FA:
         db.execute = AsyncMock(return_value=mock_result)
 
         with (
-            patch("app.modules.auth.service.decrypt_value", return_value="JBSWY3DPEHPK3PXP"),
+            patch(
+                "app.modules.auth.service.decrypt_value",
+                return_value="JBSWY3DPEHPK3PXP",
+            ),
             patch("app.modules.auth.service.pyotp.TOTP") as mock_totp_cls,
             patch(
-                "app.modules.auth.service.generate_backup_codes", return_value=["CODE1", "CODE2"]
+                "app.modules.auth.service.generate_backup_codes",
+                return_value=["CODE1", "CODE2"],
             ),
             patch("app.modules.auth.service.hash_backup_code", return_value="hashed"),
         ):
             mock_totp = MagicMock()
             mock_totp.verify.return_value = True
             mock_totp_cls.return_value = mock_totp
-            result = await self.svc.verify_and_activate_2fa(db, str(uuid.uuid4()), "123456")
+            result = await self.svc.verify_and_activate_2fa(
+                db, str(uuid.uuid4()), "123456"
+            )
 
         assert result == ["CODE1", "CODE2"]
 
@@ -282,7 +317,10 @@ class TestAuthService2FA:
         db.execute = AsyncMock(return_value=mock_result)
 
         with (
-            patch("app.modules.auth.service.decrypt_value", return_value="JBSWY3DPEHPK3PXP"),
+            patch(
+                "app.modules.auth.service.decrypt_value",
+                return_value="JBSWY3DPEHPK3PXP",
+            ),
             patch("app.modules.auth.service.pyotp.TOTP") as mock_totp_cls,
         ):
             mock_totp = MagicMock()
@@ -302,7 +340,10 @@ class TestAuthService2FA:
         db.execute = AsyncMock(return_value=mock_result)
 
         with (
-            patch("app.modules.auth.service.decrypt_value", return_value="JBSWY3DPEHPK3PXP"),
+            patch(
+                "app.modules.auth.service.decrypt_value",
+                return_value="JBSWY3DPEHPK3PXP",
+            ),
             patch("app.modules.auth.service.pyotp.TOTP") as mock_totp_cls,
         ):
             mock_totp = MagicMock()
@@ -322,7 +363,10 @@ class TestAuthService2FA:
         db.execute = AsyncMock(return_value=mock_result)
 
         with (
-            patch("app.modules.auth.service.decrypt_value", return_value="JBSWY3DPEHPK3PXP"),
+            patch(
+                "app.modules.auth.service.decrypt_value",
+                return_value="JBSWY3DPEHPK3PXP",
+            ),
             patch("app.modules.auth.service.pyotp.TOTP") as mock_totp_cls,
             patch("app.modules.auth.service.verify_backup_code", return_value=True),
         ):
@@ -347,7 +391,9 @@ class TestAuthService2FA:
     async def test_record_admin_session_adds_to_db(self):
         db = AsyncMock()
         db.add = MagicMock()
-        await self.svc.record_admin_session(db, str(uuid.uuid4()), "1.2.3.4", "Mozilla/5.0")
+        await self.svc.record_admin_session(
+            db, str(uuid.uuid4()), "1.2.3.4", "Mozilla/5.0"
+        )
         db.add.assert_called_once()
 
     async def test_logout_calls_supabase_api(self):

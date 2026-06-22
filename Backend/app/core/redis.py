@@ -54,7 +54,9 @@ async def safe_redis_get(redis: aioredis.Redis, key: str) -> str | None:
         return None
 
 
-async def safe_redis_setex(redis: aioredis.Redis, key: str, ttl: int, value: str) -> None:
+async def safe_redis_setex(
+    redis: aioredis.Redis, key: str, ttl: int, value: str
+) -> None:
     """Set a Redis key with a hard timeout and circuit-breaker guard. Fire-and-forget."""
     if not redis_available():
         return

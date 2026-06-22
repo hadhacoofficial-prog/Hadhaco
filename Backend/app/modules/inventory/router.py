@@ -28,7 +28,9 @@ _service = InventoryService()
 async def get_low_stock(db: AsyncSession = Depends(get_db)):
     result = await _service.get_low_stock(db)
     return ok(
-        result, ResponseCode.INVENTORY_LOW_STOCK_LISTED, "Low stock items listed successfully"
+        result,
+        ResponseCode.INVENTORY_LOW_STOCK_LISTED,
+        "Low stock items listed successfully",
     )
 
 
@@ -55,7 +57,9 @@ async def get_inventory_history(
         movement_type=movement_type,
     )
     return ok(
-        result, ResponseCode.INVENTORY_HISTORY_FETCHED, "Inventory history fetched successfully"
+        result,
+        ResponseCode.INVENTORY_HISTORY_FETCHED,
+        "Inventory history fetched successfully",
     )
 
 
@@ -71,4 +75,6 @@ async def manual_adjustment(
     current_user: Profile = Depends(get_current_user),
 ):
     result = await _service.manual_adjustment(db, product_id, payload, current_user.id)
-    return ok(result, ResponseCode.INVENTORY_ADJUSTED, "Inventory adjusted successfully")
+    return ok(
+        result, ResponseCode.INVENTORY_ADJUSTED, "Inventory adjusted successfully"
+    )

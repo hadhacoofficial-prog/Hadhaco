@@ -24,12 +24,16 @@ async def run() -> None:
     t0 = time.perf_counter()
     log.info("abandoned_cart_started")
     try:
-        cutoff = datetime.now(UTC) - timedelta(hours=settings.ABANDONED_CART_THRESHOLD_HOURS)
+        cutoff = datetime.now(UTC) - timedelta(
+            hours=settings.ABANDONED_CART_THRESHOLD_HOURS
+        )
 
         async with AsyncSessionLocal() as db:
             from app.modules.settings.service import SettingsService
 
-            if not await SettingsService.is_feature_enabled(db, "cart_abandonment_emails"):
+            if not await SettingsService.is_feature_enabled(
+                db, "cart_abandonment_emails"
+            ):
                 log.info("abandoned_cart_skipped", reason="feature_disabled")
                 return
 
@@ -50,7 +54,9 @@ async def run() -> None:
                     )
                     profile = profile_result.scalar_one_or_none()
                     if profile and profile.email and profile.is_active:
-                        from app.modules.notifications.service import NotificationService
+                        from app.modules.notifications.service import (
+                            NotificationService,
+                        )
 
                         await NotificationService().send_email(
                             db,
@@ -64,7 +70,9 @@ async def run() -> None:
                         )
                         sent += 1
                 except Exception:
-                    log.exception("abandoned_cart_send_failed", user_id=str(row.user_id))
+                    log.exception(
+                        "abandoned_cart_send_failed", user_id=str(row.user_id)
+                    )
 
         duration_ms = round((time.perf_counter() - t0) * 1000)
         log.info("abandoned_cart_completed", sent=sent, duration_ms=duration_ms)

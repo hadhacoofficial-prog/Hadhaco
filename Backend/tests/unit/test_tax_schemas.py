@@ -32,7 +32,12 @@ class TestTaxBreakdown:
         assert bd.total_tax == bd.igst_amount
 
     def test_split_intrastate_preserves_total(self):
-        for amount in [Decimal("1.00"), Decimal("99.99"), Decimal("1500.50"), Decimal("26.95")]:
+        for amount in [
+            Decimal("1.00"),
+            Decimal("99.99"),
+            Decimal("1500.50"),
+            Decimal("26.95"),
+        ]:
             bd = TaxService.split_total_tax(amount, "Maharashtra")
             assert bd.cgst_amount + bd.sgst_amount == amount
 

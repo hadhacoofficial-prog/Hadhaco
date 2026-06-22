@@ -8,15 +8,21 @@ from app.modules.collections.models import Collection, ProductCollection
 
 
 class CollectionRepository:
-    async def get_by_id(self, db: AsyncSession, col_id: str | uuid.UUID) -> Collection | None:
+    async def get_by_id(
+        self, db: AsyncSession, col_id: str | uuid.UUID
+    ) -> Collection | None:
         result = await db.execute(
-            select(Collection).where(Collection.id == col_id, Collection.deleted_at.is_(None))
+            select(Collection).where(
+                Collection.id == col_id, Collection.deleted_at.is_(None)
+            )
         )
         return result.scalar_one_or_none()
 
     async def get_by_slug(self, db: AsyncSession, slug: str) -> Collection | None:
         result = await db.execute(
-            select(Collection).where(Collection.slug == slug, Collection.deleted_at.is_(None))
+            select(Collection).where(
+                Collection.slug == slug, Collection.deleted_at.is_(None)
+            )
         )
         return result.scalar_one_or_none()
 
@@ -38,7 +44,9 @@ class CollectionRepository:
     async def update(
         self, db: AsyncSession, col_id: str | uuid.UUID, data: dict[str, Any]
     ) -> Collection | None:
-        await db.execute(update(Collection).where(Collection.id == col_id).values(**data))
+        await db.execute(
+            update(Collection).where(Collection.id == col_id).values(**data)
+        )
         return await self.get_by_id(db, col_id)
 
     async def soft_delete(self, db: AsyncSession, col_id: str | uuid.UUID) -> None:
@@ -74,7 +82,9 @@ class CollectionRepository:
             )
         )
 
-    async def get_product_ids(self, db: AsyncSession, col_id: uuid.UUID) -> list[uuid.UUID]:
+    async def get_product_ids(
+        self, db: AsyncSession, col_id: uuid.UUID
+    ) -> list[uuid.UUID]:
         result = await db.execute(
             select(ProductCollection.product_id)
             .where(ProductCollection.collection_id == col_id)

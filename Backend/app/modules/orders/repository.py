@@ -19,9 +19,13 @@ class OrderRepository:
         )
         return result.scalar_one_or_none()
 
-    async def get_by_order_number(self, db: AsyncSession, order_number: str) -> Order | None:
+    async def get_by_order_number(
+        self, db: AsyncSession, order_number: str
+    ) -> Order | None:
         result = await db.execute(
-            select(Order).where(Order.order_number == order_number).options(self._with_items())
+            select(Order)
+            .where(Order.order_number == order_number)
+            .options(self._with_items())
         )
         return result.scalar_one_or_none()
 
@@ -46,7 +50,9 @@ class OrderRepository:
     ) -> tuple[list[Order], int]:
         item_count_sq = self._item_count_subquery()
 
-        q = select(Order, item_count_sq.label("_item_count")).where(Order.user_id == user_id)
+        q = select(Order, item_count_sq.label("_item_count")).where(
+            Order.user_id == user_id
+        )
         count_q = select(func.count(Order.id)).where(Order.user_id == user_id)
 
         if status:
@@ -55,7 +61,11 @@ class OrderRepository:
 
         total = (await db.execute(count_q)).scalar_one()
 
-        q = q.order_by(Order.created_at.desc()).offset((page - 1) * page_size).limit(page_size)
+        q = (
+            q.order_by(Order.created_at.desc())
+            .offset((page - 1) * page_size)
+            .limit(page_size)
+        )
         result = await db.execute(q)
 
         orders: list[Order] = []
@@ -95,7 +105,11 @@ class OrderRepository:
 
         total = (await db.execute(count_q)).scalar_one()
 
-        q = q.order_by(Order.created_at.desc()).offset((page - 1) * page_size).limit(page_size)
+        q = (
+            q.order_by(Order.created_at.desc())
+            .offset((page - 1) * page_size)
+            .limit(page_size)
+        )
         result = await db.execute(q)
 
         orders: list[Order] = []

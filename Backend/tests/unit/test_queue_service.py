@@ -22,7 +22,9 @@ class TestQueueService:
             svc._scheduler._state = 1  # RUNNING state in APScheduler
         with patch.object(svc._scheduler, "shutdown") as mock_shutdown:
             with patch.object(
-                type(svc._scheduler), "running", new_callable=lambda: property(lambda self: True)
+                type(svc._scheduler),
+                "running",
+                new_callable=lambda: property(lambda self: True),
             ):
                 svc.shutdown()
                 mock_shutdown.assert_called_once_with(wait=False)

@@ -101,7 +101,9 @@ class CartRepository:
     async def update_item_quantity(
         self, db: AsyncSession, item_id: uuid.UUID, quantity: int
     ) -> CartItem | None:
-        await db.execute(update(CartItem).where(CartItem.id == item_id).values(quantity=quantity))
+        await db.execute(
+            update(CartItem).where(CartItem.id == item_id).values(quantity=quantity)
+        )
         result = await db.execute(select(CartItem).where(CartItem.id == item_id))
         return result.scalar_one_or_none()
 
@@ -112,7 +114,9 @@ class CartRepository:
     async def clear_items(self, db: AsyncSession, cart_id: uuid.UUID) -> None:
         await db.execute(delete(CartItem).where(CartItem.cart_id == cart_id))
 
-    async def update_cart(self, db: AsyncSession, cart_id: uuid.UUID, data: dict[str, Any]) -> None:
+    async def update_cart(
+        self, db: AsyncSession, cart_id: uuid.UUID, data: dict[str, Any]
+    ) -> None:
         await db.execute(update(Cart).where(Cart.id == cart_id).values(**data))
 
     async def merge_guest_into_user(
@@ -130,5 +134,7 @@ class CartRepository:
             )
         # Expire guest cart immediately
         await db.execute(
-            update(Cart).where(Cart.id == guest_cart.id).values(expires_at=datetime.now(UTC))
+            update(Cart)
+            .where(Cart.id == guest_cart.id)
+            .values(expires_at=datetime.now(UTC))
         )

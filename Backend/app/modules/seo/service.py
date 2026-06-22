@@ -75,7 +75,9 @@ class SeoService:
 
         # Static pages
         for path in ["/", "/collections", "/categories"]:
-            lines.append(f"  <url><loc>{base_url}{path}</loc><changefreq>weekly</changefreq></url>")
+            lines.append(
+                f"  <url><loc>{base_url}{path}</loc><changefreq>weekly</changefreq></url>"
+            )
 
         # Active products
         products = await db.execute(
@@ -93,7 +95,9 @@ class SeoService:
 
         # Active categories
         cats = await db.execute(
-            text("SELECT slug FROM categories WHERE is_active = true AND deleted_at IS NULL")
+            text(
+                "SELECT slug FROM categories WHERE is_active = true AND deleted_at IS NULL"
+            )
         )
         for row in cats.fetchall():
             lines.append(

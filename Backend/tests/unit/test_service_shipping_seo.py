@@ -100,7 +100,10 @@ class TestShippingServiceCreateShipment:
 
         db = AsyncMock()
         with (
-            patch("app.modules.shipping.service._repo.get_for_order", AsyncMock(return_value=None)),
+            patch(
+                "app.modules.shipping.service._repo.get_for_order",
+                AsyncMock(return_value=None),
+            ),
             patch.object(OrderRepository, "get_by_id", AsyncMock(return_value=None)),
         ):
             with pytest.raises(NotFoundError):
@@ -114,8 +117,13 @@ class TestShippingServiceCreateShipment:
         mock_order = MagicMock()
         mock_order.status = "delivered"  # not confirmed or processing
         with (
-            patch("app.modules.shipping.service._repo.get_for_order", AsyncMock(return_value=None)),
-            patch.object(OrderRepository, "get_by_id", AsyncMock(return_value=mock_order)),
+            patch(
+                "app.modules.shipping.service._repo.get_for_order",
+                AsyncMock(return_value=None),
+            ),
+            patch.object(
+                OrderRepository, "get_by_id", AsyncMock(return_value=mock_order)
+            ),
         ):
             with pytest.raises(ValidationError):
                 await self.svc.create_shipment(db, uuid.uuid4(), self._payload())
@@ -128,8 +136,13 @@ class TestShippingServiceCreateShipment:
         mock_order = MagicMock()
         mock_order.status = "cancelled"
         with (
-            patch("app.modules.shipping.service._repo.get_for_order", AsyncMock(return_value=None)),
-            patch.object(OrderRepository, "get_by_id", AsyncMock(return_value=mock_order)),
+            patch(
+                "app.modules.shipping.service._repo.get_for_order",
+                AsyncMock(return_value=None),
+            ),
+            patch.object(
+                OrderRepository, "get_by_id", AsyncMock(return_value=mock_order)
+            ),
         ):
             with pytest.raises(ValidationError):
                 await self.svc.create_shipment(db, uuid.uuid4(), self._payload())
@@ -157,7 +170,9 @@ class TestShippingServiceGetShipment:
         db = AsyncMock()
         mock_order = MagicMock()
         mock_order.user_id = uuid.uuid4()  # different from caller
-        with patch.object(OrderRepository, "get_by_id", AsyncMock(return_value=mock_order)):
+        with patch.object(
+            OrderRepository, "get_by_id", AsyncMock(return_value=mock_order)
+        ):
             with pytest.raises(NotFoundError):
                 await self.svc.get_shipment(db, uuid.uuid4(), user_id=uuid.uuid4())
 
@@ -166,7 +181,8 @@ class TestShippingServiceGetShipment:
 
         db = AsyncMock()
         with patch(
-            "app.modules.shipping.service._repo.get_for_order", AsyncMock(return_value=None)
+            "app.modules.shipping.service._repo.get_for_order",
+            AsyncMock(return_value=None),
         ):
             with pytest.raises(NotFoundError):
                 await self.svc.get_shipment(db, uuid.uuid4(), user_id=None)
@@ -182,7 +198,10 @@ class TestShippingServiceTrack:
         from app.core.exceptions import NotFoundError
 
         db = AsyncMock()
-        with patch("app.modules.shipping.service._repo.get_by_awb", AsyncMock(return_value=None)):
+        with patch(
+            "app.modules.shipping.service._repo.get_by_awb",
+            AsyncMock(return_value=None),
+        ):
             with pytest.raises(NotFoundError):
                 await self.svc.track(db, "AWB-NOT-FOUND")
 

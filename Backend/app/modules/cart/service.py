@@ -99,9 +99,16 @@ class CartService:
         session_id: str | None = None,
     ) -> CartSummary:
         cart = await self._get_or_create(db, user_id, session_id)
-        unit_price = await self._fetch_product_price(db, payload.product_id, payload.variant_id)
+        unit_price = await self._fetch_product_price(
+            db, payload.product_id, payload.variant_id
+        )
         await _repo.upsert_item(
-            db, cart.id, payload.product_id, payload.variant_id, payload.quantity, unit_price
+            db,
+            cart.id,
+            payload.product_id,
+            payload.variant_id,
+            payload.quantity,
+            unit_price,
         )
         # Reload with fresh items
         cart = await _repo.get_by_id(db, cart.id)

@@ -43,7 +43,8 @@ class TestCMSService:
 
         db = AsyncMock()
         with patch(
-            "app.modules.cms.repository.CMSRepository.get_page", AsyncMock(return_value=None)
+            "app.modules.cms.repository.CMSRepository.get_page",
+            AsyncMock(return_value=None),
         ):
             with pytest.raises(HTTPException) as exc:
                 await self.svc.get_page(db, "nonexistent-slug")
@@ -54,7 +55,8 @@ class TestCMSService:
 
         db = AsyncMock()
         with patch(
-            "app.modules.cms.repository.CMSRepository.get_banner", AsyncMock(return_value=None)
+            "app.modules.cms.repository.CMSRepository.get_banner",
+            AsyncMock(return_value=None),
         ):
             with pytest.raises(HTTPException) as exc:
                 await self.svc.delete_banner(db, uuid.uuid4())
@@ -71,7 +73,9 @@ class TestCMSService:
             AsyncMock(return_value=None),
         ):
             with pytest.raises(HTTPException) as exc:
-                await self.svc.update_section(db, "nonexistent-key", LandingSectionUpdate())
+                await self.svc.update_section(
+                    db, "nonexistent-key", LandingSectionUpdate()
+                )
         assert exc.value.status_code == 404
 
     async def test_update_page_raises_404_when_not_found(self):
@@ -81,7 +85,8 @@ class TestCMSService:
 
         db = AsyncMock()
         with patch(
-            "app.modules.cms.repository.CMSRepository.get_page_by_id", AsyncMock(return_value=None)
+            "app.modules.cms.repository.CMSRepository.get_page_by_id",
+            AsyncMock(return_value=None),
         ):
             with pytest.raises(HTTPException) as exc:
                 await self.svc.update_page(db, uuid.uuid4(), CmsPageUpdate())
@@ -131,7 +136,9 @@ class TestCategoryService:
         ):
             with pytest.raises(ConflictError):
                 await self.svc.create(
-                    db, CategoryCreateRequest(name="Silver", slug="silver"), actor_id="admin1"
+                    db,
+                    CategoryCreateRequest(name="Silver", slug="silver"),
+                    actor_id="admin1",
                 )
 
 
@@ -151,7 +158,8 @@ class TestCouponServiceMocked:
         db = AsyncMock()
         existing = MagicMock()
         with patch(
-            "app.modules.coupons.service._repo.get_by_code", AsyncMock(return_value=existing)
+            "app.modules.coupons.service._repo.get_by_code",
+            AsyncMock(return_value=existing),
         ):
             with pytest.raises(ConflictError):
                 await self.svc.create(
@@ -170,7 +178,9 @@ class TestCouponServiceMocked:
         from app.modules.coupons.schemas import CouponUpdateRequest
 
         db = AsyncMock()
-        with patch("app.modules.coupons.service._repo.get_by_id", AsyncMock(return_value=None)):
+        with patch(
+            "app.modules.coupons.service._repo.get_by_id", AsyncMock(return_value=None)
+        ):
             with pytest.raises(NotFoundError):
                 await self.svc.update(db, uuid.uuid4(), CouponUpdateRequest())
 
@@ -178,13 +188,18 @@ class TestCouponServiceMocked:
         from app.core.exceptions import NotFoundError
 
         db = AsyncMock()
-        with patch("app.modules.coupons.service._repo.get_by_id", AsyncMock(return_value=None)):
+        with patch(
+            "app.modules.coupons.service._repo.get_by_id", AsyncMock(return_value=None)
+        ):
             with pytest.raises(NotFoundError):
                 await self.svc.delete(db, uuid.uuid4())
 
     async def test_validate_invalid_for_unknown_code(self):
         db = AsyncMock()
-        with patch("app.modules.coupons.service._repo.get_by_code", AsyncMock(return_value=None)):
+        with patch(
+            "app.modules.coupons.service._repo.get_by_code",
+            AsyncMock(return_value=None),
+        ):
             result = await self.svc.validate(db, "UNKNOWN", 500.0, uuid.uuid4())
         assert result.valid is False
         assert result.discount_amount == 0
@@ -193,7 +208,10 @@ class TestCouponServiceMocked:
         db = AsyncMock()
         coupon = MagicMock()
         coupon.is_active = False
-        with patch("app.modules.coupons.service._repo.get_by_code", AsyncMock(return_value=coupon)):
+        with patch(
+            "app.modules.coupons.service._repo.get_by_code",
+            AsyncMock(return_value=coupon),
+        ):
             result = await self.svc.validate(db, "INACTIVE", 500.0, uuid.uuid4())
         assert result.valid is False
 
@@ -204,7 +222,10 @@ class TestCouponServiceMocked:
         coupon.valid_from = datetime(2020, 1, 1, tzinfo=UTC)
         coupon.valid_until = datetime(2020, 12, 31, tzinfo=UTC)
         coupon.usage_limit = None
-        with patch("app.modules.coupons.service._repo.get_by_code", AsyncMock(return_value=coupon)):
+        with patch(
+            "app.modules.coupons.service._repo.get_by_code",
+            AsyncMock(return_value=coupon),
+        ):
             result = await self.svc.validate(db, "EXPIRED", 500.0, uuid.uuid4())
         assert result.valid is False
         assert "expired" in result.message.lower()
@@ -217,7 +238,10 @@ class TestCouponServiceMocked:
         coupon.valid_until = None
         coupon.usage_limit = None
         coupon.min_order_amount = Decimal("1000.00")
-        with patch("app.modules.coupons.service._repo.get_by_code", AsyncMock(return_value=coupon)):
+        with patch(
+            "app.modules.coupons.service._repo.get_by_code",
+            AsyncMock(return_value=coupon),
+        ):
             result = await self.svc.validate(db, "BIG500", 500.0, uuid.uuid4())
         assert result.valid is False
         assert "minimum" in result.message.lower()
@@ -237,9 +261,13 @@ class TestAddressService:
         from app.modules.addresses.schemas import AddressUpdateRequest
 
         db = AsyncMock()
-        with patch("app.modules.addresses.service._repo.get", AsyncMock(return_value=None)):
+        with patch(
+            "app.modules.addresses.service._repo.get", AsyncMock(return_value=None)
+        ):
             with pytest.raises(NotFoundError):
-                await self.svc.update(db, uuid.uuid4(), uuid.uuid4(), AddressUpdateRequest())
+                await self.svc.update(
+                    db, uuid.uuid4(), uuid.uuid4(), AddressUpdateRequest()
+                )
 
 
 # ─── Inventory Service ────────────────────────────────────────────────────────────
@@ -256,7 +284,8 @@ class TestInventoryService:
 
         db = AsyncMock()
         with patch(
-            "app.modules.inventory.service._repo.get_stock_snapshot", AsyncMock(return_value=None)
+            "app.modules.inventory.service._repo.get_stock_snapshot",
+            AsyncMock(return_value=None),
         ):
             with pytest.raises(NotFoundError):
                 await self.svc.record_movement(
@@ -293,6 +322,9 @@ class TestInventoryService:
 
     async def test_get_low_stock_delegates_to_repo(self):
         db = AsyncMock()
-        with patch("app.modules.inventory.service._repo.get_low_stock", AsyncMock(return_value=[])):
+        with patch(
+            "app.modules.inventory.service._repo.get_low_stock",
+            AsyncMock(return_value=[]),
+        ):
             result = await self.svc.get_low_stock(db)
         assert result == []

@@ -111,7 +111,9 @@ class ProductCreateRequest(BaseModel):
         import re
 
         if not re.match(r"^[a-z0-9-]+$", v):
-            raise ValueError("slug must contain only lowercase letters, numbers, and hyphens")
+            raise ValueError(
+                "slug must contain only lowercase letters, numbers, and hyphens"
+            )
         return v
 
     @field_validator("status")
@@ -165,7 +167,9 @@ class ProductUpdateRequest(BaseModel):
         import re
 
         if not re.match(r"^[a-z0-9-]+$", v):
-            raise ValueError("slug must contain only lowercase letters, numbers, and hyphens")
+            raise ValueError(
+                "slug must contain only lowercase letters, numbers, and hyphens"
+            )
         return v
 
     @field_validator("status")

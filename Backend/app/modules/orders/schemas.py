@@ -89,7 +89,9 @@ class CreateOrderRequest(BaseModel):
 
 
 class UpdateOrderStatusRequest(BaseModel):
-    status: str = Field(..., pattern="^(confirmed|processing|shipped|delivered|cancelled)$")
+    status: str = Field(
+        ..., pattern="^(confirmed|processing|shipped|delivered|cancelled)$"
+    )
     cancellation_reason: str | None = None
     tracking_number: str | None = None
     shipping_provider: str | None = None

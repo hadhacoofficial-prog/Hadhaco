@@ -136,7 +136,9 @@ class TestWishlistRepository:
         mock_result = MagicMock()
         mock_result.rowcount = 1
         db = _db(mock_result)
-        result = await self.repo.remove_item(db, uuid.uuid4(), uuid.uuid4(), uuid.uuid4())
+        result = await self.repo.remove_item(
+            db, uuid.uuid4(), uuid.uuid4(), uuid.uuid4()
+        )
         assert result is True
 
     async def test_is_in_wishlist_true(self):
@@ -155,7 +157,9 @@ class TestWishlistRepository:
         mock_result = MagicMock()
         mock_result.scalar_one_or_none.return_value = uuid.uuid4()
         db = _db(mock_result)
-        result = await self.repo.is_in_wishlist(db, uuid.uuid4(), uuid.uuid4(), uuid.uuid4())
+        result = await self.repo.is_in_wishlist(
+            db, uuid.uuid4(), uuid.uuid4(), uuid.uuid4()
+        )
         assert result is True
 
 
@@ -267,7 +271,9 @@ class TestReturnRepository:
 
     async def test_add_item(self):
         db = _db()
-        await self.repo.add_item(db, return_id=uuid.uuid4(), order_item_id=uuid.uuid4(), quantity=1)
+        await self.repo.add_item(
+            db, return_id=uuid.uuid4(), order_item_id=uuid.uuid4(), quantity=1
+        )
         db.add.assert_called_once()
 
     async def test_update_status(self):
@@ -328,7 +334,9 @@ class TestFraudRepository:
     async def test_update_sets_attrs(self):
         db = _db()
         signal = MagicMock()
-        await self.repo.update(db, signal, {"is_resolved": True, "resolved_by": uuid.uuid4()})
+        await self.repo.update(
+            db, signal, {"is_resolved": True, "resolved_by": uuid.uuid4()}
+        )
         assert signal.is_resolved is True
 
 

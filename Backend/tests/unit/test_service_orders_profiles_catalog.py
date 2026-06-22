@@ -19,7 +19,9 @@ class TestOrderServiceGetAndList:
         from app.core.exceptions import NotFoundError
 
         db = AsyncMock()
-        with patch("app.modules.orders.service._repo.get_by_id", AsyncMock(return_value=None)):
+        with patch(
+            "app.modules.orders.service._repo.get_by_id", AsyncMock(return_value=None)
+        ):
             with pytest.raises(NotFoundError):
                 await self.svc.get_order(db, uuid.uuid4())
 
@@ -30,7 +32,8 @@ class TestOrderServiceGetAndList:
         mock_order = MagicMock()
         mock_order.user_id = uuid.uuid4()  # different user
         with patch(
-            "app.modules.orders.service._repo.get_by_id", AsyncMock(return_value=mock_order)
+            "app.modules.orders.service._repo.get_by_id",
+            AsyncMock(return_value=mock_order),
         ):
             with pytest.raises(NotFoundError):
                 await self.svc.get_order(db, uuid.uuid4(), user_id=uuid.uuid4())
@@ -39,9 +42,13 @@ class TestOrderServiceGetAndList:
         db = AsyncMock()
         mock_order = MagicMock()
         with (
-            patch("app.modules.orders.service._repo.get_by_id", AsyncMock(return_value=mock_order)),
             patch(
-                "app.modules.orders.service.OrderResponse.model_validate", return_value=MagicMock()
+                "app.modules.orders.service._repo.get_by_id",
+                AsyncMock(return_value=mock_order),
+            ),
+            patch(
+                "app.modules.orders.service.OrderResponse.model_validate",
+                return_value=MagicMock(),
             ),
         ):
             result = await self.svc.get_order(db, uuid.uuid4())
@@ -63,7 +70,9 @@ class TestOrderServiceGetAndList:
             "app.modules.orders.service._repo.list_for_user",
             AsyncMock(return_value=([mock_order], 1)),
         ):
-            result = await self.svc.list_my_orders(db, uuid.uuid4(), page=1, page_size=20)
+            result = await self.svc.list_my_orders(
+                db, uuid.uuid4(), page=1, page_size=20
+            )
         assert result.total == 1
 
     async def test_admin_list_orders_returns_paginated(self):
@@ -78,7 +87,8 @@ class TestOrderServiceGetAndList:
         mock_order.total = 1500.0
         mock_order.created_at = datetime.now(UTC)
         with patch(
-            "app.modules.orders.service._repo.list_all", AsyncMock(return_value=([mock_order], 1))
+            "app.modules.orders.service._repo.list_all",
+            AsyncMock(return_value=([mock_order], 1)),
         ):
             result = await self.svc.admin_list_orders(db, page=1, page_size=20)
         assert result.total == 1
@@ -95,7 +105,9 @@ class TestOrderServiceUpdateStatus:
         from app.modules.orders.schemas import UpdateOrderStatusRequest
 
         db = AsyncMock()
-        with patch("app.modules.orders.service._repo.get_by_id", AsyncMock(return_value=None)):
+        with patch(
+            "app.modules.orders.service._repo.get_by_id", AsyncMock(return_value=None)
+        ):
             with pytest.raises(NotFoundError):
                 await self.svc.update_status(
                     db, uuid.uuid4(), UpdateOrderStatusRequest(status="confirmed")
@@ -111,11 +123,18 @@ class TestOrderServiceUpdateStatus:
         mock_order.status = "pending"
         mock_updated = MagicMock()
         with (
-            patch("app.modules.orders.service._repo.get_by_id", AsyncMock(return_value=mock_order)),
-            patch("app.modules.orders.service._repo.update", AsyncMock(return_value=mock_updated)),
+            patch(
+                "app.modules.orders.service._repo.get_by_id",
+                AsyncMock(return_value=mock_order),
+            ),
+            patch(
+                "app.modules.orders.service._repo.update",
+                AsyncMock(return_value=mock_updated),
+            ),
             patch.object(event_bus, "publish", AsyncMock()),
             patch(
-                "app.modules.orders.service.OrderResponse.model_validate", return_value=MagicMock()
+                "app.modules.orders.service.OrderResponse.model_validate",
+                return_value=MagicMock(),
             ),
         ):
             result = await self.svc.update_status(
@@ -139,11 +158,15 @@ class TestOrderServiceUpdateStatus:
             return mock_updated
 
         with (
-            patch("app.modules.orders.service._repo.get_by_id", AsyncMock(return_value=mock_order)),
+            patch(
+                "app.modules.orders.service._repo.get_by_id",
+                AsyncMock(return_value=mock_order),
+            ),
             patch("app.modules.orders.service._repo.update", capture_update),
             patch.object(event_bus, "publish", AsyncMock()),
             patch(
-                "app.modules.orders.service.OrderResponse.model_validate", return_value=MagicMock()
+                "app.modules.orders.service.OrderResponse.model_validate",
+                return_value=MagicMock(),
             ),
         ):
             await self.svc.update_status(
@@ -163,10 +186,15 @@ class TestOrderServiceCancel:
         from app.modules.orders.schemas import CancelOrderRequest
 
         db = AsyncMock()
-        with patch("app.modules.orders.service._repo.get_by_id", AsyncMock(return_value=None)):
+        with patch(
+            "app.modules.orders.service._repo.get_by_id", AsyncMock(return_value=None)
+        ):
             with pytest.raises(NotFoundError):
                 await self.svc.cancel_order(
-                    db, uuid.uuid4(), uuid.uuid4(), CancelOrderRequest(reason="Changed mind")
+                    db,
+                    uuid.uuid4(),
+                    uuid.uuid4(),
+                    CancelOrderRequest(reason="Changed mind"),
                 )
 
     async def test_cancel_raises_404_when_wrong_user(self):
@@ -177,11 +205,15 @@ class TestOrderServiceCancel:
         mock_order = MagicMock()
         mock_order.user_id = uuid.uuid4()  # different user
         with patch(
-            "app.modules.orders.service._repo.get_by_id", AsyncMock(return_value=mock_order)
+            "app.modules.orders.service._repo.get_by_id",
+            AsyncMock(return_value=mock_order),
         ):
             with pytest.raises(NotFoundError):
                 await self.svc.cancel_order(
-                    db, uuid.uuid4(), uuid.uuid4(), CancelOrderRequest(reason="Changed mind")
+                    db,
+                    uuid.uuid4(),
+                    uuid.uuid4(),
+                    CancelOrderRequest(reason="Changed mind"),
                 )
 
     async def test_cancel_raises_validation_error_when_already_delivered(self):
@@ -194,7 +226,8 @@ class TestOrderServiceCancel:
         mock_order.user_id = user_id
         mock_order.status = "delivered"  # not in _CANCELLABLE_STATUSES
         with patch(
-            "app.modules.orders.service._repo.get_by_id", AsyncMock(return_value=mock_order)
+            "app.modules.orders.service._repo.get_by_id",
+            AsyncMock(return_value=mock_order),
         ):
             with pytest.raises(ValidationError):
                 await self.svc.cancel_order(
@@ -213,11 +246,18 @@ class TestOrderServiceCancel:
         mock_order.items = []
         mock_updated = MagicMock()
         with (
-            patch("app.modules.orders.service._repo.get_by_id", AsyncMock(return_value=mock_order)),
-            patch("app.modules.orders.service._repo.update", AsyncMock(return_value=mock_updated)),
+            patch(
+                "app.modules.orders.service._repo.get_by_id",
+                AsyncMock(return_value=mock_order),
+            ),
+            patch(
+                "app.modules.orders.service._repo.update",
+                AsyncMock(return_value=mock_updated),
+            ),
             patch.object(event_bus, "publish", AsyncMock()),
             patch(
-                "app.modules.orders.service.OrderResponse.model_validate", return_value=MagicMock()
+                "app.modules.orders.service.OrderResponse.model_validate",
+                return_value=MagicMock(),
             ),
         ):
             result = await self.svc.cancel_order(
@@ -257,7 +297,9 @@ class TestOrderServiceCreateFromCart:
         db = AsyncMock()
         empty_cart = MagicMock()
         empty_cart.items = []
-        with patch.object(CartRepository, "get_for_user", AsyncMock(return_value=empty_cart)):
+        with patch.object(
+            CartRepository, "get_for_user", AsyncMock(return_value=empty_cart)
+        ):
             with pytest.raises(ValidationError, match="Cart is empty"):
                 await self.svc.create_from_cart(
                     db,
@@ -291,7 +333,9 @@ class TestProfileService:
     async def test_get_profile_returns_profile(self):
         db = AsyncMock()
         mock_profile = MagicMock()
-        with patch.object(self.repo_cls, "get_by_id", AsyncMock(return_value=mock_profile)):
+        with patch.object(
+            self.repo_cls, "get_by_id", AsyncMock(return_value=mock_profile)
+        ):
             result = await self.svc.get_profile(db, str(uuid.uuid4()))
         assert result is mock_profile
 
@@ -311,8 +355,12 @@ class TestProfileService:
 
         db = AsyncMock()
         mock_profile = MagicMock()
-        with patch.object(self.repo_cls, "get_by_id", AsyncMock(return_value=mock_profile)):
-            result = await self.svc.update_profile(db, str(uuid.uuid4()), ProfileUpdateRequest())
+        with patch.object(
+            self.repo_cls, "get_by_id", AsyncMock(return_value=mock_profile)
+        ):
+            result = await self.svc.update_profile(
+                db, str(uuid.uuid4()), ProfileUpdateRequest()
+            )
         assert result is mock_profile
 
     async def test_update_avatar_raises_404_when_not_found(self):
@@ -328,7 +376,9 @@ class TestProfileService:
     async def test_update_avatar_returns_updated_profile(self):
         db = AsyncMock()
         mock_profile = MagicMock()
-        with patch.object(self.repo_cls, "update", AsyncMock(return_value=mock_profile)):
+        with patch.object(
+            self.repo_cls, "update", AsyncMock(return_value=mock_profile)
+        ):
             result = await self.svc.update_avatar(
                 db, str(uuid.uuid4()), "https://cdn.example.com/avatar.jpg"
             )
@@ -361,7 +411,9 @@ class TestProfileService:
         db = AsyncMock()
         with patch.object(self.repo_cls, "get_by_id", AsyncMock(return_value=None)):
             with pytest.raises(NotFoundError):
-                await self.svc.change_role(db, str(uuid.uuid4()), UserRole.ADMIN, str(uuid.uuid4()))
+                await self.svc.change_role(
+                    db, str(uuid.uuid4()), UserRole.ADMIN, str(uuid.uuid4())
+                )
 
     async def test_change_role_success_calls_audit(self):
         from app.core.constants import UserRole
@@ -371,7 +423,9 @@ class TestProfileService:
         mock_profile.role = UserRole.CUSTOMER
         mock_updated = MagicMock()
         with (
-            patch.object(self.repo_cls, "get_by_id", AsyncMock(return_value=mock_profile)),
+            patch.object(
+                self.repo_cls, "get_by_id", AsyncMock(return_value=mock_profile)
+            ),
             patch.object(self.repo_cls, "update", AsyncMock(return_value=mock_updated)),
             patch("app.modules.audit.service.AuditService.log", AsyncMock()),
         ):
@@ -386,18 +440,24 @@ class TestProfileService:
         db = AsyncMock()
         with patch.object(self.repo_cls, "get_by_id", AsyncMock(return_value=None)):
             with pytest.raises(NotFoundError):
-                await self.svc.set_status(db, str(uuid.uuid4()), False, str(uuid.uuid4()))
+                await self.svc.set_status(
+                    db, str(uuid.uuid4()), False, str(uuid.uuid4())
+                )
 
     async def test_set_status_success(self):
         db = AsyncMock()
         mock_profile = MagicMock()
         mock_updated = MagicMock()
         with (
-            patch.object(self.repo_cls, "get_by_id", AsyncMock(return_value=mock_profile)),
+            patch.object(
+                self.repo_cls, "get_by_id", AsyncMock(return_value=mock_profile)
+            ),
             patch.object(self.repo_cls, "update", AsyncMock(return_value=mock_updated)),
             patch("app.modules.audit.service.AuditService.log", AsyncMock()),
         ):
-            result = await self.svc.set_status(db, str(uuid.uuid4()), False, str(uuid.uuid4()))
+            result = await self.svc.set_status(
+                db, str(uuid.uuid4()), False, str(uuid.uuid4())
+            )
         assert result is mock_updated
 
 
@@ -414,7 +474,9 @@ class TestCatalogServiceRead:
         from app.core.exceptions import NotFoundError
 
         db = AsyncMock()
-        with patch("app.modules.catalog.service._repo.get_by_id", AsyncMock(return_value=None)):
+        with patch(
+            "app.modules.catalog.service._repo.get_by_id", AsyncMock(return_value=None)
+        ):
             with pytest.raises(NotFoundError):
                 await self.svc.get_by_id(db, uuid.uuid4())
 
@@ -423,7 +485,8 @@ class TestCatalogServiceRead:
         mock_product = MagicMock()
         with (
             patch(
-                "app.modules.catalog.service._repo.get_by_id", AsyncMock(return_value=mock_product)
+                "app.modules.catalog.service._repo.get_by_id",
+                AsyncMock(return_value=mock_product),
             ),
             patch(
                 "app.modules.catalog.service.ProductResponse.model_validate",
@@ -437,7 +500,10 @@ class TestCatalogServiceRead:
         from app.core.exceptions import NotFoundError
 
         db = AsyncMock()
-        with patch("app.modules.catalog.service._repo.get_by_slug", AsyncMock(return_value=None)):
+        with patch(
+            "app.modules.catalog.service._repo.get_by_slug",
+            AsyncMock(return_value=None),
+        ):
             with pytest.raises(NotFoundError):
                 await self.svc.get_by_slug(db, "missing-slug")
 
@@ -493,7 +559,8 @@ class TestCatalogServiceWrite:
 
         db = AsyncMock()
         with patch(
-            "app.modules.catalog.service._repo.get_by_sku", AsyncMock(return_value=MagicMock())
+            "app.modules.catalog.service._repo.get_by_sku",
+            AsyncMock(return_value=MagicMock()),
         ):
             with pytest.raises(ConflictError):
                 await self.svc.create(db, await self._make_create_request())
@@ -503,9 +570,13 @@ class TestCatalogServiceWrite:
 
         db = AsyncMock()
         with (
-            patch("app.modules.catalog.service._repo.get_by_sku", AsyncMock(return_value=None)),
             patch(
-                "app.modules.catalog.service._repo.get_by_slug", AsyncMock(return_value=MagicMock())
+                "app.modules.catalog.service._repo.get_by_sku",
+                AsyncMock(return_value=None),
+            ),
+            patch(
+                "app.modules.catalog.service._repo.get_by_slug",
+                AsyncMock(return_value=MagicMock()),
             ),
         ):
             with pytest.raises(ConflictError):
@@ -515,11 +586,21 @@ class TestCatalogServiceWrite:
         db = AsyncMock()
         mock_product = MagicMock()
         with (
-            patch("app.modules.catalog.service._repo.get_by_sku", AsyncMock(return_value=None)),
-            patch("app.modules.catalog.service._repo.get_by_slug", AsyncMock(return_value=None)),
-            patch("app.modules.catalog.service._repo.create", AsyncMock(return_value=mock_product)),
             patch(
-                "app.modules.catalog.service._repo.get_by_id", AsyncMock(return_value=mock_product)
+                "app.modules.catalog.service._repo.get_by_sku",
+                AsyncMock(return_value=None),
+            ),
+            patch(
+                "app.modules.catalog.service._repo.get_by_slug",
+                AsyncMock(return_value=None),
+            ),
+            patch(
+                "app.modules.catalog.service._repo.create",
+                AsyncMock(return_value=mock_product),
+            ),
+            patch(
+                "app.modules.catalog.service._repo.get_by_id",
+                AsyncMock(return_value=mock_product),
             ),
             patch(
                 "app.modules.catalog.service.ProductResponse.model_validate",
@@ -534,9 +615,13 @@ class TestCatalogServiceWrite:
         from app.modules.catalog.schemas import ProductUpdateRequest
 
         db = AsyncMock()
-        with patch("app.modules.catalog.service._repo.get_by_id", AsyncMock(return_value=None)):
+        with patch(
+            "app.modules.catalog.service._repo.get_by_id", AsyncMock(return_value=None)
+        ):
             with pytest.raises(NotFoundError):
-                await self.svc.update(db, uuid.uuid4(), ProductUpdateRequest(name="New Name"))
+                await self.svc.update(
+                    db, uuid.uuid4(), ProductUpdateRequest(name="New Name")
+                )
 
     async def test_update_raises_conflict_on_duplicate_slug(self):
         from app.core.exceptions import ConflictError
@@ -548,20 +633,26 @@ class TestCatalogServiceWrite:
         mock_product.status = "active"
         with (
             patch(
-                "app.modules.catalog.service._repo.get_by_id", AsyncMock(return_value=mock_product)
+                "app.modules.catalog.service._repo.get_by_id",
+                AsyncMock(return_value=mock_product),
             ),
             patch(
-                "app.modules.catalog.service._repo.get_by_slug", AsyncMock(return_value=MagicMock())
+                "app.modules.catalog.service._repo.get_by_slug",
+                AsyncMock(return_value=MagicMock()),
             ),
         ):
             with pytest.raises(ConflictError):
-                await self.svc.update(db, uuid.uuid4(), ProductUpdateRequest(slug="taken-slug"))
+                await self.svc.update(
+                    db, uuid.uuid4(), ProductUpdateRequest(slug="taken-slug")
+                )
 
     async def test_delete_raises_404_when_not_found(self):
         from app.core.exceptions import NotFoundError
 
         db = AsyncMock()
-        with patch("app.modules.catalog.service._repo.get_by_id", AsyncMock(return_value=None)):
+        with patch(
+            "app.modules.catalog.service._repo.get_by_id", AsyncMock(return_value=None)
+        ):
             with pytest.raises(NotFoundError):
                 await self.svc.delete(db, uuid.uuid4())
 
@@ -570,9 +661,12 @@ class TestCatalogServiceWrite:
         mock_product = MagicMock()
         with (
             patch(
-                "app.modules.catalog.service._repo.get_by_id", AsyncMock(return_value=mock_product)
+                "app.modules.catalog.service._repo.get_by_id",
+                AsyncMock(return_value=mock_product),
             ),
-            patch("app.modules.catalog.service._repo.soft_delete", AsyncMock()) as mock_soft,
+            patch(
+                "app.modules.catalog.service._repo.soft_delete", AsyncMock()
+            ) as mock_soft,
         ):
             await self.svc.delete(db, uuid.uuid4())
         mock_soft.assert_awaited_once()
@@ -589,10 +683,14 @@ class TestCatalogServiceVariantsAndAttributes:
         from app.modules.catalog.schemas import ProductVariantCreateRequest
 
         db = AsyncMock()
-        with patch("app.modules.catalog.service._repo.get_by_id", AsyncMock(return_value=None)):
+        with patch(
+            "app.modules.catalog.service._repo.get_by_id", AsyncMock(return_value=None)
+        ):
             with pytest.raises(NotFoundError):
                 await self.svc.add_variant(
-                    db, uuid.uuid4(), ProductVariantCreateRequest(sku="V-001", name="Small")
+                    db,
+                    uuid.uuid4(),
+                    ProductVariantCreateRequest(sku="V-001", name="Small"),
                 )
 
     async def test_add_variant_raises_conflict_on_duplicate_sku(self):
@@ -602,15 +700,19 @@ class TestCatalogServiceVariantsAndAttributes:
         db = AsyncMock()
         with (
             patch(
-                "app.modules.catalog.service._repo.get_by_id", AsyncMock(return_value=MagicMock())
+                "app.modules.catalog.service._repo.get_by_id",
+                AsyncMock(return_value=MagicMock()),
             ),
             patch(
-                "app.modules.catalog.service._repo.get_by_sku", AsyncMock(return_value=MagicMock())
+                "app.modules.catalog.service._repo.get_by_sku",
+                AsyncMock(return_value=MagicMock()),
             ),
         ):
             with pytest.raises(ConflictError):
                 await self.svc.add_variant(
-                    db, uuid.uuid4(), ProductVariantCreateRequest(sku="V-001", name="Small")
+                    db,
+                    uuid.uuid4(),
+                    ProductVariantCreateRequest(sku="V-001", name="Small"),
                 )
 
     async def test_add_variant_success(self):
@@ -620,9 +722,13 @@ class TestCatalogServiceVariantsAndAttributes:
         mock_variant = MagicMock()
         with (
             patch(
-                "app.modules.catalog.service._repo.get_by_id", AsyncMock(return_value=MagicMock())
+                "app.modules.catalog.service._repo.get_by_id",
+                AsyncMock(return_value=MagicMock()),
             ),
-            patch("app.modules.catalog.service._repo.get_by_sku", AsyncMock(return_value=None)),
+            patch(
+                "app.modules.catalog.service._repo.get_by_sku",
+                AsyncMock(return_value=None),
+            ),
             patch(
                 "app.modules.catalog.service._repo.add_variant",
                 AsyncMock(return_value=mock_variant),
@@ -638,7 +744,10 @@ class TestCatalogServiceVariantsAndAttributes:
         from app.modules.catalog.schemas import ProductVariantUpdateRequest
 
         db = AsyncMock()
-        with patch("app.modules.catalog.service._repo.get_variant", AsyncMock(return_value=None)):
+        with patch(
+            "app.modules.catalog.service._repo.get_variant",
+            AsyncMock(return_value=None),
+        ):
             with pytest.raises(NotFoundError):
                 await self.svc.update_variant(
                     db, uuid.uuid4(), ProductVariantUpdateRequest(name="Updated")
@@ -649,7 +758,8 @@ class TestCatalogServiceVariantsAndAttributes:
 
         db = AsyncMock()
         with patch(
-            "app.modules.catalog.service._repo.delete_variant", AsyncMock(return_value=False)
+            "app.modules.catalog.service._repo.delete_variant",
+            AsyncMock(return_value=False),
         ):
             with pytest.raises(NotFoundError):
                 await self.svc.delete_variant(db, uuid.uuid4())
@@ -659,10 +769,14 @@ class TestCatalogServiceVariantsAndAttributes:
         from app.modules.catalog.schemas import ProductAttributeCreateRequest
 
         db = AsyncMock()
-        with patch("app.modules.catalog.service._repo.get_by_id", AsyncMock(return_value=None)):
+        with patch(
+            "app.modules.catalog.service._repo.get_by_id", AsyncMock(return_value=None)
+        ):
             with pytest.raises(NotFoundError):
                 await self.svc.upsert_attribute(
-                    db, uuid.uuid4(), ProductAttributeCreateRequest(name="metal", value="Silver")
+                    db,
+                    uuid.uuid4(),
+                    ProductAttributeCreateRequest(name="metal", value="Silver"),
                 )
 
     async def test_delete_attribute_raises_404(self):
@@ -670,7 +784,8 @@ class TestCatalogServiceVariantsAndAttributes:
 
         db = AsyncMock()
         with patch(
-            "app.modules.catalog.service._repo.delete_attribute", AsyncMock(return_value=False)
+            "app.modules.catalog.service._repo.delete_attribute",
+            AsyncMock(return_value=False),
         ):
             with pytest.raises(NotFoundError):
                 await self.svc.delete_attribute(db, uuid.uuid4(), "metal")

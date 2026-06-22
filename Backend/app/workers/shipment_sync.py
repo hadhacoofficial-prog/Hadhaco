@@ -34,7 +34,10 @@ async def run() -> None:
                     log.exception("shipment_sync_order_failed", order_id=str(order.id))
         duration_ms = round((time.perf_counter() - t0) * 1000)
         log.info(
-            "shipment_sync_completed", total=len(orders), errors=errors, duration_ms=duration_ms
+            "shipment_sync_completed",
+            total=len(orders),
+            errors=errors,
+            duration_ms=duration_ms,
         )
     except Exception:
         duration_ms = round((time.perf_counter() - t0) * 1000)

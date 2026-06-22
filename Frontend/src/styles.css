@@ -65,23 +65,23 @@
   --radius: 0rem;
   /* Hadha — Traditional South Indian silver jewellery palette
      70% warm ivory · 20% temple indigo · 8% antique silver · 2% gold */
-  --background: oklch(0.975 0.008 80);          /* #FAF7F2 warm ivory */
-  --foreground: oklch(0.27 0.025 258);          /* #1F2937 ink */
-  --card: oklch(1 0 0);                          /* #FFFFFF */
+  --background: oklch(0.975 0.008 80); /* #FAF7F2 warm ivory */
+  --foreground: oklch(0.27 0.025 258); /* #1F2937 ink */
+  --card: oklch(1 0 0); /* #FFFFFF */
   --card-foreground: oklch(0.27 0.025 258);
   --popover: oklch(1 0 0);
   --popover-foreground: oklch(0.27 0.025 258);
-  --primary: oklch(0.32 0.055 258);             /* #243B5A temple indigo */
+  --primary: oklch(0.32 0.055 258); /* #243B5A temple indigo */
   --primary-foreground: oklch(0.98 0.005 80);
-  --secondary: oklch(0.83 0.008 250);           /* #C8CDD4 antique silver */
+  --secondary: oklch(0.83 0.008 250); /* #C8CDD4 antique silver */
   --secondary-foreground: oklch(0.27 0.025 258);
-  --muted: oklch(0.945 0.012 80);               /* #F4EFE8 surface */
-  --muted-foreground: oklch(0.48 0.018 255);    /* #5B6470 */
-  --accent: oklch(0.71 0.115 78);               /* #C89B3C traditional gold */
+  --muted: oklch(0.945 0.012 80); /* #F4EFE8 surface */
+  --muted-foreground: oklch(0.48 0.018 255); /* #5B6470 */
+  --accent: oklch(0.71 0.115 78); /* #C89B3C traditional gold */
   --accent-foreground: oklch(0.98 0.005 80);
   --destructive: oklch(0.52 0.19 27);
   --destructive-foreground: oklch(0.98 0 0);
-  --border: oklch(0.86 0.008 250);              /* antique silver borders */
+  --border: oklch(0.86 0.008 250); /* antique silver borders */
   --input: oklch(0.92 0.008 250);
   --ring: oklch(0.32 0.055 258);
   --chart-1: oklch(0.646 0.222 41.116);
@@ -100,11 +100,11 @@
   --font-serif-display: "Cinzel", "Cormorant Garamond", serif;
   --font-serif-body: "Cormorant Garamond", "Cinzel", serif;
   --font-sans: "Inter", system-ui, sans-serif;
-  --gradient-silver: linear-gradient(135deg, #EDEFF2 0%, #C8CDD4 50%, #EDEFF2 100%);
-  --gradient-luxury: linear-gradient(135deg, #2E4A6E 0%, #243B5A 60%, #1B2F4A 100%);
-  --gradient-gold: linear-gradient(135deg, #E1B868 0%, #C89B3C 50%, #9E7A2C 100%);
+  --gradient-silver: linear-gradient(135deg, #edeff2 0%, #c8cdd4 50%, #edeff2 100%);
+  --gradient-luxury: linear-gradient(135deg, #2e4a6e 0%, #243b5a 60%, #1b2f4a 100%);
+  --gradient-gold: linear-gradient(135deg, #e1b868 0%, #c89b3c 50%, #9e7a2c 100%);
   --shadow-silver: 0 12px 36px -18px oklch(0.32 0.055 258 / 0.35);
-  --shadow-premium: 0 18px 50px -24px oklch(0.27 0.025 258 / 0.30);
+  --shadow-premium: 0 18px 50px -24px oklch(0.27 0.025 258 / 0.3);
 }
 
 .dark {
@@ -115,7 +115,7 @@
   --card-foreground: oklch(0.94 0.012 240);
   --popover: oklch(0.22 0.03 255);
   --popover-foreground: oklch(0.94 0.012 240);
-  --primary: oklch(0.78 0.06 240);              /* silver-blue becomes primary in dark */
+  --primary: oklch(0.78 0.06 240); /* silver-blue becomes primary in dark */
   --primary-foreground: oklch(0.18 0.025 255);
   --secondary: oklch(0.26 0.03 255);
   --secondary-foreground: oklch(0.94 0.012 240);
@@ -156,7 +156,10 @@
     text-rendering: optimizeLegibility;
   }
 
-  h1, h2, h3, h4 {
+  h1,
+  h2,
+  h3,
+  h4 {
     font-family: var(--font-serif-display);
     font-weight: 600;
     letter-spacing: 0.005em;
@@ -164,20 +167,42 @@
 }
 
 @layer utilities {
-  .font-display { font-family: var(--font-serif-display); }
-  .font-body { font-family: var(--font-sans); }
-  .font-decorative { font-family: var(--font-serif-body); }
-  .font-sans-ui { font-family: var(--font-sans); }
-  .font-cinzel { font-family: "Cinzel", serif; letter-spacing: 0.04em; }
-  .font-cormorant { font-family: "Cormorant Garamond", serif; }
-  .marquee-track { animation: marquee 30s linear infinite; }
+  .font-display {
+    font-family: var(--font-serif-display);
+  }
+  .font-body {
+    font-family: var(--font-sans);
+  }
+  .font-decorative {
+    font-family: var(--font-serif-body);
+  }
+  .font-sans-ui {
+    font-family: var(--font-sans);
+  }
+  .font-cinzel {
+    font-family: "Cinzel", serif;
+    letter-spacing: 0.04em;
+  }
+  .font-cormorant {
+    font-family: "Cormorant Garamond", serif;
+  }
+  .marquee-track {
+    animation: marquee 30s linear infinite;
+  }
   .silver-shimmer {
-    background: linear-gradient(110deg, oklch(0.83 0.008 250) 30%, oklch(0.97 0.004 250) 50%, oklch(0.83 0.008 250) 70%);
+    background: linear-gradient(
+      110deg,
+      oklch(0.83 0.008 250) 30%,
+      oklch(0.97 0.004 250) 50%,
+      oklch(0.83 0.008 250) 70%
+    );
     background-size: 200% 100%;
     animation: shimmer 2s linear infinite;
   }
   .hover-lift {
-    transition: transform 0.4s cubic-bezier(.2,.7,.2,1), box-shadow 0.4s ease;
+    transition:
+      transform 0.4s cubic-bezier(0.2, 0.7, 0.2, 1),
+      box-shadow 0.4s ease;
   }
   .hover-lift:hover {
     transform: translateY(-4px);
@@ -192,54 +217,101 @@
     content: "";
     position: absolute;
     inset: 0;
-    background: linear-gradient(120deg, transparent 30%, rgba(255,255,255,0.35) 50%, transparent 70%);
+    background: linear-gradient(
+      120deg,
+      transparent 30%,
+      rgba(255, 255, 255, 0.35) 50%,
+      transparent 70%
+    );
     transform: translateX(-120%);
     transition: transform 0.7s ease;
   }
-  .btn-shine:hover::after { transform: translateX(120%); }
+  .btn-shine:hover::after {
+    transform: translateX(120%);
+  }
 }
 
 @keyframes marquee {
-  from { transform: translateX(0); }
-  to { transform: translateX(-50%); }
+  from {
+    transform: translateX(0);
+  }
+  to {
+    transform: translateX(-50%);
+  }
 }
 
 @keyframes shimmer {
-  from { background-position: 200% 0; }
-  to { background-position: -200% 0; }
+  from {
+    background-position: 200% 0;
+  }
+  to {
+    background-position: -200% 0;
+  }
 }
 
 @keyframes hadha-pulse {
-  0%, 100% { opacity: 0.85; transform: scale(1); }
-  50% { opacity: 1; transform: scale(1.04); }
+  0%,
+  100% {
+    opacity: 0.85;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.04);
+  }
 }
 
 @keyframes slide-in-left {
-  from { transform: translateX(-100%); }
-  to { transform: translateX(0); }
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(0);
+  }
 }
 @keyframes slide-in-right {
-  from { transform: translateX(100%); }
-  to { transform: translateX(0); }
+  from {
+    transform: translateX(100%);
+  }
+  to {
+    transform: translateX(0);
+  }
 }
 @keyframes fade-in {
-  from { opacity: 0; }
-  to { opacity: 1; }
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
 }
 
 @keyframes scale-in {
-  from { opacity: 0; transform: scale(0.6); }
-  to { opacity: 1; transform: scale(1); }
+  from {
+    opacity: 0;
+    transform: scale(0.6);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
 }
-.animate-slide-in-left { animation: slide-in-left 0.28s ease-out both; }
-.animate-slide-in-right { animation: slide-in-right 0.28s ease-out both; }
-.animate-fade-in { animation: fade-in 0.2s ease-out both; }
+.animate-slide-in-left {
+  animation: slide-in-left 0.28s ease-out both;
+}
+.animate-slide-in-right {
+  animation: slide-in-right 0.28s ease-out both;
+}
+.animate-fade-in {
+  animation: fade-in 0.2s ease-out both;
+}
 
 @media (prefers-reduced-motion: reduce) {
-  *, *::before, *::after {
+  *,
+  *::before,
+  *::after {
     animation-duration: 0.01ms !important;
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
   }
 }
-

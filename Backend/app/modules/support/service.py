@@ -26,7 +26,9 @@ class SupportService:
             subject=data.subject,
             category=data.category,
         )
-        await self._repo.add_message(db, ticket_id=ticket.id, sender_id=customer_id, body=data.body)
+        await self._repo.add_message(
+            db, ticket_id=ticket.id, sender_id=customer_id, body=data.body
+        )
         await db.commit()
         await db.refresh(ticket)
         return ticket
@@ -64,7 +66,12 @@ class SupportService:
         return await self._repo.list_for_customer(db, customer_id)
 
     async def get_ticket(
-        self, db: AsyncSession, ticket_id: uuid.UUID, *, viewer_id: uuid.UUID, is_admin: bool
+        self,
+        db: AsyncSession,
+        ticket_id: uuid.UUID,
+        *,
+        viewer_id: uuid.UUID,
+        is_admin: bool,
     ) -> SupportTicket:
         ticket = await self._repo.get_ticket(db, ticket_id)
         if not ticket:
@@ -76,7 +83,9 @@ class SupportService:
     async def admin_list(
         self, db: AsyncSession, *, status_filter: str | None, offset: int, limit: int
     ) -> list[SupportTicket]:
-        return await self._repo.list_all(db, status=status_filter, offset=offset, limit=limit)
+        return await self._repo.list_all(
+            db, status=status_filter, offset=offset, limit=limit
+        )
 
     async def admin_update(
         self, db: AsyncSession, *, ticket_id: uuid.UUID, data: AdminTicketUpdate

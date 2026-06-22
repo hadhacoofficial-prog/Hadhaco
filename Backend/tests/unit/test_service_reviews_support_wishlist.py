@@ -85,13 +85,17 @@ class TestReviewRepositoryVotes:
 
     async def test_get_vote_returns_none(self):
         db = _db(_sone(None))
-        result = await self.repo.get_vote(db, review_id=uuid.uuid4(), user_id=uuid.uuid4())
+        result = await self.repo.get_vote(
+            db, review_id=uuid.uuid4(), user_id=uuid.uuid4()
+        )
         assert result is None
 
     async def test_get_vote_returns_vote(self):
         mock_vote = MagicMock()
         db = _db(_sone(mock_vote))
-        result = await self.repo.get_vote(db, review_id=uuid.uuid4(), user_id=uuid.uuid4())
+        result = await self.repo.get_vote(
+            db, review_id=uuid.uuid4(), user_id=uuid.uuid4()
+        )
         assert result is mock_vote
 
     async def test_upsert_vote_creates_new(self):
@@ -162,7 +166,9 @@ class TestReviewService:
         mock_review.user_id = user_id
         mock_updated = MagicMock()
         with (
-            patch.object(self.repo_cls, "get_by_id", AsyncMock(return_value=mock_review)),
+            patch.object(
+                self.repo_cls, "get_by_id", AsyncMock(return_value=mock_review)
+            ),
             patch.object(self.repo_cls, "update", AsyncMock(return_value=mock_updated)),
         ):
             result = await self.svc.edit_review(
@@ -183,7 +189,9 @@ class TestReviewService:
         mock_review = MagicMock()
         mock_review.user_id = user_id
         with (
-            patch.object(self.repo_cls, "get_by_id", AsyncMock(return_value=mock_review)),
+            patch.object(
+                self.repo_cls, "get_by_id", AsyncMock(return_value=mock_review)
+            ),
             patch.object(self.repo_cls, "update", AsyncMock()) as mock_upd,
         ):
             await self.svc.edit_review(
@@ -201,7 +209,9 @@ class TestReviewService:
         mock_review = MagicMock()
         mock_review.user_id = user_id
         with (
-            patch.object(self.repo_cls, "get_by_id", AsyncMock(return_value=mock_review)),
+            patch.object(
+                self.repo_cls, "get_by_id", AsyncMock(return_value=mock_review)
+            ),
             patch.object(self.repo_cls, "soft_delete", AsyncMock()) as mock_del,
         ):
             await self.svc.delete_review(db, review_id=uuid.uuid4(), user_id=user_id)
@@ -210,14 +220,18 @@ class TestReviewService:
     async def test_list_product_reviews(self):
         db = AsyncMock()
         mock_review = MagicMock()
-        with patch.object(self.repo_cls, "list_for_product", AsyncMock(return_value=[mock_review])):
+        with patch.object(
+            self.repo_cls, "list_for_product", AsyncMock(return_value=[mock_review])
+        ):
             result = await self.svc.list_product_reviews(db, product_id=uuid.uuid4())
         assert result == [mock_review]
 
     async def test_rating_summary(self):
         db = AsyncMock()
         with patch.object(
-            self.repo_cls, "rating_summary", AsyncMock(return_value={"avg": 4.5, "count": 10})
+            self.repo_cls,
+            "rating_summary",
+            AsyncMock(return_value={"avg": 4.5, "count": 10}),
         ):
             result = await self.svc.rating_summary(db, uuid.uuid4())
         assert result["avg"] == 4.5
@@ -241,9 +255,13 @@ class TestReviewService:
         mock_review = MagicMock()
         mock_review.is_approved = True
         mock_review.user_id = user_id  # same user
-        with patch.object(self.repo_cls, "get_by_id", AsyncMock(return_value=mock_review)):
+        with patch.object(
+            self.repo_cls, "get_by_id", AsyncMock(return_value=mock_review)
+        ):
             with pytest.raises(HTTPException) as exc:
-                await self.svc.vote(db, review_id=uuid.uuid4(), user_id=user_id, is_helpful=True)
+                await self.svc.vote(
+                    db, review_id=uuid.uuid4(), user_id=user_id, is_helpful=True
+                )
         assert exc.value.status_code == 400
 
     async def test_vote_success(self):
@@ -256,8 +274,12 @@ class TestReviewService:
         mock_review.user_id = reviewer_id
         mock_vote = MagicMock()
         with (
-            patch.object(self.repo_cls, "get_by_id", AsyncMock(return_value=mock_review)),
-            patch.object(self.repo_cls, "upsert_vote", AsyncMock(return_value=mock_vote)),
+            patch.object(
+                self.repo_cls, "get_by_id", AsyncMock(return_value=mock_review)
+            ),
+            patch.object(
+                self.repo_cls, "upsert_vote", AsyncMock(return_value=mock_vote)
+            ),
         ):
             result = await self.svc.vote(
                 db, review_id=uuid.uuid4(), user_id=voter_id, is_helpful=True
@@ -271,10 +293,14 @@ class TestReviewService:
         mock_review = MagicMock()
         mock_updated = MagicMock()
         with (
-            patch.object(self.repo_cls, "get_by_id", AsyncMock(return_value=mock_review)),
+            patch.object(
+                self.repo_cls, "get_by_id", AsyncMock(return_value=mock_review)
+            ),
             patch.object(self.repo_cls, "update", AsyncMock(return_value=mock_updated)),
         ):
-            result = await self.svc.admin_action(db, review_id=uuid.uuid4(), action="approve")
+            result = await self.svc.admin_action(
+                db, review_id=uuid.uuid4(), action="approve"
+            )
         assert result is mock_updated
 
     async def test_admin_action_reject_calls_soft_delete(self):
@@ -283,7 +309,9 @@ class TestReviewService:
         db.refresh = AsyncMock()
         mock_review = MagicMock()
         with (
-            patch.object(self.repo_cls, "get_by_id", AsyncMock(return_value=mock_review)),
+            patch.object(
+                self.repo_cls, "get_by_id", AsyncMock(return_value=mock_review)
+            ),
             patch.object(self.repo_cls, "soft_delete", AsyncMock()) as mock_del,
         ):
             await self.svc.admin_action(db, review_id=uuid.uuid4(), action="reject")
@@ -296,7 +324,9 @@ class TestReviewService:
         mock_review = MagicMock()
         mock_updated = MagicMock()
         with (
-            patch.object(self.repo_cls, "get_by_id", AsyncMock(return_value=mock_review)),
+            patch.object(
+                self.repo_cls, "get_by_id", AsyncMock(return_value=mock_review)
+            ),
             patch.object(self.repo_cls, "update", AsyncMock(return_value=mock_updated)),
         ):
             await self.svc.admin_action(db, review_id=uuid.uuid4(), action="flag")
@@ -306,7 +336,9 @@ class TestReviewService:
 
         db = AsyncMock()
         mock_review = MagicMock()
-        with patch.object(self.repo_cls, "get_by_id", AsyncMock(return_value=mock_review)):
+        with patch.object(
+            self.repo_cls, "get_by_id", AsyncMock(return_value=mock_review)
+        ):
             with pytest.raises(HTTPException) as exc:
                 await self.svc.admin_action(db, review_id=uuid.uuid4(), action="ban")
         assert exc.value.status_code == 400
@@ -314,7 +346,9 @@ class TestReviewService:
     async def test_list_pending(self):
         db = AsyncMock()
         mock_review = MagicMock()
-        with patch.object(self.repo_cls, "list_pending", AsyncMock(return_value=[mock_review])):
+        with patch.object(
+            self.repo_cls, "list_pending", AsyncMock(return_value=[mock_review])
+        ):
             result = await self.svc.list_pending(db)
         assert result == [mock_review]
 
@@ -324,9 +358,13 @@ class TestReviewService:
         db = AsyncMock()
         mock_review = MagicMock()
         mock_review.user_id = uuid.uuid4()  # different user
-        with patch.object(self.repo_cls, "get_by_id", AsyncMock(return_value=mock_review)):
+        with patch.object(
+            self.repo_cls, "get_by_id", AsyncMock(return_value=mock_review)
+        ):
             with pytest.raises(HTTPException) as exc:
-                await self.svc._get_owned(db, review_id=uuid.uuid4(), user_id=uuid.uuid4())
+                await self.svc._get_owned(
+                    db, review_id=uuid.uuid4(), user_id=uuid.uuid4()
+                )
         assert exc.value.status_code == 403
 
 
@@ -351,15 +389,21 @@ class TestSupportService:
         mock_ticket.id = uuid.uuid4()
         with (
             patch.object(
-                self.repo_cls, "next_ticket_number", AsyncMock(return_value="SUP-2026-0001")
+                self.repo_cls,
+                "next_ticket_number",
+                AsyncMock(return_value="SUP-2026-0001"),
             ),
-            patch.object(self.repo_cls, "create_ticket", AsyncMock(return_value=mock_ticket)),
+            patch.object(
+                self.repo_cls, "create_ticket", AsyncMock(return_value=mock_ticket)
+            ),
             patch.object(self.repo_cls, "add_message", AsyncMock()),
         ):
             result = await self.svc.create_ticket(
                 db,
                 customer_id=uuid.uuid4(),
-                data=TicketCreate(subject="My order is late", category="order", body="Please help"),
+                data=TicketCreate(
+                    subject="My order is late", category="order", body="Please help"
+                ),
             )
         assert result is mock_ticket
 
@@ -387,7 +431,9 @@ class TestSupportService:
         db = AsyncMock()
         mock_ticket = MagicMock()
         mock_ticket.customer_id = uuid.uuid4()
-        with patch.object(self.repo_cls, "get_ticket", AsyncMock(return_value=mock_ticket)):
+        with patch.object(
+            self.repo_cls, "get_ticket", AsyncMock(return_value=mock_ticket)
+        ):
             with pytest.raises(HTTPException) as exc:
                 await self.svc.reply(
                     db,
@@ -409,8 +455,12 @@ class TestSupportService:
         mock_ticket.status = "resolved"
         mock_msg = MagicMock()
         with (
-            patch.object(self.repo_cls, "get_ticket", AsyncMock(return_value=mock_ticket)),
-            patch.object(self.repo_cls, "add_message", AsyncMock(return_value=mock_msg)),
+            patch.object(
+                self.repo_cls, "get_ticket", AsyncMock(return_value=mock_ticket)
+            ),
+            patch.object(
+                self.repo_cls, "add_message", AsyncMock(return_value=mock_msg)
+            ),
             patch.object(self.repo_cls, "update_ticket", AsyncMock()) as mock_upd,
         ):
             await self.svc.reply(
@@ -427,7 +477,9 @@ class TestSupportService:
         db = AsyncMock()
         with patch.object(self.repo_cls, "get_ticket", AsyncMock(return_value=None)):
             with pytest.raises(HTTPException) as exc:
-                await self.svc.get_ticket(db, uuid.uuid4(), viewer_id=uuid.uuid4(), is_admin=False)
+                await self.svc.get_ticket(
+                    db, uuid.uuid4(), viewer_id=uuid.uuid4(), is_admin=False
+                )
         assert exc.value.status_code == 404
 
     async def test_get_ticket_raises_403_when_not_owner(self):
@@ -436,16 +488,22 @@ class TestSupportService:
         db = AsyncMock()
         mock_ticket = MagicMock()
         mock_ticket.customer_id = uuid.uuid4()
-        with patch.object(self.repo_cls, "get_ticket", AsyncMock(return_value=mock_ticket)):
+        with patch.object(
+            self.repo_cls, "get_ticket", AsyncMock(return_value=mock_ticket)
+        ):
             with pytest.raises(HTTPException) as exc:
-                await self.svc.get_ticket(db, uuid.uuid4(), viewer_id=uuid.uuid4(), is_admin=False)
+                await self.svc.get_ticket(
+                    db, uuid.uuid4(), viewer_id=uuid.uuid4(), is_admin=False
+                )
         assert exc.value.status_code == 403
 
     async def test_get_ticket_admin_bypasses_ownership(self):
         db = AsyncMock()
         mock_ticket = MagicMock()
         mock_ticket.customer_id = uuid.uuid4()
-        with patch.object(self.repo_cls, "get_ticket", AsyncMock(return_value=mock_ticket)):
+        with patch.object(
+            self.repo_cls, "get_ticket", AsyncMock(return_value=mock_ticket)
+        ):
             result = await self.svc.get_ticket(
                 db, uuid.uuid4(), viewer_id=uuid.uuid4(), is_admin=True
             )
@@ -454,7 +512,9 @@ class TestSupportService:
     async def test_admin_list(self):
         db = AsyncMock()
         with patch.object(self.repo_cls, "list_all", AsyncMock(return_value=[])):
-            result = await self.svc.admin_list(db, status_filter="open", offset=0, limit=20)
+            result = await self.svc.admin_list(
+                db, status_filter="open", offset=0, limit=20
+            )
         assert result == []
 
     async def test_admin_update_raises_404(self):
@@ -466,7 +526,9 @@ class TestSupportService:
         with patch.object(self.repo_cls, "get_ticket", AsyncMock(return_value=None)):
             with pytest.raises(HTTPException) as exc:
                 await self.svc.admin_update(
-                    db, ticket_id=uuid.uuid4(), data=AdminTicketUpdate(status="resolved")
+                    db,
+                    ticket_id=uuid.uuid4(),
+                    data=AdminTicketUpdate(status="resolved"),
                 )
         assert exc.value.status_code == 404
 
@@ -479,8 +541,12 @@ class TestSupportService:
         mock_ticket = MagicMock()
         mock_updated = MagicMock()
         with (
-            patch.object(self.repo_cls, "get_ticket", AsyncMock(return_value=mock_ticket)),
-            patch.object(self.repo_cls, "update_ticket", AsyncMock(return_value=mock_updated)),
+            patch.object(
+                self.repo_cls, "get_ticket", AsyncMock(return_value=mock_ticket)
+            ),
+            patch.object(
+                self.repo_cls, "update_ticket", AsyncMock(return_value=mock_updated)
+            ),
         ):
             result = await self.svc.admin_update(
                 db, ticket_id=uuid.uuid4(), data=AdminTicketUpdate(status="closed")
@@ -522,9 +588,13 @@ class TestWishlistService:
                 "app.modules.wishlist.service._repo.get_or_create",
                 AsyncMock(return_value=mock_wishlist),
             ),
-            patch("app.modules.wishlist.service._repo.add_item", AsyncMock()) as mock_add,
+            patch(
+                "app.modules.wishlist.service._repo.add_item", AsyncMock()
+            ) as mock_add,
         ):
-            await self.svc.add(db, uuid.uuid4(), AddToWishlistRequest(product_id=product_id))
+            await self.svc.add(
+                db, uuid.uuid4(), AddToWishlistRequest(product_id=product_id)
+            )
         mock_add.assert_awaited_once()
 
     async def test_remove_calls_remove_item(self):
@@ -538,7 +608,9 @@ class TestWishlistService:
                 "app.modules.wishlist.service._repo.get_or_create",
                 AsyncMock(return_value=mock_wishlist),
             ),
-            patch("app.modules.wishlist.service._repo.remove_item", AsyncMock()) as mock_rm,
+            patch(
+                "app.modules.wishlist.service._repo.remove_item", AsyncMock()
+            ) as mock_rm,
         ):
             await self.svc.remove(db, uuid.uuid4(), product_id, None)
         mock_rm.assert_awaited_once()
@@ -555,7 +627,8 @@ class TestWishlistService:
                 AsyncMock(return_value=mock_wishlist),
             ),
             patch(
-                "app.modules.wishlist.service._repo.is_in_wishlist", AsyncMock(return_value=False)
+                "app.modules.wishlist.service._repo.is_in_wishlist",
+                AsyncMock(return_value=False),
             ),
             patch("app.modules.wishlist.service._repo.add_item", AsyncMock()),
         ):
@@ -576,7 +649,8 @@ class TestWishlistService:
                 AsyncMock(return_value=mock_wishlist),
             ),
             patch(
-                "app.modules.wishlist.service._repo.is_in_wishlist", AsyncMock(return_value=True)
+                "app.modules.wishlist.service._repo.is_in_wishlist",
+                AsyncMock(return_value=True),
             ),
             patch("app.modules.wishlist.service._repo.remove_item", AsyncMock()),
         ):
@@ -611,12 +685,16 @@ class TestCouponRepositoryExtra:
 
     async def test_record_usage(self):
         db = _db()
-        await self.repo.record_usage(db, uuid.uuid4(), uuid.uuid4(), 50.0, order_id=uuid.uuid4())
+        await self.repo.record_usage(
+            db, uuid.uuid4(), uuid.uuid4(), 50.0, order_id=uuid.uuid4()
+        )
         db.add.assert_called_once()
 
     async def test_update_usage_order_id(self):
         db = _db(MagicMock())
-        await self.repo.update_usage_order_id(db, uuid.uuid4(), uuid.uuid4(), uuid.uuid4())
+        await self.repo.update_usage_order_id(
+            db, uuid.uuid4(), uuid.uuid4(), uuid.uuid4()
+        )
         db.execute.assert_awaited_once()
 
     async def test_delete_when_found(self):
@@ -696,8 +774,12 @@ class TestReviewServiceImages:
         self.svc._media = AsyncMock()
         self.svc._media.upload_bytes = AsyncMock(return_value="https://cdn/img.jpg")
         with (
-            patch.object(self.repo_cls, "get_by_product_user", AsyncMock(return_value=None)),
-            patch.object(self.repo_cls, "has_delivered_order_item", AsyncMock(return_value=True)),
+            patch.object(
+                self.repo_cls, "get_by_product_user", AsyncMock(return_value=None)
+            ),
+            patch.object(
+                self.repo_cls, "has_delivered_order_item", AsyncMock(return_value=True)
+            ),
             patch.object(self.repo_cls, "create", AsyncMock(return_value=mock_review)),
             patch.object(self.repo_cls, "add_image", AsyncMock()) as mock_add,
         ):
@@ -705,7 +787,10 @@ class TestReviewServiceImages:
                 db,
                 user_id=user_id,
                 data=ReviewCreate(
-                    product_id=product_id, rating=5, title="Lovely", body="Beautiful piece"
+                    product_id=product_id,
+                    rating=5,
+                    title="Lovely",
+                    body="Beautiful piece",
                 ),
                 images=[mock_upload],
             )

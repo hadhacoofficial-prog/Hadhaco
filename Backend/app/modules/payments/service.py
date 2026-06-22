@@ -23,7 +23,9 @@ _repo = PaymentRepository()
 
 
 def _razorpay_client() -> razorpay.Client:
-    return razorpay.Client(auth=(settings.RAZORPAY_KEY_ID, settings.RAZORPAY_KEY_SECRET))
+    return razorpay.Client(
+        auth=(settings.RAZORPAY_KEY_ID, settings.RAZORPAY_KEY_SECRET)
+    )
 
 
 def _verify_signature(rzp_order_id: str, rzp_payment_id: str, signature: str) -> bool:
@@ -84,7 +86,9 @@ class PaymentService:
         # Persist razorpay_order_id on order record
         from app.modules.orders.repository import OrderRepository
 
-        await OrderRepository().update(db, order.id, {"razorpay_order_id": rzp_order["id"]})
+        await OrderRepository().update(
+            db, order.id, {"razorpay_order_id": rzp_order["id"]}
+        )
 
         return PaymentOrderResponse(
             razorpay_order_id=rzp_order["id"],
@@ -195,7 +199,9 @@ class PaymentService:
         if not payment:
             raise NotFoundError("No payment found for this order")
         if payment.status not in ("captured",):
-            raise ValidationError(f"Cannot refund payment with status '{payment.status}'")
+            raise ValidationError(
+                f"Cannot refund payment with status '{payment.status}'"
+            )
 
         refund_amount = payload.amount if payload.amount else float(payment.amount)
         if refund_amount > float(payment.amount):
@@ -257,6 +263,8 @@ class PaymentService:
 
         return RefundResponse.model_validate(refund)
 
-    async def list_refunds(self, db: AsyncSession, order_id: uuid.UUID) -> list[RefundResponse]:
+    async def list_refunds(
+        self, db: AsyncSession, order_id: uuid.UUID
+    ) -> list[RefundResponse]:
         refunds = await _repo.get_refunds_for_order(db, order_id)
         return [RefundResponse.model_validate(r) for r in refunds]

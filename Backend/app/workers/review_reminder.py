@@ -45,7 +45,9 @@ async def run() -> None:
             for order, email in rows:
                 if not email:
                     continue
-                already_reviewed = await _review_repo.has_any_review(db, order_id=order.id)
+                already_reviewed = await _review_repo.has_any_review(
+                    db, order_id=order.id
+                )
                 if already_reviewed:
                     continue
                 await event_bus.publish(
@@ -60,7 +62,10 @@ async def run() -> None:
 
         duration_ms = round((time.perf_counter() - t0) * 1000)
         log.info(
-            "review_reminder_completed", candidates=len(rows), sent=sent, duration_ms=duration_ms
+            "review_reminder_completed",
+            candidates=len(rows),
+            sent=sent,
+            duration_ms=duration_ms,
         )
     except Exception:
         duration_ms = round((time.perf_counter() - t0) * 1000)

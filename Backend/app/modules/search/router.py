@@ -39,7 +39,11 @@ async def search_products(
         await _service.record_search(db, q, user_id, result["total"])
     except Exception:
         pass
-    return ok(result, ResponseCode.SEARCH_RESULTS_FETCHED, "Search results fetched successfully")
+    return ok(
+        result,
+        ResponseCode.SEARCH_RESULTS_FETCHED,
+        "Search results fetched successfully",
+    )
 
 
 @router.get("/search/autocomplete", response_model=BaseSuccessResponse[dict])
@@ -63,5 +67,7 @@ async def trending_searches(
 ):
     result = await _service.trending_searches(db, limit)
     return ok(
-        result, ResponseCode.SEARCH_TRENDING_FETCHED, "Trending searches fetched successfully"
+        result,
+        ResponseCode.SEARCH_TRENDING_FETCHED,
+        "Trending searches fetched successfully",
     )

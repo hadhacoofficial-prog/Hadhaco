@@ -78,7 +78,10 @@ class OrderService:
                     "LEFT JOIN product_variants v ON v.id = :vid "
                     "WHERE p.id = :pid AND p.deleted_at IS NULL AND p.status = 'active'"
                 ),
-                {"pid": str(ci.product_id), "vid": str(ci.variant_id) if ci.variant_id else None},
+                {
+                    "pid": str(ci.product_id),
+                    "vid": str(ci.variant_id) if ci.variant_id else None,
+                },
             )
             prod = row.fetchone()
             if not prod:
@@ -116,7 +119,9 @@ class OrderService:
         # 5. Totals before coupon
         subtotal = round(sum(i["unit_price"] * i["quantity"] for i in line_items), 2)
         total_tax = round(sum(i["tax_amount"] for i in line_items), 2)
-        shipping_charge = 0.0 if subtotal >= _FREE_SHIPPING_THRESHOLD else _SHIPPING_CHARGE
+        shipping_charge = (
+            0.0 if subtotal >= _FREE_SHIPPING_THRESHOLD else _SHIPPING_CHARGE
+        )
 
         # 6. Coupon
         discount = 0.0
@@ -222,7 +227,9 @@ class OrderService:
                 order_number=order_number,
                 total_amount=float(total),
                 customer_email=(profile.email if profile else "") or "",
-                customer_phone=(profile.phone if profile else None) or addr.get("phone") or "",
+                customer_phone=(profile.phone if profile else None)
+                or addr.get("phone")
+                or "",
             )
         )
 
@@ -362,7 +369,9 @@ class OrderService:
         if order.user_id != user_id:
             raise NotFoundError("Order not found")
         if order.status not in _CANCELLABLE_STATUSES:
-            raise ValidationError(f"Order in '{order.status}' status cannot be cancelled")
+            raise ValidationError(
+                f"Order in '{order.status}' status cannot be cancelled"
+            )
 
         updated = await _repo.update(
             db,
@@ -440,7 +449,10 @@ class OrderService:
                     "LEFT JOIN product_variants v ON v.id = :vid "
                     "WHERE p.id = :pid AND p.deleted_at IS NULL AND p.status = 'active'"
                 ),
-                {"pid": str(ci.product_id), "vid": str(ci.variant_id) if ci.variant_id else None},
+                {
+                    "pid": str(ci.product_id),
+                    "vid": str(ci.variant_id) if ci.variant_id else None,
+                },
             )
             prod = row.fetchone()
             if not prod:
@@ -478,7 +490,9 @@ class OrderService:
         # 4. Totals before coupon
         subtotal = round(sum(i["unit_price"] * i["quantity"] for i in line_items), 2)
         total_tax = round(sum(i["tax_amount"] for i in line_items), 2)
-        shipping_charge = 0.0 if subtotal >= _FREE_SHIPPING_THRESHOLD else _SHIPPING_CHARGE
+        shipping_charge = (
+            0.0 if subtotal >= _FREE_SHIPPING_THRESHOLD else _SHIPPING_CHARGE
+        )
 
         # 5. Coupon (reserve but do not finalize — finalization happens after payment)
         discount = 0.0
@@ -548,7 +562,9 @@ class OrderService:
         # loop for the duration of the HTTP call (~200-500 ms).  We push it
         # into the default thread-pool executor so other coroutines can run.
         amount_paise = int(round(total * 100))
-        client = razorpay.Client(auth=(settings.RAZORPAY_KEY_ID, settings.RAZORPAY_KEY_SECRET))
+        client = razorpay.Client(
+            auth=(settings.RAZORPAY_KEY_ID, settings.RAZORPAY_KEY_SECRET)
+        )
         rzp_payload = {
             "amount": amount_paise,
             "currency": settings.RAZORPAY_CURRENCY,
@@ -560,8 +576,12 @@ class OrderService:
                 None, lambda: client.order.create(rzp_payload)
             )
         except Exception as exc:
-            log.error("razorpay_order_create_failed", order_id=str(order.id), error=str(exc))
-            raise ValidationError("Failed to create payment order. Please try again.") from exc
+            log.error(
+                "razorpay_order_create_failed", order_id=str(order.id), error=str(exc)
+            )
+            raise ValidationError(
+                "Failed to create payment order. Please try again."
+            ) from exc
 
         # 8. Persist razorpay_order_id on DB order
         await _repo.update(db, order.id, {"razorpay_order_id": rzp_order["id"]})
@@ -611,7 +631,9 @@ class OrderService:
         # 2. Idempotency: already fulfilled
         if order.payment_status == "paid":
             log.info(
-                "payment_already_verified", order_id=str(order.id), order_number=order.order_number
+                "payment_already_verified",
+                order_id=str(order.id),
+                order_number=order.order_number,
             )
             return VerifyOrderPaymentResponse(
                 success=True,
@@ -620,7 +642,9 @@ class OrderService:
             )
 
         log.info(
-            "payment_verification_started", order_id=str(order.id), order_number=order.order_number
+            "payment_verification_started",
+            order_id=str(order.id),
+            order_number=order.order_number,
         )
 
         # 3. Verify HMAC signature before any DB writes
@@ -651,14 +675,20 @@ class OrderService:
                     reference_type="order",
                     reference_id=str(order.id),
                 )
-        log.info("inventory_deducted", order_id=str(order.id), item_count=len(order.items))
+        log.info(
+            "inventory_deducted", order_id=str(order.id), item_count=len(order.items)
+        )
 
         # 5. Finalize coupon
         if order.coupon_id:
             from app.modules.coupons.service import CouponService
 
             await CouponService().finalize_usage(db, order.coupon_id, user_id, order.id)
-            log.info("coupon_finalized", order_id=str(order.id), coupon_id=str(order.coupon_id))
+            log.info(
+                "coupon_finalized",
+                order_id=str(order.id),
+                coupon_id=str(order.coupon_id),
+            )
 
         # 6. Clear cart
         from app.modules.cart.repository import CartRepository
@@ -698,7 +728,9 @@ class OrderService:
                 "razorpay_payment_id": payload.razorpay_payment_id,
             },
         )
-        log.info("order_confirmed", order_id=str(order.id), order_number=order.order_number)
+        log.info(
+            "order_confirmed", order_id=str(order.id), order_number=order.order_number
+        )
 
         # 9. Commit BEFORE publishing events.
         # Listeners run as background asyncio tasks (fire-and-forget).  They
@@ -714,7 +746,9 @@ class OrderService:
 
         profile = await ProfileRepository().get_by_id(db, user_id)
         customer_email = (profile.email if profile else "") or ""
-        customer_phone = (profile.phone if profile else None) or order.shipping_phone or ""
+        customer_phone = (
+            (profile.phone if profile else None) or order.shipping_phone or ""
+        )
 
         await event_bus.publish(
             OrderCreatedEvent(

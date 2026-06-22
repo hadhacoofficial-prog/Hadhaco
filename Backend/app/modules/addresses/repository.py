@@ -10,7 +10,9 @@ _MAX_ADDRESSES = 10
 
 
 class AddressRepository:
-    async def list_for_user(self, db: AsyncSession, user_id: uuid.UUID) -> list[UserAddress]:
+    async def list_for_user(
+        self, db: AsyncSession, user_id: uuid.UUID
+    ) -> list[UserAddress]:
         result = await db.execute(
             select(UserAddress)
             .where(UserAddress.user_id == user_id, UserAddress.deleted_at.is_(None))
@@ -53,11 +55,17 @@ class AddressRepository:
     async def update(
         self, db: AsyncSession, address_id: uuid.UUID, data: dict[str, Any]
     ) -> UserAddress | None:
-        await db.execute(update(UserAddress).where(UserAddress.id == address_id).values(**data))
-        result = await db.execute(select(UserAddress).where(UserAddress.id == address_id))
+        await db.execute(
+            update(UserAddress).where(UserAddress.id == address_id).values(**data)
+        )
+        result = await db.execute(
+            select(UserAddress).where(UserAddress.id == address_id)
+        )
         return result.scalar_one_or_none()
 
-    async def clear_default(self, db: AsyncSession, user_id: uuid.UUID, address_type: str) -> None:
+    async def clear_default(
+        self, db: AsyncSession, user_id: uuid.UUID, address_type: str
+    ) -> None:
         """Remove is_default from all addresses of this type for the user."""
         await db.execute(
             update(UserAddress)

@@ -8,7 +8,9 @@ from app.modules.categories.models import Category
 
 
 class CategoryRepository:
-    async def get_by_id(self, db: AsyncSession, cat_id: str | uuid.UUID) -> Category | None:
+    async def get_by_id(
+        self, db: AsyncSession, cat_id: str | uuid.UUID
+    ) -> Category | None:
         result = await db.execute(
             select(Category).where(Category.id == cat_id, Category.deleted_at.is_(None))
         )
@@ -50,7 +52,9 @@ class CategoryRepository:
             .values(deleted_at=datetime.now(UTC), is_active=False)
         )
 
-    async def has_active_products(self, db: AsyncSession, cat_id: str | uuid.UUID) -> bool:
+    async def has_active_products(
+        self, db: AsyncSession, cat_id: str | uuid.UUID
+    ) -> bool:
         # Avoid circular import — use raw SQL text
         from sqlalchemy import text
 

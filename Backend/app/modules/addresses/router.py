@@ -73,7 +73,9 @@ async def set_default_address(
     current_user: Profile = Depends(get_current_user),
 ):
     result = await _service.set_default(db, current_user.id, address_id)
-    return ok(result, ResponseCode.ADDRESS_DEFAULT_SET, "Default address set successfully")
+    return ok(
+        result, ResponseCode.ADDRESS_DEFAULT_SET, "Default address set successfully"
+    )
 
 
 @router.delete(

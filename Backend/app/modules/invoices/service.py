@@ -26,7 +26,13 @@ def _build_pdf(order, invoice_number: str) -> bytes:
     from reportlab.lib.pagesizes import A4
     from reportlab.lib.styles import getSampleStyleSheet
     from reportlab.lib.units import mm
-    from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
+    from reportlab.platypus import (
+        Paragraph,
+        SimpleDocTemplate,
+        Spacer,
+        Table,
+        TableStyle,
+    )
 
     buf = io.BytesIO()
     doc = SimpleDocTemplate(
@@ -100,7 +106,8 @@ def _build_pdf(order, invoice_number: str) -> bytes:
         )
 
     item_table = Table(
-        header + rows, colWidths=[8 * mm, 55 * mm, 28 * mm, 12 * mm, 25 * mm, 30 * mm, 25 * mm]
+        header + rows,
+        colWidths=[8 * mm, 55 * mm, 28 * mm, 12 * mm, 25 * mm, 30 * mm, 25 * mm],
     )
     item_table.setStyle(
         TableStyle(
@@ -109,7 +116,12 @@ def _build_pdf(order, invoice_number: str) -> bytes:
                 ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
                 ("FONTSIZE", (0, 0), (-1, -1), 8),
                 ("GRID", (0, 0), (-1, -1), 0.25, colors.grey),
-                ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor("#f9f9f9")]),
+                (
+                    "ROWBACKGROUNDS",
+                    (0, 1),
+                    (-1, -1),
+                    [colors.white, colors.HexColor("#f9f9f9")],
+                ),
                 ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
                 ("TOPPADDING", (0, 0), (-1, -1), 3),
             ]
@@ -124,10 +136,16 @@ def _build_pdf(order, invoice_number: str) -> bytes:
     gst = tax_service.split_total_tax(order.tax_amount, order.shipping_state)
     totals = [["Subtotal", f"₹{float(order.subtotal):,.2f}"]]
     if gst.is_interstate:
-        totals.append([f"IGST ({float(gst.igst_rate):g}%)", f"₹{float(gst.igst_amount):,.2f}"])
+        totals.append(
+            [f"IGST ({float(gst.igst_rate):g}%)", f"₹{float(gst.igst_amount):,.2f}"]
+        )
     else:
-        totals.append([f"CGST ({float(gst.cgst_rate):g}%)", f"₹{float(gst.cgst_amount):,.2f}"])
-        totals.append([f"SGST ({float(gst.sgst_rate):g}%)", f"₹{float(gst.sgst_amount):,.2f}"])
+        totals.append(
+            [f"CGST ({float(gst.cgst_rate):g}%)", f"₹{float(gst.cgst_amount):,.2f}"]
+        )
+        totals.append(
+            [f"SGST ({float(gst.sgst_rate):g}%)", f"₹{float(gst.sgst_amount):,.2f}"]
+        )
     totals.append(["Shipping", f"₹{float(order.shipping_charge):,.2f}"])
     if float(order.discount) > 0:
         totals.append(["Discount", f"-₹{float(order.discount):,.2f}"])
@@ -161,7 +179,10 @@ class InvoiceService:
         repo = PaymentRepository()
         existing = await repo.get_invoice_for_order(db, order.id)
         if existing:
-            return {"invoice_number": existing.invoice_number, "pdf_url": existing.pdf_url}
+            return {
+                "invoice_number": existing.invoice_number,
+                "pdf_url": existing.pdf_url,
+            }
 
         invoice_number = await repo.generate_invoice_number(db)
         pdf_bytes = _build_pdf(order, invoice_number)
@@ -190,7 +211,9 @@ class InvoiceService:
 
         return {"invoice_number": invoice.invoice_number, "pdf_url": invoice.pdf_url}
 
-    async def get_download_url(self, db, order_id: uuid.UUID, user_id: uuid.UUID) -> str:
+    async def get_download_url(
+        self, db, order_id: uuid.UUID, user_id: uuid.UUID
+    ) -> str:
         """Return a presigned 10-minute download URL for the invoice PDF."""
         from app.core.exceptions import NotFoundError
         from app.modules.orders.repository import OrderRepository

@@ -83,10 +83,13 @@ class TestInventoryService:
                 AsyncMock(return_value=snapshot),
             ),
             patch(
-                "app.modules.inventory.service._repo.record", AsyncMock(return_value=mock_movement)
+                "app.modules.inventory.service._repo.record",
+                AsyncMock(return_value=mock_movement),
             ),
             patch("app.core.events.event_bus.publish", AsyncMock()),
-            patch.object(InventoryMovementResponse, "model_validate", return_value=mock_resp),
+            patch.object(
+                InventoryMovementResponse, "model_validate", return_value=mock_resp
+            ),
         ):
             result = await self.svc.record_movement(
                 db, product_id=product_id, delta=-5, movement_type="sale"
@@ -113,10 +116,13 @@ class TestInventoryService:
                 AsyncMock(return_value=snapshot),
             ),
             patch(
-                "app.modules.inventory.service._repo.record", AsyncMock(return_value=MagicMock())
+                "app.modules.inventory.service._repo.record",
+                AsyncMock(return_value=MagicMock()),
             ),
             patch("app.core.events.event_bus.publish", AsyncMock()) as mock_pub,
-            patch.object(InventoryMovementResponse, "model_validate", return_value=MagicMock()),
+            patch.object(
+                InventoryMovementResponse, "model_validate", return_value=MagicMock()
+            ),
         ):
             await self.svc.record_movement(
                 db, product_id=product_id, delta=-9, movement_type="sale"
@@ -128,7 +134,8 @@ class TestInventoryService:
 
         db = AsyncMock()
         with patch(
-            "app.modules.inventory.service._repo.get_stock_snapshot", AsyncMock(return_value=None)
+            "app.modules.inventory.service._repo.get_stock_snapshot",
+            AsyncMock(return_value=None),
         ):
             with pytest.raises(NotFoundError):
                 await self.svc.record_movement(
@@ -139,7 +146,11 @@ class TestInventoryService:
         from app.core.exceptions import ValidationError
 
         db = AsyncMock()
-        snapshot = {"stock_quantity": 3, "allow_backorder": False, "low_stock_threshold": 5}
+        snapshot = {
+            "stock_quantity": 3,
+            "allow_backorder": False,
+            "low_stock_threshold": 5,
+        }
         with patch(
             "app.modules.inventory.service._repo.get_stock_snapshot",
             AsyncMock(return_value=snapshot),
@@ -150,7 +161,10 @@ class TestInventoryService:
                 )
 
     async def test_manual_adjustment_delegates_to_record_movement(self):
-        from app.modules.inventory.schemas import InventoryMovementResponse, ManualAdjustmentRequest
+        from app.modules.inventory.schemas import (
+            InventoryMovementResponse,
+            ManualAdjustmentRequest,
+        )
 
         db = AsyncMock()
         db.execute = AsyncMock()
@@ -169,10 +183,13 @@ class TestInventoryService:
                 AsyncMock(return_value=snapshot),
             ),
             patch(
-                "app.modules.inventory.service._repo.record", AsyncMock(return_value=MagicMock())
+                "app.modules.inventory.service._repo.record",
+                AsyncMock(return_value=MagicMock()),
             ),
             patch("app.core.events.event_bus.publish", AsyncMock()),
-            patch.object(InventoryMovementResponse, "model_validate", return_value=mock_resp),
+            patch.object(
+                InventoryMovementResponse, "model_validate", return_value=mock_resp
+            ),
         ):
             result = await self.svc.manual_adjustment(
                 db,
@@ -187,7 +204,8 @@ class TestInventoryService:
 
         db = AsyncMock()
         with patch(
-            "app.modules.inventory.service._repo.get_stock_snapshot", AsyncMock(return_value=None)
+            "app.modules.inventory.service._repo.get_stock_snapshot",
+            AsyncMock(return_value=None),
         ):
             with pytest.raises(NotFoundError):
                 await self.svc.get_history(db, uuid.uuid4())
@@ -196,7 +214,11 @@ class TestInventoryService:
         from app.modules.inventory.schemas import InventoryMovementResponse
 
         db = AsyncMock()
-        snapshot = {"stock_quantity": 5, "allow_backorder": False, "low_stock_threshold": 2}
+        snapshot = {
+            "stock_quantity": 5,
+            "allow_backorder": False,
+            "low_stock_threshold": 2,
+        }
         mock_movement = MagicMock()
         now = datetime.now(UTC)
         # Build a real schema object so InventoryMovementListResponse validates it
@@ -223,7 +245,9 @@ class TestInventoryService:
                 "app.modules.inventory.service._repo.list_for_product",
                 AsyncMock(return_value=([mock_movement], 1)),
             ),
-            patch.object(InventoryMovementResponse, "model_validate", return_value=real_item),
+            patch.object(
+                InventoryMovementResponse, "model_validate", return_value=real_item
+            ),
         ):
             result = await self.svc.get_history(db, uuid.uuid4())
         assert result.total == 1
@@ -354,8 +378,14 @@ class TestCouponServiceExtra:
         mock_coupon = MagicMock()
         mock_resp = MagicMock()
         with (
-            patch("app.modules.coupons.service._repo.get_by_code", AsyncMock(return_value=None)),
-            patch("app.modules.coupons.service._repo.create", AsyncMock(return_value=mock_coupon)),
+            patch(
+                "app.modules.coupons.service._repo.get_by_code",
+                AsyncMock(return_value=None),
+            ),
+            patch(
+                "app.modules.coupons.service._repo.create",
+                AsyncMock(return_value=mock_coupon),
+            ),
             patch.object(CouponResponse, "model_validate", return_value=mock_resp),
         ):
             result = await self.svc.create(
@@ -376,7 +406,8 @@ class TestCouponServiceExtra:
 
         db = AsyncMock()
         with patch(
-            "app.modules.coupons.service._repo.get_by_code", AsyncMock(return_value=MagicMock())
+            "app.modules.coupons.service._repo.get_by_code",
+            AsyncMock(return_value=MagicMock()),
         ):
             with pytest.raises(ConflictError):
                 await self.svc.create(
@@ -399,12 +430,18 @@ class TestCouponServiceExtra:
         mock_resp = MagicMock()
         with (
             patch(
-                "app.modules.coupons.service._repo.get_by_id", AsyncMock(return_value=mock_coupon)
+                "app.modules.coupons.service._repo.get_by_id",
+                AsyncMock(return_value=mock_coupon),
             ),
-            patch("app.modules.coupons.service._repo.update", AsyncMock(return_value=mock_updated)),
+            patch(
+                "app.modules.coupons.service._repo.update",
+                AsyncMock(return_value=mock_updated),
+            ),
             patch.object(CouponResponse, "model_validate", return_value=mock_resp),
         ):
-            result = await self.svc.update(db, uuid.uuid4(), CouponUpdateRequest(is_active=False))
+            result = await self.svc.update(
+                db, uuid.uuid4(), CouponUpdateRequest(is_active=False)
+            )
         assert result is mock_resp
 
     async def test_apply_and_reserve_success(self):
@@ -442,10 +479,12 @@ class TestCouponServiceExtra:
         )
         with (
             patch(
-                "app.modules.coupons.service._repo.get_by_code", AsyncMock(return_value=mock_coupon)
+                "app.modules.coupons.service._repo.get_by_code",
+                AsyncMock(return_value=mock_coupon),
             ),
             patch(
-                "app.modules.coupons.service._repo.get_user_usage_count", AsyncMock(return_value=0)
+                "app.modules.coupons.service._repo.get_user_usage_count",
+                AsyncMock(return_value=0),
             ),
             patch("app.modules.coupons.service._repo.record_usage", AsyncMock()),
             patch("app.modules.coupons.service._repo.increment_usage", AsyncMock()),
@@ -576,13 +615,23 @@ class TestCatalogServiceExtra:
         mock_product.id = uuid.uuid4()
         mock_resp = MagicMock()
         with (
-            patch("app.modules.catalog.service._repo.get_by_sku", AsyncMock(return_value=None)),
-            patch("app.modules.catalog.service._repo.get_by_slug", AsyncMock(return_value=None)),
-            patch("app.modules.catalog.service._repo.create", AsyncMock(return_value=mock_product)),
+            patch(
+                "app.modules.catalog.service._repo.get_by_sku",
+                AsyncMock(return_value=None),
+            ),
+            patch(
+                "app.modules.catalog.service._repo.get_by_slug",
+                AsyncMock(return_value=None),
+            ),
+            patch(
+                "app.modules.catalog.service._repo.create",
+                AsyncMock(return_value=mock_product),
+            ),
             patch("app.modules.catalog.service._repo.add_variant", AsyncMock()),
             patch("app.modules.catalog.service._repo.upsert_attribute", AsyncMock()),
             patch(
-                "app.modules.catalog.service._repo.get_by_id", AsyncMock(return_value=mock_product)
+                "app.modules.catalog.service._repo.get_by_id",
+                AsyncMock(return_value=mock_product),
             ),
             patch.object(ProductResponse, "model_validate", return_value=mock_resp),
         ):
@@ -611,9 +660,13 @@ class TestCatalogServiceExtra:
         mock_resp = MagicMock()
         with (
             patch(
-                "app.modules.catalog.service._repo.get_by_id", AsyncMock(return_value=mock_product)
+                "app.modules.catalog.service._repo.get_by_id",
+                AsyncMock(return_value=mock_product),
             ),
-            patch("app.modules.catalog.service._repo.update", AsyncMock(return_value=mock_updated)),
+            patch(
+                "app.modules.catalog.service._repo.update",
+                AsyncMock(return_value=mock_updated),
+            ),
             patch.object(ProductResponse, "model_validate", return_value=mock_resp),
         ):
             result = await self.svc.update(
@@ -652,7 +705,8 @@ class TestCatalogServiceExtra:
         mock_attr = MagicMock()
         with (
             patch(
-                "app.modules.catalog.service._repo.get_by_id", AsyncMock(return_value=mock_product)
+                "app.modules.catalog.service._repo.get_by_id",
+                AsyncMock(return_value=mock_product),
             ),
             patch(
                 "app.modules.catalog.service._repo.upsert_attribute",
@@ -675,12 +729,18 @@ class TestCatalogServiceExtra:
 
         with (
             patch(
-                "app.modules.catalog.service._repo.get_by_id", AsyncMock(return_value=mock_product)
+                "app.modules.catalog.service._repo.get_by_id",
+                AsyncMock(return_value=mock_product),
             ),
-            patch("app.modules.catalog.service._repo.adjust_stock", AsyncMock(side_effect=[-5, 5])),
+            patch(
+                "app.modules.catalog.service._repo.adjust_stock",
+                AsyncMock(side_effect=[-5, 5]),
+            ),
         ):  # negative then rollback
             with pytest.raises(ValidationError):
-                await self.svc.adjust_stock(db, uuid.uuid4(), StockAdjustRequest(delta=-100))
+                await self.svc.adjust_stock(
+                    db, uuid.uuid4(), StockAdjustRequest(delta=-100)
+                )
 
 
 # ─── OrderService — optional fields + cancel with items ─────────────────────
@@ -705,8 +765,14 @@ class TestOrderServiceExtra:
         mock_updated = MagicMock()
         mock_resp = MagicMock()
         with (
-            patch("app.modules.orders.service._repo.get_by_id", AsyncMock(return_value=mock_order)),
-            patch("app.modules.orders.service._repo.update", AsyncMock(return_value=mock_updated)),
+            patch(
+                "app.modules.orders.service._repo.get_by_id",
+                AsyncMock(return_value=mock_order),
+            ),
+            patch(
+                "app.modules.orders.service._repo.update",
+                AsyncMock(return_value=mock_updated),
+            ),
             patch("app.core.events.event_bus.publish", AsyncMock()),
             patch.object(OrderResponse, "model_validate", return_value=mock_resp),
         ):
@@ -740,8 +806,14 @@ class TestOrderServiceExtra:
         mock_updated = MagicMock()
         mock_resp = MagicMock()
         with (
-            patch("app.modules.orders.service._repo.get_by_id", AsyncMock(return_value=mock_order)),
-            patch("app.modules.orders.service._repo.update", AsyncMock(return_value=mock_updated)),
+            patch(
+                "app.modules.orders.service._repo.get_by_id",
+                AsyncMock(return_value=mock_order),
+            ),
+            patch(
+                "app.modules.orders.service._repo.update",
+                AsyncMock(return_value=mock_updated),
+            ),
             patch.object(InventoryService, "record_movement", AsyncMock()) as mock_inv,
             patch("app.core.events.event_bus.publish", AsyncMock()),
             patch.object(OrderResponse, "model_validate", return_value=mock_resp),

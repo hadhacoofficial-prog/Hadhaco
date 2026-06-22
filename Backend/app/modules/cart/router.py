@@ -46,11 +46,15 @@ async def add_to_cart(
     x_session_id: str | None = Header(None, alias="X-Session-ID"),
 ):
     user_id, session_id = _resolve_identity(current_user, x_session_id)
-    result = await _service.add_item(db, payload, user_id=user_id, session_id=session_id)
+    result = await _service.add_item(
+        db, payload, user_id=user_id, session_id=session_id
+    )
     return ok(result, ResponseCode.CART_ITEM_ADDED, "Item added to cart")
 
 
-@router.patch("/cart/{cart_id}/items/{item_id}", response_model=BaseSuccessResponse[CartSummary])
+@router.patch(
+    "/cart/{cart_id}/items/{item_id}", response_model=BaseSuccessResponse[CartSummary]
+)
 async def update_cart_item(
     cart_id: uuid.UUID,
     item_id: uuid.UUID,
@@ -63,7 +67,9 @@ async def update_cart_item(
     return ok(result, ResponseCode.CART_ITEM_UPDATED, "Cart item updated")
 
 
-@router.delete("/cart/{cart_id}/items/{item_id}", response_model=BaseSuccessResponse[CartSummary])
+@router.delete(
+    "/cart/{cart_id}/items/{item_id}", response_model=BaseSuccessResponse[CartSummary]
+)
 async def remove_cart_item(
     cart_id: uuid.UUID,
     item_id: uuid.UUID,

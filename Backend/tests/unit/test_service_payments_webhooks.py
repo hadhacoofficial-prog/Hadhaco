@@ -78,7 +78,9 @@ class TestPaymentService:
         db = AsyncMock()
         mock_order = MagicMock()
         mock_order.user_id = uuid.uuid4()  # different from caller
-        with patch.object(OrderRepository, "get_by_id", AsyncMock(return_value=mock_order)):
+        with patch.object(
+            OrderRepository, "get_by_id", AsyncMock(return_value=mock_order)
+        ):
             with pytest.raises(NotFoundError):
                 await self.svc.create_razorpay_order(
                     db,
@@ -97,7 +99,9 @@ class TestPaymentService:
         mock_order = MagicMock()
         mock_order.user_id = user_id
         mock_order.payment_status = "paid"
-        with patch.object(OrderRepository, "get_by_id", AsyncMock(return_value=mock_order)):
+        with patch.object(
+            OrderRepository, "get_by_id", AsyncMock(return_value=mock_order)
+        ):
             with pytest.raises(ValidationError):
                 await self.svc.create_razorpay_order(
                     db,
@@ -117,7 +121,9 @@ class TestPaymentService:
         mock_order.user_id = user_id
         mock_order.payment_status = "pending"
         mock_order.status = "cancelled"
-        with patch.object(OrderRepository, "get_by_id", AsyncMock(return_value=mock_order)):
+        with patch.object(
+            OrderRepository, "get_by_id", AsyncMock(return_value=mock_order)
+        ):
             with pytest.raises(ValidationError):
                 await self.svc.create_razorpay_order(
                     db,
@@ -132,7 +138,9 @@ class TestPaymentService:
         from app.modules.payments.schemas import VerifyPaymentRequest
 
         db = AsyncMock()
-        with patch("app.modules.payments.service._repo.get_by_id", AsyncMock(return_value=None)):
+        with patch(
+            "app.modules.payments.service._repo.get_by_id", AsyncMock(return_value=None)
+        ):
             with pytest.raises(NotFoundError):
                 await self.svc.verify_and_capture(
                     db,
@@ -154,7 +162,8 @@ class TestPaymentService:
         mock_payment.user_id = uuid.uuid4()
         mock_payment.status = "created"
         with patch(
-            "app.modules.payments.service._repo.get_by_id", AsyncMock(return_value=mock_payment)
+            "app.modules.payments.service._repo.get_by_id",
+            AsyncMock(return_value=mock_payment),
         ):
             with pytest.raises(NotFoundError):
                 await self.svc.verify_and_capture(
@@ -178,7 +187,8 @@ class TestPaymentService:
         mock_payment.status = "captured"
         with (
             patch(
-                "app.modules.payments.service._repo.get_by_id", AsyncMock(return_value=mock_payment)
+                "app.modules.payments.service._repo.get_by_id",
+                AsyncMock(return_value=mock_payment),
             ),
             patch(
                 "app.modules.payments.schemas.PaymentResponse.model_validate",
@@ -202,7 +212,8 @@ class TestPaymentService:
 
         db = AsyncMock()
         with patch(
-            "app.modules.payments.service._repo.get_for_order", AsyncMock(return_value=None)
+            "app.modules.payments.service._repo.get_for_order",
+            AsyncMock(return_value=None),
         ):
             with pytest.raises(NotFoundError):
                 await self.svc.get_payment_for_order(db, uuid.uuid4())
@@ -214,10 +225,13 @@ class TestPaymentService:
         mock_payment = MagicMock()
         mock_payment.user_id = uuid.uuid4()
         with patch(
-            "app.modules.payments.service._repo.get_for_order", AsyncMock(return_value=mock_payment)
+            "app.modules.payments.service._repo.get_for_order",
+            AsyncMock(return_value=mock_payment),
         ):
             with pytest.raises(NotFoundError):
-                await self.svc.get_payment_for_order(db, uuid.uuid4(), user_id=uuid.uuid4())
+                await self.svc.get_payment_for_order(
+                    db, uuid.uuid4(), user_id=uuid.uuid4()
+                )
 
     async def test_initiate_refund_raises_404_when_no_payment(self):
         from app.core.exceptions import NotFoundError
@@ -225,10 +239,13 @@ class TestPaymentService:
 
         db = AsyncMock()
         with patch(
-            "app.modules.payments.service._repo.get_for_order", AsyncMock(return_value=None)
+            "app.modules.payments.service._repo.get_for_order",
+            AsyncMock(return_value=None),
         ):
             with pytest.raises(NotFoundError):
-                await self.svc.initiate_refund(db, uuid.uuid4(), RefundRequest(reason="defective"))
+                await self.svc.initiate_refund(
+                    db, uuid.uuid4(), RefundRequest(reason="defective")
+                )
 
     async def test_initiate_refund_raises_validation_when_not_captured(self):
         from app.core.exceptions import ValidationError
@@ -238,15 +255,19 @@ class TestPaymentService:
         mock_payment = MagicMock()
         mock_payment.status = "created"  # not "captured"
         with patch(
-            "app.modules.payments.service._repo.get_for_order", AsyncMock(return_value=mock_payment)
+            "app.modules.payments.service._repo.get_for_order",
+            AsyncMock(return_value=mock_payment),
         ):
             with pytest.raises(ValidationError):
-                await self.svc.initiate_refund(db, uuid.uuid4(), RefundRequest(reason="defective"))
+                await self.svc.initiate_refund(
+                    db, uuid.uuid4(), RefundRequest(reason="defective")
+                )
 
     async def test_list_refunds_returns_empty(self):
         db = AsyncMock()
         with patch(
-            "app.modules.payments.service._repo.get_refunds_for_order", AsyncMock(return_value=[])
+            "app.modules.payments.service._repo.get_refunds_for_order",
+            AsyncMock(return_value=[]),
         ):
             result = await self.svc.list_refunds(db, uuid.uuid4())
         assert result == []
@@ -264,7 +285,8 @@ class TestWebhookService:
     async def test_handle_razorpay_invalid_signature_returns_status(self):
         db = AsyncMock()
         with patch(
-            "app.modules.webhooks.service.verify_razorpay_webhook_signature", return_value=False
+            "app.modules.webhooks.service.verify_razorpay_webhook_signature",
+            return_value=False,
         ):
             result = await self.svc.handle_razorpay(
                 db, body=b'{"event":"test"}', signature="bad_sig"
@@ -274,9 +296,12 @@ class TestWebhookService:
     async def test_handle_razorpay_invalid_json_returns_status(self):
         db = AsyncMock()
         with patch(
-            "app.modules.webhooks.service.verify_razorpay_webhook_signature", return_value=True
+            "app.modules.webhooks.service.verify_razorpay_webhook_signature",
+            return_value=True,
         ):
-            result = await self.svc.handle_razorpay(db, body=b"not json", signature="sig")
+            result = await self.svc.handle_razorpay(
+                db, body=b"not json", signature="sig"
+            )
         assert result["status"] == "invalid_payload"
 
     async def test_handle_razorpay_already_processed_returns_status(self):
@@ -288,7 +313,8 @@ class TestWebhookService:
 
         payload = json.dumps({"event": "payment.captured", "id": "evt_123"}).encode()
         with patch(
-            "app.modules.webhooks.service.verify_razorpay_webhook_signature", return_value=True
+            "app.modules.webhooks.service.verify_razorpay_webhook_signature",
+            return_value=True,
         ):
             result = await self.svc.handle_razorpay(db, body=payload, signature="sig")
         assert result["status"] == "already_processed"
@@ -296,7 +322,8 @@ class TestWebhookService:
     async def test_handle_delivery_one_invalid_signature(self):
         db = AsyncMock()
         with patch(
-            "app.modules.webhooks.service.verify_delivery_one_webhook_signature", return_value=False
+            "app.modules.webhooks.service.verify_delivery_one_webhook_signature",
+            return_value=False,
         ):
             result = await self.svc.handle_delivery_one(
                 db, body=b'{"status":"delivered"}', signature="bad"
@@ -306,7 +333,10 @@ class TestWebhookService:
     async def test_handle_delivery_one_invalid_json(self):
         db = AsyncMock()
         with patch(
-            "app.modules.webhooks.service.verify_delivery_one_webhook_signature", return_value=True
+            "app.modules.webhooks.service.verify_delivery_one_webhook_signature",
+            return_value=True,
         ):
-            result = await self.svc.handle_delivery_one(db, body=b"invalid", signature="sig")
+            result = await self.svc.handle_delivery_one(
+                db, body=b"invalid", signature="sig"
+            )
         assert result["status"] == "invalid_payload"

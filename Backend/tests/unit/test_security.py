@@ -186,7 +186,9 @@ class TestWebhookSignature:
         import hmac
 
         body = b'{"event":"payment.captured"}'
-        sig = hmac.new(settings.RAZORPAY_WEBHOOK_SECRET.encode(), body, hashlib.sha256).hexdigest()
+        sig = hmac.new(
+            settings.RAZORPAY_WEBHOOK_SECRET.encode(), body, hashlib.sha256
+        ).hexdigest()
         assert verify_razorpay_webhook_signature(body, sig) is True
 
     def test_tampered_body_rejected(self):

@@ -106,7 +106,9 @@ class TestAcceptedHelper:
         assert result.code == "ANALYTICS_EVENT_TRACKED"
 
     def test_data_preserved(self):
-        result = accepted({"status": "queued"}, ResponseCode.ANALYTICS_EVENT_TRACKED, "ok")
+        result = accepted(
+            {"status": "queued"}, ResponseCode.ANALYTICS_EVENT_TRACKED, "ok"
+        )
         assert result.data == {"status": "queued"}
 
 

@@ -10,7 +10,11 @@ from app.core.config import settings
 from app.core.database import get_db
 from app.core.dependencies import get_current_user
 from app.core.exceptions import NotFoundError
-from app.modules.dev_auth.schemas import DevLoginRequest, DevLoginResponse, DevMeResponse
+from app.modules.dev_auth.schemas import (
+    DevLoginRequest,
+    DevLoginResponse,
+    DevMeResponse,
+)
 from app.modules.dev_auth.service import DevAuthService
 from app.modules.profiles.models import Profile
 
@@ -21,7 +25,12 @@ router = APIRouter(prefix="/dev", tags=["dev-auth"])
 _svc = DevAuthService()
 
 _ROLE_PERMISSIONS: dict[str, list[str]] = {
-    "customer": ["read:own_profile", "read:products", "write:own_orders", "write:own_cart"],
+    "customer": [
+        "read:own_profile",
+        "read:products",
+        "write:own_orders",
+        "write:own_cart",
+    ],
     "admin": [
         "read:own_profile",
         "read:products",

@@ -23,12 +23,13 @@ async def run() -> None:
     log.info("partition_manager_started", target_month=str(next_month))
     try:
         async with AsyncSessionLocal() as db:
-            await db.execute(text("SELECT create_analytics_partition(:d)"), {"d": next_month})
+            await db.execute(
+                text("SELECT create_analytics_partition(:d)"), {"d": next_month}
+            )
             start = next_month
             end = (start + timedelta(days=32)).replace(day=1)
             partition_name = f"audit_logs_{start.strftime('%Y_%m')}"
-            await db.execute(
-                text(f"""
+            await db.execute(text(f"""
                 DO $$
                 BEGIN
                     IF NOT EXISTS (SELECT 1 FROM pg_class WHERE relname = '{partition_name}') THEN
@@ -37,14 +38,19 @@ async def run() -> None:
                     END IF;
                 END;
                 $$
-            """)
-            )
+            """))
             await db.commit()
         duration_ms = round((time.perf_counter() - t0) * 1000)
-        log.info("partition_manager_completed", month=str(next_month), duration_ms=duration_ms)
+        log.info(
+            "partition_manager_completed",
+            month=str(next_month),
+            duration_ms=duration_ms,
+        )
     except Exception:
         duration_ms = round((time.perf_counter() - t0) * 1000)
-        log.exception("partition_manager_failed", month=str(next_month), duration_ms=duration_ms)
+        log.exception(
+            "partition_manager_failed", month=str(next_month), duration_ms=duration_ms
+        )
 
 
 if __name__ == "__main__":

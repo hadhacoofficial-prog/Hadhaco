@@ -8,7 +8,7 @@ code lives here yet, intentionally.
 
 Planned module map (matches SOW):
 
-- home/         shop/         products/      categories/
-- cart/         wishlist/     checkout/      orders/
-- account/      auth/         reviews/       cms/
-- admin/        search/
+- home/ shop/ products/ categories/
+- cart/ wishlist/ checkout/ orders/
+- account/ auth/ reviews/ cms/
+- admin/ search/

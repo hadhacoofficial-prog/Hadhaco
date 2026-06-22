@@ -57,7 +57,9 @@ class TaxService:
         )
 
     @staticmethod
-    def split_total_tax(total_tax: Decimal | float, buyer_state: str | None) -> TaxBreakdown:
+    def split_total_tax(
+        total_tax: Decimal | float, buyer_state: str | None
+    ) -> TaxBreakdown:
         """Split an already-computed tax total into CGST/SGST or IGST.
 
         Used by the invoice generator: the order stores the locked tax_amount,
