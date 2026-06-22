@@ -1,0 +1,229 @@
+name: hadha-production
+
+# ─────────────────────────────────────────────────────────────────────────────
+# All image tags are injected at deploy time via environment variables:
+#   BACKEND_IMAGE  — e.g. ghcr.io/owner/hadha-backend:sha-abc1234
+#   FRONTEND_IMAGE — e.g. ghcr.io/owner/hadha-frontend:sha-abc1234
+#
+# No ports are exposed directly; all traffic enters through Nginx.
+# ─────────────────────────────────────────────────────────────────────────────
+
+services:
+
+  # ── FastAPI backend ──────────────────────────────────────────────────────────
+  backend:
+    image: ${BACKEND_IMAGE:?BACKEND_IMAGE is required}
+    container_name: hadha-backend
+    restart: unless-stopped
+    env_file: /opt/hadha/.env.production
+    environment:
+      APP_ENV: production
+      REDIS_URL: redis://hadha-redis:6379/0
+      ALLOWED_ORIGINS: "https://hadha.co,https://www.hadha.co"
+      ALLOWED_HOSTS: "hadha.co,www.hadha.co"
+    expose:
+      - "8000"
+    depends_on:
+      hadha-redis:
+        condition: service_healthy
+    networks:
+      - hadha-internal
+    sysctls:
+      net.ipv6.conf.all.disable_ipv6: "1"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import httpx; httpx.get('http://localhost:8000/health').raise_for_status()"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+    deploy:
+      resources:
+        limits:
+          memory: 768M
+          cpus: "1.0"
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "50m"
+        max-file: "5"
+
+  # ── React / TanStack Start frontend ─────────────────────────────────────────
+  frontend:
+    image: ${FRONTEND_IMAGE:?FRONTEND_IMAGE is required}
+    container_name: hadha-frontend
+    restart: unless-stopped
+    env_file: /opt/hadha/.env.frontend.production
+    environment:
+      NODE_ENV: production
+      PORT: "3000"
+    expose:
+      - "3000"
+    depends_on:
+      backend:
+        condition: service_healthy
+    networks:
+      - hadha-internal
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+          cpus: "0.75"
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "50m"
+        max-file: "5"
+
+  # ── Redis ─────────────────────────────────────────────────────────────────────
+  hadha-redis:
+    image: redis:7-alpine
+    container_name: hadha-redis
+    restart: unless-stopped
+    command: >
+      redis-server
+        --appendonly yes
+        --maxmemory 256mb
+        --maxmemory-policy allkeys-lru
+        --requirepass ${REDIS_PASSWORD:?REDIS_PASSWORD is required}
+        --loglevel notice
+    expose:
+      - "6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - hadha-internal
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD}", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 5s
+    deploy:
+      resources:
+        limits:
+          memory: 300M
+          cpus: "0.5"
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "20m"
+        max-file: "3"
+
+  # ── Redis Commander ─────────────────────────────────────────────────────────
+  redis-commander:
+    image: rediscommander/redis-commander:latest
+    container_name: hadha-redis-commander
+    restart: unless-stopped
+    environment:
+      REDIS_HOSTS: "hadha:hadha-redis:6379:0:${REDIS_PASSWORD}"
+      URL_PREFIX: /redis-commander
+    expose:
+      - "8081"
+    depends_on:
+      hadha-redis:
+        condition: service_healthy
+    networks:
+      - hadha-internal
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:8081"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    deploy:
+      resources:
+        limits:
+          memory: 128M
+          cpus: "0.25"
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "2"
+
+  # ── Dozzle ──────────────────────────────────────────────────────────────────
+  dozzle:
+    image: amir20/dozzle:latest
+    container_name: hadha-dozzle
+    restart: unless-stopped
+    environment:
+      DOZZLE_BASE: /dozzle
+      DOZZLE_NO_ANALYTICS: "true"
+    expose:
+      - "8080"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    networks:
+      - hadha-internal
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:8080/dozzle"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 5s
+    deploy:
+      resources:
+        limits:
+          memory: 64M
+          cpus: "0.1"
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "2"
+
+  # ── Nginx reverse proxy ──────────────────────────────────────────────────────
+  nginx:
+    image: nginx:1.27-alpine
+    container_name: hadha-nginx
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - /opt/hadha/nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - /opt/hadha/nginx/conf.d:/etc/nginx/conf.d:ro
+      - /opt/hadha/nginx/htpasswd:/etc/nginx/htpasswd:ro
+      - /etc/letsencrypt:/etc/letsencrypt:ro
+      - /var/www/certbot:/var/www/certbot:ro
+      - nginx_logs:/var/log/nginx
+    depends_on:
+      - backend
+      - frontend
+    networks:
+      - hadha-internal
+    healthcheck:
+      test: ["CMD", "nginx", "-t"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    deploy:
+      resources:
+        limits:
+          memory: 128M
+          cpus: "0.5"
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "50m"
+        max-file: "5"
+
+# ─────────────────────────────────────────────────────────────────────────────
+volumes:
+  redis_data:
+    name: hadha_redis_data
+  nginx_logs:
+    name: hadha_nginx_logs
+
+networks:
+  hadha-internal:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.28.0.0/16

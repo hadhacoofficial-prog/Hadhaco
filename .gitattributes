@@ -1,0 +1,11 @@
+# Force Unix line endings for shell scripts (prevents Windows CRLF from breaking bash on VPS)
+deploy/scripts/*.sh text eol=lf
+*.sh text eol=lf
+
+# Mark scripts as executable in git
+deploy/scripts/deploy.sh     text eol=lf
+deploy/scripts/rollback.sh   text eol=lf
+deploy/scripts/backup.sh     text eol=lf
+deploy/scripts/healthcheck.sh text eol=lf
+deploy/scripts/notify.sh     text eol=lf
+deploy/scripts/bootstrap.sh  text eol=lf

@@ -1,0 +1,220 @@
+import math
+import uuid
+from datetime import UTC, datetime, timezone
+
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.core.exceptions import ConflictError, NotFoundError, ValidationError
+from app.modules.catalog.models import Product
+from app.modules.catalog.repository import ProductRepository
+from app.modules.catalog.schemas import (
+    ProductAttributeCreateRequest,
+    ProductCreateRequest,
+    ProductListResponse,
+    ProductResponse,
+    ProductUpdateRequest,
+    ProductVariantCreateRequest,
+    ProductVariantUpdateRequest,
+    StockAdjustRequest,
+)
+
+_repo = ProductRepository()
+
+
+class CatalogService:
+
+    async def get_by_id(self, db: AsyncSession, product_id: uuid.UUID) -> ProductResponse:
+        product = await _repo.get_by_id(db, product_id)
+        if not product:
+            raise NotFoundError("Product not found")
+        return ProductResponse.model_validate(product)
+
+    async def get_by_slug(self, db: AsyncSession, slug: str) -> ProductResponse:
+        product = await _repo.get_by_slug(db, slug)
+        if not product:
+            raise NotFoundError("Product not found")
+        return ProductResponse.model_validate(product)
+
+    async def list_products(
+        self,
+        db: AsyncSession,
+        *,
+        page: int = 1,
+        page_size: int = 20,
+        status: str | None = None,
+        category_id: uuid.UUID | None = None,
+        metal_type: str | None = None,
+        gender: str | None = None,
+        is_featured: bool | None = None,
+        is_new_arrival: bool | None = None,
+        is_best_seller: bool | None = None,
+        min_price: float | None = None,
+        max_price: float | None = None,
+        search: str | None = None,
+        sort_by: str = "created_at",
+        sort_dir: str = "desc",
+        include_deleted: bool = False,
+    ) -> ProductListResponse:
+        items, total = await _repo.list_paginated(
+            db,
+            page=page,
+            page_size=page_size,
+            status=status,
+            category_id=category_id,
+            metal_type=metal_type,
+            gender=gender,
+            is_featured=is_featured,
+            is_new_arrival=is_new_arrival,
+            is_best_seller=is_best_seller,
+            min_price=min_price,
+            max_price=max_price,
+            search=search,
+            sort_by=sort_by,
+            sort_dir=sort_dir,
+            include_deleted=include_deleted,
+        )
+        list_items = []
+        for p in items:
+            primary_img = next((img.url for img in p.images if img.is_primary), None)
+            if primary_img is None and p.images:
+                primary_img = p.images[0].url
+            item_dict = {
+                "id": p.id,
+                "sku": p.sku,
+                "name": p.name,
+                "slug": p.slug,
+                "short_description": p.short_description,
+                "category_id": p.category_id,
+                "metal_type": p.metal_type,
+                "base_price": p.base_price,
+                "compare_at_price": p.compare_at_price,
+                "stock_quantity": p.stock_quantity,
+                "status": p.status,
+                "is_featured": p.is_featured,
+                "is_new_arrival": p.is_new_arrival,
+                "is_best_seller": p.is_best_seller,
+                "created_at": p.created_at,
+                "primary_image": primary_img,
+            }
+            list_items.append(item_dict)
+
+        return ProductListResponse(
+            items=list_items,
+            total=total,
+            page=page,
+            page_size=page_size,
+            total_pages=math.ceil(total / page_size) if total else 0,
+        )
+
+    async def create(
+        self, db: AsyncSession, payload: ProductCreateRequest
+    ) -> ProductResponse:
+        if await _repo.get_by_sku(db, payload.sku):
+            raise ConflictError("Product with this SKU already exists")
+        if await _repo.get_by_slug(db, payload.slug):
+            raise ConflictError("Product with this slug already exists")
+
+        variants_data = payload.variants
+        attributes_data = payload.attributes
+        data = payload.model_dump(exclude={"variants", "attributes"})
+
+        if data.get("status") == "active":
+            data["published_at"] = datetime.now(UTC)
+
+        product = await _repo.create(db, data)
+
+        for v in variants_data:
+            if await _repo.get_by_sku(db, v.sku):
+                raise ConflictError(f"Variant SKU '{v.sku}' already exists")
+            vdata = v.model_dump()
+            vdata["product_id"] = product.id
+            await _repo.add_variant(db, vdata)
+
+        for a in attributes_data:
+            await _repo.upsert_attribute(db, product.id, a.name, a.value, a.sort_order)
+
+        # Reload with relations
+        product = await _repo.get_by_id(db, product.id)
+        return ProductResponse.model_validate(product)
+
+    async def update(
+        self, db: AsyncSession, product_id: uuid.UUID, payload: ProductUpdateRequest
+    ) -> ProductResponse:
+        product = await _repo.get_by_id(db, product_id)
+        if not product:
+            raise NotFoundError("Product not found")
+
+        data = payload.model_dump(exclude_unset=True)
+
+        if "slug" in data and data["slug"] != product.slug:
+            if await _repo.get_by_slug(db, data["slug"]):
+                raise ConflictError("Product with this slug already exists")
+
+        if data.get("status") == "active" and product.status != "active":
+            data["published_at"] = datetime.now(UTC)
+
+        updated = await _repo.update(db, product_id, data)
+        return ProductResponse.model_validate(updated)
+
+    async def delete(self, db: AsyncSession, product_id: uuid.UUID) -> None:
+        product = await _repo.get_by_id(db, product_id)
+        if not product:
+            raise NotFoundError("Product not found")
+        await _repo.soft_delete(db, product_id)
+
+    # ---------- Variants ----------
+
+    async def add_variant(
+        self, db: AsyncSession, product_id: uuid.UUID, payload: ProductVariantCreateRequest
+    ):
+        product = await _repo.get_by_id(db, product_id)
+        if not product:
+            raise NotFoundError("Product not found")
+        if await _repo.get_by_sku(db, payload.sku):
+            raise ConflictError(f"SKU '{payload.sku}' already exists")
+        data = payload.model_dump()
+        data["product_id"] = product_id
+        return await _repo.add_variant(db, data)
+
+    async def update_variant(
+        self, db: AsyncSession, variant_id: uuid.UUID, payload: ProductVariantUpdateRequest
+    ):
+        variant = await _repo.get_variant(db, variant_id)
+        if not variant:
+            raise NotFoundError("Variant not found")
+        return await _repo.update_variant(db, variant_id, payload.model_dump(exclude_unset=True))
+
+    async def delete_variant(self, db: AsyncSession, variant_id: uuid.UUID) -> None:
+        if not await _repo.delete_variant(db, variant_id):
+            raise NotFoundError("Variant not found")
+
+    # ---------- Attributes ----------
+
+    async def upsert_attribute(
+        self, db: AsyncSession, product_id: uuid.UUID, payload: ProductAttributeCreateRequest
+    ):
+        product = await _repo.get_by_id(db, product_id)
+        if not product:
+            raise NotFoundError("Product not found")
+        return await _repo.upsert_attribute(db, product_id, payload.name, payload.value, payload.sort_order)
+
+    async def delete_attribute(
+        self, db: AsyncSession, product_id: uuid.UUID, name: str
+    ) -> None:
+        if not await _repo.delete_attribute(db, product_id, name):
+            raise NotFoundError("Attribute not found")
+
+    # ---------- Stock ----------
+
+    async def adjust_stock(
+        self, db: AsyncSession, product_id: uuid.UUID, payload: StockAdjustRequest
+    ) -> int:
+        product = await _repo.get_by_id(db, product_id)
+        if not product:
+            raise NotFoundError("Product not found")
+        new_qty = await _repo.adjust_stock(db, product_id, payload.delta)
+        if new_qty < 0:
+            # Roll back
+            await _repo.adjust_stock(db, product_id, -payload.delta)
+            raise ValidationError("Insufficient stock")
+        return new_qty

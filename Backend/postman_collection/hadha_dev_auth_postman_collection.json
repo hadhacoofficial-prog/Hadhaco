@@ -1,0 +1,154 @@
+{
+  "info": {
+    "name": "Hadha — Dev Auth",
+    "_postman_id": "dev-auth-collection-v1",
+    "description": "Development-only authentication endpoints. Requires APP_ENV=development or ENABLE_DEV_AUTH=true on the server. Admin/Super Admin users only.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "base_url",
+      "value": "http://localhost:8000",
+      "type": "string"
+    },
+    {
+      "key": "access_token",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "refresh_token",
+      "value": "",
+      "type": "string"
+    }
+  ],
+  "auth": {
+    "type": "bearer",
+    "bearer": [
+      {
+        "key": "token",
+        "value": "{{access_token}}",
+        "type": "string"
+      }
+    ]
+  },
+  "item": [
+    {
+      "name": "Dev Auth",
+      "item": [
+        {
+          "name": "Login (get JWT)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (pm.response.code === 200) {",
+                  "    const body = pm.response.json();",
+                  "    const session = body.data.session;",
+                  "    pm.collectionVariables.set('access_token', session.access_token);",
+                  "    pm.collectionVariables.set('refresh_token', session.refresh_token);",
+                  "    pm.test('Login successful', () => pm.expect(body.success).to.be.true);",
+                  "    pm.test('access_token is set', () => pm.expect(session.access_token).to.be.a('string').and.not.empty);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "auth": { "type": "noauth" },
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"admin@hadha.co\",\n  \"password\": \"yourpassword\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/v1/dev/login",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "dev", "login"]
+            },
+            "description": "Authenticate with Supabase credentials. Only works for ADMIN or SUPER_ADMIN users. Automatically stores access_token and refresh_token into collection variables."
+          },
+          "response": [
+            {
+              "name": "200 OK — Login successful",
+              "status": "OK",
+              "code": 200,
+              "header": [{ "key": "Content-Type", "value": "application/json" }],
+              "body": "{\n  \"success\": true,\n  \"code\": \"DEV_AUTH_LOGIN\",\n  \"message\": \"Authentication successful\",\n  \"error\": null,\n  \"data\": {\n    \"user\": {\n      \"id\": \"00000000-0000-0000-0000-000000000001\",\n      \"email\": \"admin@hadha.co\",\n      \"role\": \"super_admin\",\n      \"full_name\": \"Admin User\",\n      \"first_name\": \"Admin\",\n      \"last_name\": \"User\"\n    },\n    \"session\": {\n      \"access_token\": \"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...\",\n      \"refresh_token\": \"v1.refresh.token...\",\n      \"expires_in\": 3600,\n      \"expires_at\": 1718000000,\n      \"token_type\": \"bearer\"\n    }\n  }\n}"
+            },
+            {
+              "name": "401 — Wrong credentials",
+              "status": "Unauthorized",
+              "code": 401,
+              "header": [{ "key": "Content-Type", "value": "application/json" }],
+              "body": "{\n  \"success\": false,\n  \"code\": \"AUTHENTICATION_ERROR\",\n  \"message\": \"Invalid email or password\",\n  \"error\": \"Invalid email or password\",\n  \"data\": null\n}"
+            },
+            {
+              "name": "403 — Not an admin",
+              "status": "Forbidden",
+              "code": 403,
+              "header": [{ "key": "Content-Type", "value": "application/json" }],
+              "body": "{\n  \"success\": false,\n  \"code\": \"AUTHORIZATION_ERROR\",\n  \"message\": \"Admin or Super Admin role required\",\n  \"error\": \"Admin or Super Admin role required\",\n  \"data\": null\n}"
+            },
+            {
+              "name": "404 — Dev auth disabled (production)",
+              "status": "Not Found",
+              "code": 404,
+              "header": [{ "key": "Content-Type", "value": "application/json" }],
+              "body": "{\n  \"success\": false,\n  \"code\": \"NOT_FOUND\",\n  \"message\": \"Not found\",\n  \"error\": \"Not found\",\n  \"data\": null\n}"
+            }
+          ]
+        },
+        {
+          "name": "Me (inspect token)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Token is valid', () => {",
+                  "    const body = pm.response.json();",
+                  "    pm.expect(body.success).to.be.true;",
+                  "    pm.expect(body.data.is_active).to.be.true;",
+                  "});"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/v1/dev/me",
+              "host": ["{{base_url}}"],
+              "path": ["api", "v1", "dev", "me"]
+            },
+            "description": "Decodes the current Bearer token and returns the resolved user profile, role, and permissions. Uses the access_token collection variable set by the Login request."
+          },
+          "response": [
+            {
+              "name": "200 OK — Token valid",
+              "status": "OK",
+              "code": 200,
+              "header": [{ "key": "Content-Type", "value": "application/json" }],
+              "body": "{\n  \"success\": true,\n  \"code\": \"DEV_AUTH_ME\",\n  \"message\": \"Token is valid\",\n  \"error\": null,\n  \"data\": {\n    \"user_id\": \"00000000-0000-0000-0000-000000000001\",\n    \"supabase_uid\": \"00000000-0000-0000-0000-000000000001\",\n    \"email\": \"admin@hadha.co\",\n    \"role\": \"super_admin\",\n    \"is_active\": true,\n    \"session_expires_at\": null,\n    \"permissions\": [\n      \"read:own_profile\",\n      \"read:products\",\n      \"write:own_orders\",\n      \"write:own_cart\",\n      \"admin:read_all\",\n      \"admin:write_products\",\n      \"admin:write_orders\",\n      \"admin:write_users\",\n      \"admin:write_cms\",\n      \"super_admin:manage_roles\",\n      \"super_admin:force_logout\",\n      \"super_admin:manage_settings\"\n    ]\n  }\n}"
+            },
+            {
+              "name": "401 — Missing or expired token",
+              "status": "Unauthorized",
+              "code": 401,
+              "header": [{ "key": "Content-Type", "value": "application/json" }],
+              "body": "{\n  \"success\": false,\n  \"code\": \"AUTHENTICATION_ERROR\",\n  \"message\": \"Not authenticated\",\n  \"error\": \"Not authenticated\",\n  \"data\": null\n}"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

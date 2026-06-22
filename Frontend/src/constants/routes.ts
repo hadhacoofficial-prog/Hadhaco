@@ -1,0 +1,28 @@
+/** Centralized route paths. Use these instead of hardcoded strings in links. */
+export const ROUTES = {
+  home: "/",
+  collections: "/collections",
+  collection: (slug: string) => `/collections/${slug}`,
+  product: (slug: string) => `/products/${slug}`,
+  cart: "/cart",
+  checkout: "/checkout",
+  checkoutSuccess: "/checkout/success",
+  wishlist: "/wishlist",
+  search: "/search",
+  account: "/account",
+  login: "/account/login",
+  register: "/account/register",
+  about: "/about",
+  contact: "/contact",
+  faq: "/faq",
+  shippingReturns: "/shipping-returns",
+  privacy: "/privacy",
+  terms: "/terms",
+  storeLocator: "/store-locator",
+  admin: {
+    root: "/admin",
+    products: "/admin/products",
+    orders: "/admin/orders",
+    customers: "/admin/customers",
+  },
+} as const;

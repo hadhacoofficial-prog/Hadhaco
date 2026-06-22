@@ -1,0 +1,57 @@
+# Python cache
+__pycache__/
+*.py[cod]
+*.pyo
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Virtual environments
+venv/
+.venv/
+hadha/
+env/
+
+# Development / IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+
+# Git
+.git/
+.gitignore
+.gitattributes
+
+# Test artefacts
+htmlcov/
+.coverage
+coverage.xml
+coverage/
+
+# Logs
+logs/
+*.log
+
+# Secrets — never bake into the image
+.env
+.env.*
+!.env.example
+!.env.staging.example
+!.env.production.example
+
+# Docs / tooling not needed at runtime
+Docs/
+postman_collection/
+scripts/
+*.md
+*.rst
+
+# Existing docker configs (not needed inside image)
+docker/
+
+# Temporary files
+*.tmp
+*.bak
+tmp/

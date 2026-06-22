@@ -1,0 +1,231 @@
+name: Production Deploy
+
+# Triggers on pushes to main.
+# Builds multi-arch images, pushes to GHCR with SHA + semver tags,
+# then deploys to the production VPS with full rollback support.
+
+on:
+  push:
+    branches: [main]
+  # Allow manual trigger with optional tag override
+  workflow_dispatch:
+    inputs:
+      image_tag:
+        description: "Image tag to deploy (leave empty to build from HEAD)"
+        required: false
+        default: ""
+
+concurrency:
+  group: production-deploy
+  cancel-in-progress: false  # Never cancel in-flight production deployments
+
+env:
+  PYTHON_VERSION: "3.12"
+  NODE_VERSION: "20"
+  REGISTRY: ghcr.io
+  BACKEND_IMAGE_NAME: ${{ github.repository_owner }}/hadha-backend
+  FRONTEND_IMAGE_NAME: ${{ github.repository_owner }}/hadha-frontend
+
+jobs:
+  # ── Run all CI checks first ───────────────────────────────────────────────
+  ci:
+    name: CI Validation
+    uses: ./.github/workflows/ci.yml
+    secrets: inherit
+
+  # ── Detect version ────────────────────────────────────────────────────────
+  version:
+    name: Resolve Version
+    runs-on: ubuntu-24.04
+    outputs:
+      image_tag: ${{ steps.version.outputs.image_tag }}
+      semver: ${{ steps.version.outputs.semver }}
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Resolve version
+        id: version
+        run: |
+          if [[ -n "${{ github.event.inputs.image_tag }}" ]]; then
+            TAG="${{ github.event.inputs.image_tag }}"
+            echo "Using manually specified tag: ${TAG}"
+          else
+            SHORT_SHA="${GITHUB_SHA::8}"
+            TAG="sha-${SHORT_SHA}"
+          fi
+
+          # Detect semver tag if current commit is tagged
+          SEMVER=$(git tag --points-at HEAD | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+' | head -1 || echo "")
+
+          echo "image_tag=${TAG}"    >> "$GITHUB_OUTPUT"
+          echo "semver=${SEMVER}"    >> "$GITHUB_OUTPUT"
+          echo "Resolved tag: ${TAG} (semver: ${SEMVER:-none})"
+
+  # ── Build and push images ─────────────────────────────────────────────────
+  build-push:
+    name: Build & Push Images
+    runs-on: ubuntu-24.04
+    needs: [ci, version]
+    permissions:
+      contents: read
+      packages: write
+
+    outputs:
+      backend_image: ${{ steps.tags.outputs.backend_image }}
+      frontend_image: ${{ steps.tags.outputs.frontend_image }}
+      image_tag: ${{ needs.version.outputs.image_tag }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-buildx-action@v3
+        with:
+          driver-opts: |
+            image=moby/buildkit:latest
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Compute full image tag list
+        id: tags
+        run: |
+          TAG="${{ needs.version.outputs.image_tag }}"
+          SEMVER="${{ needs.version.outputs.semver }}"
+          BACKEND_BASE="${{ env.REGISTRY }}/${{ env.BACKEND_IMAGE_NAME }}"
+          FRONTEND_BASE="${{ env.REGISTRY }}/${{ env.FRONTEND_IMAGE_NAME }}"
+
+          BACKEND_TAGS="${BACKEND_BASE}:${TAG},${BACKEND_BASE}:latest"
+          FRONTEND_TAGS="${FRONTEND_BASE}:${TAG},${FRONTEND_BASE}:latest"
+
+          if [[ -n "${SEMVER}" ]]; then
+            BACKEND_TAGS="${BACKEND_TAGS},${BACKEND_BASE}:${SEMVER}"
+            FRONTEND_TAGS="${FRONTEND_TAGS},${FRONTEND_BASE}:${SEMVER}"
+          fi
+
+          echo "backend_tags=${BACKEND_TAGS}"              >> "$GITHUB_OUTPUT"
+          echo "frontend_tags=${FRONTEND_TAGS}"            >> "$GITHUB_OUTPUT"
+          echo "backend_image=${BACKEND_BASE}:${TAG}"      >> "$GITHUB_OUTPUT"
+          echo "frontend_image=${FRONTEND_BASE}:${TAG}"    >> "$GITHUB_OUTPUT"
+          echo "Primary backend image:  ${BACKEND_BASE}:${TAG}"
+          echo "Primary frontend image: ${FRONTEND_BASE}:${TAG}"
+
+      - name: Build and push backend
+        uses: docker/build-push-action@v6
+        with:
+          context: ./Backend
+          file: ./Backend/docker/Dockerfile
+          target: production
+          push: true
+          cache-from: type=gha,scope=backend-prod
+          cache-to: type=gha,mode=max,scope=backend-prod
+          tags: ${{ steps.tags.outputs.backend_tags }}
+          labels: |
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.created=${{ github.event.head_commit.timestamp }}
+            org.opencontainers.image.version=${{ needs.version.outputs.semver || needs.version.outputs.image_tag }}
+
+      - name: Build and push frontend
+        uses: docker/build-push-action@v6
+        with:
+          context: ./Frontend
+          file: ./Frontend/Dockerfile
+          target: production
+          push: true
+          cache-from: type=gha,scope=frontend-prod
+          cache-to: type=gha,mode=max,scope=frontend-prod
+          build-args: |
+            NITRO_PRESET=node
+            NODE_ENV=production
+            VITE_API_BASE_URL=https://hadha.co/api/v1
+            VITE_SUPABASE_URL=${{ secrets.SUPABASE_URL }}
+            VITE_SUPABASE_ANON_KEY=${{ secrets.SUPABASE_ANON_KEY }}
+          tags: ${{ steps.tags.outputs.frontend_tags }}
+          labels: |
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+            org.opencontainers.image.revision=${{ github.sha }}
+
+  # ── Deploy to production VPS ──────────────────────────────────────────────
+  deploy-production:
+    name: Deploy to Production
+    runs-on: ubuntu-24.04
+    needs: [version, build-push]
+    environment:
+      name: production
+      url: https://hadha.co
+    permissions:
+      contents: read
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Sync deploy scripts and configs to VPS
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          port: ${{ secrets.SSH_PORT || 22 }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          source: "deploy/scripts/*,deploy/docker/docker-compose.production.yml,deploy/nginx/*"
+          target: "/tmp/hadha-deploy"
+          strip_components: 0
+
+      - name: Deploy
+        id: deploy
+        uses: appleboy/ssh-action@v1.2.0
+        env:
+          BACKEND_IMAGE: ${{ needs.build-push.outputs.backend_image }}
+          FRONTEND_IMAGE: ${{ needs.build-push.outputs.frontend_image }}
+          IMAGE_TAG: ${{ needs.version.outputs.image_tag }}
+          GHCR_USERNAME: ${{ github.actor }}
+          GHCR_TOKEN: ${{ secrets.GHCR_TOKEN || secrets.GITHUB_TOKEN }}
+          GIT_COMMIT_SHA: ${{ github.sha }}
+          GIT_COMMIT_AUTHOR: ${{ github.event.head_commit.author.name || 'workflow_dispatch' }}
+          REDIS_PASSWORD: ${{ secrets.REDIS_PASSWORD }}
+          RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
+          RESEND_FROM_EMAIL: ${{ secrets.RESEND_FROM_EMAIL }}
+          RESEND_TO_EMAIL: ${{ secrets.RESEND_TO_EMAIL }}
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          port: ${{ secrets.SSH_PORT || 22 }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          envs: BACKEND_IMAGE,FRONTEND_IMAGE,IMAGE_TAG,GHCR_USERNAME,GHCR_TOKEN,GIT_COMMIT_SHA,GIT_COMMIT_AUTHOR,REDIS_PASSWORD,RESEND_API_KEY,RESEND_FROM_EMAIL,RESEND_TO_EMAIL
+          timeout: 600s
+          command_timeout: 10m
+          script: |
+            set -euo pipefail
+
+            # Install updated scripts and configs
+            chmod +x /tmp/hadha-deploy/deploy/scripts/*.sh
+            cp -f /tmp/hadha-deploy/deploy/scripts/*.sh              /opt/hadha/scripts/
+            cp -f /tmp/hadha-deploy/deploy/docker/docker-compose.production.yml /opt/hadha/
+            cp -rf /tmp/hadha-deploy/deploy/nginx/*                  /opt/hadha/nginx/
+            rm -rf /tmp/hadha-deploy
+
+            # Execute deployment
+            export BACKEND_IMAGE FRONTEND_IMAGE IMAGE_TAG
+            export GHCR_USERNAME GHCR_TOKEN GIT_COMMIT_SHA GIT_COMMIT_AUTHOR
+            export REDIS_PASSWORD RESEND_API_KEY RESEND_FROM_EMAIL RESEND_TO_EMAIL
+
+            /opt/hadha/scripts/deploy.sh production "${IMAGE_TAG}"
+
+      - name: Notify deployment failure (if SSH step failed)
+        if: failure()
+        run: |
+          curl -s -X POST "https://api.resend.com/emails" \
+            -H "Authorization: Bearer ${{ secrets.RESEND_API_KEY }}" \
+            -H "Content-Type: application/json" \
+            -d "{
+              \"from\": \"${{ secrets.RESEND_FROM_EMAIL }}\",
+              \"to\":   [\"${{ secrets.RESEND_TO_EMAIL }}\"],
+              \"subject\": \"🔴 [PRODUCTION] GitHub Actions deployment failed\",
+              \"html\": \"<p>The GitHub Actions deployment job itself failed (SSH or SCP step).</p><p>Commit: ${{ github.sha }}<br>Branch: ${{ github.ref_name }}<br>Actor: ${{ github.actor }}</p><p><a href='${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}'>View run</a></p>\"
+            }"

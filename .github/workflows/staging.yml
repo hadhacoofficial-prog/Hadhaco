@@ -1,0 +1,169 @@
+name: Staging Deploy
+
+# Triggers on pushes to the develop branch.
+# Builds and pushes images to GHCR, then deploys to the staging VPS.
+
+on:
+  push:
+    branches: [develop]
+
+concurrency:
+  group: staging-deploy
+  cancel-in-progress: false  # Never cancel in-flight deployments
+
+env:
+  PYTHON_VERSION: "3.12"
+  NODE_VERSION: "20"
+  REGISTRY: ghcr.io
+  BACKEND_IMAGE_NAME: ${{ github.repository_owner }}/hadha-backend
+  FRONTEND_IMAGE_NAME: ${{ github.repository_owner }}/hadha-frontend
+
+jobs:
+  # ── Run all CI checks first ───────────────────────────────────────────────
+  ci:
+    name: CI Validation
+    uses: ./.github/workflows/ci.yml
+    secrets: inherit
+
+  # ── Build and push images ─────────────────────────────────────────────────
+  build-push:
+    name: Build & Push Images
+    runs-on: ubuntu-24.04
+    needs: ci
+    permissions:
+      contents: read
+      packages: write
+
+    outputs:
+      image_tag: ${{ steps.meta.outputs.image_tag }}
+      backend_image: ${{ steps.meta.outputs.backend_image }}
+      frontend_image: ${{ steps.meta.outputs.frontend_image }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-buildx-action@v3
+        with:
+          driver-opts: |
+            image=moby/buildkit:latest
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Compute image tag
+        id: meta
+        run: |
+          SHORT_SHA="${GITHUB_SHA::8}"
+          TAG="develop-${SHORT_SHA}"
+          BACKEND_IMAGE="${{ env.REGISTRY }}/${{ env.BACKEND_IMAGE_NAME }}:${TAG}"
+          FRONTEND_IMAGE="${{ env.REGISTRY }}/${{ env.FRONTEND_IMAGE_NAME }}:${TAG}"
+          echo "image_tag=${TAG}"           >> "$GITHUB_OUTPUT"
+          echo "backend_image=${BACKEND_IMAGE}"   >> "$GITHUB_OUTPUT"
+          echo "frontend_image=${FRONTEND_IMAGE}" >> "$GITHUB_OUTPUT"
+          echo "Image tag: ${TAG}"
+
+      - name: Build and push backend
+        uses: docker/build-push-action@v6
+        with:
+          context: ./Backend
+          file: ./Backend/docker/Dockerfile
+          target: production
+          push: true
+          cache-from: type=gha,scope=backend
+          cache-to: type=gha,mode=max,scope=backend
+          tags: |
+            ${{ steps.meta.outputs.backend_image }}
+            ${{ env.REGISTRY }}/${{ env.BACKEND_IMAGE_NAME }}:develop-latest
+          labels: |
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.created=${{ github.event.head_commit.timestamp }}
+
+      - name: Build and push frontend
+        uses: docker/build-push-action@v6
+        with:
+          context: ./Frontend
+          file: ./Frontend/Dockerfile
+          target: production
+          push: true
+          cache-from: type=gha,scope=frontend
+          cache-to: type=gha,mode=max,scope=frontend
+          build-args: |
+            NITRO_PRESET=node
+            VITE_API_BASE_URL=https://staging.hadha.co/api/v1
+            VITE_SUPABASE_URL=${{ secrets.SUPABASE_URL }}
+            VITE_SUPABASE_ANON_KEY=${{ secrets.SUPABASE_ANON_KEY }}
+          tags: |
+            ${{ steps.meta.outputs.frontend_image }}
+            ${{ env.REGISTRY }}/${{ env.FRONTEND_IMAGE_NAME }}:develop-latest
+          labels: |
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+            org.opencontainers.image.revision=${{ github.sha }}
+
+  # ── Deploy to staging VPS ─────────────────────────────────────────────────
+  deploy-staging:
+    name: Deploy to Staging
+    runs-on: ubuntu-24.04
+    needs: build-push
+    environment:
+      name: staging
+      url: https://staging.hadha.co
+    permissions:
+      contents: read
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Sync deploy scripts to VPS
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          port: ${{ secrets.SSH_PORT || 22 }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          source: "deploy/scripts/*,deploy/docker/docker-compose.staging.yml,deploy/nginx/*"
+          target: "/tmp/hadha-deploy"
+          strip_components: 0
+
+      - name: Deploy
+        uses: appleboy/ssh-action@v1.2.0
+        env:
+          BACKEND_IMAGE: ${{ needs.build-push.outputs.backend_image }}
+          FRONTEND_IMAGE: ${{ needs.build-push.outputs.frontend_image }}
+          IMAGE_TAG: ${{ needs.build-push.outputs.image_tag }}
+          GHCR_USERNAME: ${{ github.actor }}
+          GHCR_TOKEN: ${{ secrets.GHCR_TOKEN || secrets.GITHUB_TOKEN }}
+          GIT_COMMIT_SHA: ${{ github.sha }}
+          GIT_COMMIT_AUTHOR: ${{ github.event.head_commit.author.name }}
+          REDIS_PASSWORD: ${{ secrets.REDIS_PASSWORD }}
+          RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
+          RESEND_FROM_EMAIL: ${{ secrets.RESEND_FROM_EMAIL }}
+          RESEND_TO_EMAIL: ${{ secrets.RESEND_TO_EMAIL }}
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          port: ${{ secrets.SSH_PORT || 22 }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          envs: BACKEND_IMAGE,FRONTEND_IMAGE,IMAGE_TAG,GHCR_USERNAME,GHCR_TOKEN,GIT_COMMIT_SHA,GIT_COMMIT_AUTHOR,REDIS_PASSWORD,RESEND_API_KEY,RESEND_FROM_EMAIL,RESEND_TO_EMAIL
+          timeout: 600s
+          command_timeout: 10m
+          script: |
+            set -euo pipefail
+
+            # Install updated scripts
+            chmod +x /tmp/hadha-deploy/deploy/scripts/*.sh
+            cp -f /tmp/hadha-deploy/deploy/scripts/*.sh       /opt/hadha-staging/scripts/
+            cp -f /tmp/hadha-deploy/deploy/docker/docker-compose.staging.yml /opt/hadha-staging/
+            cp -rf /tmp/hadha-deploy/deploy/nginx/*           /opt/hadha-staging/nginx/
+            rm -rf /tmp/hadha-deploy
+
+            # Execute deployment
+            export BACKEND_IMAGE FRONTEND_IMAGE IMAGE_TAG
+            export GHCR_USERNAME GHCR_TOKEN GIT_COMMIT_SHA GIT_COMMIT_AUTHOR
+            export REDIS_PASSWORD RESEND_API_KEY RESEND_FROM_EMAIL RESEND_TO_EMAIL
+
+            /opt/hadha-staging/scripts/deploy.sh staging "${IMAGE_TAG}"

@@ -1,0 +1,2226 @@
+# HADHA.CO - PRODUCTION GRADE BACKEND GENERATION PROMPT
+
+Build a production-ready ecommerce backend for a Silver Jewellery store named Hadha.co.
+
+## Tech Stack
+
+Backend:
+
+* FastAPI
+* Python 3.12
+* SQLAlchemy 2.0 Async
+* Alembic
+* Pydantic V2
+* PostgreSQL (Supabase)
+* supabase Authentication
+* Redis Caching
+* APScheduler
+* CDN Storage
+* Razorpay
+* Delivery One Integration
+* Resend Email
+* Structured JSON Logging
+* Docker
+* Nginx
+* Sentry Monitoring
+
+Frontend:
+
+* React
+* TanStack Router
+* TanStack Query
+
+Database:
+
+* Supabase PostgreSQL
+
+Architecture:
+
+* Clean Architecture
+* Domain Driven Design
+* Service Layer Pattern
+* Repository Pattern
+* Async Endpoints
+* Event Driven Workflows
+
+Generate complete production code.
+
+CRITICAL INSTRUCTIONS
+
+Do not skip modules.
+
+Do not generate placeholders.
+
+Do not generate TODO comments.
+
+Do not generate stub implementations.
+
+Do not simplify schema.
+
+Do not omit SQL.
+
+Do not omit migrations.
+
+Do not omit RLS.
+
+Do not omit indexes.
+
+Do not omit views.
+
+Every generated file must be production ready.
+
+Every API must include:
+
+Request Schema
+
+Response Schema
+
+Validation
+
+Error Handling
+
+Authorization
+
+Audit Logging
+
+Tests
+
+Generate complete code only.
+
+---
+
+# PROJECT STRUCTURE
+
+backend/
+
+app/
+├── main.py
+├── core/
+│   ├── config.py
+│   ├── security.py
+│   ├── database.py
+│   ├── logging.py
+│   ├── exceptions.py
+│   └── dependencies.py
+│
+├── modules/
+│
+│   ├── auth/
+│   ├── catalog/
+│   ├── inventory/
+│   ├── cart/
+│   ├── orders/
+│   ├── payments/
+│   ├── shipping/
+│   ├── customers/
+│   ├── reviews/
+│   ├── coupons/
+│   ├── cms/
+│   ├── analytics/
+│   └── admin/
+│
+├── services/
+│   ├── razorpay_service.py
+│   ├── delivery_service.py
+│   ├── email_service.py
+│   ├── storage_service.py
+│   ├── review_service.py
+│   └── inventory_service.py
+│
+├── workers/
+│   ├── shipment_sync.py
+│   ├── review_reminder.py
+│   ├── abandoned_cart.py
+│   └── inventory_alerts.py
+│
+├── middleware/
+├── events/
+├── repositories/
+├── schemas/
+└── models/
+
+Generate every module completely.
+
+---
+
+# AUTH MODULE (UPDATED)
+
+Authentication Provider:
+
+* Supabase Auth
+
+Authentication Features:
+
+* Email/Password Authentication
+* Email Verification
+* Password Reset
+* Magic Link Login
+* Google OAuth
+* Session Management
+* Refresh Token Management
+* JWT Issuance by Supabase
+* User Metadata Management
+
+Do NOT implement custom JWT authentication.
+
+Do NOT implement custom password hashing.
+
+Do NOT implement custom refresh token storage.
+
+Supabase Auth is the source of truth for authentication.
+
+FastAPI acts as the authorization and business logic layer.
+
+---
+
+# USER MODEL
+
+Use:
+
+auth.users
+
+as the primary identity table.
+
+Create:
+
+profiles
+
+Table:
+
+id uuid primary key references auth.users(id)
+
+email
+
+full_name
+
+phone
+
+avatar_url
+
+role
+
+is_active
+
+created_at
+
+updated_at
+
+Roles:
+
+customer
+admin
+super_admin
+
+Every authenticated user must have a matching profile record.
+
+---
+
+# USER CREATION
+
+When a new user signs up through Supabase Auth:
+
+Automatically create a profile record.
+
+Implement Supabase trigger:
+
+auth.users
+↓
+profiles
+
+Default role:
+
+customer
+
+Generate:
+
+SQL Trigger
+SQL Function
+Supabase Migration
+
+---
+
+# AUTHORIZATION
+
+Authentication:
+
+Handled by Supabase.
+
+Authorization:
+
+Handled by FastAPI.
+
+Implement RBAC.
+
+Roles:
+
+customer
+
+admin
+
+super_admin
+
+Generate:
+
+Role Middleware
+
+Permission Dependencies
+
+Route Guards
+
+Admin Route Protection
+
+---
+
+# FASTAPI AUTH FLOW
+
+Frontend:
+
+React
+TanStack Router
+
+Uses:
+
+supabase-js
+
+Authentication Flow:
+
+Login
+↓
+Supabase Auth
+↓
+Access Token
+↓
+Authorization Bearer Token
+↓
+FastAPI
+↓
+Verify Supabase JWT
+↓
+Extract User
+↓
+Apply RBAC
+
+Generate complete implementation.
+
+---
+
+# GOOGLE LOGIN
+
+Implement:
+
+Google OAuth using Supabase Auth.
+
+Generate:
+
+Frontend Integration
+
+Backend JWT Verification
+
+Profile Creation Logic
+
+---
+
+# ADMIN SECURITY
+
+Admin accounts:
+
+role = admin
+role = super_admin
+
+Implement:
+
+TOTP 2FA
+
+Backup Codes
+
+Admin Session Validation
+
+Admin Audit Logs
+
+Admin Login Tracking
+
+Admin IP Tracking
+
+Admin Device Tracking
+
+Generate complete implementation.
+
+---
+
+# PASSWORD RESET
+
+Use Supabase Password Reset.
+
+Do not build custom password reset flows.
+
+Generate:
+
+Frontend Integration
+
+Email Templates
+
+Callback Handling
+
+---
+
+# EMAIL VERIFICATION
+
+Use Supabase Email Verification.
+
+Generate:
+
+Frontend Verification Flow
+
+Protected Routes Until Verification
+
+---
+
+# SESSION MANAGEMENT
+
+Use Supabase Sessions.
+
+Do not create custom session tables.
+
+Do not create refresh token tables.
+
+Use Supabase managed refresh tokens.
+
+Generate:
+
+Session Validation
+
+Session Revocation
+
+Logout
+
+Force Logout
+
+---
+
+# PROFILE MANAGEMENT
+
+Generate APIs:
+
+GET /me
+
+PATCH /me
+
+PATCH /me/avatar
+
+GET /admin/users
+
+PATCH /admin/users/{id}
+
+PATCH /admin/users/{id}/role
+
+PATCH /admin/users/{id}/status
+
+---
+
+# SUPABASE RLS
+
+Generate Row Level Security policies.
+
+Rules:
+
+Customer can view only their own profile.
+
+Customer can update only their own profile.
+
+Customer can view only their own orders.
+
+Customer can view only their own reviews.
+
+Admins can manage all resources.
+
+Super Admin has full access.
+
+Generate complete RLS SQL.
+
+---
+
+# SECURITY REQUIREMENTS
+
+Verify Supabase JWT on every protected endpoint.
+
+Use role-based authorization.
+
+Implement:
+
+Rate Limiting
+
+Admin 2FA
+
+Audit Logging
+
+IP Logging
+
+Suspicious Login Detection
+
+Account Lockout Protection
+
+Secure Cookies
+
+CSRF Protection
+
+Generate production-ready implementation.
+
+---
+
+# AUDIT LOGGING
+
+Track:
+
+User Login
+
+User Logout
+
+Password Reset
+
+Role Changes
+
+Profile Updates
+
+Admin Actions
+
+Failed Login Attempts
+
+Store:
+
+user_id
+
+action
+
+ip_address
+
+user_agent
+
+created_at
+
+Generate complete audit logging system.
+
+
+---
+
+# NOTIFICATION MODULE
+
+Architecture:
+
+Event Driven Notification System
+
+Providers:
+
+Email:
+
+* Twilio SendGrid (Primary)
+* Resend (Fallback)
+
+SMS:
+
+* Twilio SMS
+
+Future:
+
+* WhatsApp
+* Push Notifications
+
+---
+
+# BUSINESS REQUIREMENTS
+
+Send Email For:
+
+User Registered
+
+Email Verification
+
+Password Reset
+
+Order Created
+
+Payment Received
+
+Order Processing
+
+Order Shipped
+
+Out For Delivery
+
+Order Delivered
+
+Refund Initiated
+
+Refund Processed
+
+Review Request
+
+Admin Alerts
+
+Inventory Alerts
+
+Low Stock Alerts
+
+Account Updates
+
+---
+
+Send SMS Only For:
+
+Order Created AFTER successful payment
+
+Trigger:
+
+Payment Status = PAID
+
+Example:
+
+"Thank you for shopping with Hadha.co. Your order HD20260001 has been confirmed. Track your order in your account."
+
+Do NOT send SMS for:
+
+Registration
+
+Password Reset
+
+Order Shipped
+
+Review Request
+
+Marketing
+
+Unless explicitly enabled later.
+
+---
+
+# DATABASE TABLES
+
+notification_templates
+
+id
+name
+channel
+subject
+template_body
+is_active
+
+notification_logs
+
+id
+user_id
+channel
+event_type
+status
+provider
+provider_message_id
+error_message
+created_at
+
+notification_preferences
+
+id
+user_id
+
+email_enabled
+sms_enabled
+
+order_updates
+marketing
+
+created_at
+updated_at
+
+---
+
+# NOTIFICATION EVENTS
+
+UserRegistered
+
+PasswordResetRequested
+
+OrderCreated
+
+PaymentReceived
+
+OrderProcessing
+
+OrderShipped
+
+OutForDelivery
+
+OrderDelivered
+
+RefundCreated
+
+RefundProcessed
+
+ReviewRequest
+
+LowInventoryAlert
+
+AdminAlert
+
+---
+
+# IMPLEMENTATION
+
+Use Event Bus Pattern.
+
+Example:
+
+Order Paid
+↓
+Event Published
+↓
+Notification Service
+├─ Send Email
+└─ Send SMS
+
+Business modules must never call SendGrid or Twilio directly.
+
+All notifications must pass through Notification Service.
+
+---
+
+# TEMPLATE SYSTEM
+
+Generate HTML Email Templates.
+
+Templates:
+
+Welcome Email
+
+Email Verification
+
+Password Reset
+
+Order Confirmation
+
+Order Invoice
+
+Order Shipped
+
+Order Delivered
+
+Refund Confirmation
+
+Review Request
+
+Admin Alert
+
+Generate Responsive Templates.
+
+---
+
+# DELIVERY GUARANTEE
+
+Failed notifications must be retried.
+
+Retry Strategy:
+
+1 minute
+5 minutes
+15 minutes
+
+Store all failures.
+
+Generate retry worker.
+
+---
+
+# PROVIDER ABSTRACTION
+
+Create:
+
+NotificationProvider Interface
+
+Implement:
+
+SendGridProvider
+
+TwilioSmsProvider
+
+Future:
+
+WhatsAppProvider
+
+No business logic should depend directly on provider SDKs.
+
+---
+
+# ENV VARIABLES
+
+SENDGRID_API_KEY=
+EMAIL_FROM=
+EMAIL_REPLY_TO=
+
+TWILIO_ACCOUNT_SID=
+TWILIO_AUTH_TOKEN=
+TWILIO_PHONE_NUMBER=
+
+Generate complete implementation.
+
+-------------------
+
+# SUPABASE DATABASE FIRST APPROACH (MANDATORY)
+
+Do NOT create tables manually through Supabase UI.
+
+Do NOT require manual table creation.
+
+Do NOT require manual column creation.
+
+Do NOT require manual relationship creation.
+
+Generate everything as SQL files.
+
+Create:
+
+supabase/
+
+├── sql/
+│   ├── 000_extensions.sql
+│   ├── 001_profiles.sql
+│   ├── 002_catalog.sql
+│   ├── 003_inventory.sql
+│   ├── 004_cart.sql
+│   ├── 005_orders.sql
+│   ├── 006_payments.sql
+│   ├── 007_shipping.sql
+│   ├── 008_reviews.sql
+│   ├── 009_coupons.sql
+│   ├── 010_cms.sql
+│   ├── 011_analytics.sql
+│   ├── 012_audit_logs.sql
+│   ├── 013_views.sql
+│   ├── 014_indexes.sql
+│   ├── 015_rls.sql
+│   ├── 016_triggers.sql
+│   └── 017_seed_data.sql
+
+Generate all SQL files completely.
+
+Provide one master script:
+
+supabase/sql/setup.sql
+
+which can be executed directly in Supabase SQL Editor.
+
+Running setup.sql should create the entire database from scratch.
+
+No manual schema creation required.
+
+---
+
+# SUPABASE AUTH SETUP
+
+Authentication Provider:
+
+Supabase Auth
+
+Do NOT create custom users table.
+
+Use:
+
+auth.users
+
+Create:
+
+profiles
+
+linked to:
+
+auth.users.id
+
+Generate:
+
+1. Trigger
+2. Function
+3. RLS
+4. Seed Roles
+
+When user signs up:
+
+auth.users
+↓
+profiles
+
+must be automatically created.
+
+Generate SQL only.
+
+No manual setup.
+
+---
+
+# REQUIRED MANUAL SUPABASE TASKS
+
+Only allow manual tasks when technically impossible via SQL.
+
+List all required manual tasks separately.
+
+Example:
+
+1. Enable Google OAuth
+2. Configure SMTP
+3. Configure Auth Redirect URLs
+5. Configure Resend Domain
+6. Configure Razorpay Webhook
+7. Configure Delivery One Webhook
+
+Anything else must be automated.
+
+---
+
+# DATABASE VIEWS
+
+Generate optimized PostgreSQL views.
+
+Required:
+
+product_listing_view
+
+product_details_view
+
+inventory_summary_view
+
+customer_orders_view
+
+admin_order_dashboard_view
+
+shipment_dashboard_view
+
+review_summary_view
+
+sales_dashboard_view
+
+top_products_view
+
+Generate indexes supporting these views.
+
+---
+
+# INDEXING STRATEGY
+
+Generate indexes for:
+
+products.slug
+
+products.category_id
+
+products.status
+
+products.is_featured
+
+orders.customer_id
+
+orders.status
+
+orders.created_at
+
+payments.order_id
+
+shipments.order_id
+
+reviews.product_id
+
+reviews.status
+
+coupons.code
+
+analytics_events.event_type
+
+Generate composite indexes wherever beneficial.
+
+Avoid over-indexing.
+
+Explain index purpose.
+
+---
+
+# RLS POLICIES
+
+Generate complete Supabase RLS policies.
+
+Profiles
+
+Orders
+
+Reviews
+
+Carts
+
+Wishlist
+
+Coupons
+
+Analytics
+
+Rules:
+
+Customer:
+
+* Access own data only
+
+Admin:
+
+* Access all business data
+
+Super Admin:
+
+* Full access
+
+Service Role:
+
+* Full backend access
+
+Generate all policies in SQL.
+
+---
+
+# PERFORMANCE OPTIMIZATION
+
+Create:
+
+Materialized Views where appropriate
+
+Search Indexes
+
+Partial Indexes
+
+Query Optimization
+
+Pagination Ready Queries
+
+Aggregate Dashboard Views
+
+Target:
+
+<100ms catalog queries
+
+<200ms product details
+
+<300ms admin dashboard
+
+for 200 concurrent users
+
+---
+
+# MODULE IMPLEMENTATION ORDER
+
+Build project in this exact order:
+
+Phase 1
+
+* Database SQL
+* Supabase Auth
+* Profiles
+* RBAC
+
+Phase 2
+
+* Catalog
+* Categories
+* Collections
+* Images
+
+Phase 3
+
+* Inventory
+
+Phase 4
+
+* Cart
+
+Phase 5
+
+* Orders
+
+Phase 6
+
+* Razorpay
+
+Phase 7
+
+* Shipping
+
+Phase 8
+
+* Reviews
+
+Phase 9
+
+* Coupons
+
+Phase 10
+
+* CMS
+
+Phase 11
+
+* Analytics
+
+Phase 12
+
+* Admin Dashboard
+
+Each phase must be complete before proceeding.
+
+Never generate placeholders.
+
+Never generate TODOs.
+
+Never generate mock implementations.
+
+All code must be production ready.
+
+
+# CATALOG MODULE
+
+Tables:
+
+products
+categories
+collections
+product_images
+product_variants
+product_attributes
+product_collections
+
+Product fields:
+
+id
+sku
+slug
+name
+description
+short_description
+
+category_id
+
+metal_type
+purity
+
+weight_grams
+
+base_price
+sale_price
+
+is_featured
+is_new_arrival
+is_bestseller
+
+seo_title
+seo_description
+
+status
+
+created_at
+updated_at
+
+Generate:
+
+CRUD
+Pagination
+Filtering
+Sorting
+Search
+
+Support:
+
+Rings
+Anklets
+Bracelets
+Chains
+Necklaces
+Pendants
+Bangles
+Earrings
+Toe Rings
+Kids Jewellery
+Men Jewellery
+
+---
+# WISHLIST MODULE
+
+Tables:
+
+wishlists
+wishlist_items
+
+Features:
+
+Add To Wishlist
+Remove From Wishlist
+Move To Cart
+Guest Wishlist
+Authenticated Wishlist
+Wishlist Sharing
+
+Endpoints:
+
+GET /wishlist
+POST /wishlist/items
+DELETE /wishlist/items/{id}
+
+Generate complete implementation.
+
+# ADDRESS MODULE
+
+Tables:
+
+addresses
+
+Fields:
+
+id
+user_id
+
+full_name
+phone
+
+address_line_1
+address_line_2
+
+city
+state
+country
+postal_code
+
+is_default
+
+created_at
+updated_at
+
+Generate CRUD APIs.
+
+Support:
+
+Billing Address
+Shipping Address
+Default Address
+
+# SEARCH MODULE
+
+Features:
+
+Product Search
+Category Search
+Collection Search
+
+Autocomplete
+
+Fuzzy Search
+
+Synonym Search
+
+Search Suggestions
+
+Recent Searches
+
+Trending Searches
+
+Generate:
+
+PostgreSQL Full Text Search
+
+Search Indexes
+
+Search APIs
+
+Optimized queries.
+# IMAGE PIPELINE
+
+When admin uploads images:
+
+Accept:
+jpg
+jpeg
+png
+webp
+heic
+
+Automatically:
+
+Convert to WEBP
+
+Generate:
+
+thumbnail.webp
+medium.webp
+large.webp
+
+Store in cdn  r2
+
+Store URLs in database
+
+Never store raw uploads.
+
+---
+# CDN AND MEDIA DELIVERY
+
+All product images must be delivered through CDN.
+
+Never serve images through FastAPI.
+
+Architecture:
+
+Admin Upload
+↓
+FastAPI
+↓
+Image Processing
+↓
+CDN Storage
+↓
+Public CDN URL
+↓
+Frontend
+
+Generate support for:
+
+* Cloudflare R2
+* Cloudflare CDN
+
+Storage Structure:
+
+product-images/
+
+product-id/
+
+thumbnail.webp
+medium.webp
+large.webp
+
+review-images/
+
+cms-assets/
+
+avatars/
+
+Generate:
+
+Storage Service
+
+Upload Service
+
+Delete Service
+
+CDN URL Generator
+
+Signed URL Generator
+
+Image Optimization Pipeline
+
+Image Validation Pipeline
+
+Image Compression Pipeline
+
+Generate:
+
+AVIF
+
+WEBP
+
+Fallback Images
+
+Responsive Image URLs
+
+Frontend should receive:
+
+thumbnail_url
+
+medium_url
+
+large_url
+
+cdn_url
+
+Never expose internal storage URLs.
+
+Use CDN URLs only.
+
+# RETURNS MODULE
+
+Tables:
+
+returns
+return_items
+
+Statuses:
+
+REQUESTED
+APPROVED
+REJECTED
+PICKUP_SCHEDULED
+RECEIVED
+REFUNDED
+
+Generate complete workflow.
+
+Support:
+
+Order Cancellation
+
+Return Request
+
+Refund Integration
+
+Admin Approval
+
+--------------------
+
+# SETTINGS MODULE
+
+Tables:
+
+app_settings
+
+Fields:
+
+key
+value
+description
+
+Examples:
+
+free_shipping_threshold
+
+support_email
+
+support_phone
+
+tax_percentage
+
+maintenance_mode
+
+Generate admin APIs.
+-------------------------
+# TAX MODULE
+
+Support:
+
+GST
+
+Fields:
+
+cgst
+sgst
+igst
+
+Generate:
+
+Tax Calculation Service
+
+Invoice Generation
+
+Order Tax Breakdown
+----------------------------------
+
+
+# INVENTORY MODULE
+
+Tables:
+
+inventory
+inventory_movements
+
+Features:
+
+Stock Management
+
+Reserve Stock
+
+Release Stock
+
+Low Stock Alerts
+
+Inventory History
+
+---
+
+# CART MODULE
+
+Tables:
+
+carts
+cart_items
+
+Support:
+
+Guest Cart
+
+Authenticated Cart
+
+Cart Merge
+
+Cart Recovery
+
+---
+
+# ORDERS MODULE
+
+Tables:
+
+orders
+order_items
+order_status_history
+
+Statuses:
+
+PENDING
+PAID
+PROCESSING
+SHIPPED
+DELIVERED
+CANCELLED
+REFUNDED
+
+Generate complete order lifecycle.
+
+---
+
+# PAYMENT MODULE
+
+Provider:
+Razorpay
+
+Tables:
+
+payments
+payment_events
+refunds
+
+Features:
+
+Create Order
+
+Verify Payment
+
+Refund Payment
+
+Webhook Processing
+
+Webhooks:
+
+payment.authorized
+payment.captured
+payment.failed
+order.paid
+refund.created
+refund.processed
+
+Webhook verification mandatory.
+
+Never trust frontend payment success.
+
+Webhook is source of truth.
+
+---
+
+# SHIPPING MODULE
+
+Provider:
+Delivery One
+
+Abstract shipping layer.
+
+Support future providers.
+
+Tables:
+
+shipments
+shipment_events
+
+Features:
+
+Create Shipment
+
+Track Shipment
+
+Sync Shipment Status
+
+Webhook Processing
+
+Statuses:
+
+PICKUP_CREATED
+PICKED_UP
+IN_TRANSIT
+OUT_FOR_DELIVERY
+DELIVERED
+
+Store:
+
+AWB
+Tracking URL
+Pickup ID
+
+---
+
+# REVIEWS MODULE
+
+Tables:
+
+reviews
+review_images
+review_votes
+
+Features:
+
+Verified Purchase Reviews
+
+Star Rating
+
+Review Images
+
+Helpful Votes
+
+Moderation Queue
+
+Statuses:
+
+PENDING
+APPROVED
+REJECTED
+HIDDEN
+
+Only delivered customers can review.
+
+---
+
+# COUPONS MODULE
+
+Tables:
+
+coupons
+coupon_usage
+
+Features:
+
+Flat Discount
+
+Percentage Discount
+
+Minimum Order
+
+Maximum Discount
+
+Expiry
+
+Usage Limits
+
+Per User Limits
+
+---
+
+# CMS MODULE
+
+Tables:
+
+banners
+landing_sections
+
+Admin configurable.
+
+No code deployment required.
+
+---
+
+# ANALYTICS MODULE
+
+Track:
+
+Product Views
+
+Add To Cart
+
+Checkout Started
+
+Purchase Completed
+
+Store analytics events.
+
+Generate dashboards.
+
+---
+
+# ADMIN MODULE
+
+Admin APIs:
+
+Orders
+
+Products
+
+Customers
+
+Payments
+
+Reviews
+
+Coupons
+
+Inventory
+
+Shipments
+
+CMS
+
+Analytics
+
+Role Based Access Control mandatory.
+
+---
+
+# SECURITY REQUIREMENTS
+
+Implement:
+
+Rate Limiting
+
+Input Validation
+
+SQL Injection Protection
+
+XSS Protection
+
+CSRF Protection
+
+Secure Headers
+
+JWT Security
+
+RBAC
+
+Admin 2FA
+
+Audit Logs
+
+Webhook Signature Verification
+
+File Upload Validation
+
+Supabase RLS Policies
+
+Generate complete security implementation.
+
+---
+
+# AUDIT LOGGING
+
+Table:
+
+audit_logs
+
+Track:
+
+Login
+
+Product Changes
+
+Price Changes
+
+Inventory Changes
+
+Coupon Changes
+
+Refunds
+
+Admin Actions
+
+Store actor, action, resource, timestamp.
+
+---
+
+# MONITORING
+
+Integrate:
+
+Sentry
+
+Structured JSON Logs
+
+Health Check Endpoint
+
+Readiness Endpoint
+
+Liveness Endpoint
+
+---
+
+# DATABASE
+
+Generate:
+
+1. Complete SQLAlchemy Models
+2. Complete Alembic Migrations
+3. Complete PostgreSQL SQL Scripts
+4. Supabase RLS Policies
+5. Indexes
+6. Constraints
+7. Triggers
+8. Seed Data
+
+All tables must include:
+
+created_at
+updated_at
+
+Use UUID primary keys.
+
+---
+
+# PERFORMANCE
+
+Implement:
+
+Redis Caching
+
+Connection Pooling
+
+Pagination
+
+Async Queries
+
+Background Jobs
+
+Database Indexing
+
+Optimized Search
+
+---
+
+# DEPLOYMENT
+
+Generate:
+
+Dockerfile
+
+docker-compose.yml
+
+Nginx Configuration
+
+Environment Variables
+
+GitHub Actions CI/CD
+
+Production Deployment Guide
+
+---
+
+# # ENVIRONMENT CONFIGURATION
+
+Generate:
+
+.env.example
+
+.env.production.example
+
+.env.staging.example
+
+Do not hardcode any secrets.
+
+Required Environment Variables:
+
+# APP
+
+APP_NAME=
+APP_ENV=
+APP_DEBUG=
+APP_VERSION=
+
+# API
+
+API_HOST=
+API_PORT=
+API_BASE_URL=
+
+# SECURITY
+
+SECRET_KEY=
+ENCRYPTION_KEY=
+
+# SUPABASE
+
+SUPABASE_URL=
+SUPABASE_ANON_KEY=
+SUPABASE_SERVICE_ROLE_KEY=
+SUPABASE_JWT_SECRET=
+
+# DATABASE
+
+DATABASE_URL=
+
+# REDIS
+
+REDIS_URL=
+
+# STORAGE
+
+STORAGE_PROVIDER=
+CLOUDFLARE_ACCOUNT_ID=
+CLOUDFLARE_R2_BUCKET=
+CLOUDFLARE_R2_ACCESS_KEY=
+CLOUDFLARE_R2_SECRET_KEY=
+CLOUDFLARE_R2_PUBLIC_URL=
+
+# EMAIL
+
+RESEND_API_KEY=
+EMAIL_FROM=
+EMAIL_REPLY_TO=
+
+# RAZORPAY
+
+RAZORPAY_KEY_ID=
+RAZORPAY_KEY_SECRET=
+RAZORPAY_WEBHOOK_SECRET=
+
+# DELIVERY ONE
+
+DELIVERY_ONE_BASE_URL=
+DELIVERY_ONE_API_KEY=
+DELIVERY_ONE_WEBHOOK_SECRET=
+
+# SENTRY
+
+SENTRY_DSN=
+
+# MONITORING
+
+BETTERSTACK_API_KEY=
+
+# FRONTEND
+
+FRONTEND_URL=
+ADMIN_URL=
+
+# AUTH
+
+SUPABASE_AUTH_REDIRECT_URL=
+GOOGLE_CLIENT_ID=
+GOOGLE_CLIENT_SECRET=
+
+# CRON
+
+SHIPMENT_SYNC_INTERVAL=
+REVIEW_REMINDER_INTERVAL=
+ABANDONED_CART_INTERVAL=
+
+Generate:
+
+Settings Loader
+
+Validation
+
+Typed Configuration
+
+Startup Validation
+
+Application should fail startup when required variables are missing.
+
+
+Generate the complete backend codebase, SQL scripts, migrations, API documentation, architecture diagrams, and deployment configuration with production-grade quality suitable for 200+ concurrent users.
+
+
+8. Invoice Module
+
+Very important.
+
+# INVOICE MODULE
+
+Generate PDF invoices.
+
+Tables:
+
+invoices
+
+Store:
+
+invoice_number
+
+invoice_url
+
+Generate:
+
+Invoice Service
+
+Download Invoice API
+
+Email Invoice API
+9. Soft Delete Strategy
+
+Add globally:
+
+All business entities must support:
+
+deleted_at
+
+Never hard delete:
+
+products
+orders
+customers
+reviews
+coupons
+
+Implement soft delete pattern.
+10. Background Queue
+
+APScheduler is okay initially, but tell the AI:
+
+Background Job Abstraction:
+
+Implement QueueService interface.
+
+Default:
+
+APScheduler
+
+Future:
+
+Celery
+Redis Queue
+
+No business logic should directly depend on APScheduler.
+11. OpenAPI Requirements
+
+Add:
+
+Generate:
+
+OpenAPI Documentation
+
+Swagger
+
+ReDoc
+
+API Examples
+
+Request Examples
+
+Response Examples
+
+Error Examples
+
+Authentication Examples
+12. Health & Observability
+
+Extend monitoring:
+
+Health Endpoints:
+
+/health
+/readiness
+/liveness
+
+Metrics:
+
+Prometheus compatible metrics
+
+Request duration
+
+Error rate
+
+Database latency
+
+Redis latency
+13. Critical E-commerce Rule (Most Important)
+
+Add this exact block:
+
+# BUSINESS RULES
+
+Product price must never be trusted from frontend.
+
+Cart totals must always be recalculated on backend.
+
+Coupon validation must always happen on backend.
+
+Shipping cost calculation must always happen on backend.
+
+Inventory validation must happen before payment and after payment.
+
+Order creation must be idempotent.
+
+Webhook processing must be idempotent.
+
+Duplicate payment events must not create duplicate orders.
+
+Duplicate shipment events must not create duplicate status changes.
+14. Seed Data
+
+Add:
+
+Generate seed data for:
+
+Roles
+
+Admin User
+
+Categories
+
+Collections
+
+Settings
+
+CMS Home Page
+
+Development Products
+
+Development Inventory
+
+1. Product SEO Module
+# SEO MODULE
+
+Tables:
+
+seo_redirects
+seo_pages
+
+Generate:
+
+Canonical URLs
+
+Meta Tags
+
+OpenGraph Tags
+
+Twitter Cards
+
+Structured Data (JSON-LD)
+
+Product Schema
+
+Breadcrumb Schema
+
+Organization Schema
+
+FAQ Schema
+
+Generate automatic SEO generation for products, categories, collections.
+
+Support:
+
+301 Redirects
+404 Tracking
+Sitemap Generation
+Robots.txt Generation
+
+3. Advanced Inventory Features
+
+For jewelry inventory:
+
+# INVENTORY ADVANCED FEATURES
+
+Support:
+
+SKU Level Inventory
+
+Variant Level Inventory
+
+Inventory Reservation
+
+Inventory Reconciliation
+
+Inventory Adjustments
+
+Damaged Stock
+
+Returned Stock
+
+Low Stock Thresholds
+
+Inventory Audit Trail
+
+Generate complete implementation.
+
+
+
+4. Webhook Framework
+
+Currently Razorpay and Delivery One are covered but add:
+
+# WEBHOOK FRAMEWORK
+
+Generate:
+
+Webhook Registry
+
+Webhook Verification
+
+Webhook Replay Protection
+
+Webhook Idempotency
+
+Webhook Audit Logs
+
+Webhook Retry Handling
+
+Store:
+
+provider
+event_type
+payload
+signature
+processed_at
+
+Generate complete implementation.
+
+
+8. Fraud Prevention
+
+For ecommerce.
+
+# FRAUD PREVENTION
+
+Generate:
+
+Duplicate Order Detection
+
+Velocity Checks
+
+Multiple Failed Payment Detection
+
+Suspicious Activity Logging
+
+Admin Fraud Dashboard
+
+
+9. Jewelry-Specific Fields
+
+This is the biggest missing business requirement.
+
+Your current product model is generic. Add:
+
+# JEWELRY PRODUCT REQUIREMENTS
+
+Support:
+
+925 Silver
+
+Oxidized Silver
+
+Hallmark Information
+
+Weight Based Pricing
+
+Making Charges
+
+Stone Information
+
+Certification Information
+
+Care Instructions
+
+Product Dimensions
+
+Gender
+
+Occasion
+
+Style
+
+Finish
+
+Generate flexible attribute architecture supporting future jewelry categories.
