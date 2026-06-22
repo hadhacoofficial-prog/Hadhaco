@@ -12,7 +12,10 @@
 8. [Disaster Recovery](#disaster-recovery)
 9. [Manual Deployment](#manual-deployment)
 10. [Monitoring](#monitoring)
-11. [Troubleshooting](#troubleshooting)
+11. [Database Connection Architecture](#database-connection-architecture)
+12. [GHCR Image Propagation](#ghcr-image-propagation)
+13. [Failure Classification](#failure-classification)
+14. [Troubleshooting](#troubleshooting)
 
 ---
 
@@ -484,6 +487,121 @@ The previous defaults (`pool_size=20, max_overflow=10`) held 30 connections open
 
 ---
 
+## GHCR Image Propagation
+
+### Why deployments fail with "manifest unknown" or EOF
+
+`docker buildx build --push` calls the GHCR registry API and returns success
+when the origin server accepts the manifest (HTTP 201). However, GHCR is backed
+by an eventually consistent CDN. Edge nodes serving the VPS's geographic region
+replicate manifests asynchronously — typically within 5–60 seconds, but
+occasionally longer during CDN incidents.
+
+```
+GitHub Actions runner (push)          VPS (pull)
+─────────────────────────────         ────────────────────────────
+GHCR origin: "got it, 201"           GHCR edge: "manifest unknown"
+     │                                      │
+     ▼                                      ▼
+build-push job: SUCCESS          deploy job: docker pull → EOF
+```
+
+The runner that pushed the image may be served by a different CDN edge than the
+VPS. The runner's edge has the manifest; the VPS's edge does not yet.
+
+### How it is fixed
+
+The CI/CD pipeline now inserts a `verify-images` job between `build-push` and
+`deploy-*` in both `production.yml` and `staging.yml`:
+
+```
+ci → version → build-push → verify-images → deploy-*
+```
+
+`verify-images`:
+1. Logs in to GHCR fresh (to avoid sharing a hot CDN session with the build runner)
+2. Calls `docker buildx imagetools inspect` for the backend image — retries up to
+   10 times with exponential backoff (5→10→20→30→60→60… seconds)
+3. Does the same for the frontend image
+4. Succeeds only when **BOTH** manifests are confirmed readable
+5. Deployment is blocked until then
+
+Within `deploy.sh`, Step 4 additionally calls `docker manifest inspect` on both
+app images before any pull starts. This is a second gate in case a CDN edge
+regresses after the GitHub Actions verification (very rare, but possible).
+
+`pull_image_with_retry()` further wraps every `docker pull` with up to 10 attempts
+and classifies every failure so the log shows the specific error class:
+`NETWORK_EOF`, `MANIFEST_MISSING`, `TIMEOUT`, `TLS_ERROR`, `REGISTRY_5XX`, etc.
+
+### Rollback state machine
+
+A critical improvement is that **rollback only runs if containers were actually
+modified**. Before this fix, a failed `docker pull` would trigger `rollback.sh`,
+which would restart already-healthy containers and produce a misleading
+"rollback succeeded" notification.
+
+```
+PREFLIGHT   — manifest check, GHCR auth              → abort (no rollback)
+PULLING     — docker pull with retry                 → abort (no rollback)
+MIGRATING   — alembic upgrade head                   → abort (no rollback)
+COMPOSING   — docker compose up starts               → COMPOSE_UPDATED=true
+              any failure from here triggers rollback
+COMPLETED   — health checks passed
+```
+
+The state is tracked via `COMPOSE_UPDATED` in `deploy.sh`. `rollback_and_exit()`
+checks this flag first. If `COMPOSE_UPDATED=false`, it logs "no containers were
+modified" and exits without calling `rollback.sh`.
+
+### Manual validation commands
+
+If a deployment fails at the manifest stage, verify registry state directly:
+
+```bash
+# On the VPS — check whether the manifest is retrievable
+echo "${GHCR_TOKEN}" | docker login ghcr.io -u "${GHCR_USERNAME}" --password-stdin
+
+docker manifest inspect ghcr.io/hadhacoofficial-prog/hadha-backend:sha-XXXXXXXX
+docker manifest inspect ghcr.io/hadhacoofficial-prog/hadha-frontend:sha-XXXXXXXX
+
+# Or via the GHCR web UI:
+# https://github.com/orgs/hadhacoofficial-prog/packages
+```
+
+If the manifests appear in the web UI but `docker manifest inspect` fails,
+the local CDN edge is stale. Wait 60 seconds and retry, or force a re-run of
+the GitHub Actions workflow.
+
+---
+
+## Failure Classification
+
+`deploy.sh` classifies every pull failure into one of these categories. The
+category is logged on every retry attempt so you can tell at a glance what is
+happening without reading raw Docker error messages.
+
+| Class | Description | Recovery |
+|---|---|---|
+| `MANIFEST_MISSING` | GHCR edge hasn't replicated the manifest yet | Wait; `verify-images` job usually prevents this now |
+| `NETWORK_EOF` | TCP connection dropped mid-stream | Transient; retry resolves automatically |
+| `TIMEOUT` | Registry slow to respond | Transient; retry resolves automatically |
+| `TLS_ERROR` | Certificate / TLS handshake failure | Check VPS system clock (`timedatectl`); check `/etc/resolv.conf` |
+| `REGISTRY_500` | GHCR internal server error | Transient; check https://www.githubstatus.com/ |
+| `REGISTRY_5XX` | GHCR overloaded / degraded | Transient; check https://www.githubstatus.com/ |
+| `AUTHENTICATION` | Token invalid or missing `read:packages` | Verify `GHCR_TOKEN` secret has `read:packages` scope |
+| `DOCKER_DAEMON` | Docker engine problem on VPS | `systemctl status docker`; `journalctl -u docker -n 50` |
+| `UNKNOWN` | None of the above patterns matched | Inspect the raw output in `deploy.log` |
+
+**Checking the deploy log after a failure:**
+
+```bash
+ssh deploy@YOUR_VPS_IP
+tail -200 /opt/hadha/deploy.log
+```
+
+---
+
 ## Troubleshooting
 
 ### EMAXCONNSESSION — max clients reached in session mode
@@ -681,14 +799,27 @@ docker stats hadha-backend hadha-frontend hadha-redis
 # deploy.resources.limits.memory for each service
 ```
 
-### Images not available from GHCR
+### Images not available from GHCR (`manifest unknown` / `EOF`)
+
+See [GHCR Image Propagation](#ghcr-image-propagation) for the root cause analysis.
 
 ```bash
-# Re-login
+# Re-authenticate (use GHCR_TOKEN PAT, NOT GITHUB_TOKEN — GITHUB_TOKEN is
+# only valid on GitHub Actions runners, not on external VPS)
 echo "${GHCR_TOKEN}" | docker login ghcr.io -u "${GHCR_USERNAME}" --password-stdin
 
-# List available tags
-docker manifest inspect ghcr.io/owner/hadha-backend:sha-abc1234
+# Check whether the manifest is in the registry at all
+docker manifest inspect ghcr.io/hadhacoofficial-prog/hadha-backend:sha-abc1234
+
+# If manifest inspect succeeds but pull fails, the CDN edge is stale.
+# Wait 60s and retry the pull — or re-run the GitHub Actions workflow
+# (the verify-images job will block until both manifests are stable).
+
+# Check the failure class in the deploy log
+grep -E "Failure class|Registry response|Pull attempt" /opt/hadha/deploy.log | tail -30
+
+# GitHub status — check for ongoing GHCR incidents:
+# https://www.githubstatus.com/
 ```
 
 ---

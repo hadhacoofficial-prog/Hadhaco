@@ -153,11 +153,107 @@ jobs:
             org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
             org.opencontainers.image.revision=${{ github.sha }}
 
+  # ── Verify GHCR image propagation ────────────────────────────────────────
+  # WHY THIS JOB EXISTS:
+  #   docker build-push-action returns success when GHCR's origin server
+  #   accepts the manifest. GHCR's CDN is eventually consistent — edge nodes
+  #   serving the VPS region may not have replicated the manifest yet.
+  #   Without this gate, deploy-production starts immediately and the VPS
+  #   hits "manifest unknown" or EOF on docker pull.
+  #
+  #   This job logs in to GHCR fresh (simulating the VPS registry view) and
+  #   calls docker buildx imagetools inspect with exponential backoff until
+  #   BOTH manifests are confirmed readable. Deployment is blocked until then.
+  verify-images:
+    name: Verify GHCR Image Propagation
+    runs-on: ubuntu-24.04
+    needs: build-push
+    permissions:
+      contents: read
+      packages: read
+
+    steps:
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Verify both image manifests are retrievable
+        env:
+          BACKEND_IMAGE: ${{ needs.build-push.outputs.backend_image }}
+          FRONTEND_IMAGE: ${{ needs.build-push.outputs.frontend_image }}
+        run: |
+          MAX_RETRIES=10
+          # Backoff delays in seconds: 5 10 20 30 60 60 60 60 60 (9 delays for 10 attempts)
+          BACKOFFS=(5 10 20 30 60 60 60 60 60)
+
+          verify_manifest() {
+            local image="$1"
+            local label="$2"
+            local attempt=0
+
+            echo "━━ Verifying ${label} manifest: ${image}"
+
+            while (( attempt < MAX_RETRIES )); do
+              (( attempt++ ))
+              echo "  Attempt ${attempt}/${MAX_RETRIES} [$(date +'%H:%M:%S')]"
+
+              local output exit_code
+              set +e
+              output=$(docker buildx imagetools inspect "${image}" 2>&1)
+              exit_code=$?
+              set -e
+
+              if [[ ${exit_code} -eq 0 ]]; then
+                echo "  ✓ ${label} manifest confirmed"
+                # Print digest line for traceability in the Actions log
+                echo "${output}" | grep -E "^Name:|^Digest:|MediaType:" | head -5 || true
+                return 0
+              fi
+
+              echo "  Not yet available — response: $(echo "${output}" | head -2 | tr '\n' '|')"
+
+              if (( attempt >= MAX_RETRIES )); then
+                echo "  ✗ ${label} manifest unavailable after ${MAX_RETRIES} attempts"
+                echo "  The push succeeded but GHCR propagation is stalled."
+                echo "  Action: re-run this workflow. The images ARE in GHCR."
+                return 1
+              fi
+
+              local delay="${BACKOFFS[$((attempt - 1))]}"
+              echo "  Waiting ${delay}s before attempt $((attempt + 1))/${MAX_RETRIES}..."
+              sleep "${delay}"
+            done
+            return 1
+          }
+
+          # Verify BOTH manifests atomically.
+          # If backend is available but frontend is not we still refuse to proceed —
+          # a partial deployment would deploy old frontend against new backend.
+          BACKEND_OK=true
+          FRONTEND_OK=true
+
+          verify_manifest "${BACKEND_IMAGE}"  "backend"  || BACKEND_OK=false
+          verify_manifest "${FRONTEND_IMAGE}" "frontend" || FRONTEND_OK=false
+
+          echo ""
+          echo "  Backend  manifest : ${BACKEND_OK}"
+          echo "  Frontend manifest : ${FRONTEND_OK}"
+
+          if [[ "${BACKEND_OK}" != "true" ]] || [[ "${FRONTEND_OK}" != "true" ]]; then
+            echo "✗ One or both manifests unavailable — deployment blocked."
+            exit 1
+          fi
+
+          echo "✓ Both manifests confirmed. Deployment may now begin."
+
   # ── Deploy to production VPS ──────────────────────────────────────────────
   deploy-production:
     name: Deploy to Production
     runs-on: ubuntu-24.04
-    needs: [version, build-push]
+    needs: [version, build-push, verify-images]
     environment:
       name: production
       url: https://hadha.co
