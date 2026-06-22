@@ -67,9 +67,14 @@ python-dotenv==1.2.2
 # ── Testing ──────────────────────────────────────────────────────────────────
 # CVE-2025-71176 — fix: 9.0.3
 pytest==9.0.3
-# pytest-asyncio 0.24.x declares pytest<9 — must upgrade alongside pytest.
-# 0.25.x adds pytest 9 support; pin to exact version after verifying with pip.
-pytest-asyncio==0.25.0
+# pytest-asyncio 0.24.x and 0.25.x both declare pytest<9 (confirmed by CI).
+# The first release to support pytest 9 is unknown at authoring time; the
+# >=0.26.0 lower bound tells pip to find a compatible version automatically.
+# ACTION REQUIRED: after a successful pip install, run:
+#   pip freeze | grep pytest-asyncio
+# and replace this line with the resolved exact version (e.g. ==0.26.0)
+# to make builds reproducible.
+pytest-asyncio>=0.26.0
 pytest-cov==6.0.0
 factory-boy==3.3.1
 
