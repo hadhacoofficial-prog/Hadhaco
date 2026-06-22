@@ -29,16 +29,15 @@ async def run() -> None:
             start = next_month
             end = (start + timedelta(days=32)).replace(day=1)
             partition_name = f"audit_logs_{start.strftime('%Y_%m')}"
-            await db.execute(text(f"""  # nosec B608 — partition_name from strftime('%Y_%m'), start/end are date objects; no user input
-                DO $$
-                BEGIN
-                    IF NOT EXISTS (SELECT 1 FROM pg_class WHERE relname = '{partition_name}') THEN
-                        CREATE TABLE {partition_name} PARTITION OF audit_logs
-                        FOR VALUES FROM ('{start}') TO ('{end}');
-                    END IF;
-                END;
-                $$
-            """))
+            # partition_name = strftime output; start/end are date objects — no user input
+            partition_sql = (
+                f"DO $$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_class"  # nosec B608
+                f" WHERE relname = '{partition_name}') THEN"  # nosec B608
+                f" CREATE TABLE {partition_name} PARTITION OF audit_logs"  # nosec B608
+                f" FOR VALUES FROM ('{start}') TO ('{end}');"
+                " END IF; END; $$"
+            )
+            await db.execute(text(partition_sql))
             await db.commit()
         duration_ms = round((time.perf_counter() - t0) * 1000)
         log.info(

@@ -159,28 +159,26 @@ else
   log "Network ${NETWORK_NAME} already exists"
 fi
 
-# ── Step 5: Database migrations ───────────────────────────────────────────────
-log_section "Step 5: Database migrations"
-log "Running: alembic upgrade head"
+# ── Step 5: Database migrations (Supabase) ───────────────────────────────────
+# alembic.ini lives at /app/alembic/alembic.ini inside the image (WORKDIR=/app).
+# Running from /app with -c alembic/alembic.ini means:
+#   • config found at /app/alembic/alembic.ini
+#   • script_location=alembic resolves to /app/alembic/ (relative to CWD)
+#   • prepend_sys_path=. adds /app to sys.path so env.py can import app modules
+log_section "Step 5: Database migrations (Supabase)"
+log "Image   : ${BACKEND_IMAGE}"
+log "Command : alembic -c alembic/alembic.ini upgrade head"
+log "Target  : Supabase PostgreSQL (via DATABASE_URL in env file)"
 
 if ! docker run --rm \
   --env-file "${ENV_FILE}" \
   --network "${NETWORK_NAME}" \
   --name "hadha-migration-$$" \
   "${BACKEND_IMAGE}" \
-  python -m alembic upgrade head; then
-    log "[ERROR] Database migrations failed — aborting deployment"
-    DEPLOY_END=$(date +%s)
-    DEPLOY_DURATION=$(( DEPLOY_END - DEPLOY_START ))
-    LAST_LOGS=$(tail -100 "${LOG_FILE}" 2>/dev/null || echo "")
-    "${SCRIPTS_DIR}/notify.sh" failure \
-      "${ENVIRONMENT}" "${IMAGE_TAG}" \
-      "${GIT_COMMIT_SHA:-unknown}" "${GIT_COMMIT_AUTHOR:-unknown}" \
-      "${DEPLOY_DURATION}" "Database migration failed" "${LAST_LOGS}" \
-      2>/dev/null || true
-    exit 1
+  alembic -c alembic/alembic.ini upgrade head; then
+    rollback_and_exit "Database migration failed — alembic upgrade head returned non-zero. Check logs above."
 fi
-log "Migrations applied successfully"
+log "Migrations applied successfully (Supabase)"
 
 # ── Step 6: Restart containers with new images ────────────────────────────────
 log_section "Step 6: Restart containers"

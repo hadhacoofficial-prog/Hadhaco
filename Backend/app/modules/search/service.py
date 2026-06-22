@@ -59,7 +59,9 @@ class SearchService:
 
         where_sql = " AND ".join(where_clauses)
 
-        count_sql = text(f"SELECT COUNT(*) FROM products p WHERE {where_sql}")  # nosec B608 — where_sql is hardcoded literals; all user values are bound params
+        count_sql = text(
+            f"SELECT COUNT(*) FROM products p WHERE {where_sql}"  # nosec B608
+        )
         total_result = await db.execute(count_sql, params)
         total: int = total_result.scalar_one()
 
@@ -81,7 +83,8 @@ class SearchService:
 
             fallback_sql = " AND ".join(fallback_where)
             count_fb = await db.execute(
-                text(f"SELECT COUNT(*) FROM products p WHERE {fallback_sql}"), params  # nosec B608
+                text(f"SELECT COUNT(*) FROM products p WHERE {fallback_sql}"),  # nosec
+                params,
             )
             total = count_fb.scalar_one()
 
