@@ -336,7 +336,7 @@ class TestShippingServiceTrackSuccess:
             patch.object(ProfileRepository, "get_by_id", AsyncMock(return_value=mock_profile)),
             patch.object(event_bus, "publish", AsyncMock()) as mock_publish,
         ):
-            result = await self.svc.track(db, "AWB-123")
+            await self.svc.track(db, "AWB-123")
         mock_publish.assert_awaited_once()
 
 

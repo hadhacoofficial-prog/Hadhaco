@@ -21,11 +21,16 @@ const DEFAULTS: ProductGridConfig = {
 
 function sourceToParams(source: ProductGridConfig["source"]) {
   switch (source) {
-    case "featured":    return { is_featured: true };
-    case "newest":      return { sort: "newest" };
-    case "best_seller": return { sort: "best_seller" };
-    case "trending":    return { sort: "trending" };
-    default:            return { is_featured: true };
+    case "featured":
+      return { is_featured: true };
+    case "newest":
+      return { sort: "newest" };
+    case "best_seller":
+      return { sort: "best_seller" };
+    case "trending":
+      return { sort: "trending" };
+    default:
+      return { is_featured: true };
   }
 }
 

@@ -115,7 +115,7 @@ class TestWebhookServiceRazorpay:
             patch.object(self.svc, "_on_payment_failed", AsyncMock()) as mock_failed,
             patch.object(self.svc, "_mark_processed", AsyncMock()),
         ):
-            result = await self.svc.handle_razorpay(db, body, "sig")
+            await self.svc.handle_razorpay(db, body, "sig")
         mock_failed.assert_awaited_once()
 
     async def test_handle_razorpay_refund_event(self):
@@ -131,7 +131,7 @@ class TestWebhookServiceRazorpay:
             patch.object(self.svc, "_on_refund_event", AsyncMock()) as mock_refund,
             patch.object(self.svc, "_mark_processed", AsyncMock()),
         ):
-            result = await self.svc.handle_razorpay(db, body, "sig")
+            await self.svc.handle_razorpay(db, body, "sig")
         mock_refund.assert_awaited_once()
 
     async def test_handle_razorpay_unknown_event_marks_ignored(self):
@@ -401,7 +401,7 @@ class TestWebhookServiceDeliveryOne:
             ),
             patch.object(self.svc, "_mark_failed", AsyncMock()) as mock_failed,
         ):
-            result = await self.svc.handle_delivery_one(db, body, "sig")
+            await self.svc.handle_delivery_one(db, body, "sig")
         mock_failed.assert_awaited_once()
 
 

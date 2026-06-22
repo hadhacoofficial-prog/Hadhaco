@@ -3,8 +3,19 @@ import { createFileRoute, Link, redirect, useNavigate } from "@tanstack/react-ro
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { z } from "zod";
 import {
-  User, Package, MapPin, LogOut, Heart, Plus, Trash2, Star,
-  CheckCircle2, Truck, CreditCard, ChevronDown, ChevronUp,
+  User,
+  Package,
+  MapPin,
+  LogOut,
+  Heart,
+  Plus,
+  Trash2,
+  Star,
+  CheckCircle2,
+  Truck,
+  CreditCard,
+  ChevronDown,
+  ChevronUp,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -243,27 +254,28 @@ function OrdersTab() {
 function OrderStatusBadge({ status }: { status: string }) {
   const s = status.toLowerCase();
   const cls =
-    s === "delivered" ? "bg-accent/15 text-accent"
-    : s === "shipped" ? "bg-blue-100 text-blue-800"
-    : s === "cancelled" ? "bg-destructive/15 text-destructive"
-    : "bg-secondary text-foreground";
+    s === "delivered"
+      ? "bg-accent/15 text-accent"
+      : s === "shipped"
+        ? "bg-blue-100 text-blue-800"
+        : s === "cancelled"
+          ? "bg-destructive/15 text-destructive"
+          : "bg-secondary text-foreground";
   return (
-    <span className={`text-[10px] uppercase tracking-[0.22em] px-3 py-1 ${cls}`}>
-      {status}
-    </span>
+    <span className={`text-[10px] uppercase tracking-[0.22em] px-3 py-1 ${cls}`}>{status}</span>
   );
 }
 
 function PaymentBadge({ status }: { status: string }) {
   const s = status.toLowerCase();
   const cls =
-    s === "paid" ? "bg-emerald-100 text-emerald-800"
-    : s === "failed" ? "bg-red-100 text-red-800"
-    : "bg-secondary text-foreground";
+    s === "paid"
+      ? "bg-emerald-100 text-emerald-800"
+      : s === "failed"
+        ? "bg-red-100 text-red-800"
+        : "bg-secondary text-foreground";
   return (
-    <span className={`text-[10px] uppercase tracking-[0.22em] px-3 py-1 ${cls}`}>
-      {status}
-    </span>
+    <span className={`text-[10px] uppercase tracking-[0.22em] px-3 py-1 ${cls}`}>{status}</span>
   );
 }
 
@@ -276,10 +288,10 @@ function statusIndex(s: string) {
 function OrderTimeline({ status }: { status: string }) {
   const current = statusIndex(status);
   const steps = [
-    { label: "Order placed",  sub: "Payment received",              threshold: 0 },
-    { label: "Processing",    sub: "Handcrafted & quality-checked", threshold: 1 },
-    { label: "Shipped",       sub: "On the way to you",             threshold: 3 },
-    { label: "Delivered",     sub: "Enjoy your piece",              threshold: 4 },
+    { label: "Order placed", sub: "Payment received", threshold: 0 },
+    { label: "Processing", sub: "Handcrafted & quality-checked", threshold: 1 },
+    { label: "Shipped", sub: "On the way to you", threshold: 3 },
+    { label: "Delivered", sub: "Enjoy your piece", threshold: 4 },
   ];
   return (
     <div className="relative">
@@ -290,11 +302,21 @@ function OrderTimeline({ status }: { status: string }) {
           const active = done && (i === steps.length - 1 || current < steps[i + 1].threshold);
           return (
             <div key={step.label} className="flex items-start gap-4 relative">
-              <div className={`relative z-10 size-7 rounded-full flex items-center justify-center border-2 shrink-0 ${done ? "bg-accent border-accent text-accent-foreground" : "bg-background border-border text-muted-foreground"} ${active ? "ring-4 ring-accent/20" : ""}`}>
-                {done ? <CheckCircle2 className="size-3.5" /> : <span className="size-2 rounded-full bg-border" />}
+              <div
+                className={`relative z-10 size-7 rounded-full flex items-center justify-center border-2 shrink-0 ${done ? "bg-accent border-accent text-accent-foreground" : "bg-background border-border text-muted-foreground"} ${active ? "ring-4 ring-accent/20" : ""}`}
+              >
+                {done ? (
+                  <CheckCircle2 className="size-3.5" />
+                ) : (
+                  <span className="size-2 rounded-full bg-border" />
+                )}
               </div>
               <div className="pt-0.5">
-                <p className={`text-sm font-medium ${done ? "text-foreground" : "text-muted-foreground"}`}>{step.label}</p>
+                <p
+                  className={`text-sm font-medium ${done ? "text-foreground" : "text-muted-foreground"}`}
+                >
+                  {step.label}
+                </p>
                 <p className="text-xs text-muted-foreground">{step.sub}</p>
               </div>
             </div>
@@ -305,7 +327,17 @@ function OrderTimeline({ status }: { status: string }) {
   );
 }
 
-function TotalRow({ label, value, bold, accent }: { label: string; value: string; bold?: boolean; accent?: boolean }) {
+function TotalRow({
+  label,
+  value,
+  bold,
+  accent,
+}: {
+  label: string;
+  value: string;
+  bold?: boolean;
+  accent?: boolean;
+}) {
   return (
     <div className={`flex justify-between text-sm ${bold ? "font-display text-base" : ""}`}>
       <span className={accent ? "text-accent" : "text-muted-foreground"}>{label}</span>
@@ -342,15 +374,20 @@ function OrderDetailSkeleton({ itemCount }: { itemCount: number }) {
 
 function OrderDetailExpanded({ order }: { order: OrderResponse }) {
   const date = new Date(order.created_at).toLocaleDateString("en-IN", {
-    year: "numeric", month: "long", day: "numeric",
+    year: "numeric",
+    month: "long",
+    day: "numeric",
   });
   const time = new Date(order.created_at).toLocaleTimeString("en-IN", {
-    hour: "2-digit", minute: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
   });
   const methodLabel =
-    order.payment_method === "razorpay" ? "Razorpay"
-    : order.payment_method === "cod" ? "Cash on Delivery"
-    : order.payment_method;
+    order.payment_method === "razorpay"
+      ? "Razorpay"
+      : order.payment_method === "cod"
+        ? "Cash on Delivery"
+        : order.payment_method;
 
   return (
     <div className="mt-5 space-y-5 border-t border-border pt-5">
@@ -368,22 +405,34 @@ function OrderDetailExpanded({ order }: { order: OrderResponse }) {
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
         <div>
           <p className="text-[11px] uppercase tracking-[0.16em] text-muted-foreground mb-1">Date</p>
-          <p>{date}<br /><span className="text-muted-foreground">{time}</span></p>
+          <p>
+            {date}
+            <br />
+            <span className="text-muted-foreground">{time}</span>
+          </p>
         </div>
         <div>
-          <p className="text-[11px] uppercase tracking-[0.16em] text-muted-foreground mb-1">Payment</p>
+          <p className="text-[11px] uppercase tracking-[0.16em] text-muted-foreground mb-1">
+            Payment
+          </p>
           <div className="flex items-center gap-1.5">
             <CreditCard className="size-3.5 text-muted-foreground" />
             <span>{methodLabel}</span>
           </div>
         </div>
         <div>
-          <p className="text-[11px] uppercase tracking-[0.16em] text-muted-foreground mb-1">Items</p>
-          <p>{order.items.length} {order.items.length === 1 ? "item" : "items"}</p>
+          <p className="text-[11px] uppercase tracking-[0.16em] text-muted-foreground mb-1">
+            Items
+          </p>
+          <p>
+            {order.items.length} {order.items.length === 1 ? "item" : "items"}
+          </p>
         </div>
         {order.cancellation_reason && (
           <div>
-            <p className="text-[11px] uppercase tracking-[0.16em] text-muted-foreground mb-1">Reason</p>
+            <p className="text-[11px] uppercase tracking-[0.16em] text-muted-foreground mb-1">
+              Reason
+            </p>
             <p className="text-destructive text-xs">{order.cancellation_reason}</p>
           </div>
         )}
@@ -401,7 +450,9 @@ function OrderDetailExpanded({ order }: { order: OrderResponse }) {
               )}
               <p className="text-xs text-muted-foreground mt-0.5">
                 Qty {item.quantity} · SKU {item.product_sku}
-                {item.quantity > 1 && <span className="ml-1">({formatINR(item.unit_price)} each)</span>}
+                {item.quantity > 1 && (
+                  <span className="ml-1">({formatINR(item.unit_price)} each)</span>
+                )}
               </p>
             </div>
             <p className="font-display shrink-0">{formatINR(item.line_total)}</p>
@@ -432,7 +483,9 @@ function OrderDetailExpanded({ order }: { order: OrderResponse }) {
       {/* Timeline */}
       {order.status !== "cancelled" && (
         <div className="border-t border-border pt-4">
-          <p className="text-[11px] uppercase tracking-[0.22em] text-muted-foreground mb-4">Order status</p>
+          <p className="text-[11px] uppercase tracking-[0.22em] text-muted-foreground mb-4">
+            Order status
+          </p>
           <OrderTimeline status={order.status} />
         </div>
       )}
@@ -440,19 +493,30 @@ function OrderDetailExpanded({ order }: { order: OrderResponse }) {
       {/* What's next — only for active orders */}
       {!["delivered", "cancelled"].includes(order.status) && (
         <div className="border-t border-border pt-4 space-y-3">
-          <p className="text-[11px] uppercase tracking-[0.22em] text-muted-foreground">What's next</p>
+          <p className="text-[11px] uppercase tracking-[0.22em] text-muted-foreground">
+            What's next
+          </p>
           <ul className="space-y-2 text-sm">
             <li className="flex items-start gap-3">
               <CheckCircle2 className="size-4 mt-0.5 shrink-0 text-accent" />
-              <span><span className="font-medium">Confirmation email sent</span> — check your inbox for order details and updates.</span>
+              <span>
+                <span className="font-medium">Confirmation email sent</span> — check your inbox for
+                order details and updates.
+              </span>
             </li>
             <li className="flex items-start gap-3">
               <Package className="size-4 mt-0.5 shrink-0 text-muted-foreground" />
-              <span><span className="font-medium">Handcrafted for you</span> — your piece is being quality-checked before dispatch.</span>
+              <span>
+                <span className="font-medium">Handcrafted for you</span> — your piece is being
+                quality-checked before dispatch.
+              </span>
             </li>
             <li className="flex items-start gap-3">
               <Truck className="size-4 mt-0.5 shrink-0 text-muted-foreground" />
-              <span><span className="font-medium">Estimated delivery in 5–7 business days</span> — you'll receive a tracking number once shipped.</span>
+              <span>
+                <span className="font-medium">Estimated delivery in 5–7 business days</span> —
+                you'll receive a tracking number once shipped.
+              </span>
             </li>
           </ul>
         </div>
@@ -488,7 +552,9 @@ function OrderCard({
           <p className="text-xs text-muted-foreground mt-0.5">
             Placed{" "}
             {new Date(order.created_at).toLocaleDateString("en-IN", {
-              year: "numeric", month: "short", day: "numeric",
+              year: "numeric",
+              month: "short",
+              day: "numeric",
             })}
           </p>
         </div>
@@ -504,18 +570,23 @@ function OrderCard({
         className="mt-4 inline-flex items-center gap-1.5 text-xs uppercase tracking-[0.18em] text-accent border-b border-accent/40 pb-0.5 hover:border-accent transition"
       >
         {expanded ? (
-          <>Hide details <ChevronUp className="size-3.5" /></>
+          <>
+            Hide details <ChevronUp className="size-3.5" />
+          </>
         ) : (
-          <>View Order Details <ChevronDown className="size-3.5" /></>
+          <>
+            View Order Details <ChevronDown className="size-3.5" />
+          </>
         )}
       </button>
 
       {/* Expanded detail */}
-      {expanded && (
-        isLoading
-          ? <OrderDetailSkeleton itemCount={order.item_count} />
-          : detail && <OrderDetailExpanded order={detail} />
-      )}
+      {expanded &&
+        (isLoading ? (
+          <OrderDetailSkeleton itemCount={order.item_count} />
+        ) : (
+          detail && <OrderDetailExpanded order={detail} />
+        ))}
     </div>
   );
 }
@@ -557,7 +628,10 @@ function AddressesTab() {
     const body: AddressCreateRequest = {
       type: "shipping",
       full_name: String(f.get("name") ?? ""),
-      phone: (() => { const p = String(f.get("phone") ?? "").replace(/\s+/g, ""); return p ? (p.startsWith("+") ? p : `+91${p.replace(/^0+/, "")}`) : ""; })(),
+      phone: (() => {
+        const p = String(f.get("phone") ?? "").replace(/\s+/g, "");
+        return p ? (p.startsWith("+") ? p : `+91${p.replace(/^0+/, "")}`) : "";
+      })(),
       line1: String(f.get("line1") ?? ""),
       line2: String(f.get("line2") ?? "") || null,
       city: String(f.get("city") ?? ""),

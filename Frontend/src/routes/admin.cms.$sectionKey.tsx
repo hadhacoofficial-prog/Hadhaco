@@ -46,9 +46,10 @@ function SectionEditor() {
 
   useEffect(() => {
     if (section) {
-      const draft = section.draft_config && Object.keys(section.draft_config).length > 0
-        ? section.draft_config
-        : section.config;
+      const draft =
+        section.draft_config && Object.keys(section.draft_config).length > 0
+          ? section.draft_config
+          : section.config;
       setConfigJson(JSON.stringify(draft, null, 2));
     }
   }, [section]);
@@ -111,7 +112,8 @@ function SectionEditor() {
 
   const hasDraft =
     section.status === "draft" ||
-    (section.draft_config && JSON.stringify(section.draft_config) !== JSON.stringify(section.config));
+    (section.draft_config &&
+      JSON.stringify(section.draft_config) !== JSON.stringify(section.config));
 
   return (
     <div className="max-w-3xl space-y-6">
@@ -138,16 +140,14 @@ function SectionEditor() {
                 section.status === "published"
                   ? "border-emerald-300 text-emerald-700 bg-emerald-50 dark:border-emerald-700 dark:text-emerald-400 dark:bg-emerald-950"
                   : section.status === "draft"
-                  ? "border-amber-300 text-amber-700 bg-amber-50 dark:border-amber-700 dark:text-amber-400 dark:bg-amber-950"
-                  : "border-blue-300 text-blue-700 bg-blue-50 dark:border-blue-700 dark:text-blue-400 dark:bg-blue-950"
+                    ? "border-amber-300 text-amber-700 bg-amber-50 dark:border-amber-700 dark:text-amber-400 dark:bg-amber-950"
+                    : "border-blue-300 text-blue-700 bg-blue-50 dark:border-blue-700 dark:text-blue-400 dark:bg-blue-950"
               }`}
             >
               {section.status}
             </span>
             {section.published_at && (
-              <span>
-                Published {new Date(section.published_at).toLocaleDateString()}
-              </span>
+              <span>Published {new Date(section.published_at).toLocaleDateString()}</span>
             )}
             <span>v{section.version_number}</span>
           </div>
@@ -182,9 +182,7 @@ function SectionEditor() {
       <div className="border border-border">
         <div className="flex items-center justify-between px-4 py-3 border-b border-border">
           <span className="text-[11px] uppercase tracking-[0.22em] font-medium">Config (JSON)</span>
-          {jsonError && (
-            <span className="text-[11px] text-destructive">{jsonError}</span>
-          )}
+          {jsonError && <span className="text-[11px] text-destructive">{jsonError}</span>}
         </div>
         <textarea
           value={configJson}
@@ -212,10 +210,18 @@ function SectionEditor() {
       </label>
 
       {/* Section items (if applicable) */}
-      <SectionItemsPanel sectionKey={sectionKey} open={showItems} onToggle={() => setShowItems((v) => !v)} />
+      <SectionItemsPanel
+        sectionKey={sectionKey}
+        open={showItems}
+        onToggle={() => setShowItems((v) => !v)}
+      />
 
       {/* Version history */}
-      <VersionHistoryPanel sectionKey={sectionKey} open={showHistory} onToggle={() => setShowHistory((v) => !v)} />
+      <VersionHistoryPanel
+        sectionKey={sectionKey}
+        open={showHistory}
+        onToggle={() => setShowHistory((v) => !v)}
+      />
     </div>
   );
 }
@@ -317,7 +323,9 @@ function SectionItemsPanel({
           {/* Add item */}
           {addOpen ? (
             <div className="border border-dashed border-border p-3 space-y-2">
-              <p className="text-[11px] uppercase tracking-widest text-muted-foreground">New item config (JSON)</p>
+              <p className="text-[11px] uppercase tracking-widest text-muted-foreground">
+                New item config (JSON)
+              </p>
               <textarea
                 value={newItemJson}
                 onChange={(e) => setNewItemJson(e.target.value)}
@@ -333,7 +341,10 @@ function SectionItemsPanel({
                 >
                   Add
                 </button>
-                <button onClick={() => setAddOpen(false)} className="text-xs border border-border px-3 py-1.5 hover:bg-muted">
+                <button
+                  onClick={() => setAddOpen(false)}
+                  className="text-xs border border-border px-3 py-1.5 hover:bg-muted"
+                >
                   Cancel
                 </button>
               </div>
@@ -385,17 +396,31 @@ function SectionItemCard({
     <div className={`border border-border ${!item.is_enabled ? "opacity-50" : ""}`}>
       <div className="flex items-center gap-2 px-3 py-2">
         <div className="flex flex-col gap-0.5 shrink-0">
-          <button onClick={() => onMove(-1)} disabled={idx === 0} className="hover:text-primary disabled:opacity-20 p-0.5">
+          <button
+            onClick={() => onMove(-1)}
+            disabled={idx === 0}
+            className="hover:text-primary disabled:opacity-20 p-0.5"
+          >
             <ChevronUp className="size-3" />
           </button>
-          <button onClick={() => onMove(1)} disabled={idx === total - 1} className="hover:text-primary disabled:opacity-20 p-0.5">
+          <button
+            onClick={() => onMove(1)}
+            disabled={idx === total - 1}
+            className="hover:text-primary disabled:opacity-20 p-0.5"
+          >
             <ChevronDown className="size-3" />
           </button>
         </div>
-        <button onClick={() => setOpen((v) => !v)} className="flex-1 text-left text-xs font-mono truncate hover:text-primary">
+        <button
+          onClick={() => setOpen((v) => !v)}
+          className="flex-1 text-left text-xs font-mono truncate hover:text-primary"
+        >
           Item {idx + 1}: {JSON.stringify(item.config).slice(0, 60)}…
         </button>
-        <button onClick={onToggle} className="p-1 text-xs text-muted-foreground hover:text-foreground">
+        <button
+          onClick={onToggle}
+          className="p-1 text-xs text-muted-foreground hover:text-foreground"
+        >
           {item.is_enabled ? "Hide" : "Show"}
         </button>
         <button onClick={onDelete} className="p-1 text-destructive hover:opacity-70">

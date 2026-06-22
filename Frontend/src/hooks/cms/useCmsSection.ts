@@ -87,7 +87,9 @@ export function useUpdateSectionItem(sectionKey: string) {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: ({ itemId, payload }: { itemId: string; payload: Partial<SectionItem> }) =>
-      api.patch<SectionItem>(`/cms/admin/sections/${sectionKey}/items/${itemId}`, { body: payload }),
+      api.patch<SectionItem>(`/cms/admin/sections/${sectionKey}/items/${itemId}`, {
+        body: payload,
+      }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: queryKeys.admin.cmsSectionItems(sectionKey) });
     },

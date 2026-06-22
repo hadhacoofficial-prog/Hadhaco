@@ -32,6 +32,7 @@ async def upload_product_image(
     db: AsyncSession = Depends(get_db),
 ):
     from app.common.responses import created
+
     product = await _product_repo.get_by_id(db, product_id)
     if not product:
         raise HTTPException(status_code=404, detail="Product not found")
@@ -45,16 +46,19 @@ async def upload_product_image(
 
     urls = _media.upload_product_image(file_bytes, file.filename or "upload.jpg", product_id)
 
-    img = await _product_repo.add_image(db, {
-        "id": uuid.uuid4(),
-        "product_id": product_id,
-        "url": urls["original"],
-        "thumbnail_url": urls.get("thumbnail"),
-        "medium_url": urls.get("medium"),
-        "alt_text": None,
-        "is_primary": is_primary,
-        "sort_order": 0,
-    })
+    img = await _product_repo.add_image(
+        db,
+        {
+            "id": uuid.uuid4(),
+            "product_id": product_id,
+            "url": urls["original"],
+            "thumbnail_url": urls.get("thumbnail"),
+            "medium_url": urls.get("medium"),
+            "alt_text": None,
+            "is_primary": is_primary,
+            "sort_order": 0,
+        },
+    )
 
     if is_primary:
         await _product_repo.set_primary_image(db, product_id, img.id)

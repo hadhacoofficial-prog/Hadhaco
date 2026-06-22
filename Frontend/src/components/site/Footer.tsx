@@ -42,13 +42,22 @@ export function Footer({ config }: FooterProps) {
         <div className="col-span-2">
           <a href="/" className="inline-flex items-center" aria-label="Hadha Silver Jewellery">
             {logoUrl ? (
-              <img src={logoUrl} alt="Hadha Silver Jewellery" className="h-28 md:h-36 w-auto object-contain" />
+              <img
+                src={logoUrl}
+                alt="Hadha Silver Jewellery"
+                className="h-28 md:h-36 w-auto object-contain"
+              />
             ) : (
-              <img src={logoAsset} alt="Hadha Silver Jewellery" className="h-28 md:h-36 w-auto object-contain" />
+              <img
+                src={logoAsset}
+                alt="Hadha Silver Jewellery"
+                className="h-28 md:h-36 w-auto object-contain"
+              />
             )}
           </a>
           <p className="mt-6 text-background/70 leading-relaxed max-w-sm text-sm">
-            {c.description ?? "Popula Dabba's Hadha — handcrafted 92.5 silver jewellery rooted in South Indian heritage, made for everyday and treasured for a lifetime."}
+            {c.description ??
+              "Popula Dabba's Hadha — handcrafted 92.5 silver jewellery rooted in South Indian heritage, made for everyday and treasured for a lifetime."}
           </p>
           <div className="mt-6 space-y-2.5 text-sm text-background/70">
             <p className="flex items-start gap-3">
@@ -66,28 +75,47 @@ export function Footer({ config }: FooterProps) {
           </div>
           <div className="mt-6 flex items-center gap-3">
             {c.instagram && (
-              <a href={c.instagram} target="_blank" rel="noreferrer" className="size-9 border border-background/30 flex items-center justify-center hover:bg-accent hover:border-accent hover:text-accent-foreground transition">
+              <a
+                href={c.instagram}
+                target="_blank"
+                rel="noreferrer"
+                className="size-9 border border-background/30 flex items-center justify-center hover:bg-accent hover:border-accent hover:text-accent-foreground transition"
+              >
                 <Instagram className="size-4" />
               </a>
             )}
             {c.youtube && (
-              <a href={c.youtube} target="_blank" rel="noreferrer" className="size-9 border border-background/30 flex items-center justify-center hover:bg-accent hover:border-accent hover:text-accent-foreground transition">
+              <a
+                href={c.youtube}
+                target="_blank"
+                rel="noreferrer"
+                className="size-9 border border-background/30 flex items-center justify-center hover:bg-accent hover:border-accent hover:text-accent-foreground transition"
+              >
                 <Youtube className="size-4" />
               </a>
             )}
             {(c.facebook as string | undefined) && (
-              <a href={c.facebook as string} target="_blank" rel="noreferrer" className="size-9 border border-background/30 flex items-center justify-center hover:bg-accent hover:border-accent hover:text-accent-foreground transition">
+              <a
+                href={c.facebook as string}
+                target="_blank"
+                rel="noreferrer"
+                className="size-9 border border-background/30 flex items-center justify-center hover:bg-accent hover:border-accent hover:text-accent-foreground transition"
+              >
                 <Facebook className="size-4" />
               </a>
             )}
             {/* Fallback social icons when no config */}
-            {!c.instagram && !c.youtube && (
+            {!c.instagram &&
+              !c.youtube &&
               [Instagram, Youtube, Facebook].map((Icon, i) => (
-                <a key={i} href="#" className="size-9 border border-background/30 flex items-center justify-center hover:bg-accent hover:border-accent hover:text-accent-foreground transition">
+                <a
+                  key={i}
+                  href="#"
+                  className="size-9 border border-background/30 flex items-center justify-center hover:bg-accent hover:border-accent hover:text-accent-foreground transition"
+                >
                   <Icon className="size-4" />
                 </a>
-              ))
-            )}
+              ))}
           </div>
         </div>
 
@@ -108,11 +136,20 @@ export function Footer({ config }: FooterProps) {
       </div>
 
       <div className="max-w-7xl mx-auto mt-16 pt-6 border-t border-background/15 flex flex-col md:flex-row items-center justify-between gap-3 text-xs text-background/60">
-        <p>© {new Date().getFullYear()} {c.copyright_name ?? "Hadha Silver Jewellery"}. All rights reserved.</p>
+        <p>
+          © {new Date().getFullYear()} {c.copyright_name ?? "Hadha Silver Jewellery"}. All rights
+          reserved.
+        </p>
         <div className="flex items-center gap-5">
-          <Link to="/privacy" className="hover:text-accent">Privacy</Link>
-          <Link to="/terms" className="hover:text-accent">Terms</Link>
-          <Link to="/shipping-returns" className="hover:text-accent">Refund Policy</Link>
+          <Link to="/privacy" className="hover:text-accent">
+            Privacy
+          </Link>
+          <Link to="/terms" className="hover:text-accent">
+            Terms
+          </Link>
+          <Link to="/shipping-returns" className="hover:text-accent">
+            Refund Policy
+          </Link>
         </div>
       </div>
     </footer>

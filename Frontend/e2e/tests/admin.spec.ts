@@ -20,7 +20,7 @@ test.describe("Admin Login", () => {
 
     // Should show a login form or redirect to the admin dashboard
     const loginForm = page.locator(
-      'form, [data-testid="login-form"], input[type="email"], input[type="password"]'
+      'form, [data-testid="login-form"], input[type="email"], input[type="password"]',
     );
     await expect(loginForm.first()).toBeVisible({ timeout: 10_000 });
   });
@@ -29,12 +29,8 @@ test.describe("Admin Login", () => {
     await navigateToAdmin(page);
     await page.waitForLoadState("networkidle");
 
-    const emailInput = page
-      .locator('input[type="email"], input[name="email"]')
-      .first();
-    const passwordInput = page
-      .locator('input[type="password"], input[name="password"]')
-      .first();
+    const emailInput = page.locator('input[type="email"], input[name="email"]').first();
+    const passwordInput = page.locator('input[type="password"], input[name="password"]').first();
     const submitBtn = page
       .locator('button[type="submit"], button:has-text("Sign in"), button:has-text("Login")')
       .first();
@@ -50,18 +46,15 @@ test.describe("Admin Login", () => {
 
       // Should show an error message, NOT redirect to dashboard
       const errorMsg = page.locator(
-        '[role="alert"], [class*="error"], [class*="Error"], [data-testid="login-error"]'
+        '[role="alert"], [class*="error"], [class*="Error"], [data-testid="login-error"]',
       );
       const inError = await errorMsg.first().isVisible({ timeout: 5_000 });
-      const stillOnLogin =
-        page.url().includes("login") || page.url().includes("admin");
+      const stillOnLogin = page.url().includes("login") || page.url().includes("admin");
       expect(inError || stillOnLogin).toBe(true);
     }
   });
 
-  test("login with valid credentials (skipped if no E2E_ADMIN_PASSWORD)", async ({
-    page,
-  }) => {
+  test("login with valid credentials (skipped if no E2E_ADMIN_PASSWORD)", async ({ page }) => {
     if (!ADMIN_PASSWORD) {
       test.skip();
     }
@@ -71,9 +64,7 @@ test.describe("Admin Login", () => {
 
     const emailInput = page.locator('input[type="email"]').first();
     const passwordInput = page.locator('input[type="password"]').first();
-    const submitBtn = page
-      .locator('button[type="submit"], button:has-text("Sign in")')
-      .first();
+    const submitBtn = page.locator('button[type="submit"], button:has-text("Sign in")').first();
 
     await emailInput.fill(ADMIN_EMAIL);
     await passwordInput.fill(ADMIN_PASSWORD);
@@ -94,33 +85,27 @@ test.describe("Admin Dashboard (authenticated)", () => {
     await page.waitForLoadState("networkidle");
     await page.locator('input[type="email"]').fill(ADMIN_EMAIL);
     await page.locator('input[type="password"]').fill(ADMIN_PASSWORD);
-    await page
-      .locator('button[type="submit"], button:has-text("Sign in")')
-      .click();
+    await page.locator('button[type="submit"], button:has-text("Sign in")').click();
     await page.waitForURL(/admin\/dashboard|admin\/home/i, { timeout: 15_000 });
   });
 
   test("dashboard shows key metrics", async ({ page }) => {
     const metricsSection = page.locator(
-      '[data-testid="metrics"], [class*="stat"], [class*="dashboard-card"], [class*="metric"]'
+      '[data-testid="metrics"], [class*="stat"], [class*="dashboard-card"], [class*="metric"]',
     );
     await expect(metricsSection.first()).toBeVisible({ timeout: 10_000 });
   });
 
   test("CMS editor is accessible", async ({ page }) => {
     // Navigate to CMS section
-    const cmsLink = page
-      .getByRole("link", { name: /cms|content|pages/i })
-      .first();
+    const cmsLink = page.getByRole("link", { name: /cms|content|pages/i }).first();
     if (await cmsLink.isVisible({ timeout: 3_000 })) {
       await cmsLink.click();
       await page.waitForLoadState("networkidle");
       await expect(page).not.toHaveURL(/500/);
 
       // CMS save button should be present
-      const saveBtn = page.locator(
-        'button:has-text("Save"), [data-testid="cms-save"]'
-      );
+      const saveBtn = page.locator('button:has-text("Save"), [data-testid="cms-save"]');
       if (await saveBtn.isVisible({ timeout: 3_000 })) {
         await expect(saveBtn).toBeVisible();
       }

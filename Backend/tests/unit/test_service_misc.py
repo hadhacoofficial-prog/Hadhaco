@@ -22,7 +22,7 @@ class TestAuditService:
     async def test_log_creates_entry_and_flushes(self):
         db = AsyncMock()
         db.add = MagicMock()
-        result = await self.svc.log(
+        await self.svc.log(
             db,
             actor_id=str(uuid.uuid4()),
             action="create",
@@ -36,7 +36,7 @@ class TestAuditService:
     async def test_log_works_with_minimal_args(self):
         db = AsyncMock()
         db.add = MagicMock()
-        result = await self.svc.log(db, actor_id=None, action="login", resource_type="auth")
+        await self.svc.log(db, actor_id=None, action="login", resource_type="auth")
         db.add.assert_called_once()
 
     async def test_log_serializes_metadata(self):

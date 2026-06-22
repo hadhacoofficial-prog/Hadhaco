@@ -19,8 +19,6 @@ from app.core.events import (
     event_bus,
 )
 from app.core.exceptions import NotFoundError, ValidationError
-
-log = structlog.get_logger(__name__)
 from app.modules.orders.repository import OrderRepository
 from app.modules.orders.schemas import (
     CancelOrderRequest,
@@ -33,6 +31,8 @@ from app.modules.orders.schemas import (
     VerifyOrderPaymentRequest,
     VerifyOrderPaymentResponse,
 )
+
+log = structlog.get_logger(__name__)
 
 _repo = OrderRepository()
 

@@ -104,7 +104,9 @@ function MediaLibrary() {
               key={type}
               onClick={() => setMimeFilter(type === "all" ? undefined : type)}
               className={`px-3 py-1.5 border transition ${
-                active ? "border-primary text-primary" : "border-border text-muted-foreground hover:text-foreground"
+                active
+                  ? "border-primary text-primary"
+                  : "border-border text-muted-foreground hover:text-foreground"
               }`}
             >
               {type.charAt(0).toUpperCase() + type.slice(1)}
@@ -172,7 +174,9 @@ function MediaLibrary() {
         {selected && (
           <aside className="w-64 shrink-0 border border-border p-4 self-start">
             <div className="flex items-center justify-between mb-3">
-              <span className="text-[11px] uppercase tracking-widest text-muted-foreground">Details</span>
+              <span className="text-[11px] uppercase tracking-widest text-muted-foreground">
+                Details
+              </span>
               <button onClick={() => setSelected(null)}>
                 <X className="size-4" />
               </button>

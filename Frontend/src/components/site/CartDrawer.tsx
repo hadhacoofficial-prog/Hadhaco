@@ -34,10 +34,7 @@ export function CartDrawer() {
           <>
             <div className="flex-1 overflow-y-auto px-6 py-4 divide-y divide-border">
               {lines.map((line) => (
-                <div
-                  key={`${line.productId}::${line.variantId ?? ""}`}
-                  className="flex gap-4 py-4"
-                >
+                <div key={`${line.productId}::${line.variantId ?? ""}`} className="flex gap-4 py-4">
                   {line.snapshot ? (
                     <Link
                       to="/products/$slug"

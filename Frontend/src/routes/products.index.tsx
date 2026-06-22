@@ -17,8 +17,8 @@ import type { ProductListResponse } from "@/types/admin";
 
 const productsSearchSchema = z.object({
   gender: z.enum(["women", "men", "unisex", "kids"]).optional(),
-  category: z.string().optional(),        // category slug → category_slug on API
-  deals: z.enum(["true"]).optional(),     // /products?deals=true
+  category: z.string().optional(), // category slug → category_slug on API
+  deals: z.enum(["true"]).optional(), // /products?deals=true
   sort: z.enum(["newest", "popular", "price_asc", "price_desc"]).optional(),
   q: z.string().optional(),
   page: z.coerce.number().min(1).optional(),
@@ -41,8 +41,7 @@ function ProductsPage() {
       category_slug: category,
       is_featured: deals === "true" ? true : undefined,
       is_new_arrival: sort === "newest" ? true : undefined,
-      sort_by:
-        sort === "price_asc" || sort === "price_desc" ? "base_price" : "created_at",
+      sort_by: sort === "price_asc" || sort === "price_desc" ? "base_price" : "created_at",
       sort_dir: sort === "price_asc" ? "asc" : "desc",
       search: q,
       page,
@@ -57,10 +56,7 @@ function ProductsPage() {
     staleTime: 30_000,
   });
 
-  const products = useMemo(
-    () => (data?.items ?? []).map(toProduct),
-    [data],
-  );
+  const products = useMemo(() => (data?.items ?? []).map(toProduct), [data]);
 
   const title = buildTitle({ gender, category, deals, sort, q });
 
@@ -68,9 +64,7 @@ function ProductsPage() {
     <SiteLayout>
       <div className="px-4 md:px-8 py-10 max-w-screen-xl mx-auto">
         <header className="mb-8">
-          <h1 className="font-display text-3xl md:text-4xl tracking-wide capitalize">
-            {title}
-          </h1>
+          <h1 className="font-display text-3xl md:text-4xl tracking-wide capitalize">{title}</h1>
           {data?.total != null && (
             <p className="mt-1 text-sm text-muted-foreground">
               {data.total} {data.total === 1 ? "product" : "products"}
@@ -113,9 +107,7 @@ function buildTitle({
   if (sort === "newest") return "New Arrivals";
   if (sort === "popular") return "Bestsellers";
 
-  const genderLabel = gender
-    ? gender.charAt(0).toUpperCase() + gender.slice(1)
-    : "";
+  const genderLabel = gender ? gender.charAt(0).toUpperCase() + gender.slice(1) : "";
   const categoryLabel = category
     ? category
         .split("-")

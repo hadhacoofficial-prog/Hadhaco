@@ -13,7 +13,7 @@ export function useHomepage() {
   return useQuery({
     queryKey: queryKeys.cms.homepage,
     queryFn: () => api.get<HomepageData>("/cms/homepage"),
-    staleTime: 5 * 60 * 1000,      // 5 minutes — backend caches 24 h
+    staleTime: 5 * 60 * 1000, // 5 minutes — backend caches 24 h
     gcTime: 30 * 60 * 1000,
     retry: 1,
     refetchOnWindowFocus: false,

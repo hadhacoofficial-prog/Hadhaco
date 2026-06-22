@@ -1,4 +1,5 @@
 import pytest
+from pydantic import ValidationError
 
 from app.core.config import Settings, settings, validate_required_settings
 
@@ -16,7 +17,7 @@ class TestConfigValidation:
         assert "RAZORPAY_KEY_ID" in message
 
     def test_invalid_app_env_rejected(self):
-        with pytest.raises(Exception):
+        with pytest.raises(ValidationError):
             Settings(APP_ENV="not-an-env")
 
     def test_r2_aliases_resolve(self):

@@ -137,7 +137,8 @@ export const queryKeys = {
     cmsSection: (key: string) => ["admin", "cms", "section", key] as const,
     cmsSectionItems: (key: string) => ["admin", "cms", "section", key, "items"] as const,
     cmsSectionVersions: (key: string) => ["admin", "cms", "section", key, "versions"] as const,
-    cmsMedia: (params?: Record<string, unknown>) => ["admin", "cms", "media", params ?? {}] as const,
+    cmsMedia: (params?: Record<string, unknown>) =>
+      ["admin", "cms", "media", params ?? {}] as const,
     cmsPublishLog: ["admin", "cms", "publish-log"] as const,
     customers: (filters?: Filters) => ["admin", "customers", filters ?? {}] as const,
     fraud: (filters?: Filters) => ["admin", "fraud", filters ?? {}] as const,

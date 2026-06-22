@@ -55,9 +55,7 @@ export function toProductDetail(p: ProductDetail): Product {
       purity: p.purity ?? undefined,
       weight: p.weight_grams != null ? `${p.weight_grams}g` : undefined,
     },
-    variants: p.variants
-      .filter((v) => v.is_active)
-      .sort((a, b) => a.sort_order - b.sort_order),
+    variants: p.variants.filter((v) => v.is_active).sort((a, b) => a.sort_order - b.sort_order),
   };
 }
 

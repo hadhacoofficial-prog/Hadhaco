@@ -1,20 +1,20 @@
 // ── Section types ──────────────────────────────────────────────────────────────
 
 export type SectionType =
-  | 'announcement_bar'
-  | 'hero_carousel'
-  | 'navbar'
-  | 'category_grid'
-  | 'collection_showcase'
-  | 'product_grid'
-  | 'video_section'
-  | 'image_banner'
-  | 'content_block'
-  | 'testimonials'
-  | 'instagram_gallery'
-  | 'newsletter'
-  | 'footer'
-  | 'custom';
+  | "announcement_bar"
+  | "hero_carousel"
+  | "navbar"
+  | "category_grid"
+  | "collection_showcase"
+  | "product_grid"
+  | "video_section"
+  | "image_banner"
+  | "content_block"
+  | "testimonials"
+  | "instagram_gallery"
+  | "newsletter"
+  | "footer"
+  | "custom";
 
 // ── Public homepage API ────────────────────────────────────────────────────────
 
@@ -49,7 +49,7 @@ export interface HomepageData {
 
 // ── Admin section data ─────────────────────────────────────────────────────────
 
-export type SectionStatus = 'published' | 'draft' | 'scheduled';
+export type SectionStatus = "published" | "draft" | "scheduled";
 
 export interface AdminSection {
   id: string;
@@ -118,7 +118,7 @@ export interface HeroSlideConfig {
   primary_btn_url?: string;
   secondary_btn_text?: string;
   secondary_btn_url?: string;
-  alignment?: 'left' | 'center' | 'right';
+  alignment?: "left" | "center" | "right";
   overlay?: boolean;
   overlay_opacity?: number;
   seo_alt?: string;
@@ -127,7 +127,7 @@ export interface HeroSlideConfig {
 export interface ProductGridConfig {
   title: string;
   eyebrow?: string;
-  source: 'featured' | 'newest' | 'best_seller' | 'trending' | 'manual';
+  source: "featured" | "newest" | "best_seller" | "trending" | "manual";
   max_products: number;
   view_all_url?: string;
   manual_product_ids?: string[];
@@ -173,7 +173,7 @@ export interface InstagramGalleryConfig {
   title: string;
   handle: string;
   max_items: number;
-  source?: 'api' | 'manual' | 'collections';
+  source?: "api" | "manual" | "collections";
 }
 
 export interface FooterConfig {

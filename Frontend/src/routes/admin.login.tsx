@@ -95,15 +95,11 @@ function AdminLoginPage() {
       }
 
       // 4. Navigate to the originally requested admin page (or dashboard)
-      const target =
-        redirectTo && redirectTo !== "/admin/login" ? redirectTo : "/admin";
+      const target = redirectTo && redirectTo !== "/admin/login" ? redirectTo : "/admin";
       navigate({ to: target });
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : "Login failed. Please try again.";
-      if (
-        msg.includes("Invalid login credentials") ||
-        msg.includes("invalid_credentials")
-      ) {
+      if (msg.includes("Invalid login credentials") || msg.includes("invalid_credentials")) {
         setError("Invalid email or password.");
       } else {
         setError(msg);

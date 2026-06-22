@@ -28,8 +28,8 @@ export function useNavigationCategories() {
   return useQuery({
     queryKey: queryKeys.categories.navigation,
     queryFn: () => api.get<NavigationCategoriesResponse>("/categories/navigation"),
-    staleTime: 24 * 60 * 60 * 1000,       // 24 hours
-    gcTime: 7 * 24 * 60 * 60 * 1000,      // 7 days
+    staleTime: 24 * 60 * 60 * 1000, // 24 hours
+    gcTime: 7 * 24 * 60 * 60 * 1000, // 7 days
     retry: 1,
     refetchOnWindowFocus: false,
     refetchOnReconnect: false,

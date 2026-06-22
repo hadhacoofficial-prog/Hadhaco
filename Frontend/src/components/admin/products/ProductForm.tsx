@@ -181,9 +181,10 @@ function emptyForm(): FormState {
 }
 
 function productToForm(p: ProductDetail, categoryTree: CategoryTreeNode[]): FormState {
-  const parentId = categoryTree.find((n) =>
-    n.children.some((c) => c.id === p.category_id)
-  )?.id ?? p.category_id ?? "";
+  const parentId =
+    categoryTree.find((n) => n.children.some((c) => c.id === p.category_id))?.id ??
+    p.category_id ??
+    "";
 
   return {
     name: p.name,
@@ -244,7 +245,7 @@ function productToForm(p: ProductDetail, categoryTree: CategoryTreeNode[]): Form
 function validateForm(
   form: FormState,
   pendingImages: PendingImage[],
-  savedImages: ProductImage[]
+  savedImages: ProductImage[],
 ): FormErrors {
   const e: FormErrors = {};
   if (!form.name.trim()) e.name = "Product name is required";
@@ -254,7 +255,8 @@ function validateForm(
   if (!form.description.trim()) e.description = "Description is required";
   if (!form.category_id) e.category_id = "Sub-category is required";
   if (!form.base_price || parseFloat(form.base_price) <= 0) e.base_price = "Base price must be > 0";
-  if (pendingImages.length === 0 && savedImages.length === 0) e.images = "At least one image is required";
+  if (pendingImages.length === 0 && savedImages.length === 0)
+    e.images = "At least one image is required";
   return e;
 }
 
@@ -432,9 +434,7 @@ function CreateCategoryDialog({
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
       <div className="bg-background border border-border w-full max-w-md mx-4 p-6">
         <div className="flex items-center justify-between mb-5">
-          <h2 className="text-[11px] uppercase tracking-[0.22em] font-medium">
-            Create Category
-          </h2>
+          <h2 className="text-[11px] uppercase tracking-[0.22em] font-medium">Create Category</h2>
           <button type="button" onClick={onClose}>
             <X className="size-4 text-muted-foreground" />
           </button>
@@ -527,9 +527,7 @@ function CreateCollectionDialog({
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
       <div className="bg-background border border-border w-full max-w-md mx-4 p-6">
         <div className="flex items-center justify-between mb-5">
-          <h2 className="text-[11px] uppercase tracking-[0.22em] font-medium">
-            Create Collection
-          </h2>
+          <h2 className="text-[11px] uppercase tracking-[0.22em] font-medium">Create Collection</h2>
           <button type="button" onClick={onClose}>
             <X className="size-4 text-muted-foreground" />
           </button>
@@ -640,13 +638,7 @@ function ProductInfoSection({
           </div>
         </Field>
 
-        <Field
-          label="SKU"
-          required
-          error={errors.sku}
-          id="sku"
-          hint={`e.g. HDH-RG-000001`}
-        >
+        <Field label="SKU" required error={errors.sku} id="sku" hint={`e.g. HDH-RG-000001`}>
           <div className="flex gap-2">
             <TextInput
               value={form.sku}
@@ -749,10 +741,9 @@ function OrganizationSection({
   const [showCreateCollection, setShowCreateCollection] = useState(false);
 
   const parentCategories = categoryTree;
-  const subCategories =
-    form.parent_category_id
-      ? (parentCategories.find((p) => p.id === form.parent_category_id)?.children ?? [])
-      : [];
+  const subCategories = form.parent_category_id
+    ? (parentCategories.find((p) => p.id === form.parent_category_id)?.children ?? [])
+    : [];
 
   const selectedParentName =
     parentCategories.find((p) => p.id === form.parent_category_id)?.name ?? "";
@@ -826,7 +817,10 @@ function OrganizationSection({
             <p className="text-xs text-muted-foreground px-1">No collections yet.</p>
           )}
           {collections.map((col) => (
-            <label key={col.id} className="flex items-center gap-2.5 cursor-pointer px-1 py-0.5 hover:bg-secondary/50">
+            <label
+              key={col.id}
+              className="flex items-center gap-2.5 cursor-pointer px-1 py-0.5 hover:bg-secondary/50"
+            >
               <input
                 type="checkbox"
                 checked={form.collection_ids.includes(col.id)}
@@ -893,7 +887,8 @@ function PricingSection({
   const base = parseFloat(form.base_price) || 0;
   const compare = parseFloat(form.compare_at_price) || 0;
   const taxRate = parseFloat(form.tax_rate) || 3;
-  const discountPct = compare > base && compare > 0 ? Math.round(((compare - base) / compare) * 100) : 0;
+  const discountPct =
+    compare > base && compare > 0 ? Math.round(((compare - base) / compare) * 100) : 0;
   const taxAmount = base * (taxRate / 100);
   const priceIncTax = base + taxAmount;
 
@@ -951,17 +946,23 @@ function PricingSection({
       {base > 0 && (
         <div className="bg-secondary/40 border border-border p-4 flex gap-6 text-sm">
           <div>
-            <p className="text-[11px] uppercase tracking-[0.18em] text-muted-foreground">Selling Price</p>
+            <p className="text-[11px] uppercase tracking-[0.18em] text-muted-foreground">
+              Selling Price
+            </p>
             <p className="font-display text-lg mt-0.5">{formatINR(base)}</p>
           </div>
           {compare > 0 && discountPct > 0 && (
             <div>
-              <p className="text-[11px] uppercase tracking-[0.18em] text-muted-foreground">Discount</p>
+              <p className="text-[11px] uppercase tracking-[0.18em] text-muted-foreground">
+                Discount
+              </p>
               <p className="font-display text-lg mt-0.5 text-accent">{discountPct}% off</p>
             </div>
           )}
           <div>
-            <p className="text-[11px] uppercase tracking-[0.18em] text-muted-foreground">Inc. GST ({taxRate}%)</p>
+            <p className="text-[11px] uppercase tracking-[0.18em] text-muted-foreground">
+              Inc. GST ({taxRate}%)
+            </p>
             <p className="font-display text-lg mt-0.5">{formatINR(priceIncTax)}</p>
           </div>
         </div>
@@ -1037,11 +1038,7 @@ function JewellerySection({
           />
         </Field>
         <Field label="Purity">
-          <TextInput
-            value={form.purity}
-            onChange={(v) => set({ purity: v })}
-            placeholder="925"
-          />
+          <TextInput value={form.purity} onChange={(v) => set({ purity: v })} placeholder="925" />
         </Field>
       </div>
 
@@ -1110,7 +1107,9 @@ function JewellerySection({
       </div>
 
       <div className="flex flex-col gap-2">
-        <p className="text-[11px] uppercase tracking-[0.18em] text-muted-foreground">Dimensions (cm)</p>
+        <p className="text-[11px] uppercase tracking-[0.18em] text-muted-foreground">
+          Dimensions (cm)
+        </p>
         <div className="grid grid-cols-3 gap-3">
           <TextInput
             type="number"
@@ -1188,9 +1187,14 @@ function MediaSection({
 
       <div
         className={`border-2 border-dashed rounded-none p-8 text-center transition-colors cursor-pointer ${
-          dragging ? "border-primary bg-primary/5" : "border-border hover:border-muted-foreground/50"
+          dragging
+            ? "border-primary bg-primary/5"
+            : "border-border hover:border-muted-foreground/50"
         }`}
-        onDragOver={(e) => { e.preventDefault(); setDragging(true); }}
+        onDragOver={(e) => {
+          e.preventDefault();
+          setDragging(true);
+        }}
         onDragLeave={() => setDragging(false)}
         onDrop={handleDrop}
         onClick={() => fileRef.current?.click()}
@@ -1213,7 +1217,10 @@ function MediaSection({
       {totalCount > 0 && (
         <div className="grid grid-cols-3 gap-3">
           {savedImages.map((img, i) => (
-            <div key={img.id} className="relative group border border-border aspect-square overflow-hidden bg-secondary">
+            <div
+              key={img.id}
+              className="relative group border border-border aspect-square overflow-hidden bg-secondary"
+            >
               <img
                 src={img.thumbnail_url ?? img.url}
                 alt={img.alt_text ?? ""}
@@ -1237,7 +1244,9 @@ function MediaSection({
                 )}
                 <button
                   type="button"
-                  onClick={() => { if (confirm("Delete this image?")) onDeleteSaved(img.id); }}
+                  onClick={() => {
+                    if (confirm("Delete this image?")) onDeleteSaved(img.id);
+                  }}
                   className="bg-destructive/90 text-destructive-foreground p-1.5 rounded-sm"
                   title="Delete"
                 >
@@ -1248,12 +1257,11 @@ function MediaSection({
           ))}
 
           {pendingImages.map((img, i) => (
-            <div key={img.id} className="relative group border border-dashed border-border aspect-square overflow-hidden bg-secondary">
-              <img
-                src={img.preview}
-                alt=""
-                className="w-full h-full object-cover"
-              />
+            <div
+              key={img.id}
+              className="relative group border border-dashed border-border aspect-square overflow-hidden bg-secondary"
+            >
+              <img src={img.preview} alt="" className="w-full h-full object-cover" />
               <div className="absolute top-1 right-1 bg-amber-500/90 text-white text-[9px] uppercase tracking-wider px-1.5 py-0.5">
                 Pending
               </div>
@@ -1299,10 +1307,7 @@ function VariantsSection({
 }) {
   const addOption = () => {
     set({
-      variant_options: [
-        ...form.variant_options,
-        { id: uid(), name: "", values: [], newValue: "" },
-      ],
+      variant_options: [...form.variant_options, { id: uid(), name: "", values: [], newValue: "" }],
     });
   };
 
@@ -1312,9 +1317,7 @@ function VariantsSection({
 
   const updateOption = (id: string, patch: Partial<VariantOption>) => {
     set({
-      variant_options: form.variant_options.map((o) =>
-        o.id === id ? { ...o, ...patch } : o
-      ),
+      variant_options: form.variant_options.map((o) => (o.id === id ? { ...o, ...patch } : o)),
     });
   };
 
@@ -1335,16 +1338,14 @@ function VariantsSection({
 
   const generateVariants = () => {
     const optionsWithValues = form.variant_options.filter(
-      (o) => o.name.trim() && o.values.length > 0
+      (o) => o.name.trim() && o.values.length > 0,
     );
     if (optionsWithValues.length === 0) return;
     const valueSets = optionsWithValues.map((o) => o.values);
     const combos = cartesian(valueSets);
     const newVariants: LocalVariant[] = combos.map((combo, i) => {
       const name = combo.join(" / ");
-      const suffix = combo
-        .map((v) => v.slice(0, 3).toUpperCase())
-        .join("-");
+      const suffix = combo.map((v) => v.slice(0, 3).toUpperCase()).join("-");
       return {
         id: uid(),
         sku: `${baseSku || "HDH"}-${suffix}`,
@@ -1506,7 +1507,9 @@ function VariantsSection({
                           type="number"
                           value={v.price_adjustment}
                           onChange={(e) =>
-                            updateVariant(v.id, { price_adjustment: parseFloat(e.target.value) || 0 })
+                            updateVariant(v.id, {
+                              price_adjustment: parseFloat(e.target.value) || 0,
+                            })
                           }
                           className="border border-border px-2 py-1 bg-transparent text-sm outline-none w-24"
                         />
@@ -1569,10 +1572,7 @@ function AttributesSection({
 }) {
   const addAttr = () => {
     set({
-      attributes: [
-        ...form.attributes,
-        { id: uid(), name: "", value: "" },
-      ],
+      attributes: [...form.attributes, { id: uid(), name: "", value: "" }],
     });
   };
 
@@ -1587,8 +1587,16 @@ function AttributesSection({
   };
 
   const SUGGESTIONS = [
-    "Stone", "Finish", "Occasion", "Style", "Warranty", "Material",
-    "Closure", "Chain Length", "Setting", "Plating",
+    "Stone",
+    "Finish",
+    "Occasion",
+    "Style",
+    "Warranty",
+    "Material",
+    "Closure",
+    "Chain Length",
+    "Setting",
+    "Plating",
   ];
 
   return (
@@ -1641,7 +1649,9 @@ function AttributesSection({
 
       {form.attributes.length > 0 && (
         <div className="bg-secondary/30 border border-border p-3">
-          <p className="text-[11px] uppercase tracking-[0.18em] text-muted-foreground mb-2">Preview</p>
+          <p className="text-[11px] uppercase tracking-[0.18em] text-muted-foreground mb-2">
+            Preview
+          </p>
           <div className="flex flex-wrap gap-x-6 gap-y-1">
             {form.attributes
               .filter((a) => a.name && a.value)
@@ -1660,19 +1670,16 @@ function AttributesSection({
 
 // ─── SEO Section ──────────────────────────────────────────────────────────────
 
-function SeoSection({
-  form,
-  set,
-}: {
-  form: FormState;
-  set: (patch: Partial<FormState>) => void;
-}) {
+function SeoSection({ form, set }: { form: FormState; set: (patch: Partial<FormState>) => void }) {
   const title = form.meta_title || form.name || "Product Title";
   const desc = form.meta_description || form.short_description || "Product description…";
 
   return (
     <div className="flex flex-col gap-5 pt-5">
-      <Field label="Meta Title" hint={`${form.meta_title.length}/255 · Auto-filled from product name`}>
+      <Field
+        label="Meta Title"
+        hint={`${form.meta_title.length}/255 · Auto-filled from product name`}
+      >
         <TextInput
           value={form.meta_title}
           onChange={(v) => set({ meta_title: v })}
@@ -1680,7 +1687,10 @@ function SeoSection({
         />
       </Field>
 
-      <Field label="Meta Description" hint={`${form.meta_description.length}/500 · Auto-filled from short description`}>
+      <Field
+        label="Meta Description"
+        hint={`${form.meta_description.length}/500 · Auto-filled from short description`}
+      >
         <textarea
           value={form.meta_description}
           onChange={(e) => set({ meta_description: e.target.value })}
@@ -1880,7 +1890,10 @@ export function ProductForm({ mode, initialProduct, initialCollectionIds }: Prod
 
   const initialForm = useCallback((): FormState => {
     if (initialProduct) {
-      const f = productToForm(initialProduct, categoryTreeLocal.length ? categoryTreeLocal : categoryTree);
+      const f = productToForm(
+        initialProduct,
+        categoryTreeLocal.length ? categoryTreeLocal : categoryTree,
+      );
       if (initialCollectionIds) f.collection_ids = initialCollectionIds;
       return f;
     }
@@ -1983,7 +1996,7 @@ export function ProductForm({ mode, initialProduct, initialCollectionIds }: Prod
         toast.error(toUserMessage(e as Error));
       }
     },
-    [initialProduct?.id, queryClient]
+    [initialProduct?.id, queryClient],
   );
 
   const setPrimarySaved = useCallback(
@@ -1991,33 +2004,37 @@ export function ProductForm({ mode, initialProduct, initialCollectionIds }: Prod
       if (!initialProduct) return;
       try {
         await api.patch(`/admin/products/${initialProduct.id}/images/${imageId}/primary`);
-        setSavedImages((prev) =>
-          prev.map((i) => ({ ...i, is_primary: i.id === imageId }))
-        );
+        setSavedImages((prev) => prev.map((i) => ({ ...i, is_primary: i.id === imageId })));
         toast.success("Primary image updated.");
       } catch (e) {
         toast.error(toUserMessage(e as Error));
       }
     },
-    [initialProduct?.id]
+    [initialProduct?.id],
   );
 
   // ── Inline category/collection creation ──────────────────────────────────────
 
-  const handleCategoryCreated = useCallback((cat: CategoryTreeNode) => {
-    setCategoryTreeLocal((prev) => {
-      if (!cat.parent_id) return [...prev, cat];
-      return prev.map((p) =>
-        p.id === cat.parent_id ? { ...p, children: [...p.children, cat] } : p
-      );
-    });
-    queryClient.invalidateQueries({ queryKey: queryKeys.categories.all });
-  }, [queryClient]);
+  const handleCategoryCreated = useCallback(
+    (cat: CategoryTreeNode) => {
+      setCategoryTreeLocal((prev) => {
+        if (!cat.parent_id) return [...prev, cat];
+        return prev.map((p) =>
+          p.id === cat.parent_id ? { ...p, children: [...p.children, cat] } : p,
+        );
+      });
+      queryClient.invalidateQueries({ queryKey: queryKeys.categories.all });
+    },
+    [queryClient],
+  );
 
-  const handleCollectionCreated = useCallback((col: CollectionDto) => {
-    setCollectionsLocal((prev) => [...prev, col]);
-    queryClient.invalidateQueries({ queryKey: queryKeys.admin.collections });
-  }, [queryClient]);
+  const handleCollectionCreated = useCallback(
+    (col: CollectionDto) => {
+      setCollectionsLocal((prev) => [...prev, col]);
+      queryClient.invalidateQueries({ queryKey: queryKeys.admin.collections });
+    },
+    [queryClient],
+  );
 
   // ── Build payload helpers ───────────────────────────────────────────────────
 
@@ -2208,24 +2225,22 @@ export function ProductForm({ mode, initialProduct, initialCollectionIds }: Prod
     }
   }
 
-  const handleSaveDraft = () =>
-    mode === "new" ? handleCreate(false) : handleUpdate(false);
-  const handlePublish = () =>
-    mode === "new" ? handleCreate(true) : handleUpdate(true);
+  const handleSaveDraft = () => (mode === "new" ? handleCreate(false) : handleUpdate(false));
+  const handlePublish = () => (mode === "new" ? handleCreate(true) : handleUpdate(true));
 
   // ── Derived state ───────────────────────────────────────────────────────────
 
   const selectedCategoryName =
-    categoryTreeLocal
-      .flatMap((p) => p.children)
-      .find((c) => c.id === form.category_id)?.name ?? "";
+    categoryTreeLocal.flatMap((p) => p.children).find((c) => c.id === form.category_id)?.name ?? "";
 
   // Track variant deletions in edit mode
   const handleSetForm = useCallback(
     (patch: Partial<FormState>) => {
       if (patch.variants && initialProduct) {
         const currentIds = form.variants.map((v) => v.id).filter((id) => !id.startsWith("__"));
-        const nextIds = (patch.variants as LocalVariant[]).map((v) => v.id).filter((id) => !id.startsWith("__"));
+        const nextIds = (patch.variants as LocalVariant[])
+          .map((v) => v.id)
+          .filter((id) => !id.startsWith("__"));
         const newlyDeleted = currentIds.filter((id) => !nextIds.includes(id));
         if (newlyDeleted.length) {
           setDeletedVariantIds((prev) => [...new Set([...prev, ...newlyDeleted])]);
@@ -2241,7 +2256,7 @@ export function ProductForm({ mode, initialProduct, initialCollectionIds }: Prod
       }
       set(patch);
     },
-    [form.variants, form.attributes, initialProduct, set]
+    [form.variants, form.attributes, initialProduct, set],
   );
 
   // ── Render ──────────────────────────────────────────────────────────────────
@@ -2294,7 +2309,15 @@ export function ProductForm({ mode, initialProduct, initialCollectionIds }: Prod
         <div className="flex-1 min-w-0 flex flex-col gap-4">
           <Section
             title="Product Information"
-            error={!!(formErrors.name || formErrors.sku || formErrors.slug || formErrors.short_description || formErrors.description)}
+            error={
+              !!(
+                formErrors.name ||
+                formErrors.sku ||
+                formErrors.slug ||
+                formErrors.short_description ||
+                formErrors.description
+              )
+            }
           >
             <ProductInfoSection
               form={form}

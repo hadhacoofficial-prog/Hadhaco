@@ -140,9 +140,7 @@ class MediaService:
                 Delete={"Objects": [{"Key": o["Key"]} for o in objects["Contents"]]},
             )
 
-    def get_presigned_upload_url(
-        self, key: str, content_type: str, expires_in: int = 300
-    ) -> str:
+    def get_presigned_upload_url(self, key: str, content_type: str, expires_in: int = 300) -> str:
         """Generate a presigned PUT URL for direct browser-to-R2 uploads."""
         client = _get_r2_client()
         return client.generate_presigned_url(

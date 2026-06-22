@@ -32,7 +32,10 @@ export const Route = createFileRoute("/checkout")({
 
 function loadRazorpayScript(): Promise<void> {
   return new Promise((resolve, reject) => {
-    if (window.Razorpay) { resolve(); return; }
+    if (window.Razorpay) {
+      resolve();
+      return;
+    }
     const script = document.createElement("script");
     script.src = "https://checkout.razorpay.com/v1/checkout.js";
     script.onload = () => resolve();
@@ -353,10 +356,7 @@ function CheckoutPage() {
             <h2 className="font-display text-xl mb-4">Order summary</h2>
             <div className="divide-y divide-border max-h-72 overflow-y-auto -mx-2 px-2">
               {lines.map((line) => (
-                <div
-                  key={`${line.productId}::${line.variantId ?? ""}`}
-                  className="flex gap-3 py-3"
-                >
+                <div key={`${line.productId}::${line.variantId ?? ""}`} className="flex gap-3 py-3">
                   <div className="relative w-16 h-16 bg-secondary overflow-hidden shrink-0">
                     {line.snapshot && (
                       <img

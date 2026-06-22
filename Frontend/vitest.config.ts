@@ -12,11 +12,7 @@ export default defineConfig({
       provider: "v8",
       reporter: ["text", "lcov", "json"],
       include: ["src/**/*.{ts,tsx}"],
-      exclude: [
-        "src/routeTree.gen.ts",
-        "src/**/*.d.ts",
-        "src/test/**",
-      ],
+      exclude: ["src/routeTree.gen.ts", "src/**/*.d.ts", "src/test/**"],
     },
   },
   resolve: {

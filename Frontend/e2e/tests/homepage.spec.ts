@@ -26,7 +26,7 @@ test.describe("Homepage", () => {
   test("displays featured products or collections", async ({ page }) => {
     // Look for a product card or collection section
     const products = page.locator(
-      '[data-testid="product-card"], [class*="product"], [class*="collection"]'
+      '[data-testid="product-card"], [class*="product"], [class*="collection"]',
     );
     await expect(products.first()).toBeVisible({ timeout: 15_000 });
   });
@@ -52,7 +52,7 @@ test.describe("Homepage", () => {
     const brokenImages = await page.evaluate(() =>
       Array.from(document.images)
         .filter((img) => img.complete && img.naturalWidth === 0 && img.src)
-        .map((img) => img.src)
+        .map((img) => img.src),
     );
     expect(brokenImages).toHaveLength(0);
   });

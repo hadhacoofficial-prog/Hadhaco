@@ -27,7 +27,7 @@ class TestCollectionServiceSuccessPaths:
                 return_value=MagicMock(),
             ) as mock_mv,
         ):
-            result = await self.svc.get_by_slug(db, "silver-rings")
+            await self.svc.get_by_slug(db, "silver-rings")
         mock_mv.assert_called_once_with(mock_col)
 
     async def test_create_creates_and_returns_response(self):

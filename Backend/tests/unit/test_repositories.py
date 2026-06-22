@@ -402,7 +402,7 @@ class TestOrderRepository:
     async def test_create_returns_order(self):
         db = AsyncMock()
         db.add = MagicMock()
-        result = await self.repo.create(db, {"id": uuid.uuid4(), "user_id": uuid.uuid4()})
+        await self.repo.create(db, {"id": uuid.uuid4(), "user_id": uuid.uuid4()})
         db.add.assert_called_once()
         db.flush.assert_awaited_once()
 
@@ -495,7 +495,7 @@ class TestReviewRepository:
     async def test_create_review_adds_and_refreshes(self):
         db = AsyncMock()
         db.add = MagicMock()
-        result = await self.repo.create(
+        await self.repo.create(
             db,
             id=uuid.uuid4(),
             order_id=uuid.uuid4(),

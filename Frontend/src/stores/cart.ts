@@ -18,15 +18,19 @@ export interface CartEntry {
 }
 
 // Internal key that uniquely identifies a cart line (same product, different variants = different lines)
-const lineKey = (productId: string, variantId?: string) =>
-  `${productId}::${variantId ?? ""}`;
+const lineKey = (productId: string, variantId?: string) => `${productId}::${variantId ?? ""}`;
 
 interface CartState {
   lines: CartEntry[];
   isOpen: boolean;
   open: () => void;
   close: () => void;
-  add: (productId: string, qty?: number, snapshot?: CartProductSnapshot, variantId?: string) => void;
+  add: (
+    productId: string,
+    qty?: number,
+    snapshot?: CartProductSnapshot,
+    variantId?: string,
+  ) => void;
   remove: (productId: string, variantId?: string) => void;
   setQty: (productId: string, qty: number, variantId?: string) => void;
   clear: () => void;

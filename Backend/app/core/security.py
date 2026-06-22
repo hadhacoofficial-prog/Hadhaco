@@ -52,12 +52,12 @@ async def verify_supabase_jwt(token: str) -> JWTPayload:
     """
     try:
         header = jwt.get_unverified_header(token)
-    except jwt.DecodeError:
+    except jwt.DecodeError as exc:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid token",
             headers={"WWW-Authenticate": "Bearer"},
-        )
+        ) from exc
 
     kid: str | None = header.get("kid")
     alg: str = header.get("alg", "")
@@ -70,12 +70,12 @@ async def verify_supabase_jwt(token: str) -> JWTPayload:
 
     try:
         public_key = await get_public_key(kid)
-    except Exception:
+    except Exception as exc:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid token",
             headers={"WWW-Authenticate": "Bearer"},
-        )
+        ) from exc
 
     try:
         payload = jwt.decode(
@@ -86,18 +86,18 @@ async def verify_supabase_jwt(token: str) -> JWTPayload:
             issuer=settings.supabase_issuer,
             options={"require": ["exp", "iat", "sub"]},
         )
-    except jwt.ExpiredSignatureError:
+    except jwt.ExpiredSignatureError as exc:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Token expired",
             headers={"WWW-Authenticate": "Bearer"},
-        )
-    except jwt.InvalidTokenError:
+        ) from exc
+    except jwt.InvalidTokenError as exc:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid token",
             headers={"WWW-Authenticate": "Bearer"},
-        )
+        ) from exc
 
     return JWTPayload(
         sub=payload["sub"],

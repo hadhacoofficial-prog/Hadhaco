@@ -75,9 +75,6 @@ class TestQueueService:
         interval_ids = []
         cron_ids = []
 
-        original_interval = QueueService.add_interval_job
-        original_cron = QueueService.add_cron_job
-
         def capture_interval(self, fn, *, seconds, job_id):
             interval_ids.append(job_id)
 

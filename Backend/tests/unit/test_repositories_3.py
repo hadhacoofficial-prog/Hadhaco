@@ -109,7 +109,7 @@ class TestWishlistRepository:
             return r
 
         db.execute = mock_execute
-        result = await self.repo.get_or_create(db, uuid.uuid4())
+        await self.repo.get_or_create(db, uuid.uuid4())
         db.add.assert_called_once()
 
     async def test_add_item_inserts_and_returns(self):
@@ -213,7 +213,7 @@ class TestSupportRepository:
     async def test_update_ticket_sets_attrs(self):
         db = _db()
         ticket = MagicMock()
-        result = await self.repo.update_ticket(db, ticket, {"status": "resolved"})
+        await self.repo.update_ticket(db, ticket, {"status": "resolved"})
         assert ticket.status == "resolved"
 
     async def test_next_ticket_number_format(self):
@@ -273,7 +273,7 @@ class TestReturnRepository:
     async def test_update_status(self):
         db = _db()
         ret = MagicMock()
-        result = await self.repo.update_status(db, ret, "approved", notes="Looks good")
+        await self.repo.update_status(db, ret, "approved", notes="Looks good")
         assert ret.status == "approved"
         assert ret.notes == "Looks good"
 
@@ -328,9 +328,7 @@ class TestFraudRepository:
     async def test_update_sets_attrs(self):
         db = _db()
         signal = MagicMock()
-        result = await self.repo.update(
-            db, signal, {"is_resolved": True, "resolved_by": uuid.uuid4()}
-        )
+        await self.repo.update(db, signal, {"is_resolved": True, "resolved_by": uuid.uuid4()})
         assert signal.is_resolved is True
 
 

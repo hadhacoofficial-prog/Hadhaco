@@ -213,7 +213,7 @@ class ShippingService:
                 awb_number=awb_number,
                 status=shipment.status,
                 estimated_delivery=shipment.estimated_delivery,
-                events=[e for e in shipment.events],
+                events=list(shipment.events),
             )
 
         # Sync events

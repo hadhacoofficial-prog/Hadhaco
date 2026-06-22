@@ -64,7 +64,11 @@ function AdminInventory() {
 
       <div className="bg-background border border-border overflow-x-auto">
         {isLoading ? (
-          <TableSkeleton headers={["Product", "SKU", "Quantity", "Committed", "Available", "Actions"]} rows={8} firstColWide />
+          <TableSkeleton
+            headers={["Product", "SKU", "Quantity", "Committed", "Available", "Actions"]}
+            rows={8}
+            firstColWide
+          />
         ) : (
           <table className="w-full text-sm">
             <thead className="bg-secondary text-left text-[11px] uppercase tracking-[0.18em] text-muted-foreground">

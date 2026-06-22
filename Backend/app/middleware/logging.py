@@ -81,13 +81,13 @@ class RequestLoggingMiddleware(BaseHTTPMiddleware):
         duration_ms = round((time.perf_counter() - t0) * 1000, 2)
 
         status = response.status_code
-        fields: dict = dict(
-            method=request.method,
-            path=request.url.path,
-            status=status,
-            duration_ms=duration_ms,
-            ip=ip,
-        )
+        fields: dict = {
+            "method": request.method,
+            "path": request.url.path,
+            "status": status,
+            "duration_ms": duration_ms,
+            "ip": ip,
+        }
 
         # Slow-request warning fires regardless of status code so it's searchable
         # independently of the main access log entry.

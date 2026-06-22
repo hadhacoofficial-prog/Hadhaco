@@ -16,7 +16,7 @@ async function addProductToCart(page: Page) {
 
   const addToCartBtn = page
     .locator(
-      '[data-testid="add-to-cart"], button:has-text("Add to Cart"), button:has-text("Add to Bag")'
+      '[data-testid="add-to-cart"], button:has-text("Add to Cart"), button:has-text("Add to Bag")',
     )
     .first();
 
@@ -34,7 +34,7 @@ test.describe("Cart", () => {
 
     // Cart count or toast should indicate the item was added
     const cartIndicator = page.locator(
-      '[data-testid="cart-count"], [class*="cart-count"], [aria-label*="cart" i]'
+      '[data-testid="cart-count"], [class*="cart-count"], [aria-label*="cart" i]',
     );
     // Either a toast appears or cart count updates — no crash is the minimum bar
     await expect(page.locator("body")).not.toContainText("Something went wrong");
@@ -48,7 +48,7 @@ test.describe("Cart", () => {
     await page.waitForLoadState("networkidle");
 
     const cartItem = page.locator(
-      '[data-testid="cart-item"], [class*="cart-item"], [class*="CartItem"]'
+      '[data-testid="cart-item"], [class*="cart-item"], [class*="CartItem"]',
     );
     // If auth is required the user will be redirected — just ensure no 500
     await expect(page).not.toHaveURL(/500|error/);
@@ -59,7 +59,7 @@ test.describe("Cart", () => {
     await page.waitForLoadState("networkidle");
 
     const qtyIncrement = page
-      .locator('[data-testid="qty-increase"], [aria-label*="increase" i], button:has-text("+")' )
+      .locator('[data-testid="qty-increase"], [aria-label*="increase" i], button:has-text("+")')
       .first();
     if (await qtyIncrement.isVisible({ timeout: 3_000 })) {
       await qtyIncrement.click();
@@ -108,16 +108,12 @@ test.describe("Checkout", () => {
       test.skip();
     }
 
-    const nameField = page
-      .locator('input[name*="name" i], input[placeholder*="name" i]')
-      .first();
+    const nameField = page.locator('input[name*="name" i], input[placeholder*="name" i]').first();
     if (await nameField.isVisible({ timeout: 3_000 })) {
       await nameField.fill("Test User");
     }
 
-    const phoneField = page
-      .locator('input[name*="phone" i], input[type="tel"]')
-      .first();
+    const phoneField = page.locator('input[name*="phone" i], input[type="tel"]').first();
     if (await phoneField.isVisible({ timeout: 3_000 })) {
       await phoneField.fill("9999999999");
     }
@@ -135,7 +131,7 @@ test.describe("Checkout", () => {
 
     // Razorpay button or Pay Now CTA
     const payBtn = page.locator(
-      'button:has-text("Pay"), button:has-text("Place Order"), button[class*="razorpay"], [data-testid="pay-btn"]'
+      'button:has-text("Pay"), button:has-text("Place Order"), button[class*="razorpay"], [data-testid="pay-btn"]',
     );
     if (await payBtn.first().isVisible({ timeout: 5_000 })) {
       await expect(payBtn.first()).toBeEnabled();

@@ -29,7 +29,9 @@ export const useWishlist = create<WishlistState>()(
       items: [],
       toggle: (item) =>
         set((s) => ({
-          items: s.items.some((x) => itemKey(x.id, x.variantId) === itemKey(item.id, item.variantId))
+          items: s.items.some(
+            (x) => itemKey(x.id, x.variantId) === itemKey(item.id, item.variantId),
+          )
             ? s.items.filter((x) => itemKey(x.id, x.variantId) !== itemKey(item.id, item.variantId))
             : [...s.items, item],
         })),

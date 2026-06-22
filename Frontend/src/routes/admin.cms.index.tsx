@@ -3,15 +3,41 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import {
-  ArrowDownToLine, Check, ChevronDown, ChevronUp, Copy,
-  Eye, EyeOff, ExternalLink, FileText, Film, GripVertical,
-  ImageIcon, Instagram, LayoutGrid, Layers, Mail, Megaphone,
-  Navigation, Plus, RefreshCw, Save, Search, Settings,
-  ShoppingBag, Star, Trash2, X, Zap,
+  ArrowDownToLine,
+  Check,
+  ChevronDown,
+  ChevronUp,
+  Copy,
+  Eye,
+  EyeOff,
+  ExternalLink,
+  FileText,
+  Film,
+  GripVertical,
+  ImageIcon,
+  Instagram,
+  LayoutGrid,
+  Layers,
+  Mail,
+  Megaphone,
+  Navigation,
+  Plus,
+  RefreshCw,
+  Save,
+  Search,
+  Settings,
+  ShoppingBag,
+  Star,
+  Trash2,
+  X,
+  Zap,
 } from "lucide-react";
 
 import {
-  useCmsSections, useReorderSections, useToggleSection, useInvalidateCache,
+  useCmsSections,
+  useReorderSections,
+  useToggleSection,
+  useInvalidateCache,
 } from "@/hooks/cms/useCmsSections";
 import { api } from "@/lib/api/client";
 import { queryKeys } from "@/lib/api/queryKeys";
@@ -28,11 +54,22 @@ import { FeaturedProducts } from "@/components/site/FeaturedProducts";
 import { Footer } from "@/components/site/Footer";
 
 import type {
-  AdminSection, AnnouncementConfig, AnnouncementItemConfig,
-  CollectionCardConfig, FooterConfig, HeroCarouselConfig, HeroSlideConfig,
-  ImageBannerConfig, InstagramGalleryConfig, InstagramItemConfig,
-  NewsletterConfig, ProductGridConfig, ReviewItemConfig,
-  SectionItem, SectionType, VideoSectionConfig,
+  AdminSection,
+  AnnouncementConfig,
+  AnnouncementItemConfig,
+  CollectionCardConfig,
+  FooterConfig,
+  HeroCarouselConfig,
+  HeroSlideConfig,
+  ImageBannerConfig,
+  InstagramGalleryConfig,
+  InstagramItemConfig,
+  NewsletterConfig,
+  ProductGridConfig,
+  ReviewItemConfig,
+  SectionItem,
+  SectionType,
+  VideoSectionConfig,
 } from "@/types/cms";
 import type { ProductListItem, ProductListResponse } from "@/types/admin";
 
@@ -169,89 +206,190 @@ const DEFAULT_ITEMS: Partial<Record<SectionType, Array<Record<string, unknown>>>
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div>
-      <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-muted-foreground mb-1.5">{label}</p>
+      <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-muted-foreground mb-1.5">
+        {label}
+      </p>
       {children}
     </div>
   );
 }
 
-const inputCls = "w-full border border-border/60 bg-background/80 px-3 py-2 text-sm outline-none focus:border-primary transition-colors rounded-sm placeholder:text-muted-foreground/50";
-const inputSmCls = "w-full border border-border/60 bg-background/80 px-2.5 py-1.5 text-xs outline-none focus:border-primary transition-colors rounded-sm placeholder:text-muted-foreground/40";
+const inputCls =
+  "w-full border border-border/60 bg-background/80 px-3 py-2 text-sm outline-none focus:border-primary transition-colors rounded-sm placeholder:text-muted-foreground/50";
+const inputSmCls =
+  "w-full border border-border/60 bg-background/80 px-2.5 py-1.5 text-xs outline-none focus:border-primary transition-colors rounded-sm placeholder:text-muted-foreground/40";
 
-function TextInput({ value, onChange, placeholder, type = "text" }: {
-  value: string; onChange: (v: string) => void; placeholder?: string; type?: string;
+function TextInput({
+  value,
+  onChange,
+  placeholder,
+  type = "text",
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  placeholder?: string;
+  type?: string;
 }) {
-  return <input type={type} value={value} placeholder={placeholder} onChange={(e) => onChange(e.target.value)} className={inputCls} />;
+  return (
+    <input
+      type={type}
+      value={value}
+      placeholder={placeholder}
+      onChange={(e) => onChange(e.target.value)}
+      className={inputCls}
+    />
+  );
 }
 
-function TextInputSm({ value, onChange, placeholder }: {
-  value: string; onChange: (v: string) => void; placeholder?: string;
+function TextInputSm({
+  value,
+  onChange,
+  placeholder,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  placeholder?: string;
 }) {
-  return <input type="text" value={value} placeholder={placeholder} onChange={(e) => onChange(e.target.value)} className={inputSmCls} />;
+  return (
+    <input
+      type="text"
+      value={value}
+      placeholder={placeholder}
+      onChange={(e) => onChange(e.target.value)}
+      className={inputSmCls}
+    />
+  );
 }
 
-function TextArea({ value, onChange, rows = 3 }: {
-  value: string; onChange: (v: string) => void; rows?: number;
+function TextArea({
+  value,
+  onChange,
+  rows = 3,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  rows?: number;
 }) {
-  return <textarea value={value} rows={rows} onChange={(e) => onChange(e.target.value)} className={`${inputCls} resize-none`} />;
+  return (
+    <textarea
+      value={value}
+      rows={rows}
+      onChange={(e) => onChange(e.target.value)}
+      className={`${inputCls} resize-none`}
+    />
+  );
 }
 
 function ColorInput({ value, onChange }: { value: string; onChange: (v: string) => void }) {
   return (
     <div className="flex items-center gap-2">
-      <input type="color" value={value || "#000000"} onChange={(e) => onChange(e.target.value)}
-        className="size-8 rounded cursor-pointer border border-border/60 bg-transparent p-0.5" />
+      <input
+        type="color"
+        value={value || "#000000"}
+        onChange={(e) => onChange(e.target.value)}
+        className="size-8 rounded cursor-pointer border border-border/60 bg-transparent p-0.5"
+      />
       <TextInput value={value} onChange={onChange} placeholder="#000000" />
     </div>
   );
 }
 
-function ToggleRow({ label, checked, onChange }: {
-  label: string; checked: boolean; onChange: (v: boolean) => void;
+function ToggleRow({
+  label,
+  checked,
+  onChange,
+}: {
+  label: string;
+  checked: boolean;
+  onChange: (v: boolean) => void;
 }) {
   return (
     <div className="flex items-center justify-between py-0.5">
       <span className="text-sm text-foreground/80">{label}</span>
-      <button type="button" onClick={() => onChange(!checked)}
-        className={`relative h-5 w-9 rounded-full transition-colors ${checked ? "bg-primary" : "bg-muted-foreground/30"}`}>
-        <span className={`absolute top-0.5 h-4 w-4 rounded-full bg-white shadow transition-transform ${checked ? "translate-x-4" : "translate-x-0.5"}`} />
+      <button
+        type="button"
+        onClick={() => onChange(!checked)}
+        className={`relative h-5 w-9 rounded-full transition-colors ${checked ? "bg-primary" : "bg-muted-foreground/30"}`}
+      >
+        <span
+          className={`absolute top-0.5 h-4 w-4 rounded-full bg-white shadow transition-transform ${checked ? "translate-x-4" : "translate-x-0.5"}`}
+        />
       </button>
     </div>
   );
 }
 
-function SliderRow({ label, value, onChange, min = 1, max = 20, unit = "" }: {
-  label: string; value: number; onChange: (v: number) => void;
-  min?: number; max?: number; unit?: string;
+function SliderRow({
+  label,
+  value,
+  onChange,
+  min = 1,
+  max = 20,
+  unit = "",
+}: {
+  label: string;
+  value: number;
+  onChange: (v: number) => void;
+  min?: number;
+  max?: number;
+  unit?: string;
 }) {
   return (
     <div>
       <div className="flex justify-between mb-1">
-        <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-muted-foreground">{label}</p>
-        <span className="text-xs font-mono text-foreground/50">{value}{unit}</span>
+        <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-muted-foreground">
+          {label}
+        </p>
+        <span className="text-xs font-mono text-foreground/50">
+          {value}
+          {unit}
+        </span>
       </div>
-      <input type="range" min={min} max={max} value={value} onChange={(e) => onChange(+e.target.value)}
-        className="w-full h-1 accent-primary" />
+      <input
+        type="range"
+        min={min}
+        max={max}
+        value={value}
+        onChange={(e) => onChange(+e.target.value)}
+        className="w-full h-1 accent-primary"
+      />
     </div>
   );
 }
 
-function SelectRow({ label, value, onChange, options }: {
-  label: string; value: string; onChange: (v: string) => void;
+function SelectRow({
+  label,
+  value,
+  onChange,
+  options,
+}: {
+  label: string;
+  value: string;
+  onChange: (v: string) => void;
   options: Array<{ value: string; label: string }>;
 }) {
   return (
     <div>
-      <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-muted-foreground mb-1.5">{label}</p>
+      <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-muted-foreground mb-1.5">
+        {label}
+      </p>
       <select value={value} onChange={(e) => onChange(e.target.value)} className={inputCls}>
-        {options.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+        {options.map((o) => (
+          <option key={o.value} value={o.value}>
+            {o.label}
+          </option>
+        ))}
       </select>
     </div>
   );
 }
 
 function SectionSubheader({ label }: { label: string }) {
-  return <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-muted-foreground border-t border-border/40 pt-4">{label}</p>;
+  return (
+    <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-muted-foreground border-t border-border/40 pt-4">
+      {label}
+    </p>
+  );
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -269,32 +407,68 @@ type ItemCtrl = {
 
 // ── Announcement Bar ──────────────────────────────────────────────────────────
 
-function AnnouncementEditor({ config, onChange, items, onItemChange }: EP<Partial<AnnouncementConfig>> & Pick<ItemCtrl, "items" | "onItemChange">) {
+function AnnouncementEditor({
+  config,
+  onChange,
+  items,
+  onItemChange,
+}: EP<Partial<AnnouncementConfig>> & Pick<ItemCtrl, "items" | "onItemChange">) {
   function updateItem(idx: number, field: string, val: unknown) {
-    onItemChange(items.map((it, i) => i === idx ? { ...it, config: { ...it.config, [field]: val } } : it));
+    onItemChange(
+      items.map((it, i) => (i === idx ? { ...it, config: { ...it.config, [field]: val } } : it)),
+    );
   }
   return (
     <div className="space-y-6">
       <div>
         <div className="flex items-center justify-between mb-3">
-          <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-muted-foreground">Messages</p>
-          <Link to="/admin/cms/$sectionKey" params={{ sectionKey: "announcement_bar" }} className="text-[10px] text-primary hover:underline">Manage all →</Link>
+          <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-muted-foreground">
+            Messages
+          </p>
+          <Link
+            to="/admin/cms/$sectionKey"
+            params={{ sectionKey: "announcement_bar" }}
+            className="text-[10px] text-primary hover:underline"
+          >
+            Manage all →
+          </Link>
         </div>
         <div className="space-y-3">
           {items.map((item, i) => {
             const ic = item.config as unknown as AnnouncementItemConfig;
             return (
-              <div key={item.id ?? i} className="p-3 border border-border/40 rounded-lg bg-muted/20 space-y-2">
+              <div
+                key={item.id ?? i}
+                className="p-3 border border-border/40 rounded-lg bg-muted/20 space-y-2"
+              >
                 <div className="flex items-center gap-2 mb-1">
-                  <span className={`size-1.5 rounded-full flex-none ${item.is_enabled ? "bg-emerald-400" : "bg-muted-foreground/30"}`} />
-                  <span className="text-[10px] text-muted-foreground font-medium uppercase tracking-wider">Message {i + 1}</span>
+                  <span
+                    className={`size-1.5 rounded-full flex-none ${item.is_enabled ? "bg-emerald-400" : "bg-muted-foreground/30"}`}
+                  />
+                  <span className="text-[10px] text-muted-foreground font-medium uppercase tracking-wider">
+                    Message {i + 1}
+                  </span>
                 </div>
                 <Field label="Text">
-                  <TextInput value={ic.text ?? ""} onChange={(v) => updateItem(i, "text", v)} placeholder="FREE SHIPPING ABOVE ₹999" />
+                  <TextInput
+                    value={ic.text ?? ""}
+                    onChange={(v) => updateItem(i, "text", v)}
+                    placeholder="FREE SHIPPING ABOVE ₹999"
+                  />
                 </Field>
                 <div className="grid grid-cols-2 gap-2">
-                  <Field label="Background"><ColorInput value={ic.bg_color ?? "#0F2340"} onChange={(v) => updateItem(i, "bg_color", v)} /></Field>
-                  <Field label="Text color"><ColorInput value={ic.text_color ?? "#FFFFFF"} onChange={(v) => updateItem(i, "text_color", v)} /></Field>
+                  <Field label="Background">
+                    <ColorInput
+                      value={ic.bg_color ?? "#0F2340"}
+                      onChange={(v) => updateItem(i, "bg_color", v)}
+                    />
+                  </Field>
+                  <Field label="Text color">
+                    <ColorInput
+                      value={ic.text_color ?? "#FFFFFF"}
+                      onChange={(v) => updateItem(i, "text_color", v)}
+                    />
+                  </Field>
                 </div>
               </div>
             );
@@ -302,8 +476,19 @@ function AnnouncementEditor({ config, onChange, items, onItemChange }: EP<Partia
         </div>
       </div>
       <SectionSubheader label="Display settings" />
-      <SliderRow label="Rotation speed" value={config.rotation_speed ?? 4} min={1} max={20} unit="s" onChange={(v) => onChange({ ...config, rotation_speed: v })} />
-      <ToggleRow label="Show close button" checked={config.show_close ?? true} onChange={(v) => onChange({ ...config, show_close: v })} />
+      <SliderRow
+        label="Rotation speed"
+        value={config.rotation_speed ?? 4}
+        min={1}
+        max={20}
+        unit="s"
+        onChange={(v) => onChange({ ...config, rotation_speed: v })}
+      />
+      <ToggleRow
+        label="Show close button"
+        checked={config.show_close ?? true}
+        onChange={(v) => onChange({ ...config, show_close: v })}
+      />
     </div>
   );
 }
@@ -311,10 +496,18 @@ function AnnouncementEditor({ config, onChange, items, onItemChange }: EP<Partia
 // ── Hero Carousel ─────────────────────────────────────────────────────────────
 
 function HeroSlideCard({
-  item, index, expanded, onToggleExpand,
-  onUpdate, onDelete, onDuplicate, onToggleEnabled,
+  item,
+  index,
+  expanded,
+  onToggleExpand,
+  onUpdate,
+  onDelete,
+  onDuplicate,
+  onToggleEnabled,
 }: {
-  item: SectionItem; index: number; expanded: boolean;
+  item: SectionItem;
+  index: number;
+  expanded: boolean;
   onToggleExpand: () => void;
   onUpdate: (field: keyof HeroSlideConfig, val: unknown) => void;
   onDelete: () => void;
@@ -323,68 +516,167 @@ function HeroSlideCard({
 }) {
   const slide = item.config as unknown as HeroSlideConfig;
   return (
-    <div className={`border rounded-xl overflow-hidden transition-all ${item.is_enabled ? "border-border/50" : "border-border/20 opacity-50"}`}>
+    <div
+      className={`border rounded-xl overflow-hidden transition-all ${item.is_enabled ? "border-border/50" : "border-border/20 opacity-50"}`}
+    >
       {/* Card header */}
       <div className="flex items-center gap-2 p-3 bg-muted/20">
         <GripVertical className="size-4 text-muted-foreground/30 shrink-0" />
         <div className="flex-1 min-w-0">
-          <p className="text-xs font-medium truncate">Slide {index + 1}{slide.eyebrow ? ` — ${slide.eyebrow}` : ""}</p>
-          <p className="text-[10px] text-muted-foreground truncate">{slide.headline || "Untitled slide"}</p>
+          <p className="text-xs font-medium truncate">
+            Slide {index + 1}
+            {slide.eyebrow ? ` — ${slide.eyebrow}` : ""}
+          </p>
+          <p className="text-[10px] text-muted-foreground truncate">
+            {slide.headline || "Untitled slide"}
+          </p>
         </div>
         <div className="flex items-center gap-1 shrink-0">
-          <button onClick={onToggleEnabled} className="p-1.5 rounded hover:bg-muted transition-colors" title={item.is_enabled ? "Hide" : "Show"}>
-            {item.is_enabled ? <Eye className="size-3.5 text-muted-foreground" /> : <EyeOff className="size-3.5 text-muted-foreground" />}
+          <button
+            onClick={onToggleEnabled}
+            className="p-1.5 rounded hover:bg-muted transition-colors"
+            title={item.is_enabled ? "Hide" : "Show"}
+          >
+            {item.is_enabled ? (
+              <Eye className="size-3.5 text-muted-foreground" />
+            ) : (
+              <EyeOff className="size-3.5 text-muted-foreground" />
+            )}
           </button>
-          <button onClick={onDuplicate} className="p-1.5 rounded hover:bg-muted transition-colors" title="Duplicate">
+          <button
+            onClick={onDuplicate}
+            className="p-1.5 rounded hover:bg-muted transition-colors"
+            title="Duplicate"
+          >
             <Copy className="size-3.5 text-muted-foreground" />
           </button>
-          <button onClick={onDelete} className="p-1.5 rounded hover:bg-red-50 hover:text-red-500 transition-colors" title="Delete">
+          <button
+            onClick={onDelete}
+            className="p-1.5 rounded hover:bg-red-50 hover:text-red-500 transition-colors"
+            title="Delete"
+          >
             <Trash2 className="size-3.5 text-muted-foreground" />
           </button>
-          <button onClick={onToggleExpand} className="p-1.5 rounded hover:bg-muted transition-colors">
-            {expanded ? <ChevronUp className="size-3.5 text-muted-foreground" /> : <ChevronDown className="size-3.5 text-muted-foreground" />}
+          <button
+            onClick={onToggleExpand}
+            className="p-1.5 rounded hover:bg-muted transition-colors"
+          >
+            {expanded ? (
+              <ChevronUp className="size-3.5 text-muted-foreground" />
+            ) : (
+              <ChevronDown className="size-3.5 text-muted-foreground" />
+            )}
           </button>
         </div>
       </div>
       {/* Expanded fields */}
       {expanded && (
         <div className="p-4 space-y-4 border-t border-border/30">
-          <ImageUploadField label="Desktop image" value={slide.desktop_image_url ?? ""} onChange={(v) => onUpdate("desktop_image_url", v)} folder="/cms/hero" previewHeight={90} />
-          <ImageUploadField label="Mobile image" value={slide.mobile_image_url ?? ""} onChange={(v) => onUpdate("mobile_image_url", v)} folder="/cms/hero" previewHeight={70} />
-          <ImageUploadField label="Tablet image" value={slide.tablet_image_url ?? ""} onChange={(v) => onUpdate("tablet_image_url", v)} folder="/cms/hero" previewHeight={70} />
+          <ImageUploadField
+            label="Desktop image"
+            value={slide.desktop_image_url ?? ""}
+            onChange={(v) => onUpdate("desktop_image_url", v)}
+            folder="/cms/hero"
+            previewHeight={90}
+          />
+          <ImageUploadField
+            label="Mobile image"
+            value={slide.mobile_image_url ?? ""}
+            onChange={(v) => onUpdate("mobile_image_url", v)}
+            folder="/cms/hero"
+            previewHeight={70}
+          />
+          <ImageUploadField
+            label="Tablet image"
+            value={slide.tablet_image_url ?? ""}
+            onChange={(v) => onUpdate("tablet_image_url", v)}
+            folder="/cms/hero"
+            previewHeight={70}
+          />
           <Field label="Eyebrow tag">
-            <TextInput value={slide.eyebrow ?? ""} onChange={(v) => onUpdate("eyebrow", v)} placeholder="FEATURED GIFTING" />
+            <TextInput
+              value={slide.eyebrow ?? ""}
+              onChange={(v) => onUpdate("eyebrow", v)}
+              placeholder="FEATURED GIFTING"
+            />
           </Field>
           <Field label="Headline">
-            <TextArea value={slide.headline ?? ""} onChange={(v) => onUpdate("headline", v)} rows={2} />
+            <TextArea
+              value={slide.headline ?? ""}
+              onChange={(v) => onUpdate("headline", v)}
+              rows={2}
+            />
           </Field>
           <Field label="Description">
-            <TextArea value={slide.subheading ?? ""} onChange={(v) => onUpdate("subheading", v)} rows={2} />
+            <TextArea
+              value={slide.subheading ?? ""}
+              onChange={(v) => onUpdate("subheading", v)}
+              rows={2}
+            />
           </Field>
           <div className="grid grid-cols-2 gap-3">
             <Field label="Primary button text">
-              <TextInput value={slide.primary_btn_text ?? ""} onChange={(v) => onUpdate("primary_btn_text", v)} placeholder="OUR STORY" />
+              <TextInput
+                value={slide.primary_btn_text ?? ""}
+                onChange={(v) => onUpdate("primary_btn_text", v)}
+                placeholder="OUR STORY"
+              />
             </Field>
             <Field label="Primary button URL">
-              <TextInput value={slide.primary_btn_url ?? ""} onChange={(v) => onUpdate("primary_btn_url", v)} placeholder="/about" />
+              <TextInput
+                value={slide.primary_btn_url ?? ""}
+                onChange={(v) => onUpdate("primary_btn_url", v)}
+                placeholder="/about"
+              />
             </Field>
           </div>
           <div className="grid grid-cols-2 gap-3">
             <Field label="Secondary button text">
-              <TextInput value={slide.secondary_btn_text ?? ""} onChange={(v) => onUpdate("secondary_btn_text", v)} placeholder="EXPLORE GIFTING" />
+              <TextInput
+                value={slide.secondary_btn_text ?? ""}
+                onChange={(v) => onUpdate("secondary_btn_text", v)}
+                placeholder="EXPLORE GIFTING"
+              />
             </Field>
             <Field label="Secondary button URL">
-              <TextInput value={slide.secondary_btn_url ?? ""} onChange={(v) => onUpdate("secondary_btn_url", v)} placeholder="/collections" />
+              <TextInput
+                value={slide.secondary_btn_url ?? ""}
+                onChange={(v) => onUpdate("secondary_btn_url", v)}
+                placeholder="/collections"
+              />
             </Field>
           </div>
-          <SelectRow label="Text alignment" value={slide.alignment ?? "left"} onChange={(v) => onUpdate("alignment", v)}
-            options={[{ value: "left", label: "Left" }, { value: "center", label: "Center" }, { value: "right", label: "Right" }]} />
-          <ToggleRow label="Overlay" checked={slide.overlay ?? true} onChange={(v) => onUpdate("overlay", v)} />
+          <SelectRow
+            label="Text alignment"
+            value={slide.alignment ?? "left"}
+            onChange={(v) => onUpdate("alignment", v)}
+            options={[
+              { value: "left", label: "Left" },
+              { value: "center", label: "Center" },
+              { value: "right", label: "Right" },
+            ]}
+          />
+          <ToggleRow
+            label="Overlay"
+            checked={slide.overlay ?? true}
+            onChange={(v) => onUpdate("overlay", v)}
+          />
           {(slide.overlay ?? true) && (
-            <SliderRow label="Overlay opacity" value={Math.round((slide.overlay_opacity ?? 0.5) * 100)} min={0} max={100} unit="%" onChange={(v) => onUpdate("overlay_opacity", v / 100)} />
+            <SliderRow
+              label="Overlay opacity"
+              value={Math.round((slide.overlay_opacity ?? 0.5) * 100)}
+              min={0}
+              max={100}
+              unit="%"
+              onChange={(v) => onUpdate("overlay_opacity", v / 100)}
+            />
           )}
           <Field label="SEO alt text">
-            <TextInput value={slide.seo_alt ?? ""} onChange={(v) => onUpdate("seo_alt", v)} placeholder="Hero image description" />
+            <TextInput
+              value={slide.seo_alt ?? ""}
+              onChange={(v) => onUpdate("seo_alt", v)}
+              placeholder="Hero image description"
+            />
           </Field>
         </div>
       )}
@@ -392,34 +684,57 @@ function HeroSlideCard({
   );
 }
 
-function HeroEditor({ config, onChange, items, onItemChange, onAddItem, onDeleteItem, onDuplicateItem }: EP<Partial<HeroCarouselConfig>> & ItemCtrl) {
+function HeroEditor({
+  config,
+  onChange,
+  items,
+  onItemChange,
+  onAddItem,
+  onDeleteItem,
+  onDuplicateItem,
+}: EP<Partial<HeroCarouselConfig>> & ItemCtrl) {
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
 
   function toggleExpand(id: string) {
     setExpandedIds((prev) => {
       const n = new Set(prev);
-      n.has(id) ? n.delete(id) : n.add(id);
+      if (n.has(id)) n.delete(id);
+      else n.add(id);
       return n;
     });
   }
 
   function updateSlide(idx: number, field: keyof HeroSlideConfig, val: unknown) {
-    onItemChange(items.map((it, i) => i === idx ? { ...it, config: { ...it.config, [field]: val } } : it));
+    onItemChange(
+      items.map((it, i) => (i === idx ? { ...it, config: { ...it.config, [field]: val } } : it)),
+    );
   }
 
   function toggleEnabled(idx: number) {
-    onItemChange(items.map((it, i) => i === idx ? { ...it, is_enabled: !it.is_enabled } : it));
+    onItemChange(items.map((it, i) => (i === idx ? { ...it, is_enabled: !it.is_enabled } : it)));
   }
 
   return (
     <div className="space-y-5">
       <div>
         <div className="flex items-center justify-between mb-3">
-          <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-muted-foreground">Slides ({items.length})</p>
+          <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-muted-foreground">
+            Slides ({items.length})
+          </p>
           <button
             onClick={() => {
               const newId = `__new_${Date.now()}`;
-              onAddItem({ desktop_image_url: "", headline: "New Slide", eyebrow: "", subheading: "", primary_btn_text: "Shop Now", primary_btn_url: "/collections", overlay: true, overlay_opacity: 0.5, alignment: "left" });
+              onAddItem({
+                desktop_image_url: "",
+                headline: "New Slide",
+                eyebrow: "",
+                subheading: "",
+                primary_btn_text: "Shop Now",
+                primary_btn_url: "/collections",
+                overlay: true,
+                overlay_opacity: 0.5,
+                alignment: "left",
+              });
               setTimeout(() => setExpandedIds((prev) => new Set(prev).add(newId)), 50);
             }}
             className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wide text-primary hover:text-primary/80 transition-colors"
@@ -428,7 +743,9 @@ function HeroEditor({ config, onChange, items, onItemChange, onAddItem, onDelete
           </button>
         </div>
         {items.length === 0 ? (
-          <p className="text-xs text-muted-foreground italic py-4 text-center">No slides yet. Click "Add Slide" to get started.</p>
+          <p className="text-xs text-muted-foreground italic py-4 text-center">
+            No slides yet. Click "Add Slide" to get started.
+          </p>
         ) : (
           <div className="space-y-2.5">
             {items.map((item, i) => (
@@ -448,8 +765,19 @@ function HeroEditor({ config, onChange, items, onItemChange, onAddItem, onDelete
         )}
       </div>
       <SectionSubheader label="Carousel settings" />
-      <ToggleRow label="Auto rotate" checked={config.auto_rotate ?? true} onChange={(v) => onChange({ ...config, auto_rotate: v })} />
-      <SliderRow label="Rotation speed" value={config.rotation_speed ?? 6} min={2} max={30} unit="s" onChange={(v) => onChange({ ...config, rotation_speed: v })} />
+      <ToggleRow
+        label="Auto rotate"
+        checked={config.auto_rotate ?? true}
+        onChange={(v) => onChange({ ...config, auto_rotate: v })}
+      />
+      <SliderRow
+        label="Rotation speed"
+        value={config.rotation_speed ?? 6}
+        min={2}
+        max={30}
+        unit="s"
+        onChange={(v) => onChange({ ...config, rotation_speed: v })}
+      />
     </div>
   );
 }
@@ -460,17 +788,60 @@ function ImageBannerEditor({ config, onChange }: EP<Partial<ImageBannerConfig>>)
   const up = (k: keyof ImageBannerConfig, v: unknown) => onChange({ ...config, [k]: v });
   return (
     <div className="space-y-5">
-      <ImageUploadField label="Desktop image" value={config.desktop_image_url ?? ""} onChange={(v) => up("desktop_image_url", v)} folder="/cms/banners" previewHeight={100} />
-      <ImageUploadField label="Mobile image" value={config.mobile_image_url ?? ""} onChange={(v) => up("mobile_image_url", v)} folder="/cms/banners" previewHeight={80} />
-      <Field label="Title"><TextInput value={config.title ?? ""} onChange={(v) => up("title", v)} placeholder="The Bugadi Edit" /></Field>
-      <Field label="Subtitle"><TextInput value={config.subtitle ?? ""} onChange={(v) => up("subtitle", v)} /></Field>
+      <ImageUploadField
+        label="Desktop image"
+        value={config.desktop_image_url ?? ""}
+        onChange={(v) => up("desktop_image_url", v)}
+        folder="/cms/banners"
+        previewHeight={100}
+      />
+      <ImageUploadField
+        label="Mobile image"
+        value={config.mobile_image_url ?? ""}
+        onChange={(v) => up("mobile_image_url", v)}
+        folder="/cms/banners"
+        previewHeight={80}
+      />
+      <Field label="Title">
+        <TextInput
+          value={config.title ?? ""}
+          onChange={(v) => up("title", v)}
+          placeholder="The Bugadi Edit"
+        />
+      </Field>
+      <Field label="Subtitle">
+        <TextInput value={config.subtitle ?? ""} onChange={(v) => up("subtitle", v)} />
+      </Field>
       <div className="grid grid-cols-2 gap-3">
-        <Field label="CTA text"><TextInput value={config.cta_text ?? ""} onChange={(v) => up("cta_text", v)} placeholder="Shop the edit" /></Field>
-        <Field label="CTA URL"><TextInput value={config.cta_url ?? ""} onChange={(v) => up("cta_url", v)} placeholder="/collections" /></Field>
+        <Field label="CTA text">
+          <TextInput
+            value={config.cta_text ?? ""}
+            onChange={(v) => up("cta_text", v)}
+            placeholder="Shop the edit"
+          />
+        </Field>
+        <Field label="CTA URL">
+          <TextInput
+            value={config.cta_url ?? ""}
+            onChange={(v) => up("cta_url", v)}
+            placeholder="/collections"
+          />
+        </Field>
       </div>
-      <ToggleRow label="Overlay" checked={config.overlay ?? true} onChange={(v) => up("overlay", v)} />
+      <ToggleRow
+        label="Overlay"
+        checked={config.overlay ?? true}
+        onChange={(v) => up("overlay", v)}
+      />
       {(config.overlay ?? true) && (
-        <SliderRow label="Overlay opacity" value={Math.round((config.overlay_opacity ?? 0.5) * 100)} min={0} max={100} unit="%" onChange={(v) => up("overlay_opacity", v / 100)} />
+        <SliderRow
+          label="Overlay opacity"
+          value={Math.round((config.overlay_opacity ?? 0.5) * 100)}
+          min={0}
+          max={100}
+          unit="%"
+          onChange={(v) => up("overlay_opacity", v / 100)}
+        />
       )}
     </div>
   );
@@ -482,12 +853,39 @@ function NewsletterEditor({ config, onChange }: EP<Partial<NewsletterConfig>>) {
   const up = (k: keyof NewsletterConfig, v: string) => onChange({ ...config, [k]: v });
   return (
     <div className="space-y-5">
-      <Field label="Heading"><TextInput value={config.heading ?? ""} onChange={(v) => up("heading", v)} placeholder="Be first to know." /></Field>
-      <Field label="Description"><TextArea value={config.description ?? ""} onChange={(v) => up("description", v)} /></Field>
-      <Field label="Input placeholder"><TextInput value={config.placeholder ?? ""} onChange={(v) => up("placeholder", v)} placeholder="Your email address" /></Field>
-      <Field label="Button text"><TextInput value={config.btn_text ?? ""} onChange={(v) => up("btn_text", v)} placeholder="Subscribe" /></Field>
-      <Field label="Success message"><TextInput value={config.success_message ?? ""} onChange={(v) => up("success_message", v)} /></Field>
-      <Field label="Background color"><ColorInput value={config.bg_color ?? ""} onChange={(v) => up("bg_color", v)} /></Field>
+      <Field label="Heading">
+        <TextInput
+          value={config.heading ?? ""}
+          onChange={(v) => up("heading", v)}
+          placeholder="Be first to know."
+        />
+      </Field>
+      <Field label="Description">
+        <TextArea value={config.description ?? ""} onChange={(v) => up("description", v)} />
+      </Field>
+      <Field label="Input placeholder">
+        <TextInput
+          value={config.placeholder ?? ""}
+          onChange={(v) => up("placeholder", v)}
+          placeholder="Your email address"
+        />
+      </Field>
+      <Field label="Button text">
+        <TextInput
+          value={config.btn_text ?? ""}
+          onChange={(v) => up("btn_text", v)}
+          placeholder="Subscribe"
+        />
+      </Field>
+      <Field label="Success message">
+        <TextInput
+          value={config.success_message ?? ""}
+          onChange={(v) => up("success_message", v)}
+        />
+      </Field>
+      <Field label="Background color">
+        <ColorInput value={config.bg_color ?? ""} onChange={(v) => up("bg_color", v)} />
+      </Field>
     </div>
   );
 }
@@ -498,19 +896,63 @@ function VideoEditor({ config, onChange }: EP<Partial<VideoSectionConfig>>) {
   const up = (k: keyof VideoSectionConfig, v: unknown) => onChange({ ...config, [k]: v });
   return (
     <div className="space-y-5">
-      <Field label="Eyebrow"><TextInput value={config.eyebrow ?? ""} onChange={(v) => up("eyebrow", v)} placeholder="Our Craft" /></Field>
-      <Field label="Title"><TextInput value={config.title ?? ""} onChange={(v) => up("title", v)} placeholder="Made by hand. Worn with heart." /></Field>
-      <Field label="Subtitle"><TextArea value={config.subtitle ?? ""} onChange={(v) => up("subtitle", v)} rows={2} /></Field>
-      <ImageUploadField label="Video file (MP4)" value={config.mp4_url ?? ""} onChange={(v) => up("mp4_url", v)} accept="video/mp4,video/*" folder="/cms/video" previewHeight={0} />
-      <ImageUploadField label="Poster image" value={config.poster_url ?? ""} onChange={(v) => up("poster_url", v)} folder="/cms/video" previewHeight={80} />
+      <Field label="Eyebrow">
+        <TextInput
+          value={config.eyebrow ?? ""}
+          onChange={(v) => up("eyebrow", v)}
+          placeholder="Our Craft"
+        />
+      </Field>
+      <Field label="Title">
+        <TextInput
+          value={config.title ?? ""}
+          onChange={(v) => up("title", v)}
+          placeholder="Made by hand. Worn with heart."
+        />
+      </Field>
+      <Field label="Subtitle">
+        <TextArea value={config.subtitle ?? ""} onChange={(v) => up("subtitle", v)} rows={2} />
+      </Field>
+      <ImageUploadField
+        label="Video file (MP4)"
+        value={config.mp4_url ?? ""}
+        onChange={(v) => up("mp4_url", v)}
+        accept="video/mp4,video/*"
+        folder="/cms/video"
+        previewHeight={0}
+      />
+      <ImageUploadField
+        label="Poster image"
+        value={config.poster_url ?? ""}
+        onChange={(v) => up("poster_url", v)}
+        folder="/cms/video"
+        previewHeight={80}
+      />
       <div className="grid grid-cols-2 gap-3">
-        <Field label="CTA text"><TextInput value={config.cta_text ?? ""} onChange={(v) => up("cta_text", v)} placeholder="Our Story" /></Field>
-        <Field label="CTA URL"><TextInput value={config.cta_url ?? ""} onChange={(v) => up("cta_url", v)} placeholder="/about" /></Field>
+        <Field label="CTA text">
+          <TextInput
+            value={config.cta_text ?? ""}
+            onChange={(v) => up("cta_text", v)}
+            placeholder="Our Story"
+          />
+        </Field>
+        <Field label="CTA URL">
+          <TextInput
+            value={config.cta_url ?? ""}
+            onChange={(v) => up("cta_url", v)}
+            placeholder="/about"
+          />
+        </Field>
       </div>
       <SectionSubheader label="Playback" />
       <div className="grid grid-cols-2 gap-3">
         {(["autoplay", "loop", "muted", "controls"] as const).map((k) => (
-          <ToggleRow key={k} label={k.charAt(0).toUpperCase() + k.slice(1)} checked={config[k] ?? (k !== "controls")} onChange={(v) => up(k, v)} />
+          <ToggleRow
+            key={k}
+            label={k.charAt(0).toUpperCase() + k.slice(1)}
+            checked={config[k] ?? k !== "controls"}
+            onChange={(v) => up(k, v)}
+          />
         ))}
       </div>
     </div>
@@ -519,14 +961,26 @@ function VideoEditor({ config, onChange }: EP<Partial<VideoSectionConfig>>) {
 
 // ── Instagram Gallery (items-based) ──────────────────────────────────────────
 
-function InstagramItemCard({ item, index, onUpdate, onDelete, onDuplicate, onToggleEnabled }: {
-  item: SectionItem; index: number;
+function InstagramItemCard({
+  item,
+  index,
+  onUpdate,
+  onDelete,
+  onDuplicate,
+  onToggleEnabled,
+}: {
+  item: SectionItem;
+  index: number;
   onUpdate: (field: keyof InstagramItemConfig, val: string) => void;
-  onDelete: () => void; onDuplicate: () => void; onToggleEnabled: () => void;
+  onDelete: () => void;
+  onDuplicate: () => void;
+  onToggleEnabled: () => void;
 }) {
   const ic = item.config as unknown as InstagramItemConfig;
   return (
-    <div className={`border border-border/40 rounded-xl overflow-hidden ${!item.is_enabled ? "opacity-50" : ""}`}>
+    <div
+      className={`border border-border/40 rounded-xl overflow-hidden ${!item.is_enabled ? "opacity-50" : ""}`}
+    >
       {ic.image_url && (
         <div className="relative">
           <img src={ic.image_url} alt="" className="w-full h-28 object-cover" />
@@ -536,54 +990,117 @@ function InstagramItemCard({ item, index, onUpdate, onDelete, onDuplicate, onTog
         <div className="flex items-center justify-between">
           <span className="text-[10px] text-muted-foreground font-medium">Tile {index + 1}</span>
           <div className="flex items-center gap-1">
-            <button onClick={onToggleEnabled} className="p-1 rounded hover:bg-muted transition-colors">
-              {item.is_enabled ? <Eye className="size-3 text-muted-foreground" /> : <EyeOff className="size-3 text-muted-foreground" />}
+            <button
+              onClick={onToggleEnabled}
+              className="p-1 rounded hover:bg-muted transition-colors"
+            >
+              {item.is_enabled ? (
+                <Eye className="size-3 text-muted-foreground" />
+              ) : (
+                <EyeOff className="size-3 text-muted-foreground" />
+              )}
             </button>
             <button onClick={onDuplicate} className="p-1 rounded hover:bg-muted transition-colors">
               <Copy className="size-3 text-muted-foreground" />
             </button>
-            <button onClick={onDelete} className="p-1 rounded hover:bg-red-50 hover:text-red-500 transition-colors">
+            <button
+              onClick={onDelete}
+              className="p-1 rounded hover:bg-red-50 hover:text-red-500 transition-colors"
+            >
               <Trash2 className="size-3 text-muted-foreground" />
             </button>
           </div>
         </div>
-        <ImageUploadField value={ic.image_url ?? ""} onChange={(v) => onUpdate("image_url", v)} folder="/cms/instagram" previewHeight={0} />
+        <ImageUploadField
+          value={ic.image_url ?? ""}
+          onChange={(v) => onUpdate("image_url", v)}
+          folder="/cms/instagram"
+          previewHeight={0}
+        />
         <div className="space-y-1.5">
-          <TextInputSm value={ic.link_url ?? ""} onChange={(v) => onUpdate("link_url", v)} placeholder="Redirect URL (optional)" />
-          <TextInputSm value={ic.alt_text ?? ""} onChange={(v) => onUpdate("alt_text", v)} placeholder="Alt text" />
+          <TextInputSm
+            value={ic.link_url ?? ""}
+            onChange={(v) => onUpdate("link_url", v)}
+            placeholder="Redirect URL (optional)"
+          />
+          <TextInputSm
+            value={ic.alt_text ?? ""}
+            onChange={(v) => onUpdate("alt_text", v)}
+            placeholder="Alt text"
+          />
         </div>
       </div>
     </div>
   );
 }
 
-function InstagramEditor({ config, onChange, items, onItemChange, onAddItem, onDeleteItem, onDuplicateItem }: EP<Partial<InstagramGalleryConfig>> & ItemCtrl) {
+function InstagramEditor({
+  config,
+  onChange,
+  items,
+  onItemChange,
+  onAddItem,
+  onDeleteItem,
+  onDuplicateItem,
+}: EP<Partial<InstagramGalleryConfig>> & ItemCtrl) {
   function updateItem(idx: number, field: keyof InstagramItemConfig, val: string) {
-    onItemChange(items.map((it, i) => i === idx ? { ...it, config: { ...it.config, [field]: val } } : it));
+    onItemChange(
+      items.map((it, i) => (i === idx ? { ...it, config: { ...it.config, [field]: val } } : it)),
+    );
   }
   function toggleEnabled(idx: number) {
-    onItemChange(items.map((it, i) => i === idx ? { ...it, is_enabled: !it.is_enabled } : it));
+    onItemChange(items.map((it, i) => (i === idx ? { ...it, is_enabled: !it.is_enabled } : it)));
   }
   return (
     <div className="space-y-5">
-      <Field label="Section title"><TextInput value={config.title ?? ""} onChange={(v) => onChange({ ...config, title: v })} placeholder="Worn by our community." /></Field>
-      <Field label="Instagram handle"><TextInput value={config.handle ?? ""} onChange={(v) => onChange({ ...config, handle: v })} placeholder="hadha.silver" /></Field>
-      <SelectRow label="Image source" value={config.source ?? "manual"} onChange={(v) => onChange({ ...config, source: v as InstagramGalleryConfig["source"] })}
-        options={[{ value: "manual", label: "Manual (uploaded images)" }, { value: "collections", label: "From collections" }]} />
-      <SliderRow label="Max images" value={config.max_items ?? 6} min={3} max={12} onChange={(v) => onChange({ ...config, max_items: v })} />
+      <Field label="Section title">
+        <TextInput
+          value={config.title ?? ""}
+          onChange={(v) => onChange({ ...config, title: v })}
+          placeholder="Worn by our community."
+        />
+      </Field>
+      <Field label="Instagram handle">
+        <TextInput
+          value={config.handle ?? ""}
+          onChange={(v) => onChange({ ...config, handle: v })}
+          placeholder="hadha.silver"
+        />
+      </Field>
+      <SelectRow
+        label="Image source"
+        value={config.source ?? "manual"}
+        onChange={(v) => onChange({ ...config, source: v as InstagramGalleryConfig["source"] })}
+        options={[
+          { value: "manual", label: "Manual (uploaded images)" },
+          { value: "collections", label: "From collections" },
+        ]}
+      />
+      <SliderRow
+        label="Max images"
+        value={config.max_items ?? 6}
+        min={3}
+        max={12}
+        onChange={(v) => onChange({ ...config, max_items: v })}
+      />
 
       {(config.source ?? "manual") === "manual" && (
         <div>
           <SectionSubheader label={`Gallery images (${items.length})`} />
           <div className="mt-3 mb-2 flex justify-end">
-            <button onClick={() => onAddItem({ image_url: "", link_url: "", alt_text: "" })}
-              className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wide text-primary hover:text-primary/80 transition-colors">
+            <button
+              onClick={() => onAddItem({ image_url: "", link_url: "", alt_text: "" })}
+              className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wide text-primary hover:text-primary/80 transition-colors"
+            >
               <Plus className="size-3.5" /> Add Image
             </button>
           </div>
           <div className="grid grid-cols-2 gap-2">
             {items.map((item, i) => (
-              <InstagramItemCard key={item.id} item={item} index={i}
+              <InstagramItemCard
+                key={item.id}
+                item={item}
+                index={i}
                 onUpdate={(field, val) => updateItem(i, field, val)}
                 onDelete={() => onDeleteItem(item.id)}
                 onDuplicate={() => onDuplicateItem(item.id)}
@@ -592,7 +1109,9 @@ function InstagramEditor({ config, onChange, items, onItemChange, onAddItem, onD
             ))}
           </div>
           {items.length === 0 && (
-            <p className="text-xs text-muted-foreground italic text-center py-4">No images yet. Click "Add Image" to start.</p>
+            <p className="text-xs text-muted-foreground italic text-center py-4">
+              No images yet. Click "Add Image" to start.
+            </p>
           )}
         </div>
       )}
@@ -615,21 +1134,40 @@ function ProductPickerEditor({ config, onChange }: EP<Partial<ProductGridConfig>
   });
 
   const allProducts = data?.items ?? [];
-  const filtered = allProducts.filter((p) =>
-    !search || p.name.toLowerCase().includes(search.toLowerCase()) || p.sku.toLowerCase().includes(search.toLowerCase())
+  const filtered = allProducts.filter(
+    (p) =>
+      !search ||
+      p.name.toLowerCase().includes(search.toLowerCase()) ||
+      p.sku.toLowerCase().includes(search.toLowerCase()),
   );
 
   function toggleProduct(id: string) {
     const current = new Set(config.manual_product_ids ?? []);
-    current.has(id) ? current.delete(id) : current.add(id);
+    if (current.has(id)) current.delete(id);
+    else current.add(id);
     onChange({ ...config, manual_product_ids: Array.from(current) });
   }
 
   return (
     <div className="space-y-5">
-      <Field label="Section title"><TextInput value={config.title ?? ""} onChange={(v) => onChange({ ...config, title: v })} placeholder="Most-loved silver, curated." /></Field>
-      <Field label="Eyebrow"><TextInput value={config.eyebrow ?? ""} onChange={(v) => onChange({ ...config, eyebrow: v })} placeholder="Featured products" /></Field>
-      <SelectRow label="Product source" value={source} onChange={(v) => onChange({ ...config, source: v as ProductGridConfig["source"] })}
+      <Field label="Section title">
+        <TextInput
+          value={config.title ?? ""}
+          onChange={(v) => onChange({ ...config, title: v })}
+          placeholder="Most-loved silver, curated."
+        />
+      </Field>
+      <Field label="Eyebrow">
+        <TextInput
+          value={config.eyebrow ?? ""}
+          onChange={(v) => onChange({ ...config, eyebrow: v })}
+          placeholder="Featured products"
+        />
+      </Field>
+      <SelectRow
+        label="Product source"
+        value={source}
+        onChange={(v) => onChange({ ...config, source: v as ProductGridConfig["source"] })}
         options={[
           { value: "featured", label: "Featured (is_featured=true)" },
           { value: "newest", label: "New Arrivals" },
@@ -638,8 +1176,20 @@ function ProductPickerEditor({ config, onChange }: EP<Partial<ProductGridConfig>
           { value: "manual", label: "Manual Selection" },
         ]}
       />
-      <SliderRow label="Max products" value={config.max_products ?? 8} min={2} max={24} onChange={(v) => onChange({ ...config, max_products: v })} />
-      <Field label="View all URL"><TextInput value={config.view_all_url ?? ""} onChange={(v) => onChange({ ...config, view_all_url: v })} placeholder="/search" /></Field>
+      <SliderRow
+        label="Max products"
+        value={config.max_products ?? 8}
+        min={2}
+        max={24}
+        onChange={(v) => onChange({ ...config, max_products: v })}
+      />
+      <Field label="View all URL">
+        <TextInput
+          value={config.view_all_url ?? ""}
+          onChange={(v) => onChange({ ...config, view_all_url: v })}
+          placeholder="/search"
+        />
+      </Field>
 
       {source === "manual" && (
         <div>
@@ -672,13 +1222,19 @@ function ProductPickerEditor({ config, onChange }: EP<Partial<ProductGridConfig>
                   className={`w-full flex items-center gap-3 p-2 rounded-lg border transition-colors text-left ${selected ? "border-primary/50 bg-primary/5" : "border-border/40 hover:border-border hover:bg-muted/30"}`}
                 >
                   <div className="size-10 rounded overflow-hidden shrink-0 bg-muted">
-                    {p.primary_image && <img src={p.primary_image} alt="" className="w-full h-full object-cover" />}
+                    {p.primary_image && (
+                      <img src={p.primary_image} alt="" className="w-full h-full object-cover" />
+                    )}
                   </div>
                   <div className="flex-1 min-w-0">
                     <p className="text-xs font-medium truncate">{p.name}</p>
-                    <p className="text-[10px] text-muted-foreground">{p.sku} · ₹{p.base_price}</p>
+                    <p className="text-[10px] text-muted-foreground">
+                      {p.sku} · ₹{p.base_price}
+                    </p>
                   </div>
-                  <div className={`size-4 rounded border-2 shrink-0 flex items-center justify-center transition-colors ${selected ? "border-primary bg-primary" : "border-border/60"}`}>
+                  <div
+                    className={`size-4 rounded border-2 shrink-0 flex items-center justify-center transition-colors ${selected ? "border-primary bg-primary" : "border-border/60"}`}
+                  >
                     {selected && <Check className="size-2.5 text-primary-foreground" />}
                   </div>
                 </button>
@@ -696,44 +1252,108 @@ function ProductPickerEditor({ config, onChange }: EP<Partial<ProductGridConfig>
 
 // ── Collection Cards ──────────────────────────────────────────────────────────
 
-function CollectionCardItem({ item, index, onUpdate, onDelete, onDuplicate, onToggleEnabled }: {
-  item: SectionItem; index: number;
+function CollectionCardItem({
+  item,
+  index,
+  onUpdate,
+  onDelete,
+  onDuplicate,
+  onToggleEnabled,
+}: {
+  item: SectionItem;
+  index: number;
   onUpdate: (field: keyof CollectionCardConfig, val: unknown) => void;
-  onDelete: () => void; onDuplicate: () => void; onToggleEnabled: () => void;
+  onDelete: () => void;
+  onDuplicate: () => void;
+  onToggleEnabled: () => void;
 }) {
   const [open, setOpen] = useState(false);
   const c = item.config as unknown as CollectionCardConfig;
   return (
-    <div className={`border border-border/40 rounded-xl overflow-hidden ${!item.is_enabled ? "opacity-50" : ""}`}>
+    <div
+      className={`border border-border/40 rounded-xl overflow-hidden ${!item.is_enabled ? "opacity-50" : ""}`}
+    >
       <div className="flex items-center gap-2 p-3 bg-muted/20">
         <GripVertical className="size-4 text-muted-foreground/30 shrink-0" />
         <div className="flex-1 min-w-0">
-          <p className="text-xs font-medium truncate">Card {index + 1}{c.title ? ` — ${c.title}` : ""}</p>
+          <p className="text-xs font-medium truncate">
+            Card {index + 1}
+            {c.title ? ` — ${c.title}` : ""}
+          </p>
         </div>
         <div className="flex items-center gap-1">
-          <button onClick={onToggleEnabled} className="p-1.5 rounded hover:bg-muted transition-colors">
-            {item.is_enabled ? <Eye className="size-3.5 text-muted-foreground" /> : <EyeOff className="size-3.5 text-muted-foreground" />}
+          <button
+            onClick={onToggleEnabled}
+            className="p-1.5 rounded hover:bg-muted transition-colors"
+          >
+            {item.is_enabled ? (
+              <Eye className="size-3.5 text-muted-foreground" />
+            ) : (
+              <EyeOff className="size-3.5 text-muted-foreground" />
+            )}
           </button>
           <button onClick={onDuplicate} className="p-1.5 rounded hover:bg-muted transition-colors">
             <Copy className="size-3.5 text-muted-foreground" />
           </button>
-          <button onClick={onDelete} className="p-1.5 rounded hover:bg-red-50 hover:text-red-500 transition-colors">
+          <button
+            onClick={onDelete}
+            className="p-1.5 rounded hover:bg-red-50 hover:text-red-500 transition-colors"
+          >
             <Trash2 className="size-3.5 text-muted-foreground" />
           </button>
-          <button onClick={() => setOpen((v) => !v)} className="p-1.5 rounded hover:bg-muted transition-colors">
-            {open ? <ChevronUp className="size-3.5 text-muted-foreground" /> : <ChevronDown className="size-3.5 text-muted-foreground" />}
+          <button
+            onClick={() => setOpen((v) => !v)}
+            className="p-1.5 rounded hover:bg-muted transition-colors"
+          >
+            {open ? (
+              <ChevronUp className="size-3.5 text-muted-foreground" />
+            ) : (
+              <ChevronDown className="size-3.5 text-muted-foreground" />
+            )}
           </button>
         </div>
       </div>
       {open && (
         <div className="p-4 space-y-4 border-t border-border/30">
-          <ImageUploadField label="Card image" value={c.image_url ?? ""} onChange={(v) => onUpdate("image_url", v)} folder="/cms/collections" previewHeight={90} />
-          <ImageUploadField label="Hover image" value={c.hover_image_url ?? ""} onChange={(v) => onUpdate("hover_image_url", v)} folder="/cms/collections" previewHeight={70} />
-          <Field label="Title"><TextInput value={c.title ?? ""} onChange={(v) => onUpdate("title", v)} placeholder="Nakshi Mala" /></Field>
-          <Field label="Subtitle"><TextInput value={c.subtitle ?? ""} onChange={(v) => onUpdate("subtitle", v)} /></Field>
+          <ImageUploadField
+            label="Card image"
+            value={c.image_url ?? ""}
+            onChange={(v) => onUpdate("image_url", v)}
+            folder="/cms/collections"
+            previewHeight={90}
+          />
+          <ImageUploadField
+            label="Hover image"
+            value={c.hover_image_url ?? ""}
+            onChange={(v) => onUpdate("hover_image_url", v)}
+            folder="/cms/collections"
+            previewHeight={70}
+          />
+          <Field label="Title">
+            <TextInput
+              value={c.title ?? ""}
+              onChange={(v) => onUpdate("title", v)}
+              placeholder="Nakshi Mala"
+            />
+          </Field>
+          <Field label="Subtitle">
+            <TextInput value={c.subtitle ?? ""} onChange={(v) => onUpdate("subtitle", v)} />
+          </Field>
           <div className="grid grid-cols-2 gap-3">
-            <Field label="Button text"><TextInput value={c.button_text ?? ""} onChange={(v) => onUpdate("button_text", v)} placeholder="Shop now" /></Field>
-            <Field label="Button URL"><TextInput value={c.button_url ?? ""} onChange={(v) => onUpdate("button_url", v)} placeholder="/collections/nakshi" /></Field>
+            <Field label="Button text">
+              <TextInput
+                value={c.button_text ?? ""}
+                onChange={(v) => onUpdate("button_text", v)}
+                placeholder="Shop now"
+              />
+            </Field>
+            <Field label="Button URL">
+              <TextInput
+                value={c.button_url ?? ""}
+                onChange={(v) => onUpdate("button_url", v)}
+                placeholder="/collections/nakshi"
+              />
+            </Field>
           </div>
         </div>
       )}
@@ -741,32 +1361,59 @@ function CollectionCardItem({ item, index, onUpdate, onDelete, onDuplicate, onTo
   );
 }
 
-function CollectionCardsEditor({ items, onItemChange, onAddItem, onDeleteItem, onDuplicateItem }: ItemCtrl & { config: Record<string, unknown>; onChange: (v: Record<string, unknown>) => void }) {
+function CollectionCardsEditor({
+  items,
+  onItemChange,
+  onAddItem,
+  onDeleteItem,
+  onDuplicateItem,
+}: ItemCtrl & { config: Record<string, unknown>; onChange: (v: Record<string, unknown>) => void }) {
   function updateItem(idx: number, field: keyof CollectionCardConfig, val: unknown) {
-    onItemChange(items.map((it, i) => i === idx ? { ...it, config: { ...it.config, [field]: val } } : it));
+    onItemChange(
+      items.map((it, i) => (i === idx ? { ...it, config: { ...it.config, [field]: val } } : it)),
+    );
   }
   function toggleEnabled(idx: number) {
-    onItemChange(items.map((it, i) => i === idx ? { ...it, is_enabled: !it.is_enabled } : it));
+    onItemChange(items.map((it, i) => (i === idx ? { ...it, is_enabled: !it.is_enabled } : it)));
   }
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
-        <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-muted-foreground">Collection cards ({items.length})</p>
-        <button onClick={() => onAddItem({ image_url: "", title: "", subtitle: "", button_text: "Shop now", button_url: "/collections" })}
-          className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wide text-primary hover:text-primary/80 transition-colors">
+        <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-muted-foreground">
+          Collection cards ({items.length})
+        </p>
+        <button
+          onClick={() =>
+            onAddItem({
+              image_url: "",
+              title: "",
+              subtitle: "",
+              button_text: "Shop now",
+              button_url: "/collections",
+            })
+          }
+          className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wide text-primary hover:text-primary/80 transition-colors"
+        >
           <Plus className="size-3.5" /> Add Card
         </button>
       </div>
       <div className="space-y-2.5">
         {items.map((item, i) => (
-          <CollectionCardItem key={item.id} item={item} index={i}
+          <CollectionCardItem
+            key={item.id}
+            item={item}
+            index={i}
             onUpdate={(field, val) => updateItem(i, field, val)}
             onDelete={() => onDeleteItem(item.id)}
             onDuplicate={() => onDuplicateItem(item.id)}
             onToggleEnabled={() => toggleEnabled(i)}
           />
         ))}
-        {items.length === 0 && <p className="text-xs text-muted-foreground italic text-center py-4">No cards yet. Click "Add Card".</p>}
+        {items.length === 0 && (
+          <p className="text-xs text-muted-foreground italic text-center py-4">
+            No cards yet. Click "Add Card".
+          </p>
+        )}
       </div>
     </div>
   );
@@ -774,10 +1421,18 @@ function CollectionCardsEditor({ items, onItemChange, onAddItem, onDeleteItem, o
 
 // ── Customer Reviews ──────────────────────────────────────────────────────────
 
-function ReviewItemCard({ item, index, onUpdate, onDelete, onDuplicate }: {
-  item: SectionItem; index: number;
+function ReviewItemCard({
+  item,
+  index,
+  onUpdate,
+  onDelete,
+  onDuplicate,
+}: {
+  item: SectionItem;
+  index: number;
   onUpdate: (field: keyof ReviewItemConfig, val: unknown) => void;
-  onDelete: () => void; onDuplicate: () => void;
+  onDelete: () => void;
+  onDuplicate: () => void;
 }) {
   const [open, setOpen] = useState(false);
   const r = item.config as unknown as ReviewItemConfig;
@@ -788,54 +1443,120 @@ function ReviewItemCard({ item, index, onUpdate, onDelete, onDuplicate }: {
           <p className="text-xs font-medium truncate">{r.customer_name || `Review ${index + 1}`}</p>
           <div className="flex">
             {Array.from({ length: 5 }).map((_, i) => (
-              <Star key={i} className={`size-3 ${i < (r.rating ?? 5) ? "text-amber-400 fill-amber-400" : "text-muted-foreground/20"}`} />
+              <Star
+                key={i}
+                className={`size-3 ${i < (r.rating ?? 5) ? "text-amber-400 fill-amber-400" : "text-muted-foreground/20"}`}
+              />
             ))}
           </div>
         </div>
         <div className="flex items-center gap-1">
-          <button onClick={onDuplicate} className="p-1.5 rounded hover:bg-muted transition-colors"><Copy className="size-3.5 text-muted-foreground" /></button>
-          <button onClick={onDelete} className="p-1.5 rounded hover:bg-red-50 hover:text-red-500 transition-colors"><Trash2 className="size-3.5 text-muted-foreground" /></button>
-          <button onClick={() => setOpen((v) => !v)} className="p-1.5 rounded hover:bg-muted transition-colors">
-            {open ? <ChevronUp className="size-3.5 text-muted-foreground" /> : <ChevronDown className="size-3.5 text-muted-foreground" />}
+          <button onClick={onDuplicate} className="p-1.5 rounded hover:bg-muted transition-colors">
+            <Copy className="size-3.5 text-muted-foreground" />
+          </button>
+          <button
+            onClick={onDelete}
+            className="p-1.5 rounded hover:bg-red-50 hover:text-red-500 transition-colors"
+          >
+            <Trash2 className="size-3.5 text-muted-foreground" />
+          </button>
+          <button
+            onClick={() => setOpen((v) => !v)}
+            className="p-1.5 rounded hover:bg-muted transition-colors"
+          >
+            {open ? (
+              <ChevronUp className="size-3.5 text-muted-foreground" />
+            ) : (
+              <ChevronDown className="size-3.5 text-muted-foreground" />
+            )}
           </button>
         </div>
       </div>
       {open && (
         <div className="p-4 space-y-4 border-t border-border/30">
-          <ImageUploadField label="Customer photo" value={r.photo_url ?? ""} onChange={(v) => onUpdate("photo_url", v)} folder="/cms/reviews" previewHeight={60} />
-          <Field label="Customer name"><TextInput value={r.customer_name ?? ""} onChange={(v) => onUpdate("customer_name", v)} placeholder="Ananya P." /></Field>
-          <Field label="Location"><TextInput value={r.location ?? ""} onChange={(v) => onUpdate("location", v)} placeholder="Visakhapatnam" /></Field>
-          <SliderRow label="Rating" value={r.rating ?? 5} min={1} max={5} onChange={(v) => onUpdate("rating", v)} />
-          <Field label="Review text"><TextArea value={r.text ?? ""} onChange={(v) => onUpdate("text", v)} rows={3} /></Field>
-          <ToggleRow label="Verified purchase" checked={r.verified ?? false} onChange={(v) => onUpdate("verified", v)} />
+          <ImageUploadField
+            label="Customer photo"
+            value={r.photo_url ?? ""}
+            onChange={(v) => onUpdate("photo_url", v)}
+            folder="/cms/reviews"
+            previewHeight={60}
+          />
+          <Field label="Customer name">
+            <TextInput
+              value={r.customer_name ?? ""}
+              onChange={(v) => onUpdate("customer_name", v)}
+              placeholder="Ananya P."
+            />
+          </Field>
+          <Field label="Location">
+            <TextInput
+              value={r.location ?? ""}
+              onChange={(v) => onUpdate("location", v)}
+              placeholder="Visakhapatnam"
+            />
+          </Field>
+          <SliderRow
+            label="Rating"
+            value={r.rating ?? 5}
+            min={1}
+            max={5}
+            onChange={(v) => onUpdate("rating", v)}
+          />
+          <Field label="Review text">
+            <TextArea value={r.text ?? ""} onChange={(v) => onUpdate("text", v)} rows={3} />
+          </Field>
+          <ToggleRow
+            label="Verified purchase"
+            checked={r.verified ?? false}
+            onChange={(v) => onUpdate("verified", v)}
+          />
         </div>
       )}
     </div>
   );
 }
 
-function ReviewsEditor({ items, onItemChange, onAddItem, onDeleteItem, onDuplicateItem }: ItemCtrl & { config: Record<string, unknown>; onChange: (v: Record<string, unknown>) => void }) {
+function ReviewsEditor({
+  items,
+  onItemChange,
+  onAddItem,
+  onDeleteItem,
+  onDuplicateItem,
+}: ItemCtrl & { config: Record<string, unknown>; onChange: (v: Record<string, unknown>) => void }) {
   function updateItem(idx: number, field: keyof ReviewItemConfig, val: unknown) {
-    onItemChange(items.map((it, i) => i === idx ? { ...it, config: { ...it.config, [field]: val } } : it));
+    onItemChange(
+      items.map((it, i) => (i === idx ? { ...it, config: { ...it.config, [field]: val } } : it)),
+    );
   }
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
-        <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-muted-foreground">Reviews ({items.length})</p>
-        <button onClick={() => onAddItem({ customer_name: "", rating: 5, text: "", verified: true })}
-          className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wide text-primary hover:text-primary/80 transition-colors">
+        <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-muted-foreground">
+          Reviews ({items.length})
+        </p>
+        <button
+          onClick={() => onAddItem({ customer_name: "", rating: 5, text: "", verified: true })}
+          className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wide text-primary hover:text-primary/80 transition-colors"
+        >
           <Plus className="size-3.5" /> Add Review
         </button>
       </div>
       <div className="space-y-2.5">
         {items.map((item, i) => (
-          <ReviewItemCard key={item.id} item={item} index={i}
+          <ReviewItemCard
+            key={item.id}
+            item={item}
+            index={i}
             onUpdate={(field, val) => updateItem(i, field, val)}
             onDelete={() => onDeleteItem(item.id)}
             onDuplicate={() => onDuplicateItem(item.id)}
           />
         ))}
-        {items.length === 0 && <p className="text-xs text-muted-foreground italic text-center py-4">No reviews yet. Click "Add Review".</p>}
+        {items.length === 0 && (
+          <p className="text-xs text-muted-foreground italic text-center py-4">
+            No reviews yet. Click "Add Review".
+          </p>
+        )}
       </div>
     </div>
   );
@@ -848,22 +1569,27 @@ function FooterEditor({ config, onChange }: EP<Partial<FooterConfig>>) {
   const cols = (config.columns ?? []) as FooterConfig["columns"];
 
   function updateColumn(colIdx: number, field: "title" | "links", val: unknown) {
-    const next = (cols ?? []).map((c, i) => i === colIdx ? { ...c, [field]: val } : c);
+    const next = (cols ?? []).map((c, i) => (i === colIdx ? { ...c, [field]: val } : c));
     onChange({ ...config, columns: next });
   }
   function addLink(colIdx: number) {
-    const next = (cols ?? []).map((c, i) => i === colIdx ? { ...c, links: [...c.links, { label: "New link", url: "/" }] } : c);
+    const next = (cols ?? []).map((c, i) =>
+      i === colIdx ? { ...c, links: [...c.links, { label: "New link", url: "/" }] } : c,
+    );
     onChange({ ...config, columns: next });
   }
   function updateLink(colIdx: number, linkIdx: number, field: "label" | "url", val: string) {
-    const next = (cols ?? []).map((c, i) => i === colIdx
-      ? { ...c, links: c.links.map((l, j) => j === linkIdx ? { ...l, [field]: val } : l) }
-      : c
+    const next = (cols ?? []).map((c, i) =>
+      i === colIdx
+        ? { ...c, links: c.links.map((l, j) => (j === linkIdx ? { ...l, [field]: val } : l)) }
+        : c,
     );
     onChange({ ...config, columns: next });
   }
   function deleteLink(colIdx: number, linkIdx: number) {
-    const next = (cols ?? []).map((c, i) => i === colIdx ? { ...c, links: c.links.filter((_, j) => j !== linkIdx) } : c);
+    const next = (cols ?? []).map((c, i) =>
+      i === colIdx ? { ...c, links: c.links.filter((_, j) => j !== linkIdx) } : c,
+    );
     onChange({ ...config, columns: next });
   }
   function addColumn() {
@@ -875,46 +1601,119 @@ function FooterEditor({ config, onChange }: EP<Partial<FooterConfig>>) {
 
   return (
     <div className="space-y-5">
-      <ImageUploadField label="Logo" value={config.logo_url ?? ""} onChange={up("logo_url") as (v: string) => void} folder="/cms/footer" previewHeight={60} />
-      <Field label="Company name"><TextInput value={config.copyright_name ?? ""} onChange={up("copyright_name") as (v: string) => void} placeholder="Hadha Silver" /></Field>
-      <Field label="Tagline"><TextArea value={config.description ?? ""} onChange={up("description") as (v: string) => void} rows={2} /></Field>
-      <Field label="Address"><TextInput value={config.company_address ?? ""} onChange={up("company_address") as (v: string) => void} /></Field>
+      <ImageUploadField
+        label="Logo"
+        value={config.logo_url ?? ""}
+        onChange={up("logo_url") as (v: string) => void}
+        folder="/cms/footer"
+        previewHeight={60}
+      />
+      <Field label="Company name">
+        <TextInput
+          value={config.copyright_name ?? ""}
+          onChange={up("copyright_name") as (v: string) => void}
+          placeholder="Hadha Silver"
+        />
+      </Field>
+      <Field label="Tagline">
+        <TextArea
+          value={config.description ?? ""}
+          onChange={up("description") as (v: string) => void}
+          rows={2}
+        />
+      </Field>
+      <Field label="Address">
+        <TextInput
+          value={config.company_address ?? ""}
+          onChange={up("company_address") as (v: string) => void}
+        />
+      </Field>
       <div className="grid grid-cols-2 gap-3">
-        <Field label="Phone"><TextInput value={config.phone ?? ""} onChange={up("phone") as (v: string) => void} /></Field>
-        <Field label="Email"><TextInput value={config.email ?? ""} onChange={up("email") as (v: string) => void} type="email" /></Field>
+        <Field label="Phone">
+          <TextInput value={config.phone ?? ""} onChange={up("phone") as (v: string) => void} />
+        </Field>
+        <Field label="Email">
+          <TextInput
+            value={config.email ?? ""}
+            onChange={up("email") as (v: string) => void}
+            type="email"
+          />
+        </Field>
       </div>
       <SectionSubheader label="Social links" />
-      <Field label="Instagram"><TextInput value={config.instagram ?? ""} onChange={up("instagram") as (v: string) => void} placeholder="https://instagram.com/hadha.silver" /></Field>
-      <Field label="YouTube"><TextInput value={config.youtube ?? ""} onChange={up("youtube") as (v: string) => void} placeholder="https://youtube.com/..." /></Field>
-      <Field label="WhatsApp"><TextInput value={config.whatsapp ?? ""} onChange={up("whatsapp") as (v: string) => void} placeholder="https://wa.me/91..." /></Field>
+      <Field label="Instagram">
+        <TextInput
+          value={config.instagram ?? ""}
+          onChange={up("instagram") as (v: string) => void}
+          placeholder="https://instagram.com/hadha.silver"
+        />
+      </Field>
+      <Field label="YouTube">
+        <TextInput
+          value={config.youtube ?? ""}
+          onChange={up("youtube") as (v: string) => void}
+          placeholder="https://youtube.com/..."
+        />
+      </Field>
+      <Field label="WhatsApp">
+        <TextInput
+          value={config.whatsapp ?? ""}
+          onChange={up("whatsapp") as (v: string) => void}
+          placeholder="https://wa.me/91..."
+        />
+      </Field>
 
       <SectionSubheader label="Footer columns" />
       <div className="space-y-4 mt-3">
         {(cols ?? []).map((col, colIdx) => (
           <div key={colIdx} className="border border-border/40 rounded-xl p-3 space-y-3">
             <div className="flex items-center gap-2">
-              <TextInputSm value={col.title} onChange={(v) => updateColumn(colIdx, "title", v)} placeholder="Column title" />
-              <button onClick={() => deleteColumn(colIdx)} className="p-1.5 rounded hover:bg-red-50 hover:text-red-500 transition-colors shrink-0">
+              <TextInputSm
+                value={col.title}
+                onChange={(v) => updateColumn(colIdx, "title", v)}
+                placeholder="Column title"
+              />
+              <button
+                onClick={() => deleteColumn(colIdx)}
+                className="p-1.5 rounded hover:bg-red-50 hover:text-red-500 transition-colors shrink-0"
+              >
                 <Trash2 className="size-3.5 text-muted-foreground" />
               </button>
             </div>
             <div className="space-y-1.5 pl-2 border-l border-border/30">
               {col.links.map((link, linkIdx) => (
                 <div key={linkIdx} className="flex items-center gap-1.5">
-                  <TextInputSm value={link.label} onChange={(v) => updateLink(colIdx, linkIdx, "label", v)} placeholder="Label" />
-                  <TextInputSm value={link.url} onChange={(v) => updateLink(colIdx, linkIdx, "url", v)} placeholder="/path" />
-                  <button onClick={() => deleteLink(colIdx, linkIdx)} className="p-1 rounded hover:bg-red-50 hover:text-red-500 transition-colors shrink-0">
+                  <TextInputSm
+                    value={link.label}
+                    onChange={(v) => updateLink(colIdx, linkIdx, "label", v)}
+                    placeholder="Label"
+                  />
+                  <TextInputSm
+                    value={link.url}
+                    onChange={(v) => updateLink(colIdx, linkIdx, "url", v)}
+                    placeholder="/path"
+                  />
+                  <button
+                    onClick={() => deleteLink(colIdx, linkIdx)}
+                    className="p-1 rounded hover:bg-red-50 hover:text-red-500 transition-colors shrink-0"
+                  >
                     <X className="size-3 text-muted-foreground" />
                   </button>
                 </div>
               ))}
-              <button onClick={() => addLink(colIdx)} className="text-[10px] text-primary hover:underline flex items-center gap-1 mt-1">
+              <button
+                onClick={() => addLink(colIdx)}
+                className="text-[10px] text-primary hover:underline flex items-center gap-1 mt-1"
+              >
                 <Plus className="size-3" /> Add link
               </button>
             </div>
           </div>
         ))}
-        <button onClick={addColumn} className="w-full py-2 border border-dashed border-border/50 rounded-lg text-xs text-muted-foreground hover:border-primary hover:text-primary transition-colors">
+        <button
+          onClick={addColumn}
+          className="w-full py-2 border border-dashed border-border/50 rounded-lg text-xs text-muted-foreground hover:border-primary hover:text-primary transition-colors"
+        >
           + Add column
         </button>
       </div>
@@ -924,19 +1723,38 @@ function FooterEditor({ config, onChange }: EP<Partial<FooterConfig>>) {
 
 // ── Generic JSON editor ───────────────────────────────────────────────────────
 
-function GenericEditor({ config, onChange }: { config: Record<string, unknown>; onChange: (v: Record<string, unknown>) => void }) {
+function GenericEditor({
+  config,
+  onChange,
+}: {
+  config: Record<string, unknown>;
+  onChange: (v: Record<string, unknown>) => void;
+}) {
   const [raw, setRaw] = useState(() => JSON.stringify(config, null, 2));
   const [err, setErr] = useState(false);
-  useEffect(() => { setRaw(JSON.stringify(config, null, 2)); }, [config]);
+  useEffect(() => {
+    setRaw(JSON.stringify(config, null, 2));
+  }, [config]);
   function handle(s: string) {
     setRaw(s);
-    try { onChange(JSON.parse(s)); setErr(false); } catch { setErr(true); }
+    try {
+      onChange(JSON.parse(s));
+      setErr(false);
+    } catch {
+      setErr(true);
+    }
   }
   return (
     <div>
-      <p className="text-[10px] uppercase tracking-wider text-muted-foreground mb-2">Raw config (JSON)</p>
-      <textarea value={raw} rows={14} onChange={(e) => handle(e.target.value)}
-        className={`w-full font-mono text-xs border ${err ? "border-destructive" : "border-border/60"} bg-muted/20 px-3 py-2 outline-none focus:border-primary transition-colors resize-none rounded-sm`} />
+      <p className="text-[10px] uppercase tracking-wider text-muted-foreground mb-2">
+        Raw config (JSON)
+      </p>
+      <textarea
+        value={raw}
+        rows={14}
+        onChange={(e) => handle(e.target.value)}
+        className={`w-full font-mono text-xs border ${err ? "border-destructive" : "border-border/60"} bg-muted/20 px-3 py-2 outline-none focus:border-primary transition-colors resize-none rounded-sm`}
+      />
       {err && <p className="text-[11px] text-destructive mt-1">Invalid JSON</p>}
     </div>
   );
@@ -945,7 +1763,14 @@ function GenericEditor({ config, onChange }: { config: Record<string, unknown>; 
 // ── Router ────────────────────────────────────────────────────────────────────
 
 function SectionConfigEditor({
-  section, config, onChange, items, onItemChange, onAddItem, onDeleteItem, onDuplicateItem,
+  section,
+  config,
+  onChange,
+  items,
+  onItemChange,
+  onAddItem,
+  onDeleteItem,
+  onDuplicateItem,
 }: {
   section: AdminSection;
   config: Record<string, unknown>;
@@ -959,26 +1784,70 @@ function SectionConfigEditor({
   const ctrl: ItemCtrl = { items, onItemChange, onAddItem, onDeleteItem, onDuplicateItem };
   switch (section.section_type) {
     case "announcement_bar":
-      return <AnnouncementEditor config={config as any} onChange={onChange as any} items={items} onItemChange={onItemChange} />;
+      return (
+        <AnnouncementEditor
+          config={config as unknown as Partial<AnnouncementConfig>}
+          onChange={onChange as unknown as (next: Partial<AnnouncementConfig>) => void}
+          items={items}
+          onItemChange={onItemChange}
+        />
+      );
     case "hero_carousel":
-      return <HeroEditor config={config as any} onChange={onChange as any} {...ctrl} />;
+      return (
+        <HeroEditor
+          config={config as unknown as Partial<HeroCarouselConfig>}
+          onChange={onChange as unknown as (next: Partial<HeroCarouselConfig>) => void}
+          {...ctrl}
+        />
+      );
     case "image_banner":
-      return <ImageBannerEditor config={config as any} onChange={onChange as any} />;
+      return (
+        <ImageBannerEditor
+          config={config as unknown as Partial<ImageBannerConfig>}
+          onChange={onChange as unknown as (next: Partial<ImageBannerConfig>) => void}
+        />
+      );
     case "newsletter":
-      return <NewsletterEditor config={config as any} onChange={onChange as any} />;
+      return (
+        <NewsletterEditor
+          config={config as unknown as Partial<NewsletterConfig>}
+          onChange={onChange as unknown as (next: Partial<NewsletterConfig>) => void}
+        />
+      );
     case "video_section":
-      return <VideoEditor config={config as any} onChange={onChange as any} />;
+      return (
+        <VideoEditor
+          config={config as unknown as Partial<VideoSectionConfig>}
+          onChange={onChange as unknown as (next: Partial<VideoSectionConfig>) => void}
+        />
+      );
     case "instagram_gallery":
-      return <InstagramEditor config={config as any} onChange={onChange as any} {...ctrl} />;
+      return (
+        <InstagramEditor
+          config={config as unknown as Partial<InstagramGalleryConfig>}
+          onChange={onChange as unknown as (next: Partial<InstagramGalleryConfig>) => void}
+          {...ctrl}
+        />
+      );
     case "product_grid":
-      return <ProductPickerEditor config={config as any} onChange={onChange as any} />;
+      return (
+        <ProductPickerEditor
+          config={config as unknown as Partial<ProductGridConfig>}
+          onChange={onChange as unknown as (next: Partial<ProductGridConfig>) => void}
+        />
+      );
     case "collection_showcase":
     case "category_grid":
       return <CollectionCardsEditor config={config} onChange={onChange} {...ctrl} />;
     case "testimonials":
       return <ReviewsEditor config={config} onChange={onChange} {...ctrl} />;
     case "footer":
-      return <FooterEditor config={config as any} onChange={onChange as any} />;
+      return (
+        <FooterEditor
+          config={config as unknown as Partial<FooterConfig>}
+          onChange={onChange as unknown as (next: Partial<FooterConfig>) => void}
+        />
+      );
     default:
       return <GenericEditor config={config} onChange={onChange} />;
   }
@@ -1002,24 +1871,44 @@ function usePreviewScale(ref: React.RefObject<HTMLDivElement | null>) {
   return scale;
 }
 
-function renderSection(section: AdminSection, config: Record<string, unknown>, items: SectionItem[]) {
+function renderSection(
+  section: AdminSection,
+  config: Record<string, unknown>,
+  items: SectionItem[],
+) {
   const naturalH = NATURAL_H[section.section_type as SectionType] ?? 300;
   switch (section.section_type) {
-    case "announcement_bar": return <AnnouncementBar config={config as any} items={items} />;
-    case "hero_carousel": return <Hero config={config as any} items={items} />;
-    case "image_banner": return <PromoBanner config={config as any} />;
-    case "newsletter": return <Newsletter config={config as any} />;
-    case "video_section": return <CraftsmanshipVideo config={config as any} />;
-    case "instagram_gallery": return <InstagramSection config={config as any} items={items} />;
-    case "product_grid": return <FeaturedProducts config={config as any} />;
-    case "footer": return <Footer config={config as any} />;
+    case "announcement_bar":
+      return <AnnouncementBar config={config as unknown as AnnouncementConfig} items={items} />;
+    case "hero_carousel":
+      return <Hero config={config as unknown as HeroCarouselConfig} items={items} />;
+    case "image_banner":
+      return <PromoBanner config={config as unknown as ImageBannerConfig} />;
+    case "newsletter":
+      return <Newsletter config={config as unknown as NewsletterConfig} />;
+    case "video_section":
+      return <CraftsmanshipVideo config={config as unknown as VideoSectionConfig} />;
+    case "instagram_gallery":
+      return (
+        <InstagramSection config={config as unknown as InstagramGalleryConfig} items={items} />
+      );
+    case "product_grid":
+      return <FeaturedProducts config={config as unknown as ProductGridConfig} />;
+    case "footer":
+      return <Footer config={config as unknown as FooterConfig} />;
     default:
       return (
         <div className="flex items-center justify-center bg-muted/20" style={{ height: naturalH }}>
           <div className="text-center">
-            <div className="flex justify-center mb-2 text-muted-foreground/40">{SECTION_ICONS[section.section_type] ?? <Settings className="size-5" />}</div>
-            <p className="text-sm font-medium text-foreground/50">{section.title ?? section.section_key}</p>
-            <p className="text-xs text-muted-foreground">{TYPE_LABELS[section.section_type] ?? section.section_type}</p>
+            <div className="flex justify-center mb-2 text-muted-foreground/40">
+              {SECTION_ICONS[section.section_type] ?? <Settings className="size-5" />}
+            </div>
+            <p className="text-sm font-medium text-foreground/50">
+              {section.title ?? section.section_key}
+            </p>
+            <p className="text-xs text-muted-foreground">
+              {TYPE_LABELS[section.section_type] ?? section.section_type}
+            </p>
           </div>
         </div>
       );
@@ -1031,28 +1920,53 @@ function renderSection(section: AdminSection, config: Record<string, unknown>, i
 // ─────────────────────────────────────────────────────────────────────────────
 
 function SectionCard({
-  section, isActive, isDragging, isOver, onSelect, onToggle,
-  onDragStart, onDragOver, onDrop, isDirty, onDuplicate, onDelete,
+  section,
+  isActive,
+  isDragging,
+  isOver,
+  onSelect,
+  onToggle,
+  onDragStart,
+  onDragOver,
+  onDrop,
+  isDirty,
+  onDuplicate,
+  onDelete,
 }: {
-  section: AdminSection; isActive: boolean; isDragging: boolean; isOver: boolean;
-  onSelect: () => void; onToggle: () => void; isDirty: boolean;
-  onDragStart: () => void; onDragOver: (e: React.DragEvent) => void; onDrop: () => void;
-  onDuplicate: () => void; onDelete: () => void;
+  section: AdminSection;
+  isActive: boolean;
+  isDragging: boolean;
+  isOver: boolean;
+  onSelect: () => void;
+  onToggle: () => void;
+  isDirty: boolean;
+  onDragStart: () => void;
+  onDragOver: (e: React.DragEvent) => void;
+  onDrop: () => void;
+  onDuplicate: () => void;
+  onDelete: () => void;
 }) {
   const chip = STATUS_CLS[section.status] ?? STATUS_CLS.published;
   return (
     <div
-      draggable onDragStart={onDragStart} onDragOver={onDragOver} onDrop={onDrop} onDragEnd={onDrop}
+      draggable
+      onDragStart={onDragStart}
+      onDragOver={onDragOver}
+      onDrop={onDrop}
+      onDragEnd={onDrop}
       className={`relative rounded-xl border transition-all select-none ${
         isActive
           ? "border-primary/50 bg-primary/5 shadow-sm ring-1 ring-primary/20"
           : isOver
-          ? "border-primary/40 bg-primary/5"
-          : "border-border/60 bg-card hover:border-border hover:shadow-sm"
+            ? "border-primary/40 bg-primary/5"
+            : "border-border/60 bg-card hover:border-border hover:shadow-sm"
       } ${!section.is_active ? "opacity-40" : ""} ${isDragging ? "opacity-20 scale-95" : ""}`}
     >
       {isDirty && (
-        <span className="absolute top-2.5 right-2.5 size-2 rounded-full bg-amber-400 shadow-sm z-10" title="Unsaved changes" />
+        <span
+          className="absolute top-2.5 right-2.5 size-2 rounded-full bg-amber-400 shadow-sm z-10"
+          title="Unsaved changes"
+        />
       )}
 
       {/* Main row — clickable to select */}
@@ -1066,12 +1980,18 @@ function SectionCard({
           {SECTION_ICONS[section.section_type] ?? <Settings className="size-3.5" />}
         </div>
         <div className="flex-1 min-w-0">
-          <p className="text-sm font-medium truncate leading-tight">{section.title ?? section.section_key}</p>
+          <p className="text-sm font-medium truncate leading-tight">
+            {section.title ?? section.section_key}
+          </p>
           <div className="flex items-center gap-1.5 mt-0.5">
-            <span className={`text-[9px] px-1.5 py-0.5 rounded-full border font-medium leading-none ${chip}`}>
+            <span
+              className={`text-[9px] px-1.5 py-0.5 rounded-full border font-medium leading-none ${chip}`}
+            >
               {section.status}
             </span>
-            <p className="text-[10px] text-muted-foreground truncate">{TYPE_LABELS[section.section_type]}</p>
+            <p className="text-[10px] text-muted-foreground truncate">
+              {TYPE_LABELS[section.section_type]}
+            </p>
           </div>
         </div>
         {isActive && <div className="size-1.5 rounded-full bg-primary shrink-0" />}
@@ -1081,21 +2001,30 @@ function SectionCard({
       <div className="flex items-center justify-between border-t border-border/30 px-3 py-1.5">
         <div className="flex items-center gap-0.5">
           <button
-            onClick={(e) => { e.stopPropagation(); onToggle(); }}
+            onClick={(e) => {
+              e.stopPropagation();
+              onToggle();
+            }}
             className="p-1.5 rounded-md hover:bg-muted transition-colors text-muted-foreground hover:text-foreground"
             title={section.is_active ? "Hide section" : "Show section"}
           >
             {section.is_active ? <Eye className="size-3.5" /> : <EyeOff className="size-3.5" />}
           </button>
           <button
-            onClick={(e) => { e.stopPropagation(); onDuplicate(); }}
+            onClick={(e) => {
+              e.stopPropagation();
+              onDuplicate();
+            }}
             className="p-1.5 rounded-md hover:bg-muted transition-colors text-muted-foreground hover:text-foreground"
             title="Duplicate section"
           >
             <Copy className="size-3.5" />
           </button>
           <button
-            onClick={(e) => { e.stopPropagation(); onDelete(); }}
+            onClick={(e) => {
+              e.stopPropagation();
+              onDelete();
+            }}
             className="p-1.5 rounded-md hover:bg-red-50 hover:text-red-500 transition-colors text-muted-foreground"
             title="Delete section"
           >
@@ -1122,16 +2051,35 @@ function SectionCard({
 // ─────────────────────────────────────────────────────────────────────────────
 
 function SectionEditorPanel({
-  section, config, onChange, items, onItemChange, onAddItem, onDeleteItem, onDuplicateItem,
-  onSaveDraft, onPublish, onClose, isSaving, isPublishing, isDirty,
+  section,
+  config,
+  onChange,
+  items,
+  onItemChange,
+  onAddItem,
+  onDeleteItem,
+  onDuplicateItem,
+  onSaveDraft,
+  onPublish,
+  onClose,
+  isSaving,
+  isPublishing,
+  isDirty,
 }: {
-  section: AdminSection; config: Record<string, unknown>; onChange: (c: Record<string, unknown>) => void;
-  items: SectionItem[]; onItemChange: (items: SectionItem[]) => void;
+  section: AdminSection;
+  config: Record<string, unknown>;
+  onChange: (c: Record<string, unknown>) => void;
+  items: SectionItem[];
+  onItemChange: (items: SectionItem[]) => void;
   onAddItem: (cfg: Record<string, unknown>) => void;
   onDeleteItem: (id: string) => void;
   onDuplicateItem: (id: string) => void;
-  onSaveDraft: () => void; onPublish: () => void; onClose: () => void;
-  isSaving: boolean; isPublishing: boolean; isDirty: boolean;
+  onSaveDraft: () => void;
+  onPublish: () => void;
+  onClose: () => void;
+  isSaving: boolean;
+  isPublishing: boolean;
+  isDirty: boolean;
 }) {
   const chip = STATUS_CLS[section.status] ?? STATUS_CLS.published;
   return (
@@ -1149,10 +2097,18 @@ function SectionEditorPanel({
           {SECTION_ICONS[section.section_type] ?? <Settings className="size-3.5" />}
         </div>
         <div className="flex-1 min-w-0">
-          <p className="text-sm font-semibold leading-tight truncate">{section.title ?? section.section_key}</p>
+          <p className="text-sm font-semibold leading-tight truncate">
+            {section.title ?? section.section_key}
+          </p>
           <div className="flex items-center gap-1.5 mt-0.5">
-            <span className={`text-[9px] px-1.5 py-0.5 rounded-full border font-medium leading-none ${chip}`}>{section.status}</span>
-            <p className="text-[10px] text-muted-foreground truncate">{TYPE_LABELS[section.section_type]}</p>
+            <span
+              className={`text-[9px] px-1.5 py-0.5 rounded-full border font-medium leading-none ${chip}`}
+            >
+              {section.status}
+            </span>
+            <p className="text-[10px] text-muted-foreground truncate">
+              {TYPE_LABELS[section.section_type]}
+            </p>
           </div>
         </div>
         <Link
@@ -1169,9 +2125,14 @@ function SectionEditorPanel({
       <div className="flex-1 overflow-y-auto">
         <div className="p-5 space-y-5">
           <SectionConfigEditor
-            section={section} config={config} onChange={onChange}
-            items={items} onItemChange={onItemChange}
-            onAddItem={onAddItem} onDeleteItem={onDeleteItem} onDuplicateItem={onDuplicateItem}
+            section={section}
+            config={config}
+            onChange={onChange}
+            items={items}
+            onItemChange={onItemChange}
+            onAddItem={onAddItem}
+            onDeleteItem={onDeleteItem}
+            onDuplicateItem={onDuplicateItem}
           />
         </div>
       </div>
@@ -1191,14 +2152,16 @@ function SectionEditorPanel({
             disabled={isSaving || !isDirty}
             className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs border border-border rounded-lg hover:bg-muted disabled:opacity-40 transition-colors"
           >
-            <Save className="size-3.5" />{isSaving ? "Saving…" : "Save Draft"}
+            <Save className="size-3.5" />
+            {isSaving ? "Saving…" : "Save Draft"}
           </button>
           <button
             onClick={onPublish}
             disabled={isPublishing}
             className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 disabled:opacity-60 transition-colors"
           >
-            <Zap className="size-3.5" />{isPublishing ? "Publishing…" : "Publish"}
+            <Zap className="size-3.5" />
+            {isPublishing ? "Publishing…" : "Publish"}
           </button>
         </div>
       </div>
@@ -1211,9 +2174,15 @@ function SectionEditorPanel({
 // ─────────────────────────────────────────────────────────────────────────────
 
 function PreviewPanel({
-  section, config, items, isDirty,
+  section,
+  config,
+  items,
+  isDirty,
 }: {
-  section: AdminSection; config: Record<string, unknown>; items: SectionItem[]; isDirty: boolean;
+  section: AdminSection;
+  config: Record<string, unknown>;
+  items: SectionItem[];
+  isDirty: boolean;
 }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const scale = usePreviewScale(containerRef);
@@ -1224,7 +2193,9 @@ function PreviewPanel({
       {/* Preview header */}
       <div className="flex-none px-4 py-2.5 border-b border-border/40 bg-background/70 flex items-center justify-between gap-3">
         <div className="flex items-center gap-2">
-          <span className={`size-2 rounded-full inline-block ${isDirty ? "bg-amber-400 animate-pulse" : "bg-emerald-400"}`} />
+          <span
+            className={`size-2 rounded-full inline-block ${isDirty ? "bg-amber-400 animate-pulse" : "bg-emerald-400"}`}
+          />
           <p className="text-xs font-medium text-foreground/60">Live Preview</p>
           {isDirty && (
             <span className="text-[10px] text-amber-600 border border-amber-200 bg-amber-50 px-1.5 py-0.5 rounded-full">
@@ -1246,7 +2217,11 @@ function PreviewPanel({
           >
             <div
               className="pointer-events-none select-none absolute top-0 left-0"
-              style={{ width: PREVIEW_W, transform: `scale(${scale})`, transformOrigin: "top left" }}
+              style={{
+                width: PREVIEW_W,
+                transform: `scale(${scale})`,
+                transformOrigin: "top left",
+              }}
             >
               {renderSection(section, config, items)}
             </div>
@@ -1275,9 +2250,12 @@ function EditorEmptyState() {
         <Layers className="size-7 text-muted-foreground/40" />
       </div>
       <div>
-        <h3 className="text-sm font-semibold text-foreground/60 leading-tight">No section selected</h3>
+        <h3 className="text-sm font-semibold text-foreground/60 leading-tight">
+          No section selected
+        </h3>
         <p className="text-xs text-muted-foreground mt-2 leading-relaxed max-w-[220px]">
-          Click <strong className="text-foreground/70">Edit</strong> on any section in the left panel to start editing its content and settings.
+          Click <strong className="text-foreground/70">Edit</strong> on any section in the left
+          panel to start editing its content and settings.
         </p>
       </div>
     </div>
@@ -1288,7 +2266,13 @@ function EditorEmptyState() {
 // Homepage overview (Col 3 when nothing selected)
 // ─────────────────────────────────────────────────────────────────────────────
 
-function HomepageOverview({ sections, onSelect }: { sections: AdminSection[]; onSelect: (key: string) => void }) {
+function HomepageOverview({
+  sections,
+  onSelect,
+}: {
+  sections: AdminSection[];
+  onSelect: (key: string) => void;
+}) {
   const active = sections.filter((s) => s.is_active);
   return (
     <div className="flex flex-col h-full overflow-hidden">
@@ -1312,9 +2296,15 @@ function HomepageOverview({ sections, onSelect }: { sections: AdminSection[]; on
             {/* Section label */}
             <div className="px-3 py-2 flex items-center justify-between bg-muted/20 border-b border-border/30">
               <div className="flex items-center gap-2">
-                <span className="text-muted-foreground shrink-0">{SECTION_ICONS[section.section_type]}</span>
-                <span className="text-xs font-medium truncate">{section.title ?? section.section_key}</span>
-                <span className={`text-[9px] px-1.5 py-0.5 rounded-full border font-medium leading-none shrink-0 ${STATUS_CLS[section.status] ?? STATUS_CLS.published}`}>
+                <span className="text-muted-foreground shrink-0">
+                  {SECTION_ICONS[section.section_type]}
+                </span>
+                <span className="text-xs font-medium truncate">
+                  {section.title ?? section.section_key}
+                </span>
+                <span
+                  className={`text-[9px] px-1.5 py-0.5 rounded-full border font-medium leading-none shrink-0 ${STATUS_CLS[section.status] ?? STATUS_CLS.published}`}
+                >
                   {section.status}
                 </span>
               </div>
@@ -1323,7 +2313,12 @@ function HomepageOverview({ sections, onSelect }: { sections: AdminSection[]; on
               </span>
             </div>
             {/* Scaled thumbnail */}
-            <div className="overflow-hidden" style={{ height: Math.round((NATURAL_H[section.section_type as SectionType] ?? 280) * 0.22) }}>
+            <div
+              className="overflow-hidden"
+              style={{
+                height: Math.round((NATURAL_H[section.section_type as SectionType] ?? 280) * 0.22),
+              }}
+            >
               <div
                 className="pointer-events-none select-none"
                 style={{ width: PREVIEW_W, transform: "scale(0.22)", transformOrigin: "top left" }}
@@ -1362,7 +2357,9 @@ function AdminCmsEditor() {
 
   const saveDraftMutation = useMutation({
     mutationFn: ({ key, config }: { key: string; config: Record<string, unknown> }) =>
-      api.patch<AdminSection>(`/cms/admin/sections/${key}/draft`, { body: { draft_config: config } }),
+      api.patch<AdminSection>(`/cms/admin/sections/${key}/draft`, {
+        body: { draft_config: config },
+      }),
     onSuccess: (_, { key }) => {
       qc.invalidateQueries({ queryKey: queryKeys.admin.cmsSection(key) });
       qc.invalidateQueries({ queryKey: queryKeys.admin.cmsSections });
@@ -1370,10 +2367,20 @@ function AdminCmsEditor() {
   });
 
   const saveItemsMutation = useMutation({
-    mutationFn: async ({ key, items, deletedIds }: { key: string; items: SectionItem[]; deletedIds: string[] }) => {
+    mutationFn: async ({
+      key,
+      items,
+      deletedIds,
+    }: {
+      key: string;
+      items: SectionItem[];
+      deletedIds: string[];
+    }) => {
       // Delete removed items first
       if (deletedIds.length) {
-        await Promise.all(deletedIds.map((id) => api.delete(`/cms/admin/sections/${key}/items/${id}`)));
+        await Promise.all(
+          deletedIds.map((id) => api.delete(`/cms/admin/sections/${key}/items/${id}`)),
+        );
       }
       // Create new / update existing
       await Promise.all(
@@ -1386,7 +2393,7 @@ function AdminCmsEditor() {
           return api.patch(`/cms/admin/sections/${key}/items/${it.id}`, {
             body: { config: it.config, sort_order: it.sort_order, is_enabled: it.is_enabled },
           });
-        })
+        }),
       );
     },
     onSuccess: (_, { key }) => {
@@ -1503,14 +2510,20 @@ function AdminCmsEditor() {
     const cur = localItems[key] ?? section?.items ?? [];
     const item = cur.find((it) => it.id === itemId);
     if (!item) return;
-    const newItem: SectionItem = { ...item, id: `__new_${Date.now()}`, sort_order: cur.length * 10 + 10 };
+    const newItem: SectionItem = {
+      ...item,
+      id: `__new_${Date.now()}`,
+      sort_order: cur.length * 10 + 10,
+    };
     setLocalItems((prev) => ({ ...prev, [key]: [...cur, newItem] }));
     setDirtyKeys((prev) => new Set(prev).add(key));
   }
 
   // ── DnD ──────────────────────────────────────────────────────────────────
 
-  function onDragStart(idx: number) { setDragIdx(idx); }
+  function onDragStart(idx: number) {
+    setDragIdx(idx);
+  }
 
   function onDragOver(idx: number, e: React.DragEvent) {
     e.preventDefault();
@@ -1527,7 +2540,10 @@ function AdminCmsEditor() {
     if (dragIdx === null) return;
     const entries = localOrder.map((s, i) => ({ id: s.id, sort_order: i * 10 }));
     reorderMutation.mutate(entries, {
-      onError: (e) => { toast.error(toUserMessage(e)); setLocalOrder([...sections].sort((a, b) => a.sort_order - b.sort_order)); },
+      onError: (e) => {
+        toast.error(toUserMessage(e));
+        setLocalOrder([...sections].sort((a, b) => a.sort_order - b.sort_order));
+      },
     });
     setDragIdx(null);
     setOverIdx(null);
@@ -1552,10 +2568,26 @@ function AdminCmsEditor() {
       if ((currentItems && currentItems.length > 0) || deletedIds.length > 0) {
         await saveItemsMutation.mutateAsync({ key, items: currentItems ?? [], deletedIds });
       }
-      setLocalConfigs((prev) => { const n = { ...prev }; delete n[key]; return n; });
-      setLocalItems((prev) => { const n = { ...prev }; delete n[key]; return n; });
-      setLocalDeletedItems((prev) => { const n = { ...prev }; delete n[key]; return n; });
-      setDirtyKeys((prev) => { const n = new Set(prev); n.delete(key); return n; });
+      setLocalConfigs((prev) => {
+        const n = { ...prev };
+        delete n[key];
+        return n;
+      });
+      setLocalItems((prev) => {
+        const n = { ...prev };
+        delete n[key];
+        return n;
+      });
+      setLocalDeletedItems((prev) => {
+        const n = { ...prev };
+        delete n[key];
+        return n;
+      });
+      setDirtyKeys((prev) => {
+        const n = new Set(prev);
+        n.delete(key);
+        return n;
+      });
       setStatusMsg("Draft saved");
       toast.success("Draft saved.");
     } catch (e) {
@@ -1574,10 +2606,26 @@ function AdminCmsEditor() {
         await saveItemsMutation.mutateAsync({ key, items: currentItems ?? [], deletedIds });
       }
       await publishMutation.mutateAsync(key);
-      setLocalConfigs((prev) => { const n = { ...prev }; delete n[key]; return n; });
-      setLocalItems((prev) => { const n = { ...prev }; delete n[key]; return n; });
-      setLocalDeletedItems((prev) => { const n = { ...prev }; delete n[key]; return n; });
-      setDirtyKeys((prev) => { const n = new Set(prev); n.delete(key); return n; });
+      setLocalConfigs((prev) => {
+        const n = { ...prev };
+        delete n[key];
+        return n;
+      });
+      setLocalItems((prev) => {
+        const n = { ...prev };
+        delete n[key];
+        return n;
+      });
+      setLocalDeletedItems((prev) => {
+        const n = { ...prev };
+        delete n[key];
+        return n;
+      });
+      setDirtyKeys((prev) => {
+        const n = new Set(prev);
+        n.delete(key);
+        return n;
+      });
       setStatusMsg("Published · Cache invalidated");
       toast.success("Section published.");
     } catch (e) {
@@ -1588,16 +2636,35 @@ function AdminCmsEditor() {
   function handleDiscard() {
     if (!activeSection) return;
     const key = activeSection.section_key;
-    setLocalConfigs((prev) => { const n = { ...prev }; delete n[key]; return n; });
-    setLocalItems((prev) => { const n = { ...prev }; delete n[key]; return n; });
-    setLocalDeletedItems((prev) => { const n = { ...prev }; delete n[key]; return n; });
-    setDirtyKeys((prev) => { const n = new Set(prev); n.delete(key); return n; });
+    setLocalConfigs((prev) => {
+      const n = { ...prev };
+      delete n[key];
+      return n;
+    });
+    setLocalItems((prev) => {
+      const n = { ...prev };
+      delete n[key];
+      return n;
+    });
+    setLocalDeletedItems((prev) => {
+      const n = { ...prev };
+      delete n[key];
+      return n;
+    });
+    setDirtyKeys((prev) => {
+      const n = new Set(prev);
+      n.delete(key);
+      return n;
+    });
     setStatusMsg("Changes discarded");
   }
 
   function handleFlushCache() {
     invalidateMutation.mutate(undefined, {
-      onSuccess: () => { setStatusMsg("Cache invalidated"); toast.success("Cache flushed."); },
+      onSuccess: () => {
+        setStatusMsg("Cache invalidated");
+        toast.success("Cache flushed.");
+      },
       onError: (e) => toast.error(toUserMessage(e)),
     });
   }
@@ -1609,12 +2676,16 @@ function AdminCmsEditor() {
   // ─────────────────────────────────────────────────────────────────────────
 
   return (
-    <div className="-mx-6 -my-6 md:-mx-10 md:-my-10 flex flex-col bg-secondary/20" style={{ height: "100vh" }}>
-
+    <div
+      className="-mx-6 -my-6 md:-mx-10 md:-my-10 flex flex-col bg-secondary/20"
+      style={{ height: "100vh" }}
+    >
       {/* Top bar */}
       <div className="flex-none h-14 border-b border-border/60 bg-background flex items-center justify-between px-5 gap-4">
         <div className="flex items-center gap-2">
-          <div className="p-1.5 rounded-lg bg-primary/10 text-primary"><Settings className="size-4" /></div>
+          <div className="p-1.5 rounded-lg bg-primary/10 text-primary">
+            <Settings className="size-4" />
+          </div>
           <div>
             <p className="text-sm font-semibold leading-tight">Homepage CMS</p>
             <p className="text-[10px] text-muted-foreground leading-tight">Visual editor</p>
@@ -1626,32 +2697,49 @@ function AdminCmsEditor() {
               {totalDirty} unsaved {totalDirty === 1 ? "section" : "sections"}
             </span>
           )}
-          <a href="/" target="_blank" rel="noreferrer"
-            className="inline-flex items-center gap-1.5 text-xs text-muted-foreground border border-border/60 px-3 py-1.5 rounded-lg hover:bg-muted transition-colors">
+          <a
+            href="/"
+            target="_blank"
+            rel="noreferrer"
+            className="inline-flex items-center gap-1.5 text-xs text-muted-foreground border border-border/60 px-3 py-1.5 rounded-lg hover:bg-muted transition-colors"
+          >
             <ExternalLink className="size-3.5" /> Preview Store
           </a>
-          <Link to="/admin/cms/media"
-            className="inline-flex items-center gap-1.5 text-xs text-muted-foreground border border-border/60 px-3 py-1.5 rounded-lg hover:bg-muted transition-colors">
+          <Link
+            to="/admin/cms/media"
+            className="inline-flex items-center gap-1.5 text-xs text-muted-foreground border border-border/60 px-3 py-1.5 rounded-lg hover:bg-muted transition-colors"
+          >
             Media Library
           </Link>
           {activeSection && dirtyKeys.has(activeSection.section_key) && (
-            <button onClick={handleDiscard}
-              className="text-xs text-muted-foreground border border-border/60 px-3 py-1.5 rounded-lg hover:bg-muted transition-colors">
+            <button
+              onClick={handleDiscard}
+              className="text-xs text-muted-foreground border border-border/60 px-3 py-1.5 rounded-lg hover:bg-muted transition-colors"
+            >
               Discard
             </button>
           )}
-          <button onClick={handleFlushCache} disabled={invalidateMutation.isPending}
-            className="inline-flex items-center gap-1.5 text-xs text-muted-foreground border border-border/60 px-3 py-1.5 rounded-lg hover:bg-muted disabled:opacity-50 transition-colors">
+          <button
+            onClick={handleFlushCache}
+            disabled={invalidateMutation.isPending}
+            className="inline-flex items-center gap-1.5 text-xs text-muted-foreground border border-border/60 px-3 py-1.5 rounded-lg hover:bg-muted disabled:opacity-50 transition-colors"
+          >
             <RefreshCw className="size-3.5" /> Flush Cache
           </button>
           {activeSection && (
             <>
-              <button onClick={handleSaveDraft} disabled={isSaving || !dirtyKeys.has(activeSection.section_key)}
-                className="inline-flex items-center gap-1.5 text-xs border border-border px-3 py-1.5 rounded-lg hover:bg-muted disabled:opacity-40 transition-colors">
+              <button
+                onClick={handleSaveDraft}
+                disabled={isSaving || !dirtyKeys.has(activeSection.section_key)}
+                className="inline-flex items-center gap-1.5 text-xs border border-border px-3 py-1.5 rounded-lg hover:bg-muted disabled:opacity-40 transition-colors"
+              >
                 <Save className="size-3.5" /> Save Draft
               </button>
-              <button onClick={handlePublish} disabled={isPublishing}
-                className="inline-flex items-center gap-1.5 text-xs bg-primary text-primary-foreground px-3 py-1.5 rounded-lg hover:bg-primary/90 disabled:opacity-60 transition-colors">
+              <button
+                onClick={handlePublish}
+                disabled={isPublishing}
+                className="inline-flex items-center gap-1.5 text-xs bg-primary text-primary-foreground px-3 py-1.5 rounded-lg hover:bg-primary/90 disabled:opacity-60 transition-colors"
+              >
                 <Zap className="size-3.5" /> Publish
               </button>
             </>
@@ -1661,19 +2749,21 @@ function AdminCmsEditor() {
 
       {/* Body — 3 columns, each scrolls independently */}
       <div className="flex-1 flex overflow-hidden min-h-0">
-
         {/* ── Col 1: Sections list (320px) ── */}
         <div className="w-[320px] shrink-0 flex flex-col border-r border-border/50 bg-muted/10 overflow-hidden">
           <div className="flex-none px-4 pt-3.5 pb-2.5 border-b border-border/40">
             <p className="text-[10px] uppercase tracking-[0.25em] font-semibold text-muted-foreground">
               Sections
             </p>
-            <p className="text-[11px] text-muted-foreground/70 mt-0.5">Drag to reorder · click Edit to configure</p>
+            <p className="text-[11px] text-muted-foreground/70 mt-0.5">
+              Drag to reorder · click Edit to configure
+            </p>
           </div>
           <div className="flex-1 overflow-y-auto p-3 space-y-2">
-            {isLoading && Array.from({ length: 6 }).map((_, i) => (
-              <div key={i} className="h-[72px] bg-muted animate-pulse rounded-xl" />
-            ))}
+            {isLoading &&
+              Array.from({ length: 6 }).map((_, i) => (
+                <div key={i} className="h-[72px] bg-muted animate-pulse rounded-xl" />
+              ))}
             {localOrder.map((section, idx) => (
               <SectionCard
                 key={section.id}
@@ -1682,7 +2772,9 @@ function AdminCmsEditor() {
                 isDragging={dragIdx === idx}
                 isOver={overIdx === idx}
                 isDirty={dirtyKeys.has(section.section_key)}
-                onSelect={() => setActiveKey(activeKey === section.section_key ? null : section.section_key)}
+                onSelect={() =>
+                  setActiveKey(activeKey === section.section_key ? null : section.section_key)
+                }
                 onToggle={() => handleToggle(section)}
                 onDragStart={() => onDragStart(idx)}
                 onDragOver={(e) => onDragOver(idx, e)}
@@ -1734,20 +2826,30 @@ function AdminCmsEditor() {
             <HomepageOverview sections={localOrder} onSelect={(key) => setActiveKey(key)} />
           )}
         </div>
-
       </div>
 
       {/* Status bar */}
       <div className="flex-none h-8 border-t border-border/40 bg-muted/30 flex items-center px-5 gap-3">
         <div className="flex items-center gap-1.5">
-          {statusMsg
-            ? <><Check className="size-3 text-emerald-600" /><span className="text-[11px] text-emerald-700">{statusMsg}</span></>
-            : <><span className="size-1.5 rounded-full bg-emerald-400 inline-block" /><span className="text-[11px] text-muted-foreground">Ready</span></>
-          }
+          {statusMsg ? (
+            <>
+              <Check className="size-3 text-emerald-600" />
+              <span className="text-[11px] text-emerald-700">{statusMsg}</span>
+            </>
+          ) : (
+            <>
+              <span className="size-1.5 rounded-full bg-emerald-400 inline-block" />
+              <span className="text-[11px] text-muted-foreground">Ready</span>
+            </>
+          )}
         </div>
-        {totalDirty > 0 && <span className="text-[11px] text-amber-600">· {totalDirty} unsaved</span>}
+        {totalDirty > 0 && (
+          <span className="text-[11px] text-amber-600">· {totalDirty} unsaved</span>
+        )}
         {(isSaving || isPublishing) && (
-          <span className="text-[11px] text-muted-foreground animate-pulse">· {isSaving ? "Saving…" : "Publishing…"}</span>
+          <span className="text-[11px] text-muted-foreground animate-pulse">
+            · {isSaving ? "Saving…" : "Publishing…"}
+          </span>
         )}
         <div className="ml-auto text-[11px] text-muted-foreground">Hadha Homepage CMS</div>
       </div>

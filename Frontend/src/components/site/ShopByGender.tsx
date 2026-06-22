@@ -13,10 +13,10 @@ import fallback from "@/assets/p2.jpg";
 type Gender = "women" | "men" | "unisex" | "kids";
 
 const TABS: { id: Gender; label: string; image: string }[] = [
-  { id: "women",  label: "Women",  image: women  },
-  { id: "men",    label: "Men",    image: men    },
+  { id: "women", label: "Women", image: women },
+  { id: "men", label: "Men", image: men },
   { id: "unisex", label: "Unisex", image: unisex },
-  { id: "kids",   label: "Kids",   image: kids   },
+  { id: "kids", label: "Kids", image: kids },
 ];
 
 export function ShopByGender() {

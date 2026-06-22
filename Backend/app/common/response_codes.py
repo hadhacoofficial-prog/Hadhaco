@@ -1,7 +1,7 @@
-from enum import Enum
+from enum import StrEnum
 
 
-class ResponseCode(str, Enum):
+class ResponseCode(StrEnum):
     # ── Auth ─────────────────────────────────────────────────────────────────
     AUTH_TOKEN_VERIFIED = "AUTH_TOKEN_VERIFIED"
     AUTH_LOGOUT_SUCCESS = "AUTH_LOGOUT_SUCCESS"

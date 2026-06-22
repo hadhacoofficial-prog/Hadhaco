@@ -257,7 +257,6 @@ class TestCategoryService:
 
     async def test_get_tree_returns_sorted_nodes(self):
         db = AsyncMock()
-        parent_id = uuid.uuid4()
         # Two top-level categories with different sort orders
         cat1 = MagicMock()
         cat1.id = uuid.uuid4()
@@ -457,9 +456,7 @@ class TestCMSService:
         db = AsyncMock()
         mock_banner = MagicMock()
         with patch.object(CMSRepository, "create_banner", AsyncMock(return_value=mock_banner)):
-            result = await self.svc.create_banner(
-                db, BannerCreate(name="sale-hero", banner_type="hero")
-            )
+            await self.svc.create_banner(db, BannerCreate(name="sale-hero", banner_type="hero"))
         db.commit.assert_awaited_once()
         db.refresh.assert_awaited_once_with(mock_banner)
 

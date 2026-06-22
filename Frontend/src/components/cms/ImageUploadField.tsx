@@ -56,7 +56,9 @@ export function ImageUploadField({
             alt=""
             style={{ height: previewHeight }}
             className="w-full object-cover"
-            onError={(e) => { (e.target as HTMLImageElement).style.display = "none"; }}
+            onError={(e) => {
+              (e.target as HTMLImageElement).style.display = "none";
+            }}
           />
           <button
             type="button"
@@ -83,7 +85,11 @@ export function ImageUploadField({
           className="shrink-0 px-2.5 py-1.5 border border-border/60 rounded-sm hover:bg-muted transition-colors disabled:opacity-50 text-muted-foreground text-xs flex items-center gap-1"
           title="Upload from computer"
         >
-          {uploading ? <Loader2 className="size-3.5 animate-spin" /> : <Upload className="size-3.5" />}
+          {uploading ? (
+            <Loader2 className="size-3.5 animate-spin" />
+          ) : (
+            <Upload className="size-3.5" />
+          )}
           {uploading ? "Uploading" : "Upload"}
         </button>
         <input

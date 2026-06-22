@@ -25,7 +25,7 @@ class FraudRepository:
     ) -> list[FraudSignal]:
         result = await db.execute(
             select(FraudSignal)
-            .where(FraudSignal.is_resolved == False)
+            .where(FraudSignal.is_resolved.is_(False))
             .order_by(FraudSignal.created_at.desc())
             .offset(offset)
             .limit(limit)

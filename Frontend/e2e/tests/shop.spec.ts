@@ -23,7 +23,9 @@ test.describe("Product Search", () => {
       await searchInput.fill("si");
       // Wait briefly for debounce
       await page.waitForTimeout(500);
-      const suggestions = page.locator('[role="listbox"], [class*="suggestion"], [class*="autocomplete"]');
+      const suggestions = page.locator(
+        '[role="listbox"], [class*="suggestion"], [class*="autocomplete"]',
+      );
       // Suggestions may or may not appear — just verify no JS errors
       await expect(page.locator("body")).not.toContainText("Uncaught");
     }
@@ -50,7 +52,7 @@ test.describe("Category Navigation", () => {
       const response = await page.goto(path);
       if (response && response.status() < 400) {
         const productItems = page.locator(
-          '[data-testid="product-card"], [class*="product-card"], [class*="ProductCard"]'
+          '[data-testid="product-card"], [class*="product-card"], [class*="ProductCard"]',
         );
         const count = await productItems.count();
         if (count > 0) {
@@ -70,7 +72,9 @@ test.describe("Product Details", () => {
 
     // Click the first product card
     const firstProduct = page
-      .locator('[data-testid="product-card"] a, [class*="product-card"] a, [class*="ProductCard"] a')
+      .locator(
+        '[data-testid="product-card"] a, [class*="product-card"] a, [class*="ProductCard"] a',
+      )
       .first();
 
     if (await firstProduct.isVisible({ timeout: 5_000 })) {
@@ -83,9 +87,7 @@ test.describe("Product Details", () => {
         .first();
       await expect(productName).toBeVisible({ timeout: 10_000 });
 
-      const price = page
-        .locator('[data-testid="product-price"], [class*="price"]')
-        .first();
+      const price = page.locator('[data-testid="product-price"], [class*="price"]').first();
       await expect(price).toBeVisible();
     }
   });
@@ -102,7 +104,9 @@ test.describe("Product Details", () => {
       await page.waitForLoadState("networkidle");
 
       const productImage = page
-        .locator('[data-testid="product-image"], [class*="product-image"] img, .product-gallery img')
+        .locator(
+          '[data-testid="product-image"], [class*="product-image"] img, .product-gallery img',
+        )
         .first();
       if (await productImage.isVisible({ timeout: 5_000 })) {
         await expect(productImage).toBeVisible();
@@ -140,7 +144,9 @@ test.describe("Wishlist", () => {
     await page.waitForLoadState("networkidle");
 
     const wishlistBtn = page
-      .locator('[data-testid="wishlist-btn"], [aria-label*="wishlist" i], [aria-label*="favourite" i]')
+      .locator(
+        '[data-testid="wishlist-btn"], [aria-label*="wishlist" i], [aria-label*="favourite" i]',
+      )
       .first();
     if (await wishlistBtn.isVisible({ timeout: 5_000 })) {
       await wishlistBtn.click();

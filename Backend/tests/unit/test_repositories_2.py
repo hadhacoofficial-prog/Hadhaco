@@ -121,7 +121,7 @@ class TestCMSRepository:
 
     async def test_create_banner(self):
         db = _db()
-        result = await self.repo.create_banner(db, name="sale", banner_type="hero", is_active=True)
+        await self.repo.create_banner(db, name="sale", banner_type="hero", is_active=True)
         db.add.assert_called_once()
         db.flush.assert_awaited_once()
 
@@ -157,7 +157,7 @@ class TestCMSRepository:
     async def test_update_page_sets_attrs(self):
         db = _db()
         page = MagicMock()
-        result = await self.repo.update_page(db, page, {"title": "New"})
+        await self.repo.update_page(db, page, {"title": "New"})
         assert page.title == "New"
 
     async def test_get_page_by_id_returns_none(self):
@@ -203,7 +203,7 @@ class TestNotificationRepository:
 
     async def test_create_log_adds_to_db(self):
         db = _db()
-        log = await self.repo.create_log(
+        await self.repo.create_log(
             db, event_type="order_confirmed", channel="email", user_id=uuid.uuid4()
         )
         db.add.assert_called_once()
@@ -251,13 +251,13 @@ class TestNotificationRepository:
 
     async def test_upsert_preferences_creates_new(self):
         db = _db(_scalar_one_or_none(None))
-        result = await self.repo.upsert_preferences(db, uuid.uuid4(), {"email_enabled": True})
+        await self.repo.upsert_preferences(db, uuid.uuid4(), {"email_enabled": True})
         db.add.assert_called_once()
 
     async def test_upsert_preferences_updates_existing(self):
         mock_pref = MagicMock()
         db = _db(_scalar_one_or_none(mock_pref))
-        result = await self.repo.upsert_preferences(db, uuid.uuid4(), {"email_enabled": False})
+        await self.repo.upsert_preferences(db, uuid.uuid4(), {"email_enabled": False})
         assert mock_pref.email_enabled is False
 
 
@@ -395,7 +395,7 @@ class TestCartRepository:
         db.add = MagicMock()
         db.flush = AsyncMock()
         db.refresh = AsyncMock()
-        result = await self.repo.create(db, user_id=None, session_id="session-xyz")
+        await self.repo.create(db, user_id=None, session_id="session-xyz")
         db.add.assert_called_once()
 
     async def test_upsert_item_creates_new_when_not_exists(self):

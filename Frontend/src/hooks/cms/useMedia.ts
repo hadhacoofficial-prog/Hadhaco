@@ -29,7 +29,15 @@ export function useMediaList(params: MediaListParams = {}) {
 export function useUploadMedia() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ file, folder, alt_text }: { file: File; folder?: string; alt_text?: string }) => {
+    mutationFn: ({
+      file,
+      folder,
+      alt_text,
+    }: {
+      file: File;
+      folder?: string;
+      alt_text?: string;
+    }) => {
       const fd = new FormData();
       fd.append("file", file);
       fd.append("folder", folder ?? "/");
@@ -45,8 +53,13 @@ export function useUploadMedia() {
 export function useUpdateMedia() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ id, payload }: { id: string; payload: { alt_text?: string; folder?: string; tags?: string[] } }) =>
-      api.patch<CmsMedia>(`/cms/admin/media/${id}`, { body: payload }),
+    mutationFn: ({
+      id,
+      payload,
+    }: {
+      id: string;
+      payload: { alt_text?: string; folder?: string; tags?: string[] };
+    }) => api.patch<CmsMedia>(`/cms/admin/media/${id}`, { body: payload }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["admin", "cms", "media"] });
     },

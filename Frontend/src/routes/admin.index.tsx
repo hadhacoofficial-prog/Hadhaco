@@ -4,7 +4,10 @@ import { TrendingUp, ShoppingBag, Users, Package, IndianRupee, AlertTriangle } f
 import { api } from "@/lib/api/client";
 import { queryKeys } from "@/lib/api/queryKeys";
 import { formatINR } from "@/lib/format";
-import { DashboardKPISkeleton, DashboardListSkeleton } from "@/components/loading/DashboardSkeleton";
+import {
+  DashboardKPISkeleton,
+  DashboardListSkeleton,
+} from "@/components/loading/DashboardSkeleton";
 import type { KPIStats, OrderListResponse, ProductListResponse } from "@/types/admin";
 
 export const Route = createFileRoute("/admin/")({

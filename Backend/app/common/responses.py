@@ -1,15 +1,13 @@
 from __future__ import annotations
 
-from typing import Any, Generic, TypeVar
+from typing import Any
 
 from pydantic import BaseModel
 
 from app.common.response_codes import ResponseCode
 
-T = TypeVar("T")
 
-
-class BaseSuccessResponse(BaseModel, Generic[T]):
+class BaseSuccessResponse[T](BaseModel):
     success: bool = True
     code: str
     message: str

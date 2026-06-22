@@ -69,7 +69,7 @@ class TestReviewRepositoryVotes:
 
     async def test_add_image(self):
         db = _db()
-        result = await self.repo.add_image(
+        await self.repo.add_image(
             db,
             review_id=uuid.uuid4(),
             url="https://cdn/img.jpg",
@@ -107,7 +107,7 @@ class TestReviewRepositoryVotes:
         update_result = MagicMock()
         db.execute = AsyncMock(side_effect=[none_result, count_result, update_result])
 
-        result = await self.repo.upsert_vote(
+        await self.repo.upsert_vote(
             db, review_id=uuid.uuid4(), user_id=uuid.uuid4(), is_helpful=True
         )
         db.add.assert_called_once()
@@ -125,7 +125,7 @@ class TestReviewRepositoryVotes:
         update_result = MagicMock()
         db.execute = AsyncMock(side_effect=[vote_result, count_result, update_result])
 
-        result = await self.repo.upsert_vote(
+        await self.repo.upsert_vote(
             db, review_id=uuid.uuid4(), user_id=uuid.uuid4(), is_helpful=True
         )
         assert mock_vote.is_helpful is True
@@ -186,7 +186,7 @@ class TestReviewService:
             patch.object(self.repo_cls, "get_by_id", AsyncMock(return_value=mock_review)),
             patch.object(self.repo_cls, "update", AsyncMock()) as mock_upd,
         ):
-            result = await self.svc.edit_review(
+            await self.svc.edit_review(
                 db,
                 review_id=uuid.uuid4(),
                 user_id=user_id,
@@ -413,7 +413,7 @@ class TestSupportService:
             patch.object(self.repo_cls, "add_message", AsyncMock(return_value=mock_msg)),
             patch.object(self.repo_cls, "update_ticket", AsyncMock()) as mock_upd,
         ):
-            result = await self.svc.reply(
+            await self.svc.reply(
                 db,
                 ticket_id=uuid.uuid4(),
                 sender_id=sender_id,
@@ -524,9 +524,7 @@ class TestWishlistService:
             ),
             patch("app.modules.wishlist.service._repo.add_item", AsyncMock()) as mock_add,
         ):
-            result = await self.svc.add(
-                db, uuid.uuid4(), AddToWishlistRequest(product_id=product_id)
-            )
+            await self.svc.add(db, uuid.uuid4(), AddToWishlistRequest(product_id=product_id))
         mock_add.assert_awaited_once()
 
     async def test_remove_calls_remove_item(self):
@@ -542,7 +540,7 @@ class TestWishlistService:
             ),
             patch("app.modules.wishlist.service._repo.remove_item", AsyncMock()) as mock_rm,
         ):
-            result = await self.svc.remove(db, uuid.uuid4(), product_id, None)
+            await self.svc.remove(db, uuid.uuid4(), product_id, None)
         mock_rm.assert_awaited_once()
 
     async def test_toggle_adds_when_not_in_wishlist(self):
@@ -613,9 +611,7 @@ class TestCouponRepositoryExtra:
 
     async def test_record_usage(self):
         db = _db()
-        result = await self.repo.record_usage(
-            db, uuid.uuid4(), uuid.uuid4(), 50.0, order_id=uuid.uuid4()
-        )
+        await self.repo.record_usage(db, uuid.uuid4(), uuid.uuid4(), 50.0, order_id=uuid.uuid4())
         db.add.assert_called_once()
 
     async def test_update_usage_order_id(self):

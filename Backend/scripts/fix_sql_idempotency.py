@@ -39,7 +39,6 @@ def fix_policies(text: str) -> str:
 
 def fix_triggers(text: str) -> str:
     out = []
-    pos = 0
     for m in re.finditer(r"^CREATE TRIGGER (\w+)", text, re.MULTILINE):
         # find the ON <table> within the statement (up to the terminating ;)
         stmt_end = text.find(";", m.start())

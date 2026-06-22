@@ -22,7 +22,7 @@ import type { OrderResponse, OrderListResponse } from "@/types/customer";
 
 export const Route = createFileRoute("/checkout_/success")({
   validateSearch: z.object({
-    order: z.string().optional(),   // human-readable order number
+    order: z.string().optional(), // human-readable order number
     orderId: z.string().optional(), // UUID — enables direct fetch without list scan
   }),
   head: () => ({ meta: [{ title: "Order Confirmed · Hadha" }] }),
@@ -56,9 +56,7 @@ function StatusBadge({ status }: { status: string }) {
           ? "bg-red-100 text-red-800"
           : "bg-secondary text-foreground";
   return (
-    <span
-      className={`inline-block text-[10px] uppercase tracking-[0.22em] px-3 py-1 ${cls}`}
-    >
+    <span className={`inline-block text-[10px] uppercase tracking-[0.22em] px-3 py-1 ${cls}`}>
       {status}
     </span>
   );
@@ -114,7 +112,9 @@ function OrderTimeline({ status }: { status: string }) {
                 )}
               </div>
               <div className="pt-0.5">
-                <p className={`text-sm font-medium ${done ? "text-foreground" : "text-muted-foreground"}`}>
+                <p
+                  className={`text-sm font-medium ${done ? "text-foreground" : "text-muted-foreground"}`}
+                >
                   {step.label}
                 </p>
                 <p className="text-xs text-muted-foreground">{step.sub}</p>
@@ -362,9 +362,7 @@ function SuccessContent({ order }: { order: OrderResponse }) {
                 <p className="text-xs text-muted-foreground mt-0.5">
                   Qty {item.quantity} · SKU {item.product_sku}
                   {item.quantity > 1 && (
-                    <span className="ml-1">
-                      ({formatINR(item.unit_price)} each)
-                    </span>
+                    <span className="ml-1">({formatINR(item.unit_price)} each)</span>
                   )}
                 </p>
               </div>
@@ -491,7 +489,12 @@ function SuccessPage() {
 
   const fetchKey = orderId ?? orderNumber ?? "";
 
-  const { data: order, isLoading, isError, refetch } = useQuery({
+  const {
+    data: order,
+    isLoading,
+    isError,
+    refetch,
+  } = useQuery({
     queryKey: queryKeys.orders.detail(fetchKey),
     queryFn: async (): Promise<OrderResponse> => {
       // Fast path: UUID is in the URL (set by checkout verify-payment flow)

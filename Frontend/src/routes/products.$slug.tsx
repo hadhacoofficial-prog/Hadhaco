@@ -279,7 +279,9 @@ function ProductPage() {
             </p>
           )}
           {hasVariants && displayInStock === null && (
-            <p className="text-sm mt-2 text-muted-foreground">Select a variant to check availability</p>
+            <p className="text-sm mt-2 text-muted-foreground">
+              Select a variant to check availability
+            </p>
           )}
 
           <p className="mt-6 text-sm text-foreground/80 leading-relaxed">

@@ -89,7 +89,7 @@ class Product(Base):
     deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     # Relationships
-    category: Mapped["app.modules.categories.models.Category | None"] = relationship(
+    category: Mapped["Category | None"] = relationship(  # noqa: F821
         "Category", foreign_keys=[category_id], lazy="select"
     )
     variants: Mapped[list["ProductVariant"]] = relationship(

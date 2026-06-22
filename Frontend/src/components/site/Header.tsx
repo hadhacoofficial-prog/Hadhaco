@@ -33,10 +33,10 @@ interface GenderTab {
 
 // Fixed parent categories — always rendered even if no subcategories exist.
 const GENDER_TABS: GenderTab[] = [
-  { key: "women",  label: "Shop Women"  },
-  { key: "men",    label: "Shop Men"    },
+  { key: "women", label: "Shop Women" },
+  { key: "men", label: "Shop Men" },
   { key: "unisex", label: "Shop Unisex" },
-  { key: "kids",   label: "Shop Kids"   },
+  { key: "kids", label: "Shop Kids" },
 ];
 
 // ─── Header ───────────────────────────────────────────────────────────────────
@@ -46,9 +46,9 @@ export function Header() {
   const [mobileOpen, setMobileOpen] = useState(false);
 
   const openSearch = useUi((s) => s.openSearch);
-  const cartCount  = useCart((s) => s.lines.reduce((n, l) => n + l.qty, 0));
-  const openCart   = useCart((s) => s.open);
-  const wishCount  = useWishlist((s) => s.items.length);
+  const cartCount = useCart((s) => s.lines.reduce((n, l) => n + l.qty, 0));
+  const openCart = useCart((s) => s.open);
+  const wishCount = useWishlist((s) => s.items.length);
   const { isAuthenticated: isAuthed } = useAuthContext();
 
   const { data, isFetching, isError, isPlaceholderData } = useNavigationCategories();

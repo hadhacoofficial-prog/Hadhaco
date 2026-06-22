@@ -45,7 +45,14 @@ export function ProductCard({ p }: { p: Product }) {
             aria-label="Wishlist"
             onClick={(e) => {
               e.preventDefault();
-              toggleWishlist({ id: p.id, slug: p.slug, name: p.name, image: p.image, price: p.price, sku: p.sku });
+              toggleWishlist({
+                id: p.id,
+                slug: p.slug,
+                name: p.name,
+                image: p.image,
+                price: p.price,
+                sku: p.sku,
+              });
             }}
             className={`size-9 rounded-full bg-background/90 backdrop-blur flex items-center justify-center transition-all hover:text-accent shadow-sm ${wished ? "opacity-100 text-accent" : "opacity-0 -translate-y-1 group-hover:opacity-100 group-hover:translate-y-0"}`}
           >
@@ -61,7 +68,13 @@ export function ProductCard({ p }: { p: Product }) {
         <button
           onClick={(e) => {
             e.preventDefault();
-            add(p.id, 1, { name: p.name, image: p.image, slug: p.slug, sku: p.sku, price: p.price });
+            add(p.id, 1, {
+              name: p.name,
+              image: p.image,
+              slug: p.slug,
+              sku: p.sku,
+              price: p.price,
+            });
           }}
           className="absolute bottom-0 left-0 right-0 bg-primary text-primary-foreground text-[11px] tracking-[0.24em] uppercase py-3.5 flex items-center justify-center gap-2 translate-y-full group-hover:translate-y-0 transition-transform duration-500 font-cinzel"
         >
