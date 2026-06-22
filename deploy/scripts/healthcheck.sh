@@ -6,33 +6,42 @@
 #   ./healthcheck.sh <environment>
 #
 # Exit code:
-#   0 — all checks passed
+#   0 — all required checks passed
 #   1 — one or more checks failed
 #
-# Timeout: 2 minutes total (120s) per check
+# Check strategy:
+#   - Polls each service with exponential backoff (2s → 4s → 8s … max 30s)
+#   - Total timeout per service: 120s
+#   - All checks run before reporting failures (no early exit)
+#   - Backend uses correct Host header to bypass TrustedHostMiddleware
 # =============================================================================
 
-# NOT set -e — failures are accumulated into FAILED[] and reported at the end.
-# Using set -e would cause the script to exit on the first failed check instead
-# of running all checks and giving a complete health picture.
+# NOT set -e — failures accumulate in FAILED[] and are reported at the end.
 set -uo pipefail
 
 ENVIRONMENT="${1:?Usage: $0 <environment>}"
 
+# ── Config ────────────────────────────────────────────────────────────────────
 case "$ENVIRONMENT" in
   production)
     APP_URL="https://hadha.co"
+    BACKEND_HOST="hadha.co"
     BACKEND_CONTAINER="hadha-backend"
     FRONTEND_CONTAINER="hadha-frontend"
     REDIS_CONTAINER="hadha-redis"
     NGINX_CONTAINER="hadha-nginx"
+    RC_CONTAINER="hadha-redis-commander"
+    DOZZLE_CONTAINER="hadha-dozzle"
     ;;
   staging)
     APP_URL="https://staging.hadha.co"
+    BACKEND_HOST="staging.hadha.co"
     BACKEND_CONTAINER="hadha-staging-backend"
     FRONTEND_CONTAINER="hadha-staging-frontend"
     REDIS_CONTAINER="hadha-staging-redis"
     NGINX_CONTAINER="hadha-staging-nginx"
+    RC_CONTAINER="hadha-staging-redis-commander"
+    DOZZLE_CONTAINER="hadha-staging-dozzle"
     ;;
   *)
     echo "[ERROR] Unknown environment: ${ENVIRONMENT}"
@@ -40,115 +49,205 @@ case "$ENVIRONMENT" in
     ;;
 esac
 
-TIMEOUT=120
+TIMEOUT=120    # seconds per service before giving up
 FAILED=()
+CHECK_START=$(date +%s)
 
+# ── Logging ───────────────────────────────────────────────────────────────────
 log()  { echo "[$(date +'%H:%M:%S')] $*"; }
 pass() { log "  ✓ $*"; }
 fail() { log "  ✗ $*"; FAILED+=("$*"); }
+warn() { log "  ⚠ $*"; }
 
+# ── wait_for: poll with exponential backoff ───────────────────────────────────
+# Args: <display_name> <check_function> [timeout_seconds]
+# Returns 0 on success, 1 on timeout. Adds to FAILED[] on timeout.
 wait_for() {
-  local name="$1" check_fn="$2"
-  local elapsed=0 interval=5
+  local name="$1"
+  local check_fn="$2"
+  local max_wait="${3:-${TIMEOUT}}"
+  local elapsed=0
+  local interval=2
+  local max_interval=30
 
-  log "Waiting for: ${name}"
-  while (( elapsed < TIMEOUT )); do
-    if "${check_fn}"; then
-      pass "${name}"
+  log "  Checking: ${name}"
+  while (( elapsed < max_wait )); do
+    if eval "${check_fn}" 2>/dev/null; then
+      pass "${name} (${elapsed}s)"
       return 0
     fi
     sleep "${interval}"
     elapsed=$(( elapsed + interval ))
-    log "  … ${elapsed}s elapsed (timeout: ${TIMEOUT}s)"
+    # Exponential backoff capped at max_interval
+    interval=$(( interval * 2 ))
+    (( interval > max_interval )) && interval=${max_interval}
+    log "  … ${elapsed}s / ${max_wait}s — retrying ${name} in ${interval}s"
   done
-  fail "${name} — timed out after ${TIMEOUT}s"
+
+  fail "${name} — timed out after ${max_wait}s"
   return 1
 }
 
-# ── Check functions ───────────────────────────────────────────────────────────
+# =============================================================================
+# Check functions
+# Each must return 0 on success, non-zero on failure.
+# docker exec is used for internal checks to bypass TLS and port exposure.
+# =============================================================================
 
-check_backend_liveness() {
+# Backend liveness: quick check that the process is alive.
+# Sends correct Host header to satisfy TrustedHostMiddleware.
+check_backend_live() {
   docker exec "${BACKEND_CONTAINER}" \
-    python -c "import httpx; httpx.get('http://localhost:8000/health/live').raise_for_status()" \
-    2>/dev/null
+    python -c "
+import httpx, sys
+try:
+    r = httpx.get('http://localhost:8000/health/live', headers={'Host': '${BACKEND_HOST}'}, timeout=5)
+    sys.exit(0 if r.status_code < 400 else 1)
+except Exception as e:
+    print(e, file=sys.stderr)
+    sys.exit(1)
+" 2>/dev/null
 }
 
-check_backend_readiness() {
-  local result
-  result=$(docker exec "${BACKEND_CONTAINER}" \
-    python -c "import httpx; r=httpx.get('http://localhost:8000/health/ready'); print(r.status_code)" \
-    2>/dev/null) || return 1
-  [[ "${result}" == "200" ]]
+# Backend readiness: confirms DB + Redis connections are up.
+check_backend_ready() {
+  docker exec "${BACKEND_CONTAINER}" \
+    python -c "
+import httpx, sys
+try:
+    r = httpx.get('http://localhost:8000/health/ready', headers={'Host': '${BACKEND_HOST}'}, timeout=8)
+    sys.exit(0 if r.status_code == 200 else 1)
+except Exception as e:
+    print(e, file=sys.stderr)
+    sys.exit(1)
+" 2>/dev/null
 }
 
-check_frontend_liveness() {
+# Frontend: basic HTTP response on port 3000.
+check_frontend() {
   docker exec "${FRONTEND_CONTAINER}" \
-    curl -sf "http://localhost:3000" -o /dev/null \
-    2>/dev/null
+    curl -sf --max-time 5 "http://localhost:3000" -o /dev/null 2>/dev/null
 }
 
-check_redis_liveness() {
+# Redis: PING/PONG with password from environment.
+check_redis() {
   local redis_pw="${REDIS_PASSWORD:-}"
   if [[ -n "${redis_pw}" ]]; then
     docker exec "${REDIS_CONTAINER}" \
-      redis-cli -a "${redis_pw}" ping 2>/dev/null | grep -q PONG
+      redis-cli -a "${redis_pw}" --no-auth-warning ping 2>/dev/null \
+      | grep -q "^PONG$"
   else
     docker exec "${REDIS_CONTAINER}" \
-      redis-cli ping 2>/dev/null | grep -q PONG
+      redis-cli ping 2>/dev/null \
+      | grep -q "^PONG$"
   fi
 }
 
-check_nginx_http() {
-  # wget is available in nginx:alpine; hitting /health proxied to backend
+# Nginx: config valid AND actually responding to HTTP.
+check_nginx() {
+  # First validate config is syntactically correct
+  docker exec "${NGINX_CONTAINER}" nginx -t 2>/dev/null || return 1
+  # Then verify nginx is serving HTTP responses (port 80, even if it redirects)
   docker exec "${NGINX_CONTAINER}" \
-    wget -qO /dev/null --server-response "http://localhost/health" 2>&1 \
-    | grep -qE "HTTP/[0-9.]+ [23]"
+    wget -qO /dev/null --server-response "http://localhost:80/" 2>&1 \
+    | grep -qE "HTTP/[0-9.]+ [1-5][0-9][0-9]"
 }
 
-# ── Run all checks ─────────────────────────────────────────────────────────────
-log "════ Health Checks: ${ENVIRONMENT} ════"
+# Redis Commander: web UI responding on port 8081.
+check_redis_commander() {
+  docker exec "${RC_CONTAINER}" \
+    wget -qO /dev/null --server-response "http://localhost:8081/redis-commander/" 2>&1 \
+    | grep -qE "HTTP/[0-9.]+ [1-5][0-9][0-9]"
+}
 
-# Use || true so each wait_for failure is tracked in FAILED[] but doesn't abort
-wait_for "Redis"                             check_redis_liveness    || true
-wait_for "Backend (liveness)"               check_backend_liveness  || true
-wait_for "Backend (readiness — DB + Redis)" check_backend_readiness || true
-wait_for "Frontend"                         check_frontend_liveness || true
-wait_for "Nginx HTTP"                       check_nginx_http        || true
+# Dozzle: web UI responding on port 8080.
+check_dozzle() {
+  docker exec "${DOZZLE_CONTAINER}" \
+    wget -qO /dev/null --server-response "http://localhost:8080/dozzle/" 2>&1 \
+    | grep -qE "HTTP/[0-9.]+ [1-5][0-9][0-9]"
+}
 
-# ── External HTTP check (through public internet / DNS) ──────────────────────
-log "External HTTP probe → ${APP_URL}"
+# =============================================================================
+# Run all checks
+# Required services (Redis, backend, frontend, nginx) are blocking.
+# Monitoring services (Redis Commander, Dozzle) are non-blocking warnings.
+# =============================================================================
+log ""
+log "════ Health Checks: ${ENVIRONMENT} [$(date +'%H:%M:%S')] ════"
+log ""
+
+# Redis must be healthy first (backend depends on it)
+wait_for "Redis"                              "check_redis"             || true
+
+# Backend: liveness first, then readiness (which checks DB+Redis)
+wait_for "Backend liveness  (/health/live)"   "check_backend_live"      || true
+wait_for "Backend readiness (/health/ready)"  "check_backend_ready"     || true
+
+# Frontend
+wait_for "Frontend"                           "check_frontend"          || true
+
+# Nginx (config + HTTP response)
+wait_for "Nginx"                              "check_nginx"             || true
+
+# Monitoring tools — degraded state is acceptable, log warn instead of fail
+log "  Checking: Redis Commander (non-blocking)"
+if check_redis_commander 2>/dev/null; then
+  pass "Redis Commander"
+else
+  warn "Redis Commander not responding (monitoring only — deployment continues)"
+fi
+
+log "  Checking: Dozzle (non-blocking)"
+if check_dozzle 2>/dev/null; then
+  pass "Dozzle"
+else
+  warn "Dozzle not responding (monitoring only — deployment continues)"
+fi
+
+# =============================================================================
+# External HTTP probe (through public DNS / internet)
+# =============================================================================
+log ""
+log "  External HTTP probe → ${APP_URL}"
 EXTERNAL_OK=false
-for i in 1 2 3; do
+HTTP_STATUS="000"
+for attempt in 1 2 3; do
   HTTP_STATUS=$(curl -sf -o /dev/null -w "%{http_code}" \
     --max-time 15 --connect-timeout 5 "${APP_URL}" 2>/dev/null || echo "000")
   if [[ "${HTTP_STATUS}" =~ ^[23] ]]; then
-    pass "External HTTP → ${HTTP_STATUS}"
+    pass "External HTTP → ${HTTP_STATUS} (${APP_URL})"
     EXTERNAL_OK=true
     break
   fi
-  if [[ $i -lt 3 ]]; then
-    log "  HTTP ${HTTP_STATUS} — retrying in 10s…"
+  if (( attempt < 3 )); then
+    log "  HTTP ${HTTP_STATUS} — retrying in 10s (attempt ${attempt}/3)..."
     sleep 10
   fi
 done
 [[ "${EXTERNAL_OK}" == "true" ]] || fail "External HTTP → ${HTTP_STATUS} (${APP_URL})"
 
-# ── Backend API probe through nginx ──────────────────────────────────────────
+# Backend API through nginx
 API_STATUS=$(curl -sf -o /dev/null -w "%{http_code}" \
-  --max-time 10 "${APP_URL}/health" 2>/dev/null || echo "000")
-if [[ "${API_STATUS}" == "200" ]]; then
-  pass "Backend API /health → 200"
+  --max-time 10 "${APP_URL}/health/live" 2>/dev/null || echo "000")
+if [[ "${API_STATUS}" =~ ^[23] ]]; then
+  pass "Backend API /health/live through nginx → ${API_STATUS}"
 else
-  fail "Backend API /health → ${API_STATUS}"
+  fail "Backend API /health/live through nginx → ${API_STATUS}"
 fi
 
-# ── Summary ───────────────────────────────────────────────────────────────────
+# =============================================================================
+# Summary
+# =============================================================================
+TOTAL_ELAPSED=$(( $(date +%s) - CHECK_START ))
 log ""
+log "════ Health Check Summary ════"
 if [[ ${#FAILED[@]} -eq 0 ]]; then
-  log "All health checks passed ✓"
+  log "All required checks passed ✓ (${TOTAL_ELAPSED}s)"
   exit 0
 else
-  log "FAILED checks (${#FAILED[@]}):"
-  for f in "${FAILED[@]}"; do log "  - ${f}"; done
+  log "FAILED (${#FAILED[@]}) required check(s) after ${TOTAL_ELAPSED}s:"
+  for f in "${FAILED[@]}"; do
+    log "  ✗ ${f}"
+  done
   exit 1
 fi

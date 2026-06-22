@@ -2,15 +2,16 @@
 # =============================================================================
 # rollback.sh — Restore the previous deployment
 #
-# Usage:
-#   ./rollback.sh <environment> [previous_backend_image] [previous_frontend_image]
+# Called automatically by deploy.sh on failure, or manually for emergencies.
 #
-# When called from deploy.sh, the previous images are passed as arguments.
-# When called manually for emergency rollback, omit image arguments and the
-# script will restore from the most recent backup metadata.
+# Usage (from deploy.sh — images passed as args):
+#   ./rollback.sh <environment> <prev_backend_image> <prev_frontend_image>
+#
+# Usage (manual emergency — reads images from disk):
+#   ./rollback.sh <environment>
 # =============================================================================
 
-set -euo pipefail
+set -uo pipefail
 
 ENVIRONMENT="${1:?Usage: $0 <environment> [prev_backend_image] [prev_frontend_image]}"
 PREV_BACKEND="${2:-}"
@@ -19,12 +20,16 @@ PREV_FRONTEND="${3:-}"
 # ── Config ────────────────────────────────────────────────────────────────────
 case "$ENVIRONMENT" in
   production)
-    DEPLOY_DIR="/opt/hadha"
-    COMPOSE_FILE="${DEPLOY_DIR}/docker-compose.production.yml"
+    APP_DIR="/opt/hadha"
+    COMPOSE_FILE="${APP_DIR}/docker-compose.production.yml"
+    ENV_FILE="${APP_DIR}/.env.production"
+    APP_URL="https://hadha.co"
     ;;
   staging)
-    DEPLOY_DIR="/opt/hadha-staging"
-    COMPOSE_FILE="${DEPLOY_DIR}/docker-compose.staging.yml"
+    APP_DIR="/opt/hadha-staging"
+    COMPOSE_FILE="${APP_DIR}/docker-compose.staging.yml"
+    ENV_FILE="${APP_DIR}/.env.staging"
+    APP_URL="https://staging.hadha.co"
     ;;
   *)
     echo "[ERROR] Unknown environment: ${ENVIRONMENT}"
@@ -32,57 +37,101 @@ case "$ENVIRONMENT" in
     ;;
 esac
 
-BACKUP_DIR="${DEPLOY_DIR}/backups"
-LOG_FILE="${DEPLOY_DIR}/rollback.log"
-SCRIPTS_DIR="${DEPLOY_DIR}/scripts"
+BACKUP_DIR="${APP_DIR}/backups"
+LOG_FILE="${APP_DIR}/rollback.log"
+SCRIPTS_DIR="${APP_DIR}/scripts"
+PREVIOUS_IMAGES_FILE="${APP_DIR}/.previous_images"
+ROLLBACK_START=$(date +%s)
 
 log() { echo "[$(date +'%Y-%m-%dT%H:%M:%S%z')] $*" | tee -a "${LOG_FILE}"; }
 die() { log "[FATAL] $*"; exit 1; }
 
-log "════ ROLLBACK INITIATED ════"
-log "Environment: ${ENVIRONMENT}"
+# ── Compose wrapper ───────────────────────────────────────────────────────────
+# Every docker compose call must include --env-file and -f.
+dc() {
+  docker compose \
+    --env-file "${ENV_FILE}" \
+    -f "${COMPOSE_FILE}" \
+    "$@"
+}
 
-# ── Resolve previous images from backup metadata if not passed ────────────────
+log ""
+log "════ ROLLBACK INITIATED ════"
+log "Environment : ${ENVIRONMENT}"
+log "Started at  : $(date +'%Y-%m-%dT%H:%M:%S%z')"
+
+# ── Resolve previous images ───────────────────────────────────────────────────
+# Priority order:
+#   1. Arguments passed by deploy.sh (most reliable — live state at failure time)
+#   2. Disk file (.previous_images) — persists across reboots and container restarts
+#   3. Most recent backup metadata JSON — last resort
 if [[ -z "${PREV_BACKEND}" ]] || [[ -z "${PREV_FRONTEND}" ]]; then
-  log "No image args — reading from most recent backup metadata"
-  LATEST_META=$(ls -t "${BACKUP_DIR}"/metadata_*.json 2>/dev/null | head -1 || echo "")
-  if [[ -z "${LATEST_META}" ]]; then
-    die "No backup metadata found in ${BACKUP_DIR} and no image arguments provided"
+  log "No image arguments provided — reading previous images from disk"
+
+  if [[ -f "${PREVIOUS_IMAGES_FILE}" ]]; then
+    PREV_BACKEND=$(jq -r '.backend_image // empty'  "${PREVIOUS_IMAGES_FILE}" 2>/dev/null || echo "")
+    PREV_FRONTEND=$(jq -r '.frontend_image // empty' "${PREVIOUS_IMAGES_FILE}" 2>/dev/null || echo "")
+    [[ -n "${PREV_BACKEND}" ]] && log "Previous images loaded from ${PREVIOUS_IMAGES_FILE}"
   fi
-  log "Using metadata: ${LATEST_META}"
-  # Fix: || echo "" (not || "") — bash subshell must produce output, not evaluate a string
-  PREV_BACKEND=$(python3  -c "import json; d=json.load(open('${LATEST_META}')); print(d['backend_image'])"  2>/dev/null || echo "")
-  PREV_FRONTEND=$(python3 -c "import json; d=json.load(open('${LATEST_META}')); print(d['frontend_image'])" 2>/dev/null || echo "")
+
+  # Fallback to backup metadata
+  if [[ -z "${PREV_BACKEND}" ]]; then
+    log "Disk file not available — trying backup metadata"
+    LATEST_META=$(ls -t "${BACKUP_DIR}"/metadata_*.json 2>/dev/null | head -1 || echo "")
+    if [[ -n "${LATEST_META}" ]]; then
+      log "Using metadata: ${LATEST_META}"
+      PREV_BACKEND=$(jq -r '.backend_image // empty'  "${LATEST_META}" 2>/dev/null || echo "")
+      PREV_FRONTEND=$(jq -r '.frontend_image // empty' "${LATEST_META}" 2>/dev/null || echo "")
+    fi
+  fi
 fi
 
-[[ -n "${PREV_BACKEND}"  ]] || die "Cannot determine previous backend image for rollback"
-[[ -n "${PREV_FRONTEND}" ]] || die "Cannot determine previous frontend image for rollback"
+[[ -n "${PREV_BACKEND}"  ]] || die "Cannot determine previous backend image for rollback. No disk file or backup metadata found."
+[[ -n "${PREV_FRONTEND}" ]] || die "Cannot determine previous frontend image for rollback. No disk file or backup metadata found."
 
 log "Rolling back to:"
 log "  Backend  → ${PREV_BACKEND}"
 log "  Frontend → ${PREV_FRONTEND}"
 
-# ── Pull previous images (they should already be cached locally) ──────────────
-log "Pulling previous images..."
-docker pull "${PREV_BACKEND}"  || log "[WARN] Could not pull ${PREV_BACKEND} — using local cache"
-docker pull "${PREV_FRONTEND}" || log "[WARN] Could not pull ${PREV_FRONTEND} — using local cache"
+# ── Validate env file exists ──────────────────────────────────────────────────
+[[ -f "${ENV_FILE}" ]] || die "Env file not found: ${ENV_FILE}"
 
-# ── Restart with previous images ─────────────────────────────────────────────
-log "Restarting containers with previous images..."
+# ── Pull previous images ──────────────────────────────────────────────────────
+# Images should already be cached locally from the previous deployment,
+# but we attempt a pull in case this is running on a new node or after prune.
+log "Pulling previous images (will use local cache if pull fails)..."
+docker pull "${PREV_BACKEND}"  2>&1 || log "[WARN] Pull failed for ${PREV_BACKEND} — using local cache"
+docker pull "${PREV_FRONTEND}" 2>&1 || log "[WARN] Pull failed for ${PREV_FRONTEND} — using local cache"
+
+# Verify images are available locally
+docker image inspect "${PREV_BACKEND}"  >/dev/null 2>&1 \
+  || die "Previous backend image not available locally: ${PREV_BACKEND}"
+docker image inspect "${PREV_FRONTEND}" >/dev/null 2>&1 \
+  || die "Previous frontend image not available locally: ${PREV_FRONTEND}"
+
+# ── Export for compose interpolation ─────────────────────────────────────────
 export BACKEND_IMAGE="${PREV_BACKEND}"
 export FRONTEND_IMAGE="${PREV_FRONTEND}"
 export REDIS_PASSWORD="${REDIS_PASSWORD:-}"
 
-docker compose -f "${COMPOSE_FILE}" up -d --remove-orphans --pull never \
-  || die "Failed to restart containers during rollback"
+# ── Restart with previous images ──────────────────────────────────────────────
+# --pull never: images were verified above; skip redundant pull inside compose.
+# --remove-orphans: remove containers from the failed new deployment.
+# NOTE: Redis volume, nginx config, and Docker network are NOT touched.
+log "Restarting containers with previous images..."
+if ! dc up -d --remove-orphans --pull never 2>&1 | tee -a "${LOG_FILE}"; then
+  die "Failed to restart containers during rollback — manual intervention required"
+fi
 
 # ── Health check after rollback ───────────────────────────────────────────────
-log "Running health checks on rolled-back deployment..."
+log "Waiting for services to initialize before health check..."
 sleep 15
 
-if "${SCRIPTS_DIR}/healthcheck.sh" "${ENVIRONMENT}"; then
-  log "Rollback successful — deployment is healthy"
+log "Running health checks on rolled-back deployment..."
+if "${SCRIPTS_DIR}/healthcheck.sh" "${ENVIRONMENT}" 2>&1 | tee -a "${LOG_FILE}"; then
+  ROLLBACK_END=$(date +%s)
+  log "Rollback succeeded in $(( ROLLBACK_END - ROLLBACK_START ))s — deployment is healthy"
   exit 0
 else
-  die "Rollback health check failed — manual intervention required"
+  die "Rollback health check failed — manual intervention required. Previous images: ${PREV_BACKEND} / ${PREV_FRONTEND}"
 fi
