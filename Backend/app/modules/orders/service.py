@@ -25,6 +25,7 @@ from app.modules.orders.schemas import (
     CreateOrderRequest,
     CreatePaymentIntentRequest,
     CreatePaymentIntentResponse,
+    OrderListItem,
     OrderListResponse,
     OrderResponse,
     UpdateOrderStatusRequest,
@@ -233,7 +234,8 @@ class OrderService:
             )
         )
 
-        order = await _repo.get_by_id(db, order.id)
+        order = await _repo.get_by_id(db, order.id)  # type: ignore[assignment]
+        assert order is not None
         return OrderResponse.model_validate(order)
 
     async def get_order(
@@ -258,19 +260,18 @@ class OrderService:
         items, total = await _repo.list_for_user(
             db, user_id, page=page, page_size=page_size, status=status
         )
-        list_items = []
-        for o in items:
-            list_items.append(
-                {
-                    "id": o.id,
-                    "order_number": o.order_number,
-                    "status": o.status,
-                    "payment_status": o.payment_status,
-                    "total": float(o.total),
-                    "item_count": getattr(o, "_item_count", 0),
-                    "created_at": o.created_at,
-                }
+        list_items = [
+            OrderListItem(
+                id=o.id,
+                order_number=o.order_number,
+                status=o.status,
+                payment_status=o.payment_status,
+                total=float(o.total),
+                item_count=getattr(o, "_item_count", 0),
+                created_at=o.created_at,
             )
+            for o in items
+        ]
         return OrderListResponse(
             items=list_items,
             total=total,
@@ -300,15 +301,15 @@ class OrderService:
             search=search,
         )
         list_items = [
-            {
-                "id": o.id,
-                "order_number": o.order_number,
-                "status": o.status,
-                "payment_status": o.payment_status,
-                "total": float(o.total),
-                "item_count": getattr(o, "_item_count", 0),
-                "created_at": o.created_at,
-            }
+            OrderListItem(
+                id=o.id,
+                order_number=o.order_number,
+                status=o.status,
+                payment_status=o.payment_status,
+                total=float(o.total),
+                item_count=getattr(o, "_item_count", 0),
+                created_at=o.created_at,
+            )
             for o in items
         ]
         return OrderListResponse(

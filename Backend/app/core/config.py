@@ -259,7 +259,7 @@ def validate_required_settings(s: Settings) -> None:
 
 @lru_cache
 def get_settings() -> Settings:
-    return Settings()
+    return Settings()  # type: ignore[call-arg]
 
 
 settings = get_settings()

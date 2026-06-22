@@ -111,7 +111,8 @@ class CartService:
             unit_price,
         )
         # Reload with fresh items
-        cart = await _repo.get_by_id(db, cart.id)
+        cart = await _repo.get_by_id(db, cart.id)  # type: ignore[assignment]
+        assert cart is not None
         return _build_summary(cart)
 
     async def update_item(
@@ -134,6 +135,7 @@ class CartService:
 
         await _repo.update_item_quantity(db, item_id, payload.quantity)
         cart = await _repo.get_by_id(db, cart_id)
+        assert cart is not None
         return _build_summary(cart)
 
     async def remove_item(
@@ -151,6 +153,7 @@ class CartService:
 
         await _repo.remove_item(db, item_id)
         cart = await _repo.get_by_id(db, cart_id)
+        assert cart is not None
         return _build_summary(cart)
 
     async def clear(
@@ -162,7 +165,8 @@ class CartService:
         cart = await self._get_or_create(db, user_id, session_id)
         await _repo.clear_items(db, cart.id)
         await _repo.update_cart(db, cart.id, {"coupon_code": None, "discount": 0})
-        cart = await _repo.get_by_id(db, cart.id)
+        cart = await _repo.get_by_id(db, cart.id)  # type: ignore[assignment]
+        assert cart is not None
         return _build_summary(cart)
 
     async def merge_guest_cart(
@@ -181,7 +185,9 @@ class CartService:
             user_cart = await _repo.create(db, user_id, None)
             # reload with items
             user_cart = await _repo.get_by_id(db, user_cart.id)
+            assert user_cart is not None
 
         await _repo.merge_guest_into_user(db, guest_cart, user_cart)
         user_cart = await _repo.get_by_id(db, user_cart.id)
+        assert user_cart is not None
         return _build_summary(user_cart)

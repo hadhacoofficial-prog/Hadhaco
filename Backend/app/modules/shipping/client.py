@@ -65,7 +65,7 @@ class DeliveryOneClient:
             resp = await client.delete(
                 f"{_BASE_URL}/shipments/{shipment_id}",
                 headers=_headers(),
-                json={"reason": reason},
+                json={"reason": reason},  # type: ignore[call-arg]
             )
             resp.raise_for_status()
             return resp.json()

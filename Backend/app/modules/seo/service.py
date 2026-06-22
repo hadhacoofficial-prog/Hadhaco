@@ -38,7 +38,9 @@ class SeoService:
             ),
             data,
         )
-        return dict(result.fetchone()._mapping)
+        row = result.fetchone()
+        assert row is not None
+        return dict(row._mapping)
 
     async def get_redirect(self, db: AsyncSession, from_path: str) -> str | None:
         result = await db.execute(

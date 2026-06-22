@@ -9,6 +9,7 @@ from app.modules.catalog.repository import ProductRepository
 from app.modules.catalog.schemas import (
     ProductAttributeCreateRequest,
     ProductCreateRequest,
+    ProductListItem,
     ProductListResponse,
     ProductResponse,
     ProductUpdateRequest,
@@ -78,25 +79,26 @@ class CatalogService:
             primary_img = next((img.url for img in p.images if img.is_primary), None)
             if primary_img is None and p.images:
                 primary_img = p.images[0].url
-            item_dict = {
-                "id": p.id,
-                "sku": p.sku,
-                "name": p.name,
-                "slug": p.slug,
-                "short_description": p.short_description,
-                "category_id": p.category_id,
-                "metal_type": p.metal_type,
-                "base_price": p.base_price,
-                "compare_at_price": p.compare_at_price,
-                "stock_quantity": p.stock_quantity,
-                "status": p.status,
-                "is_featured": p.is_featured,
-                "is_new_arrival": p.is_new_arrival,
-                "is_best_seller": p.is_best_seller,
-                "created_at": p.created_at,
-                "primary_image": primary_img,
-            }
-            list_items.append(item_dict)
+            list_items.append(
+                ProductListItem(
+                    id=p.id,
+                    sku=p.sku,
+                    name=p.name,
+                    slug=p.slug,
+                    short_description=p.short_description,
+                    category_id=p.category_id,
+                    metal_type=p.metal_type,
+                    base_price=p.base_price,
+                    compare_at_price=p.compare_at_price,
+                    stock_quantity=p.stock_quantity,
+                    status=p.status,
+                    is_featured=p.is_featured,
+                    is_new_arrival=p.is_new_arrival,
+                    is_best_seller=p.is_best_seller,
+                    created_at=p.created_at,
+                    primary_image=primary_img,
+                )
+            )
 
         return ProductListResponse(
             items=list_items,
@@ -134,7 +136,8 @@ class CatalogService:
             await _repo.upsert_attribute(db, product.id, a.name, a.value, a.sort_order)
 
         # Reload with relations
-        product = await _repo.get_by_id(db, product.id)
+        product = await _repo.get_by_id(db, product.id)  # type: ignore[assignment]
+        assert product is not None
         return ProductResponse.model_validate(product)
 
     async def update(

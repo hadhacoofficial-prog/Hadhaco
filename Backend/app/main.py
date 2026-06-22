@@ -7,7 +7,7 @@ from fastapi.middleware.trustedhost import TrustedHostMiddleware
 from app.core.config import settings, validate_required_settings
 from app.core.exceptions import register_exception_handlers
 from app.core.logging import configure_logging
-from app.core.redis import close_redis
+from app.core.redis import close_redis, get_redis_pool
 from app.middleware.audit_middleware import AuditMiddleware
 from app.middleware.logging import RequestLoggingMiddleware
 from app.middleware.request_id import RequestIDMiddleware
@@ -185,11 +185,10 @@ def _mount_routers(app: FastAPI) -> None:
         return {"status": "ok", "version": settings.APP_VERSION}
 
     @app.get("/health/ready", tags=["ops"], include_in_schema=False)
-    async def readiness() -> dict:
+    async def readiness():
         from sqlalchemy import text
 
         from app.core.database import AsyncSessionLocal
-        from app.core.redis import get_redis
 
         checks: dict = {}
         try:
@@ -200,7 +199,7 @@ def _mount_routers(app: FastAPI) -> None:
             checks["db"] = str(exc)
 
         try:
-            redis = await get_redis()
+            redis = get_redis_pool()
             await redis.ping()
             checks["redis"] = "ok"
         except Exception as exc:

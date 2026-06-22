@@ -1,7 +1,7 @@
 import uuid
 from typing import Any
 
-from sqlalchemy import and_, func, or_, select, text, update
+from sqlalchemy import ColumnElement, and_, func, or_, select, text, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -62,7 +62,7 @@ class ProductRepository:
         sort_dir: str = "desc",
         include_deleted: bool = False,
     ) -> tuple[list[Product], int]:
-        filters = []
+        filters: list[ColumnElement[bool]] = []
         if not include_deleted:
             filters.append(Product.deleted_at.is_(None))
         if status:

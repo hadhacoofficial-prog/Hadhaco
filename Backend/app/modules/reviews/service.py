@@ -195,7 +195,7 @@ class ReviewService:
         for i, upload in enumerate(images[:5]):  # max 5 images
             content = await upload.read()
             key = f"reviews/{review_id}/{i}_{upload.filename}"
-            url = await self._media.upload_bytes(
+            url = self._media.upload_bytes(
                 content, key=key, content_type=upload.content_type or "image/jpeg"
             )
             await self._repo.add_image(

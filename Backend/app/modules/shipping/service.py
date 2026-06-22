@@ -11,6 +11,7 @@ from app.modules.shipping.client import DeliveryOneClient
 from app.modules.shipping.repository import ShipmentRepository
 from app.modules.shipping.schemas import (
     CreateShipmentRequest,
+    ShipmentEventResponse,
     ShipmentResponse,
     ShippingRateResponse,
     TrackingResponse,
@@ -155,7 +156,8 @@ class ShippingService:
                 await _repo.update(
                     db, shipment.id, {"label_url": label_url, "label_r2_key": r2_key}
                 )
-                shipment = await _repo.get_by_id(db, shipment.id)
+                shipment = await _repo.get_by_id(db, shipment.id)  # type: ignore[assignment]
+                assert shipment is not None
             except Exception as exc:
                 log.warning(
                     "label_fetch_failed", shipment_id=str(shipment.id), error=str(exc)
@@ -223,7 +225,7 @@ class ShippingService:
                 awb_number=awb_number,
                 status=shipment.status,
                 estimated_delivery=shipment.estimated_delivery,
-                events=list(shipment.events),
+                events=[ShipmentEventResponse.model_validate(e) for e in shipment.events],
             )
 
         # Sync events
@@ -279,12 +281,13 @@ class ShippingService:
 
         await _repo.update(db, shipment.id, update_data)
         shipment = await _repo.get_by_id(db, shipment.id)
+        assert shipment is not None
 
         return TrackingResponse(
             awb_number=awb_number,
             status=shipment.status,
             estimated_delivery=shipment.estimated_delivery,
-            events=shipment.events,
+            events=[ShipmentEventResponse.model_validate(e) for e in shipment.events],
         )
 
     async def sync_shipment_status(self, db, order_id: uuid.UUID) -> None:
@@ -398,7 +401,7 @@ async def _on_payment_captured(event) -> None:
                 await svc.create_shipment(
                     db,
                     uuid.UUID(event.order_id),
-                    CreateShipmentRequest(order_id=uuid.UUID(event.order_id)),
+                    CreateShipmentRequest(order_id=uuid.UUID(event.order_id)),  # type: ignore[call-arg]
                 )
             except ConflictError:
                 pass  # Already exists

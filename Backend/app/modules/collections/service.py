@@ -28,9 +28,10 @@ class CollectionService:
     async def create(
         self, db: AsyncSession, payload: CollectionCreateRequest
     ) -> CollectionResponse:
-        existing = await _repo.get_by_slug(db, payload.slug)
-        if existing:
-            raise ConflictError("Collection with this slug already exists")
+        if payload.slug:
+            existing = await _repo.get_by_slug(db, payload.slug)
+            if existing:
+                raise ConflictError("Collection with this slug already exists")
         col = await _repo.create(db, payload.model_dump())
         return CollectionResponse.model_validate(col)
 

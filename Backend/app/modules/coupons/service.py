@@ -148,6 +148,7 @@ class CouponService:
             raise ValidationError(result.message)
 
         coupon = await _repo.get_by_code(db, code)
+        assert coupon is not None
         await _repo.record_usage(
             db, coupon.id, user_id, result.discount_amount, order_id=None
         )

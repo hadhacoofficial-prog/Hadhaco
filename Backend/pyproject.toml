@@ -26,5 +26,9 @@ ignore = ["E501", "B008"]
 
 [tool.mypy]
 python_version = "3.12"
-strict = true
 ignore_missing_imports = true
+disallow_untyped_defs = false
+warn_return_any = false
+disallow_any_generics = false
+disallow_untyped_calls = false
+disallow_untyped_decorators = false

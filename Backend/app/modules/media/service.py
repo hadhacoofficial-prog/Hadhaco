@@ -32,7 +32,7 @@ def _get_r2_client():
 
 def _resize_to_webp(image: Image.Image, max_size: tuple[int, int]) -> bytes:
     img = image.copy()
-    img.thumbnail(max_size, Image.LANCZOS)
+    img.thumbnail(max_size, Image.LANCZOS)  # type: ignore[attr-defined]
 
     # Convert RGBA → RGB for JPEG-safe WebP output
     if img.mode in ("RGBA", "P"):
@@ -143,6 +143,16 @@ class MediaService:
                 Bucket=bucket,
                 Delete={"Objects": [{"Key": o["Key"]} for o in objects["Contents"]]},
             )
+
+    def upload_bytes(self, content: bytes, *, key: str, content_type: str) -> str:
+        """Upload raw bytes to R2 and return the public URL."""
+        _get_r2_client().put_object(
+            Bucket=settings.R2_BUCKET_NAME,
+            Key=key,
+            Body=content,
+            ContentType=content_type,
+        )
+        return _public_url(key)
 
     def get_presigned_upload_url(
         self, key: str, content_type: str, expires_in: int = 300

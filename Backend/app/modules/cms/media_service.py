@@ -39,8 +39,8 @@ def _public_url(key: str) -> str:
 
 
 def _to_webp(data: bytes, max_size: tuple[int, int]) -> bytes:
-    img = Image.open(io.BytesIO(data))
-    img.thumbnail(max_size, Image.LANCZOS)
+    img: Image.Image = Image.open(io.BytesIO(data))
+    img.thumbnail(max_size, Image.LANCZOS)  # type: ignore[attr-defined]
     if img.mode in ("RGBA", "P"):
         bg = Image.new("RGB", img.size, (255, 255, 255))
         if img.mode == "P":

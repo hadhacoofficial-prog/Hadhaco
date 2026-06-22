@@ -97,6 +97,7 @@ class OrderShippedEvent(BaseEvent):
     awb: str = ""
     order_number: str = ""
     customer_email: str = ""
+    customer_phone: str = ""
 
 
 @dataclass
