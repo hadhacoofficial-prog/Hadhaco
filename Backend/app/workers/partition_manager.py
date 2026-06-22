@@ -29,7 +29,7 @@ async def run() -> None:
             start = next_month
             end = (start + timedelta(days=32)).replace(day=1)
             partition_name = f"audit_logs_{start.strftime('%Y_%m')}"
-            await db.execute(text(f"""
+            await db.execute(text(f"""  # nosec B608 — partition_name from strftime('%Y_%m'), start/end are date objects; no user input
                 DO $$
                 BEGIN
                     IF NOT EXISTS (SELECT 1 FROM pg_class WHERE relname = '{partition_name}') THEN

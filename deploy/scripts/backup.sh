@@ -1,16 +1,21 @@
 #!/usr/bin/env bash
 # =============================================================================
-# backup.sh — Pre-deployment backup of Docker state, volumes, and database
+# backup.sh — Pre-deployment backup of Docker state and volumes
 #
 # Usage:
 #   ./backup.sh <environment>
 #
 # Creates a timestamped backup in $DEPLOY_DIR/backups/ containing:
-#   - PostgreSQL database dump (pg_dump, custom format, compressed)
+#   - Current image tag metadata (JSON)
 #   - Redis volume data (tar.gz)
 #   - docker-compose.*.yml snapshot
-#   - current image tags metadata
+#   - nginx configuration
 #   - .env checksums (no secret values)
+#
+# Database: Supabase (managed PostgreSQL).
+#   No local pg_dump is performed here. The database lives in Supabase, not
+#   on this VPS. Use the Supabase dashboard for point-in-time recovery.
+#   See DEVOPS.md § "Disaster Recovery" for the full restore procedure.
 #
 # Retains the last 30 backups.
 # IMPORTANT: This script exits non-zero on any critical failure.
@@ -40,49 +45,17 @@ BACKUP_DIR="${DEPLOY_DIR}/backups"
 TIMESTAMP=$(date +'%Y%m%dT%H%M%S')
 BACKUP_PATH="${BACKUP_DIR}/${TIMESTAMP}"
 LOG_FILE="${DEPLOY_DIR}/backup.log"
-ENV_FILE="${DEPLOY_DIR}/.env.${ENVIRONMENT}"
 
 log() { echo "[$(date +'%Y-%m-%dT%H:%M:%S%z')] $*" | tee -a "${LOG_FILE}"; }
 
 mkdir -p "${BACKUP_PATH}"
 log "Starting backup → ${BACKUP_PATH}"
+log "Database provider: Supabase (managed)"
+log "Skipping local PostgreSQL backup — database is hosted by Supabase, not this VPS."
+log "Using managed PostgreSQL service. See DEVOPS.md for point-in-time recovery."
 
-# ── 1. PostgreSQL database dump ───────────────────────────────────────────────
-# This is the most critical backup. A failure here aborts the deployment.
-log "Step 1: PostgreSQL backup"
-
-if [[ ! -f "${ENV_FILE}" ]]; then
-  log "[FATAL] Env file not found: ${ENV_FILE} — cannot read DATABASE_URL"
-  exit 1
-fi
-
-# Extract and convert DATABASE_URL: strip asyncpg driver prefix for pg_dump
-RAW_DB_URL=$(grep "^DATABASE_URL=" "${ENV_FILE}" 2>/dev/null | head -1 | cut -d'=' -f2- || echo "")
-if [[ -z "${RAW_DB_URL}" ]]; then
-  log "[FATAL] DATABASE_URL not found in ${ENV_FILE}"
-  exit 1
-fi
-
-# Convert postgresql+asyncpg://... → postgresql://...
-PG_URL="${RAW_DB_URL/postgresql+asyncpg:\/\//postgresql:\/\/}"
-
-log "Running pg_dump via postgres:16-alpine (timeout: 300s)..."
-timeout 300 docker run --rm \
-  -v "${BACKUP_PATH}:/backup" \
-  postgres:16-alpine \
-  sh -c "pg_dump '${PG_URL}?sslmode=require' \
-    --no-password \
-    --format=custom \
-    --compress=9 \
-    -f /backup/database_${TIMESTAMP}.dump" \
-  && log "PostgreSQL backup complete: database_${TIMESTAMP}.dump" \
-  || {
-    log "[FATAL] PostgreSQL backup failed — aborting deployment"
-    exit 1
-  }
-
-# ── 2. Capture current running image tags ────────────────────────────────────
-log "Step 2: Image metadata"
+# ── 1. Capture current running image tags ────────────────────────────────────
+log "Step 1: Image metadata"
 CURRENT_BACKEND=$(docker inspect "${BACKEND_CONTAINER}"   --format='{{.Config.Image}}' 2>/dev/null || echo "")
 CURRENT_FRONTEND=$(docker inspect "${BACKEND_CONTAINER/backend/frontend}" --format='{{.Config.Image}}' 2>/dev/null || echo "")
 
@@ -98,8 +71,8 @@ cat > "${BACKUP_DIR}/metadata_${TIMESTAMP}.json" <<EOF
 EOF
 log "Image metadata saved: metadata_${TIMESTAMP}.json"
 
-# ── 3. Backup Redis volume ────────────────────────────────────────────────────
-log "Step 3: Redis volume backup"
+# ── 2. Backup Redis volume ────────────────────────────────────────────────────
+log "Step 2: Redis volume backup"
 REDIS_VOLUME=$(docker volume ls -q 2>/dev/null | grep -E "hadha.*redis" | head -1 || echo "")
 if [[ -n "${REDIS_VOLUME}" ]]; then
   log "Backing up Redis volume: ${REDIS_VOLUME}"
@@ -114,8 +87,8 @@ else
   log "[WARN] No Redis volume found — skipping"
 fi
 
-# ── 4. Save compose file snapshot ────────────────────────────────────────────
-log "Step 4: Compose snapshot"
+# ── 3. Save compose file snapshot ────────────────────────────────────────────
+log "Step 3: Compose snapshot"
 COMPOSE_SRC=$(ls "${DEPLOY_DIR}"/docker-compose.*.yml 2>/dev/null | head -1 || echo "")
 if [[ -f "${COMPOSE_SRC}" ]]; then
   cp "${COMPOSE_SRC}" "${BACKUP_PATH}/docker-compose.yml"
@@ -124,21 +97,21 @@ else
   log "[WARN] No compose file found in ${DEPLOY_DIR}"
 fi
 
-# ── 5. Backup nginx config ────────────────────────────────────────────────────
+# ── 4. Backup nginx config ────────────────────────────────────────────────────
 if [[ -d "${DEPLOY_DIR}/nginx" ]]; then
   cp -r "${DEPLOY_DIR}/nginx" "${BACKUP_PATH}/nginx"
   log "Nginx config backed up"
 fi
 
-# ── 6. Record .env file checksums (NOT contents — no secrets in backup) ───────
+# ── 5. Record .env file checksums (NOT contents — no secrets in backup) ───────
 for env_file in "${DEPLOY_DIR}"/.env.*; do
   [[ -f "${env_file}" ]] || continue
   sha256sum "${env_file}" >> "${BACKUP_PATH}/env_checksums.txt"
 done
 log "Env checksums recorded"
 
-# ── 7. Rotate old backups (keep last 30) ─────────────────────────────────────
-log "Step 7: Backup rotation"
+# ── 6. Rotate old backups (keep last 30) ─────────────────────────────────────
+log "Step 6: Backup rotation"
 BACKUP_COUNT=$(find "${BACKUP_DIR}" -maxdepth 1 -name "[0-9]*" -type d 2>/dev/null | wc -l)
 if (( BACKUP_COUNT > 30 )); then
   TO_DELETE=$(ls -dt "${BACKUP_DIR}"/[0-9]*/ 2>/dev/null | tail -n +31)

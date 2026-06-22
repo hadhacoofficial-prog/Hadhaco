@@ -191,9 +191,11 @@ Set these in **Settings → Secrets → Actions → New repository secret**:
    • ghcr.io/owner/hadha-backend:develop-SHA
    • ghcr.io/owner/hadha-frontend:develop-SHA
 3. SSH into VPS
-4. backup.sh staging          — snapshot compose + volumes + metadata
+4. backup.sh staging          — snapshot image metadata, Redis volume, compose file,
+                                 nginx config, .env checksums
+                                 (no PostgreSQL dump — database is on Supabase)
 5. Pull new images from GHCR
-6. alembic upgrade head        — in isolated container with --network hadha-internal
+6. alembic upgrade head        — runs in isolated container against Supabase PostgreSQL
 7. docker compose up -d        — zero-downtime restart (containers replaced one by one)
 8. healthcheck.sh staging      — 2-minute timeout, checks backend/frontend/redis/nginx
 9a. Success → notify.sh success

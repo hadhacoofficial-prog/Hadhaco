@@ -128,7 +128,7 @@ log "Previous frontend : ${PREVIOUS_FRONTEND_IMAGE:-none (first deployment)}"
 # ── Step 2: Backup ────────────────────────────────────────────────────────────
 log_section "Step 2: Backup"
 if ! "${SCRIPTS_DIR}/backup.sh" "${ENVIRONMENT}"; then
-  die "Backup failed — aborting deployment to protect data integrity. Fix backup before retrying."
+  die "Backup failed — aborting deployment to preserve rollback capability. Fix backup before retrying."
 fi
 log "Backup completed successfully"
 

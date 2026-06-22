@@ -21,7 +21,7 @@ class Settings(BaseSettings):
     ENABLE_DEV_AUTH: bool = False
 
     # ── API ────────────────────────────────────────────────────────────────────
-    API_HOST: str = "0.0.0.0"
+    API_HOST: str = "0.0.0.0"  # nosec B104 — intentional: container must bind all interfaces
     API_PORT: int = 8000
     API_BASE_URL: str = "http://localhost:8000"
     API_V1_PREFIX: str = "/api/v1"
