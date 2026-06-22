@@ -1,19 +1,21 @@
 import json
 import uuid
-from datetime import UTC, datetime, timezone
+from datetime import UTC, datetime
 
 import structlog
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.security import verify_razorpay_webhook_signature, verify_delivery_one_webhook_signature
+from app.core.security import (
+    verify_delivery_one_webhook_signature,
+    verify_razorpay_webhook_signature,
+)
 from app.modules.webhooks.models import WebhookEvent
 
 log = structlog.get_logger()
 
 
 class WebhookService:
-
     async def _record_event(
         self,
         db: AsyncSession,
@@ -49,7 +51,9 @@ class WebhookService:
 
     async def _mark_processed(self, db: AsyncSession, event_id: uuid.UUID) -> None:
         await db.execute(
-            update(WebhookEvent).where(WebhookEvent.id == event_id).values(
+            update(WebhookEvent)
+            .where(WebhookEvent.id == event_id)
+            .values(
                 status="processed",
                 processed_at=datetime.now(UTC),
             )
@@ -57,7 +61,9 @@ class WebhookService:
 
     async def _mark_failed(self, db: AsyncSession, event_id: uuid.UUID, error: str) -> None:
         await db.execute(
-            update(WebhookEvent).where(WebhookEvent.id == event_id).values(
+            update(WebhookEvent)
+            .where(WebhookEvent.id == event_id)
+            .values(
                 status="failed",
                 error_message=error[:2000],
             )
@@ -95,7 +101,9 @@ class WebhookService:
                 await self._on_refund_event(db, payload, event_type)
             else:
                 await db.execute(
-                    update(WebhookEvent).where(WebhookEvent.id == event_row.id).values(status="ignored")
+                    update(WebhookEvent)
+                    .where(WebhookEvent.id == event_row.id)
+                    .values(status="ignored")
                 )
                 return {"status": "ignored"}
 
@@ -113,39 +121,53 @@ class WebhookService:
         method: str = rzp_payment.get("method", "")
 
         from app.modules.payments.repository import PaymentRepository
+
         repo = PaymentRepository()
         payment = await repo.get_by_razorpay_order_id(db, rzp_order_id)
         if not payment or payment.status == "captured":
             return
 
         now = datetime.now(UTC)
-        await repo.update(db, payment.id, {
-            "status": "captured",
-            "razorpay_payment_id": rzp_payment_id,
-            "method": method,
-            "captured_at": now,
-        })
+        await repo.update(
+            db,
+            payment.id,
+            {
+                "status": "captured",
+                "razorpay_payment_id": rzp_payment_id,
+                "method": method,
+                "captured_at": now,
+            },
+        )
 
         from app.modules.orders.repository import OrderRepository
-        await OrderRepository().update(db, payment.order_id, {
-            "payment_status": "paid",
-            "razorpay_payment_id": rzp_payment_id,
-            "status": "confirmed",
-        })
+
+        await OrderRepository().update(
+            db,
+            payment.order_id,
+            {
+                "payment_status": "paid",
+                "razorpay_payment_id": rzp_payment_id,
+                "status": "confirmed",
+            },
+        )
 
         # Generate invoice
         from app.modules.invoices.service import InvoiceService
         from app.modules.orders.repository import OrderRepository as OR
+
         order = await OR().get_by_id(db, payment.order_id)
         if order:
             await InvoiceService().generate_and_store(db, order)
 
         from app.core.events import PaymentCapturedEvent, event_bus
-        await event_bus.publish(PaymentCapturedEvent(
-            order_id=str(payment.order_id),
-            payment_id=str(payment.id),
-            amount=float(payment.amount),
-        ))
+
+        await event_bus.publish(
+            PaymentCapturedEvent(
+                order_id=str(payment.order_id),
+                payment_id=str(payment.id),
+                amount=float(payment.amount),
+            )
+        )
 
     async def _on_payment_failed(self, db: AsyncSession, payload: dict) -> None:
         rzp_payment = payload.get("payload", {}).get("payment", {}).get("entity", {})
@@ -153,22 +175,30 @@ class WebhookService:
         error_desc: str = rzp_payment.get("error_description", "Payment failed")
 
         from app.modules.payments.repository import PaymentRepository
+
         repo = PaymentRepository()
         payment = await repo.get_by_razorpay_order_id(db, rzp_order_id)
         if not payment:
             return
 
-        await repo.update(db, payment.id, {
-            "status": "failed",
-            "failure_reason": error_desc,
-        })
+        await repo.update(
+            db,
+            payment.id,
+            {
+                "status": "failed",
+                "failure_reason": error_desc,
+            },
+        )
 
         from app.core.events import PaymentFailedEvent, event_bus
-        await event_bus.publish(PaymentFailedEvent(
-            order_id=str(payment.order_id),
-            payment_id=str(payment.id),
-            reason=error_desc,
-        ))
+
+        await event_bus.publish(
+            PaymentFailedEvent(
+                order_id=str(payment.order_id),
+                payment_id=str(payment.id),
+                reason=error_desc,
+            )
+        )
 
     async def _on_refund_event(self, db: AsyncSession, payload: dict, event_type: str) -> None:
         rzp_refund = payload.get("payload", {}).get("refund", {}).get("entity", {})
@@ -176,25 +206,33 @@ class WebhookService:
         amount_paise: int = rzp_refund.get("amount", 0)
         amount = amount_paise / 100
 
-        from app.modules.payments.repository import PaymentRepository
         from sqlalchemy import select
+
         from app.modules.payments.models import Refund
-        result = await db.execute(
-            select(Refund).where(Refund.razorpay_refund_id == rzp_refund_id)
-        )
+        from app.modules.payments.repository import PaymentRepository
+
+        result = await db.execute(select(Refund).where(Refund.razorpay_refund_id == rzp_refund_id))
         refund = result.scalar_one_or_none()
         if refund and event_type == "refund.processed":
             from app.modules.payments.repository import PaymentRepository
-            await PaymentRepository().update_refund(db, refund.id, {
-                "status": "processed",
-                "processed_at": datetime.now(UTC),
-            })
+
+            await PaymentRepository().update_refund(
+                db,
+                refund.id,
+                {
+                    "status": "processed",
+                    "processed_at": datetime.now(UTC),
+                },
+            )
             from app.core.events import RefundProcessedEvent, event_bus
-            await event_bus.publish(RefundProcessedEvent(
-                order_id=str(refund.order_id),
-                refund_id=str(refund.id),
-                amount=amount,
-            ))
+
+            await event_bus.publish(
+                RefundProcessedEvent(
+                    order_id=str(refund.order_id),
+                    refund_id=str(refund.id),
+                    amount=amount,
+                )
+            )
 
     # ── Delivery One ──────────────────────────────────────────────────────────
 
@@ -215,7 +253,9 @@ class WebhookService:
         event_type: str = payload.get("event", "unknown")
         event_id: str | None = payload.get("id")
 
-        event_row = await self._record_event(db, "delivery_one", event_type, event_id, body.decode())
+        event_row = await self._record_event(
+            db, "delivery_one", event_type, event_id, body.decode()
+        )
         if event_row is None:
             return {"status": "already_processed"}
 
@@ -237,6 +277,7 @@ class WebhookService:
             return
 
         from app.modules.orders.repository import OrderRepository
+
         order = await OrderRepository().get_by_order_number(db, order_number)
         if not order:
             return
@@ -253,9 +294,12 @@ class WebhookService:
         if update_data:
             await OrderRepository().update(db, order.id, update_data)
             from app.core.events import OrderStatusChangedEvent, event_bus
-            await event_bus.publish(OrderStatusChangedEvent(
-                order_id=str(order.id),
-                user_id=str(order.user_id),
-                old_status=order.status,
-                new_status=update_data["status"],
-            ))
+
+            await event_bus.publish(
+                OrderStatusChangedEvent(
+                    order_id=str(order.id),
+                    user_id=str(order.user_id),
+                    old_status=order.status,
+                    new_status=update_data["status"],
+                )
+            )

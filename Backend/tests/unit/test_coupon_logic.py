@@ -1,8 +1,9 @@
 """Unit tests for coupon discount calculation logic (no DB required)."""
+
 import uuid
-from datetime import datetime, timedelta, timezone
+from datetime import datetime
 from decimal import Decimal
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import MagicMock
 
 import pytest
 

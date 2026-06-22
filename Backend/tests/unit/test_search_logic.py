@@ -1,8 +1,6 @@
 """Unit tests for SearchService pure logic (no DB calls)."""
-import uuid
-from unittest.mock import AsyncMock, MagicMock
 
-import pytest
+from unittest.mock import AsyncMock
 
 from app.modules.search.service import SearchService
 

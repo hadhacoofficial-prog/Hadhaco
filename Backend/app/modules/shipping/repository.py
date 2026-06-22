@@ -9,7 +9,6 @@ from app.modules.shipping.models import Shipment, ShipmentEvent
 
 
 class ShipmentRepository:
-
     async def get_for_order(self, db: AsyncSession, order_id: uuid.UUID) -> Shipment | None:
         result = await db.execute(
             select(Shipment)
@@ -41,7 +40,9 @@ class ShipmentRepository:
         await db.refresh(shipment)
         return shipment
 
-    async def update(self, db: AsyncSession, shipment_id: uuid.UUID, data: dict[str, Any]) -> Shipment | None:
+    async def update(
+        self, db: AsyncSession, shipment_id: uuid.UUID, data: dict[str, Any]
+    ) -> Shipment | None:
         await db.execute(update(Shipment).where(Shipment.id == shipment_id).values(**data))
         return await self.get_by_id(db, shipment_id)
 

@@ -1,5 +1,7 @@
 """ReviewService mock-based tests."""
+
 import uuid
+from datetime import UTC
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -12,18 +14,23 @@ from app.modules.reviews.schemas import ReviewCreate, ReviewUpdate
 class TestReviewServiceSubmit:
     def setup_method(self):
         from app.modules.reviews.service import ReviewService
+
         self.svc = ReviewService()
 
     async def test_submit_raises_409_for_duplicate_review(self):
         db = AsyncMock()
         existing_review = MagicMock()
         existing_review.deleted_at = None
-        with patch.object(ReviewRepository, "get_by_product_user", AsyncMock(return_value=existing_review)):
+        with patch.object(
+            ReviewRepository, "get_by_product_user", AsyncMock(return_value=existing_review)
+        ):
             with pytest.raises(HTTPException) as exc:
                 await self.svc.submit_review(
                     db,
                     user_id=uuid.uuid4(),
-                    data=ReviewCreate(product_id=uuid.uuid4(), rating=5, title="Great", body="Loved it"),
+                    data=ReviewCreate(
+                        product_id=uuid.uuid4(), rating=5, title="Great", body="Loved it"
+                    ),
                 )
         assert exc.value.status_code == 409
 
@@ -31,27 +38,40 @@ class TestReviewServiceSubmit:
         db = AsyncMock()
         mock_review = MagicMock()
         mock_review.id = uuid.uuid4()
-        with patch.object(ReviewRepository, "get_by_product_user", AsyncMock(return_value=None)), \
-             patch.object(ReviewRepository, "has_delivered_order_item", AsyncMock(return_value=True)), \
-             patch.object(ReviewRepository, "create", AsyncMock(return_value=mock_review)):
+        with (
+            patch.object(ReviewRepository, "get_by_product_user", AsyncMock(return_value=None)),
+            patch.object(
+                ReviewRepository, "has_delivered_order_item", AsyncMock(return_value=True)
+            ),
+            patch.object(ReviewRepository, "create", AsyncMock(return_value=mock_review)),
+        ):
             db.commit = AsyncMock()
             db.refresh = AsyncMock()
             result = await self.svc.submit_review(
                 db,
                 user_id=uuid.uuid4(),
-                data=ReviewCreate(product_id=uuid.uuid4(), rating=5, title="Great", body="Loved it"),
+                data=ReviewCreate(
+                    product_id=uuid.uuid4(), rating=5, title="Great", body="Loved it"
+                ),
             )
         assert result is mock_review
 
     async def test_submit_succeeds_when_prior_review_was_deleted(self):
         db = AsyncMock()
-        from datetime import datetime, timezone
+        from datetime import datetime
+
         existing_review = MagicMock()
-        existing_review.deleted_at = datetime.now(timezone.utc)  # soft-deleted
+        existing_review.deleted_at = datetime.now(UTC)  # soft-deleted
         mock_review = MagicMock()
-        with patch.object(ReviewRepository, "get_by_product_user", AsyncMock(return_value=existing_review)), \
-             patch.object(ReviewRepository, "has_delivered_order_item", AsyncMock(return_value=False)), \
-             patch.object(ReviewRepository, "create", AsyncMock(return_value=mock_review)):
+        with (
+            patch.object(
+                ReviewRepository, "get_by_product_user", AsyncMock(return_value=existing_review)
+            ),
+            patch.object(
+                ReviewRepository, "has_delivered_order_item", AsyncMock(return_value=False)
+            ),
+            patch.object(ReviewRepository, "create", AsyncMock(return_value=mock_review)),
+        ):
             db.commit = AsyncMock()
             db.refresh = AsyncMock()
             result = await self.svc.submit_review(
@@ -65,13 +85,16 @@ class TestReviewServiceSubmit:
 class TestReviewServiceVote:
     def setup_method(self):
         from app.modules.reviews.service import ReviewService
+
         self.svc = ReviewService()
 
     async def test_vote_raises_404_when_review_not_found(self):
         db = AsyncMock()
         with patch.object(ReviewRepository, "get_by_id", AsyncMock(return_value=None)):
             with pytest.raises(HTTPException) as exc:
-                await self.svc.vote(db, review_id=uuid.uuid4(), user_id=uuid.uuid4(), is_helpful=True)
+                await self.svc.vote(
+                    db, review_id=uuid.uuid4(), user_id=uuid.uuid4(), is_helpful=True
+                )
         assert exc.value.status_code == 404
 
     async def test_vote_raises_404_when_review_not_approved(self):
@@ -80,7 +103,9 @@ class TestReviewServiceVote:
         mock_review.is_approved = False
         with patch.object(ReviewRepository, "get_by_id", AsyncMock(return_value=mock_review)):
             with pytest.raises(HTTPException) as exc:
-                await self.svc.vote(db, review_id=uuid.uuid4(), user_id=uuid.uuid4(), is_helpful=True)
+                await self.svc.vote(
+                    db, review_id=uuid.uuid4(), user_id=uuid.uuid4(), is_helpful=True
+                )
         assert exc.value.status_code == 404
 
     async def test_vote_raises_400_when_voting_own_review(self):
@@ -102,8 +127,10 @@ class TestReviewServiceVote:
         mock_review.is_approved = True
         mock_review.user_id = uuid.uuid4()  # different from voter
         mock_vote = MagicMock()
-        with patch.object(ReviewRepository, "get_by_id", AsyncMock(return_value=mock_review)), \
-             patch.object(ReviewRepository, "upsert_vote", AsyncMock(return_value=mock_vote)):
+        with (
+            patch.object(ReviewRepository, "get_by_id", AsyncMock(return_value=mock_review)),
+            patch.object(ReviewRepository, "upsert_vote", AsyncMock(return_value=mock_vote)),
+        ):
             db.commit = AsyncMock()
             result = await self.svc.vote(db, review_id=review_id, user_id=user_id, is_helpful=True)
         assert result is mock_vote
@@ -112,6 +139,7 @@ class TestReviewServiceVote:
 class TestReviewServiceAdmin:
     def setup_method(self):
         from app.modules.reviews.service import ReviewService
+
         self.svc = ReviewService()
 
     async def test_admin_action_raises_404_when_not_found(self):
@@ -125,8 +153,10 @@ class TestReviewServiceAdmin:
         db = AsyncMock()
         mock_review = MagicMock()
         mock_updated = MagicMock()
-        with patch.object(ReviewRepository, "get_by_id", AsyncMock(return_value=mock_review)), \
-             patch.object(ReviewRepository, "update", AsyncMock(return_value=mock_updated)):
+        with (
+            patch.object(ReviewRepository, "get_by_id", AsyncMock(return_value=mock_review)),
+            patch.object(ReviewRepository, "update", AsyncMock(return_value=mock_updated)),
+        ):
             db.commit = AsyncMock()
             db.refresh = AsyncMock()
             result = await self.svc.admin_action(db, review_id=uuid.uuid4(), action="approve")
@@ -135,8 +165,10 @@ class TestReviewServiceAdmin:
     async def test_admin_action_reject_soft_deletes(self):
         db = AsyncMock()
         mock_review = MagicMock()
-        with patch.object(ReviewRepository, "get_by_id", AsyncMock(return_value=mock_review)), \
-             patch.object(ReviewRepository, "soft_delete", AsyncMock()):
+        with (
+            patch.object(ReviewRepository, "get_by_id", AsyncMock(return_value=mock_review)),
+            patch.object(ReviewRepository, "soft_delete", AsyncMock()),
+        ):
             db.commit = AsyncMock()
             db.refresh = AsyncMock()
             await self.svc.admin_action(db, review_id=uuid.uuid4(), action="reject")
@@ -159,6 +191,7 @@ class TestReviewServiceAdmin:
 class TestReviewServiceOwned:
     def setup_method(self):
         from app.modules.reviews.service import ReviewService
+
         self.svc = ReviewService()
 
     async def test_edit_raises_404_when_not_found(self):

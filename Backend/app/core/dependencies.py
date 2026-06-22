@@ -16,16 +16,14 @@ import types
 import uuid
 from datetime import datetime
 
+import redis.asyncio as aioredis
 import structlog
 from fastapi import Depends, HTTPException, Request, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
-import redis.asyncio as aioredis
-
-from app.core.config import settings
 from app.core.constants import UserRole
 from app.core.database import get_db
-from app.core.redis import get_redis, safe_redis_get, safe_redis_setex, safe_redis_delete
+from app.core.redis import get_redis, safe_redis_get, safe_redis_setex
 from app.core.security import JWTPayload, oauth2_scheme, verify_supabase_jwt
 
 # Forward declaration — resolved at runtime to avoid circular imports
@@ -40,6 +38,7 @@ def _get_profile_repository():
     global _profile_repository
     if _profile_repository is None:
         from app.modules.profiles.repository import ProfileRepository
+
         _profile_repository = ProfileRepository()
     return _profile_repository
 
@@ -80,7 +79,9 @@ async def _cache_profile(redis: aioredis.Redis, profile) -> None:
         "created_at": profile.created_at.isoformat() if profile.created_at else None,
         "updated_at": profile.updated_at.isoformat() if profile.updated_at else None,
     }
-    await safe_redis_setex(redis, profile_cache_key(str(profile.id)), _PROFILE_CACHE_TTL, json.dumps(data))
+    await safe_redis_setex(
+        redis, profile_cache_key(str(profile.id)), _PROFILE_CACHE_TTL, json.dumps(data)
+    )
 
 
 async def _load_profile(user_id: str, db: AsyncSession, redis: aioredis.Redis):
@@ -169,6 +170,7 @@ def require_role(*roles: str):
     Returns a dependency that enforces one of the given roles.
     Automatically includes all roles above in the hierarchy.
     """
+
     async def dependency(current_user=Depends(get_current_user)):
         if current_user.role not in roles:
             raise HTTPException(
@@ -177,13 +179,12 @@ def require_role(*roles: str):
                 headers={"X-Required-Roles": ",".join(roles)},
             )
         return current_user
+
     return dependency
 
 
 # Convenience role dependencies
-require_customer = require_role(
-    UserRole.CUSTOMER, UserRole.ADMIN, UserRole.SUPER_ADMIN
-)
+require_customer = require_role(UserRole.CUSTOMER, UserRole.ADMIN, UserRole.SUPER_ADMIN)
 require_admin = require_role(UserRole.ADMIN, UserRole.SUPER_ADMIN)
 require_super_admin = require_role(UserRole.SUPER_ADMIN)
 
@@ -197,6 +198,7 @@ async def require_2fa_verified(
     Returns 403 with setup URL if 2FA is not configured or not verified.
     """
     from app.modules.auth.service import AuthService
+
     svc = AuthService()
     has_2fa = await svc.has_active_2fa(db, str(current_user.id))
     if not has_2fa:

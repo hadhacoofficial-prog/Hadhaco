@@ -1,7 +1,7 @@
 from typing import Annotated
 
 import redis.asyncio as aioredis
-from fastapi import APIRouter, Depends, Query, UploadFile, File, status
+from fastapi import APIRouter, Depends, File, Query, UploadFile
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.common.response_codes import ResponseCode
@@ -14,6 +14,7 @@ from app.core.dependencies import (
     require_super_admin,
 )
 from app.core.redis import get_redis, safe_redis_delete
+from app.modules.media.service import MediaService
 from app.modules.profiles.models import Profile
 from app.modules.profiles.schemas import (
     AdminUserListResponse,
@@ -22,7 +23,6 @@ from app.modules.profiles.schemas import (
     ProfileResponse,
     ProfileUpdateRequest,
 )
-from app.modules.media.service import MediaService
 from app.modules.profiles.service import ProfileService
 
 router = APIRouter()
@@ -35,6 +35,7 @@ async def _invalidate(redis: aioredis.Redis, user_id: str) -> None:
 
 
 # ── Customer profile endpoints ────────────────────────────────────────────────
+
 
 @router.get("/me", response_model=BaseSuccessResponse[ProfileResponse])
 async def get_my_profile(
@@ -82,6 +83,7 @@ async def update_avatar(
 
 
 # ── Admin user management endpoints ──────────────────────────────────────────
+
 
 @router.get("/admin/users", response_model=BaseSuccessResponse[AdminUserListResponse])
 async def list_users(

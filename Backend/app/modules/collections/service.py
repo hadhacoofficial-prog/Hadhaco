@@ -1,5 +1,4 @@
 import uuid
-from typing import Any
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -16,7 +15,6 @@ _repo = CollectionRepository()
 
 
 class CollectionService:
-
     async def list_active(self, db: AsyncSession) -> list[CollectionResponse]:
         cols = await _repo.list_active(db)
         return [CollectionResponse.model_validate(c) for c in cols]

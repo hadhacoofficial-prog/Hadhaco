@@ -3,6 +3,7 @@
 Used to keep supabase/sql files in sync with the SQLAlchemy models.
 Usage: python scripts/dump_orm_ddl.py
 """
+
 import importlib
 import os
 import pkgutil

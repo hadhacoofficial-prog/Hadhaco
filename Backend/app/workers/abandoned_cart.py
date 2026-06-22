@@ -3,6 +3,7 @@ Detect carts idle past ABANDONED_CART_THRESHOLD_HOURS and send reminder emails
 (when the cart_abandonment_emails feature flag is on).
 Run every ABANDONED_CART_INTERVAL seconds.
 """
+
 from __future__ import annotations
 
 import time
@@ -27,6 +28,7 @@ async def run() -> None:
 
         async with AsyncSessionLocal() as db:
             from app.modules.settings.service import SettingsService
+
             if not await SettingsService.is_feature_enabled(db, "cart_abandonment_emails"):
                 log.info("abandoned_cart_skipped", reason="feature_disabled")
                 return
@@ -49,12 +51,16 @@ async def run() -> None:
                     profile = profile_result.scalar_one_or_none()
                     if profile and profile.email and profile.is_active:
                         from app.modules.notifications.service import NotificationService
+
                         await NotificationService().send_email(
                             db,
                             user_id=row.user_id,
                             event_type="abandoned_cart",
                             recipient=profile.email,
-                            context={"full_name": profile.full_name or "", "item_count": row.item_count},
+                            context={
+                                "full_name": profile.full_name or "",
+                                "item_count": row.item_count,
+                            },
                         )
                         sent += 1
                 except Exception:
@@ -69,4 +75,5 @@ async def run() -> None:
 
 if __name__ == "__main__":
     import asyncio
+
     asyncio.run(run())

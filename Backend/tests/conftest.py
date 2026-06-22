@@ -5,6 +5,7 @@ so app.core.config.Settings resolves without a real .env. No external service
 is contacted: unit tests exercise pure logic, integration tests drive the
 ASGI app in-process without running the lifespan (no DB/Redis needed).
 """
+
 import os
 from pathlib import Path
 

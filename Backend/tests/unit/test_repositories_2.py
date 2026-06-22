@@ -1,33 +1,33 @@
 """Tests for remaining repositories: CMS, Notifications, Payments, Cart, Shipping, Settings, Analytics."""
+
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock
 
-import pytest
+import app.modules.addresses.models  # noqa: F401
+import app.modules.analytics.models  # noqa: F401
+import app.modules.cart.models  # noqa: F401
 
 # Force all SQLAlchemy mappers to initialize before any test runs
 import app.modules.catalog.models  # noqa: F401
 import app.modules.categories.models  # noqa: F401
-import app.modules.orders.models  # noqa: F401
-import app.modules.reviews.models  # noqa: F401
-import app.modules.inventory.models  # noqa: F401
+import app.modules.cms.models  # noqa: F401
 import app.modules.collections.models  # noqa: F401
 import app.modules.coupons.models  # noqa: F401
+import app.modules.inventory.models  # noqa: F401
+import app.modules.notifications.models  # noqa: F401
+import app.modules.orders.models  # noqa: F401
 import app.modules.payments.models  # noqa: F401
 import app.modules.profiles.models  # noqa: F401
-import app.modules.addresses.models  # noqa: F401
-import app.modules.shipping.models  # noqa: F401
-import app.modules.cart.models  # noqa: F401
-import app.modules.wishlist.models  # noqa: F401
-import app.modules.support.models  # noqa: F401
 import app.modules.returns.models  # noqa: F401
-import app.modules.cms.models  # noqa: F401
-import app.modules.notifications.models  # noqa: F401
+import app.modules.reviews.models  # noqa: F401
 import app.modules.settings.models  # noqa: F401
-import app.modules.analytics.models  # noqa: F401
-
+import app.modules.shipping.models  # noqa: F401
+import app.modules.support.models  # noqa: F401
+import app.modules.wishlist.models  # noqa: F401
 
 # ─── Mock helpers ─────────────────────────────────────────────────────────────
+
 
 def _scalars(items):
     r = MagicMock()
@@ -71,9 +71,11 @@ def _db(*results):
 
 # ─── CMSRepository ────────────────────────────────────────────────────────────
 
+
 class TestCMSRepository:
     def setup_method(self):
         from app.modules.cms.repository import CMSRepository
+
         self.repo = CMSRepository()
 
     async def test_get_active_banners_no_filter(self):
@@ -118,7 +120,6 @@ class TestCMSRepository:
         assert result is mock_page
 
     async def test_create_banner(self):
-        from app.modules.cms.models import Banner
         db = _db()
         result = await self.repo.create_banner(db, name="sale", banner_type="hero", is_active=True)
         db.add.assert_called_once()
@@ -182,9 +183,11 @@ class TestCMSRepository:
 
 # ─── NotificationRepository ───────────────────────────────────────────────────
 
+
 class TestNotificationRepository:
     def setup_method(self):
         from app.modules.notifications.repository import NotificationRepository
+
         self.repo = NotificationRepository()
 
     async def test_get_template_returns_none(self):
@@ -200,7 +203,9 @@ class TestNotificationRepository:
 
     async def test_create_log_adds_to_db(self):
         db = _db()
-        log = await self.repo.create_log(db, event_type="order_confirmed", channel="email", user_id=uuid.uuid4())
+        log = await self.repo.create_log(
+            db, event_type="order_confirmed", channel="email", user_id=uuid.uuid4()
+        )
         db.add.assert_called_once()
         db.flush.assert_awaited_once()
 
@@ -258,9 +263,11 @@ class TestNotificationRepository:
 
 # ─── PaymentRepository ────────────────────────────────────────────────────────
 
+
 class TestPaymentRepository:
     def setup_method(self):
         from app.modules.payments.repository import PaymentRepository
+
         self.repo = PaymentRepository()
 
     async def test_create_adds_and_returns(self):
@@ -318,7 +325,9 @@ class TestPaymentRepository:
 
     async def test_create_invoice(self):
         db = _db()
-        await self.repo.create_invoice(db, {"order_id": uuid.uuid4(), "invoice_number": "INV-202406-000001"})
+        await self.repo.create_invoice(
+            db, {"order_id": uuid.uuid4(), "invoice_number": "INV-202406-000001"}
+        )
         db.add.assert_called_once()
 
     async def test_get_invoice_for_order_returns_none(self):
@@ -327,8 +336,9 @@ class TestPaymentRepository:
         assert result is None
 
     async def test_generate_invoice_number_format(self):
-        from datetime import datetime, timezone
-        now = datetime.now(timezone.utc)
+        from datetime import datetime
+
+        now = datetime.now(UTC)
         mock_count = MagicMock()
         mock_count.scalar_one.return_value = 0
         db = _db(mock_count)
@@ -339,9 +349,11 @@ class TestPaymentRepository:
 
 # ─── CartRepository ───────────────────────────────────────────────────────────
 
+
 class TestCartRepository:
     def setup_method(self):
         from app.modules.cart.repository import CartRepository
+
         self.repo = CartRepository()
 
     def test_expiry_returns_datetime(self):
@@ -481,9 +493,11 @@ class TestCartRepository:
 
 # ─── ShipmentRepository ───────────────────────────────────────────────────────
 
+
 class TestShipmentRepository:
     def setup_method(self):
         from app.modules.shipping.repository import ShipmentRepository
+
         self.repo = ShipmentRepository()
 
     async def test_get_for_order_returns_none(self):
@@ -504,7 +518,9 @@ class TestShipmentRepository:
 
     async def test_create_shipment(self):
         db = _db()
-        await self.repo.create(db, {"order_id": uuid.uuid4(), "status": "created", "awb_number": "AWB-001"})
+        await self.repo.create(
+            db, {"order_id": uuid.uuid4(), "status": "created", "awb_number": "AWB-001"}
+        )
         db.add.assert_called_once()
         db.flush.assert_awaited_once()
 
@@ -517,7 +533,9 @@ class TestShipmentRepository:
 
     async def test_add_event_adds_to_db(self):
         db = _db()
-        await self.repo.add_event(db, {"shipment_id": uuid.uuid4(), "status": "in_transit", "description": "On the way"})
+        await self.repo.add_event(
+            db, {"shipment_id": uuid.uuid4(), "status": "in_transit", "description": "On the way"}
+        )
         db.add.assert_called_once()
 
     async def test_list_active_returns_list(self):
@@ -529,9 +547,11 @@ class TestShipmentRepository:
 
 # ─── SettingsRepository ───────────────────────────────────────────────────────
 
+
 class TestSettingsRepository:
     def setup_method(self):
         from app.modules.settings.repository import SettingsRepository
+
         self.repo = SettingsRepository()
 
     async def test_get_flag_returns_none(self):
@@ -557,15 +577,19 @@ class TestSettingsRepository:
         db = AsyncMock()
         db.execute = AsyncMock(return_value=mock_result)
         db.flush = AsyncMock()
-        result = await self.repo.upsert_flag(db, key="enable_cod", value=True, description="Cash on delivery", updated_by=None)
+        result = await self.repo.upsert_flag(
+            db, key="enable_cod", value=True, description="Cash on delivery", updated_by=None
+        )
         assert result is mock_flag
 
 
 # ─── AnalyticsRepository ──────────────────────────────────────────────────────
 
+
 class TestAnalyticsRepository:
     def setup_method(self):
         from app.modules.analytics.repository import AnalyticsRepository
+
         self.repo = AnalyticsRepository()
 
     async def test_record_adds_event(self):
@@ -578,38 +602,48 @@ class TestAnalyticsRepository:
 
     async def test_get_dashboard_returns_empty_when_no_row(self):
         from datetime import date
+
         mock_result = MagicMock()
         mock_result.fetchone.return_value = None
         db = AsyncMock()
         db.execute = AsyncMock(return_value=mock_result)
-        result = await self.repo.get_dashboard(db, from_date=date(2026, 1, 1), to_date=date(2026, 1, 31))
+        result = await self.repo.get_dashboard(
+            db, from_date=date(2026, 1, 1), to_date=date(2026, 1, 31)
+        )
         assert result == {}
 
     async def test_get_dashboard_returns_dict_when_row_found(self):
         from datetime import date
+
         mock_row = MagicMock()
         mock_row._mapping = {"revenue": 10000, "total_orders": 5, "aov": 2000}
         mock_result = MagicMock()
         mock_result.fetchone.return_value = mock_row
         db = AsyncMock()
         db.execute = AsyncMock(return_value=mock_result)
-        result = await self.repo.get_dashboard(db, from_date=date(2026, 1, 1), to_date=date(2026, 1, 31))
+        result = await self.repo.get_dashboard(
+            db, from_date=date(2026, 1, 1), to_date=date(2026, 1, 31)
+        )
         assert result["revenue"] == 10000
 
     async def test_get_revenue_by_day_returns_list(self):
         from datetime import date
+
         mock_row = MagicMock()
         mock_row._mapping = {"date": date(2026, 1, 5), "revenue": 5000, "orders": 2}
         mock_result = MagicMock()
         mock_result.fetchall.return_value = [mock_row]
         db = AsyncMock()
         db.execute = AsyncMock(return_value=mock_result)
-        result = await self.repo.get_revenue_by_day(db, from_date=date(2026, 1, 1), to_date=date(2026, 1, 31))
+        result = await self.repo.get_revenue_by_day(
+            db, from_date=date(2026, 1, 1), to_date=date(2026, 1, 31)
+        )
         assert len(result) == 1
         assert result[0]["revenue"] == 5000
 
     async def test_get_orders_by_status(self):
         from datetime import date
+
         mock_row = MagicMock()
         mock_row.status = "delivered"
         mock_row.cnt = 10
@@ -617,17 +651,28 @@ class TestAnalyticsRepository:
         mock_result.fetchall.return_value = [mock_row]
         db = AsyncMock()
         db.execute = AsyncMock(return_value=mock_result)
-        result = await self.repo.get_orders_by_status(db, from_date=date(2026, 1, 1), to_date=date(2026, 1, 31))
+        result = await self.repo.get_orders_by_status(
+            db, from_date=date(2026, 1, 1), to_date=date(2026, 1, 31)
+        )
         assert result == {"delivered": 10}
 
     async def test_get_top_products_returns_list(self):
         from datetime import date
+
         mock_row = MagicMock()
-        mock_row._mapping = {"product_id": uuid.uuid4(), "name": "Silver Ring", "slug": "silver-ring", "units_sold": 50, "revenue": 25000}
+        mock_row._mapping = {
+            "product_id": uuid.uuid4(),
+            "name": "Silver Ring",
+            "slug": "silver-ring",
+            "units_sold": 50,
+            "revenue": 25000,
+        }
         mock_result = MagicMock()
         mock_result.fetchall.return_value = [mock_row]
         db = AsyncMock()
         db.execute = AsyncMock(return_value=mock_result)
-        result = await self.repo.get_top_products(db, from_date=date(2026, 1, 1), to_date=date(2026, 1, 31))
+        result = await self.repo.get_top_products(
+            db, from_date=date(2026, 1, 1), to_date=date(2026, 1, 31)
+        )
         assert len(result) == 1
         assert result[0]["name"] == "Silver Ring"

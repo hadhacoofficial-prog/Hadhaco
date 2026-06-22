@@ -27,7 +27,9 @@ _service = InventoryService()
 )
 async def get_low_stock(db: AsyncSession = Depends(get_db)):
     result = await _service.get_low_stock(db)
-    return ok(result, ResponseCode.INVENTORY_LOW_STOCK_LISTED, "Low stock items listed successfully")
+    return ok(
+        result, ResponseCode.INVENTORY_LOW_STOCK_LISTED, "Low stock items listed successfully"
+    )
 
 
 @router.get(
@@ -52,7 +54,9 @@ async def get_inventory_history(
         page_size=page_size,
         movement_type=movement_type,
     )
-    return ok(result, ResponseCode.INVENTORY_HISTORY_FETCHED, "Inventory history fetched successfully")
+    return ok(
+        result, ResponseCode.INVENTORY_HISTORY_FETCHED, "Inventory history fetched successfully"
+    )
 
 
 @router.post(

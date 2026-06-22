@@ -1,6 +1,6 @@
 import io
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import boto3
 from botocore.config import Config
@@ -29,8 +29,14 @@ def _build_pdf(order, invoice_number: str) -> bytes:
     from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
 
     buf = io.BytesIO()
-    doc = SimpleDocTemplate(buf, pagesize=A4, topMargin=15 * mm, bottomMargin=15 * mm,
-                            leftMargin=20 * mm, rightMargin=20 * mm)
+    doc = SimpleDocTemplate(
+        buf,
+        pagesize=A4,
+        topMargin=15 * mm,
+        bottomMargin=15 * mm,
+        leftMargin=20 * mm,
+        rightMargin=20 * mm,
+    )
     styles = getSampleStyleSheet()
     elements = []
 
@@ -43,7 +49,7 @@ def _build_pdf(order, invoice_number: str) -> bytes:
     elements.append(Spacer(1, 2 * mm))
 
     # Meta info
-    issued = datetime.now(timezone.utc).strftime("%d %b %Y")
+    issued = datetime.now(UTC).strftime("%d %b %Y")
     meta = [
         ["Invoice Number:", invoice_number],
         ["Order Number:", order.order_number],
@@ -51,22 +57,29 @@ def _build_pdf(order, invoice_number: str) -> bytes:
         ["Payment Method:", order.payment_method or "—"],
     ]
     meta_table = Table(meta, colWidths=[50 * mm, 100 * mm])
-    meta_table.setStyle(TableStyle([
-        ("FONTSIZE", (0, 0), (-1, -1), 9),
-        ("BOTTOMPADDING", (0, 0), (-1, -1), 2),
-    ]))
+    meta_table.setStyle(
+        TableStyle(
+            [
+                ("FONTSIZE", (0, 0), (-1, -1), 9),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 2),
+            ]
+        )
+    )
     elements.append(meta_table)
     elements.append(Spacer(1, 5 * mm))
 
     # Shipping address
     elements.append(Paragraph("<b>Ship To:</b>", styles["Normal"]))
-    addr_lines = filter(None, [
-        order.shipping_full_name,
-        order.shipping_line1,
-        order.shipping_line2,
-        f"{order.shipping_city}, {order.shipping_state} {order.shipping_postal}",
-        order.shipping_country,
-    ])
+    addr_lines = filter(
+        None,
+        [
+            order.shipping_full_name,
+            order.shipping_line1,
+            order.shipping_line2,
+            f"{order.shipping_city}, {order.shipping_state} {order.shipping_postal}",
+            order.shipping_country,
+        ],
+    )
     elements.append(Paragraph("<br/>".join(addr_lines), styles["Normal"]))
     elements.append(Spacer(1, 5 * mm))
 
@@ -74,26 +87,34 @@ def _build_pdf(order, invoice_number: str) -> bytes:
     header = [["#", "Product", "SKU", "Qty", "Unit Price", "Tax", "Total"]]
     rows = []
     for i, item in enumerate(order.items, 1):
-        rows.append([
-            str(i),
-            item.product_name,
-            item.product_sku,
-            str(item.quantity),
-            f"₹{float(item.unit_price):,.2f}",
-            f"₹{float(item.tax_amount):,.2f} ({float(item.tax_rate):.0f}%)",
-            f"₹{float(item.line_total):,.2f}",
-        ])
+        rows.append(
+            [
+                str(i),
+                item.product_name,
+                item.product_sku,
+                str(item.quantity),
+                f"₹{float(item.unit_price):,.2f}",
+                f"₹{float(item.tax_amount):,.2f} ({float(item.tax_rate):.0f}%)",
+                f"₹{float(item.line_total):,.2f}",
+            ]
+        )
 
-    item_table = Table(header + rows, colWidths=[8*mm, 55*mm, 28*mm, 12*mm, 25*mm, 30*mm, 25*mm])
-    item_table.setStyle(TableStyle([
-        ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#1a1a1a")),
-        ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
-        ("FONTSIZE", (0, 0), (-1, -1), 8),
-        ("GRID", (0, 0), (-1, -1), 0.25, colors.grey),
-        ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor("#f9f9f9")]),
-        ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
-        ("TOPPADDING", (0, 0), (-1, -1), 3),
-    ]))
+    item_table = Table(
+        header + rows, colWidths=[8 * mm, 55 * mm, 28 * mm, 12 * mm, 25 * mm, 30 * mm, 25 * mm]
+    )
+    item_table.setStyle(
+        TableStyle(
+            [
+                ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#1a1a1a")),
+                ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+                ("FONTSIZE", (0, 0), (-1, -1), 8),
+                ("GRID", (0, 0), (-1, -1), 0.25, colors.grey),
+                ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor("#f9f9f9")]),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
+                ("TOPPADDING", (0, 0), (-1, -1), 3),
+            ]
+        )
+    )
     elements.append(item_table)
     elements.append(Spacer(1, 5 * mm))
 
@@ -111,16 +132,20 @@ def _build_pdf(order, invoice_number: str) -> bytes:
     if float(order.discount) > 0:
         totals.append(["Discount", f"-₹{float(order.discount):,.2f}"])
     totals.append(["", ""])
-    totals.append([f"TOTAL", f"₹{float(order.total):,.2f}"])
+    totals.append(["TOTAL", f"₹{float(order.total):,.2f}"])
 
     totals_table = Table(totals, colWidths=[130 * mm, 40 * mm])
-    totals_table.setStyle(TableStyle([
-        ("FONTSIZE", (0, 0), (-1, -1), 9),
-        ("ALIGN", (1, 0), (1, -1), "RIGHT"),
-        ("LINEABOVE", (0, -1), (-1, -1), 0.5, colors.black),
-        ("FONTNAME", (0, -1), (-1, -1), "Helvetica-Bold"),
-        ("BOTTOMPADDING", (0, 0), (-1, -1), 2),
-    ]))
+    totals_table.setStyle(
+        TableStyle(
+            [
+                ("FONTSIZE", (0, 0), (-1, -1), 9),
+                ("ALIGN", (1, 0), (1, -1), "RIGHT"),
+                ("LINEABOVE", (0, -1), (-1, -1), 0.5, colors.black),
+                ("FONTNAME", (0, -1), (-1, -1), "Helvetica-Bold"),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 2),
+            ]
+        )
+    )
     elements.append(totals_table)
 
     doc.build(elements)
@@ -128,7 +153,6 @@ def _build_pdf(order, invoice_number: str) -> bytes:
 
 
 class InvoiceService:
-
     async def generate_and_store(self, db, order) -> dict:
         """
         Generate PDF, upload to R2, record in DB.
@@ -153,13 +177,16 @@ class InvoiceService:
         )
         pdf_url = f"{settings.R2_PUBLIC_URL.rstrip('/')}/{r2_key}"
 
-        invoice = await repo.create_invoice(db, {
-            "id": uuid.uuid4(),
-            "order_id": order.id,
-            "invoice_number": invoice_number,
-            "pdf_url": pdf_url,
-            "pdf_r2_key": r2_key,
-        })
+        invoice = await repo.create_invoice(
+            db,
+            {
+                "id": uuid.uuid4(),
+                "order_id": order.id,
+                "invoice_number": invoice_number,
+                "pdf_url": pdf_url,
+                "pdf_r2_key": r2_key,
+            },
+        )
 
         return {"invoice_number": invoice.invoice_number, "pdf_url": invoice.pdf_url}
 

@@ -1,7 +1,10 @@
 from __future__ import annotations
+
 import uuid
+
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.ext.asyncio import AsyncSession
+
 from app.common.response_codes import ResponseCode
 from app.common.responses import BaseSuccessResponse, ok
 from app.core.database import get_db
@@ -25,13 +28,23 @@ async def list_signals(
 
 
 @router.post("/signals", response_model=BaseSuccessResponse[FraudSignalOut], status_code=201)
-async def create_signal(data: FraudSignalCreate, db: AsyncSession = Depends(get_db), _=Depends(require_admin)):
+async def create_signal(
+    data: FraudSignalCreate, db: AsyncSession = Depends(get_db), _=Depends(require_admin)
+):
     from app.common.responses import created
+
     result = await _svc.record_signal(db, data)
     return created(result, ResponseCode.FRAUD_SIGNAL_CREATED, "Fraud signal recorded successfully")
 
 
 @router.patch("/signals/{signal_id}", response_model=BaseSuccessResponse[FraudSignalOut])
-async def resolve_signal(signal_id: uuid.UUID, data: FraudResolveRequest, db: AsyncSession = Depends(get_db), admin=Depends(require_admin)):
-    result = await _svc.resolve_signal(db, signal_id=signal_id, resolver_id=uuid.UUID(admin["sub"]), data=data)
+async def resolve_signal(
+    signal_id: uuid.UUID,
+    data: FraudResolveRequest,
+    db: AsyncSession = Depends(get_db),
+    admin=Depends(require_admin),
+):
+    result = await _svc.resolve_signal(
+        db, signal_id=signal_id, resolver_id=uuid.UUID(admin["sub"]), data=data
+    )
     return ok(result, ResponseCode.FRAUD_SIGNAL_RESOLVED, "Fraud signal resolved successfully")

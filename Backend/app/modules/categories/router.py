@@ -35,6 +35,7 @@ async def _bust_all_nav_caches(redis: aioredis.Redis) -> None:
 
 # ── Public endpoints ──────────────────────────────────────────────────────────
 
+
 @router.get("/categories", response_model=BaseSuccessResponse[list[CategoryTreeNode]])
 async def list_categories(db: AsyncSession = Depends(get_db)):
     result = await _svc.get_tree(db)
@@ -64,7 +65,9 @@ async def navbar_categories(
     return ok(result, ResponseCode.CATEGORY_LISTED, "Categories fetched successfully")
 
 
-@router.get("/categories/navigation", response_model=BaseSuccessResponse[NavigationCategoriesResponse])
+@router.get(
+    "/categories/navigation", response_model=BaseSuccessResponse[NavigationCategoriesResponse]
+)
 async def navigation_categories(
     db: AsyncSession = Depends(get_db),
     redis: aioredis.Redis = Depends(get_redis),
@@ -89,6 +92,7 @@ async def navigation_categories(
 
 
 # ── Admin endpoints ───────────────────────────────────────────────────────────
+
 
 @router.post(
     "/admin/categories",

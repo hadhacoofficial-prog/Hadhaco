@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import date, datetime, timedelta, timezone
+from datetime import UTC, date, datetime, timedelta
 
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy import text
@@ -20,7 +20,7 @@ router = APIRouter(prefix="/admin", tags=["admin"])
 @router.get("/dashboard", response_model=BaseSuccessResponse[KPIStats])
 async def dashboard(db: AsyncSession = Depends(get_db), _=Depends(require_admin)):
     today = date.today()
-    today_start = datetime(today.year, today.month, today.day, tzinfo=timezone.utc)
+    today_start = datetime(today.year, today.month, today.day, tzinfo=UTC)
     tomorrow_start = today_start + timedelta(days=1)
 
     rows = await db.execute(

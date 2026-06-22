@@ -1,7 +1,17 @@
 import uuid
-from datetime import datetime, date
+from datetime import date, datetime
 
-from sqlalchemy import CheckConstraint, Date, DateTime, ForeignKey, Index, Integer, Numeric, String, Text, func
+from sqlalchemy import (
+    Date,
+    DateTime,
+    ForeignKey,
+    Index,
+    Integer,
+    Numeric,
+    String,
+    Text,
+    func,
+)
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -18,7 +28,9 @@ class Order(Base):
     )
 
     status: Mapped[str] = mapped_column(String(20), nullable=False, server_default="pending")
-    payment_status: Mapped[str] = mapped_column(String(20), nullable=False, server_default="pending")
+    payment_status: Mapped[str] = mapped_column(
+        String(20), nullable=False, server_default="pending"
+    )
 
     # Shipping address snapshot
     shipping_full_name: Mapped[str] = mapped_column(String(255), nullable=False)
@@ -43,7 +55,9 @@ class Order(Base):
     # Financials
     subtotal: Mapped[float] = mapped_column(Numeric(12, 2), nullable=False)
     tax_amount: Mapped[float] = mapped_column(Numeric(12, 2), nullable=False, server_default="0")
-    shipping_charge: Mapped[float] = mapped_column(Numeric(12, 2), nullable=False, server_default="0")
+    shipping_charge: Mapped[float] = mapped_column(
+        Numeric(12, 2), nullable=False, server_default="0"
+    )
     discount: Mapped[float] = mapped_column(Numeric(12, 2), nullable=False, server_default="0")
     total: Mapped[float] = mapped_column(Numeric(12, 2), nullable=False)
 
@@ -68,8 +82,12 @@ class Order(Base):
     cancelled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     delivered_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
-    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now())
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now()
+    )
 
     items: Mapped[list["OrderItem"]] = relationship(
         "OrderItem", back_populates="order", cascade="all, delete-orphan", lazy="select"
@@ -108,7 +126,9 @@ class OrderItem(Base):
     tax_amount: Mapped[float] = mapped_column(Numeric(12, 2), nullable=False, server_default="0")
     line_total: Mapped[float] = mapped_column(Numeric(12, 2), nullable=False)
 
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
 
     order: Mapped["Order"] = relationship("Order", back_populates="items")
 

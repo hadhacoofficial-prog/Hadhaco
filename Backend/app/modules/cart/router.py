@@ -1,6 +1,6 @@
 import uuid
 
-from fastapi import APIRouter, Cookie, Depends, Header
+from fastapi import APIRouter, Depends, Header
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.common.response_codes import ResponseCode
@@ -9,7 +9,6 @@ from app.core.database import get_db
 from app.core.dependencies import get_current_user_optional
 from app.modules.cart.schemas import (
     AddToCartRequest,
-    ApplyCouponRequest,
     CartSummary,
     UpdateCartItemRequest,
 )
@@ -95,10 +94,12 @@ async def merge_guest_cart(
 ):
     """Call after login to merge guest cart into authenticated user cart."""
     from app.core.exceptions import AuthenticationError
+
     if not current_user:
         raise AuthenticationError("Authentication required to merge cart")
     if not x_session_id:
         from app.core.exceptions import ValidationError
+
         raise ValidationError("X-Session-ID header required")
     result = await _service.merge_guest_cart(db, current_user.id, x_session_id)
     return ok(result, ResponseCode.CART_MERGED, "Cart merged successfully")

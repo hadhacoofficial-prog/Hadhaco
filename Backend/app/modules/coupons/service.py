@@ -1,5 +1,5 @@
 import uuid
-from datetime import UTC, datetime, timezone
+from datetime import UTC, datetime
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -38,8 +38,9 @@ def _calculate_discount(coupon: Coupon, subtotal: float) -> float:
 
 
 class CouponService:
-
-    async def list_all(self, db: AsyncSession, is_active: bool | None = None) -> list[CouponResponse]:
+    async def list_all(
+        self, db: AsyncSession, is_active: bool | None = None
+    ) -> list[CouponResponse]:
         coupons = await _repo.list_all(db, is_active=is_active)
         return [CouponResponse.model_validate(c) for c in coupons]
 
@@ -76,22 +77,32 @@ class CouponService:
         now = datetime.now(UTC)
 
         if not coupon:
-            return CouponValidateResponse(valid=False, discount_amount=0, message="Invalid coupon code")
+            return CouponValidateResponse(
+                valid=False, discount_amount=0, message="Invalid coupon code"
+            )
 
         if not coupon.is_active:
-            return CouponValidateResponse(valid=False, discount_amount=0, message="Coupon is inactive")
+            return CouponValidateResponse(
+                valid=False, discount_amount=0, message="Coupon is inactive"
+            )
 
         valid_from = _ensure_utc(coupon.valid_from)
         valid_until = _ensure_utc(coupon.valid_until)
 
         if valid_from and valid_from > now:
-            return CouponValidateResponse(valid=False, discount_amount=0, message="Coupon is not yet active")
+            return CouponValidateResponse(
+                valid=False, discount_amount=0, message="Coupon is not yet active"
+            )
 
         if valid_until and valid_until < now:
-            return CouponValidateResponse(valid=False, discount_amount=0, message="Coupon has expired")
+            return CouponValidateResponse(
+                valid=False, discount_amount=0, message="Coupon has expired"
+            )
 
         if coupon.usage_limit and coupon.usage_count >= coupon.usage_limit:
-            return CouponValidateResponse(valid=False, discount_amount=0, message="Coupon usage limit reached")
+            return CouponValidateResponse(
+                valid=False, discount_amount=0, message="Coupon usage limit reached"
+            )
 
         if subtotal < float(coupon.min_order_amount):
             return CouponValidateResponse(
@@ -102,7 +113,9 @@ class CouponService:
 
         user_usage = await _repo.get_user_usage_count(db, coupon.id, user_id)
         if user_usage >= coupon.per_user_limit:
-            return CouponValidateResponse(valid=False, discount_amount=0, message="You have already used this coupon")
+            return CouponValidateResponse(
+                valid=False, discount_amount=0, message="You have already used this coupon"
+            )
 
         discount = _calculate_discount(coupon, subtotal)
         return CouponValidateResponse(

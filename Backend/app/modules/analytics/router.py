@@ -1,13 +1,15 @@
 from __future__ import annotations
-import uuid
+
 from datetime import date, timedelta
-from fastapi import APIRouter, Depends, Request, status
+
+from fastapi import APIRouter, Depends, Request
 from sqlalchemy.ext.asyncio import AsyncSession
+
 from app.common.response_codes import ResponseCode
 from app.common.responses import BaseSuccessResponse, accepted, ok
 from app.core.database import get_db
-from app.core.dependencies import get_current_user, require_admin
-from app.modules.analytics.schemas import DashboardStats, TrackEventRequest
+from app.core.dependencies import require_admin
+from app.modules.analytics.schemas import TrackEventRequest
 from app.modules.analytics.service import AnalyticsService
 
 router = APIRouter(prefix="/analytics", tags=["analytics"])
@@ -25,6 +27,7 @@ async def track_event(
         auth = request.headers.get("Authorization", "")
         if auth.startswith("Bearer "):
             from app.core.security import verify_supabase_jwt
+
             payload = await verify_supabase_jwt(auth[7:])
             user_id = payload.sub
     except Exception:
@@ -46,4 +49,6 @@ async def admin_dashboard(
     fd = from_date or (today - timedelta(days=30))
     td = to_date or today
     result = await _svc.get_dashboard(db, from_date=fd, to_date=td)
-    return ok(result, ResponseCode.ANALYTICS_DASHBOARD_FETCHED, "Dashboard data fetched successfully")
+    return ok(
+        result, ResponseCode.ANALYTICS_DASHBOARD_FETCHED, "Dashboard data fetched successfully"
+    )

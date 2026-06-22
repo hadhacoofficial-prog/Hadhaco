@@ -1,4 +1,5 @@
 import uuid
+from datetime import UTC
 from typing import Any
 
 from sqlalchemy import select, update
@@ -8,7 +9,6 @@ from app.modules.payments.models import Invoice, Payment, Refund
 
 
 class PaymentRepository:
-
     async def create(self, db: AsyncSession, data: dict[str, Any]) -> Payment:
         p = Payment(**data)
         db.add(p)
@@ -33,7 +33,9 @@ class PaymentRepository:
         )
         return result.scalar_one_or_none()
 
-    async def update(self, db: AsyncSession, payment_id: uuid.UUID, data: dict[str, Any]) -> Payment | None:
+    async def update(
+        self, db: AsyncSession, payment_id: uuid.UUID, data: dict[str, Any]
+    ) -> Payment | None:
         await db.execute(update(Payment).where(Payment.id == payment_id).values(**data))
         return await self.get_by_id(db, payment_id)
 
@@ -44,7 +46,9 @@ class PaymentRepository:
         await db.refresh(r)
         return r
 
-    async def update_refund(self, db: AsyncSession, refund_id: uuid.UUID, data: dict[str, Any]) -> Refund | None:
+    async def update_refund(
+        self, db: AsyncSession, refund_id: uuid.UUID, data: dict[str, Any]
+    ) -> Refund | None:
         await db.execute(update(Refund).where(Refund.id == refund_id).values(**data))
         result = await db.execute(select(Refund).where(Refund.id == refund_id))
         return result.scalar_one_or_none()
@@ -69,9 +73,11 @@ class PaymentRepository:
         return result.scalar_one_or_none()
 
     async def generate_invoice_number(self, db: AsyncSession) -> str:
-        from datetime import datetime, timezone
+        from datetime import datetime
+
         from sqlalchemy import func
-        now = datetime.now(timezone.utc)
+
+        now = datetime.now(UTC)
         prefix = f"INV-{now.year}{now.month:02d}-"
         count_result = await db.execute(
             select(func.count(Invoice.id)).where(Invoice.invoice_number.like(f"{prefix}%"))

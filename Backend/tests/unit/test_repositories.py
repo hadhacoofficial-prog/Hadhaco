@@ -1,29 +1,29 @@
 """Repository unit tests — mocked AsyncSession, no real DB required."""
-import uuid
-from unittest.mock import AsyncMock, MagicMock, patch
 
-import pytest
+import uuid
+from unittest.mock import AsyncMock, MagicMock
+
+import app.modules.addresses.models  # noqa: F401
+import app.modules.cart.models  # noqa: F401
 
 # Force all SQLAlchemy mappers to configure before tests run.
 # Product has relationship("Category", ...) so both must be imported together.
 import app.modules.catalog.models  # noqa: F401
 import app.modules.categories.models  # noqa: F401
-import app.modules.orders.models  # noqa: F401
-import app.modules.reviews.models  # noqa: F401
-import app.modules.inventory.models  # noqa: F401
 import app.modules.collections.models  # noqa: F401
 import app.modules.coupons.models  # noqa: F401
+import app.modules.inventory.models  # noqa: F401
+import app.modules.orders.models  # noqa: F401
 import app.modules.payments.models  # noqa: F401
 import app.modules.profiles.models  # noqa: F401
-import app.modules.addresses.models  # noqa: F401
-import app.modules.shipping.models  # noqa: F401
-import app.modules.cart.models  # noqa: F401
-import app.modules.wishlist.models  # noqa: F401
-import app.modules.support.models  # noqa: F401
 import app.modules.returns.models  # noqa: F401
-
+import app.modules.reviews.models  # noqa: F401
+import app.modules.shipping.models  # noqa: F401
+import app.modules.support.models  # noqa: F401
+import app.modules.wishlist.models  # noqa: F401
 
 # ─── Mock helpers ─────────────────────────────────────────────────────────────
+
 
 def _scalars_result(items):
     r = MagicMock()
@@ -49,6 +49,15 @@ def _fetchone(value):
     return r
 
 
+def _all_result(rows):
+    """For queries that return tuple rows, e.g. select(Model, subquery).
+    rows should be a list of tuples: [(obj, extra_col), ...]
+    """
+    r = MagicMock()
+    r.all.return_value = rows
+    return r
+
+
 def _first(value):
     """Mock result.first() → value"""
     r = MagicMock()
@@ -68,9 +77,11 @@ def _db(*results):
 
 # ─── AddressRepository ────────────────────────────────────────────────────────
 
+
 class TestAddressRepository:
     def setup_method(self):
         from app.modules.addresses.repository import AddressRepository
+
         self.repo = AddressRepository()
 
     async def test_list_for_user_returns_list(self):
@@ -103,12 +114,20 @@ class TestAddressRepository:
     async def test_create_adds_flushes_and_refreshes(self):
         db = AsyncMock()
         db.add = MagicMock()
-        await self.repo.create(db, {
-            "id": uuid.uuid4(), "user_id": uuid.uuid4(),
-            "type": "shipping", "full_name": "Alice",
-            "line1": "123 Main", "city": "Mumbai",
-            "state": "MH", "postal_code": "400001", "country": "IN",
-        })
+        await self.repo.create(
+            db,
+            {
+                "id": uuid.uuid4(),
+                "user_id": uuid.uuid4(),
+                "type": "shipping",
+                "full_name": "Alice",
+                "line1": "123 Main",
+                "city": "Mumbai",
+                "state": "MH",
+                "postal_code": "400001",
+                "country": "IN",
+            },
+        )
         db.add.assert_called_once()
         db.flush.assert_awaited_once()
 
@@ -131,9 +150,11 @@ class TestAddressRepository:
 
 # ─── ProductRepository (CatalogRepository) ───────────────────────────────────
 
+
 class TestProductRepository:
     def setup_method(self):
         from app.modules.catalog.repository import ProductRepository
+
         self.repo = ProductRepository()
 
     async def test_get_by_id_returns_product(self):
@@ -169,11 +190,19 @@ class TestProductRepository:
     async def test_list_paginated_with_all_filters(self):
         db = _db(_scalar_one(0), _scalars_result([]))
         items, total = await self.repo.list_paginated(
-            db, status="active", category_id=uuid.uuid4(),
-            metal_type="silver", gender="female",
-            is_featured=True, is_new_arrival=True, is_best_seller=False,
-            min_price=100, max_price=5000, search="ring",
-            sort_by="base_price", sort_dir="asc",
+            db,
+            status="active",
+            category_id=uuid.uuid4(),
+            metal_type="silver",
+            gender="female",
+            is_featured=True,
+            is_new_arrival=True,
+            is_best_seller=False,
+            min_price=100,
+            max_price=5000,
+            search="ring",
+            sort_by="base_price",
+            sort_dir="asc",
         )
         assert total == 0
         assert items == []
@@ -181,11 +210,17 @@ class TestProductRepository:
     async def test_create_adds_and_refreshes(self):
         db = AsyncMock()
         db.add = MagicMock()
-        await self.repo.create(db, {
-            "id": uuid.uuid4(), "name": "Silver Ring",
-            "slug": "silver-ring", "sku": "SR-001",
-            "base_price": 999.0, "tax_rate": 3.0,
-        })
+        await self.repo.create(
+            db,
+            {
+                "id": uuid.uuid4(),
+                "name": "Silver Ring",
+                "slug": "silver-ring",
+                "sku": "SR-001",
+                "base_price": 999.0,
+                "tax_rate": 3.0,
+            },
+        )
         db.add.assert_called_once()
         db.flush.assert_awaited_once()
         db.refresh.assert_awaited_once()
@@ -204,10 +239,15 @@ class TestProductRepository:
     async def test_add_image_adds_and_refreshes(self):
         db = AsyncMock()
         db.add = MagicMock()
-        await self.repo.add_image(db, {
-            "id": uuid.uuid4(), "product_id": uuid.uuid4(),
-            "url": "https://cdn/img.jpg", "sort_order": 0,
-        })
+        await self.repo.add_image(
+            db,
+            {
+                "id": uuid.uuid4(),
+                "product_id": uuid.uuid4(),
+                "url": "https://cdn/img.jpg",
+                "sort_order": 0,
+            },
+        )
         db.add.assert_called_once()
 
     async def test_delete_image_returns_false_when_not_found(self):
@@ -231,10 +271,15 @@ class TestProductRepository:
     async def test_add_variant_adds_and_refreshes(self):
         db = AsyncMock()
         db.add = MagicMock()
-        await self.repo.add_variant(db, {
-            "id": uuid.uuid4(), "product_id": uuid.uuid4(),
-            "name": "Large", "sku": "SR-001-L",
-        })
+        await self.repo.add_variant(
+            db,
+            {
+                "id": uuid.uuid4(),
+                "product_id": uuid.uuid4(),
+                "name": "Large",
+                "sku": "SR-001-L",
+            },
+        )
         db.add.assert_called_once()
 
     async def test_get_variant_returns_variant(self):
@@ -305,9 +350,11 @@ class TestProductRepository:
 
 # ─── OrderRepository ──────────────────────────────────────────────────────────
 
+
 class TestOrderRepository:
     def setup_method(self):
         from app.modules.orders.repository import OrderRepository
+
         self.repo = OrderRepository()
 
     async def test_get_by_id_returns_order(self):
@@ -324,7 +371,9 @@ class TestOrderRepository:
 
     async def test_list_for_user_with_pagination(self):
         mock_order = MagicMock()
-        db = _db(_scalar_one(3), _scalars_result([mock_order]))
+        # list_for_user selects (Order, item_count_subquery), so result.all()
+        # returns rows of (order_obj, item_count) tuples — not scalars
+        db = _db(_scalar_one(3), _all_result([(mock_order, 2)]))
         items, total = await self.repo.list_for_user(db, uuid.uuid4())
         assert total == 3
         assert items == [mock_order]
@@ -342,8 +391,11 @@ class TestOrderRepository:
     async def test_list_all_with_all_filters(self):
         db = _db(_scalar_one(0), _scalars_result([]))
         items, total = await self.repo.list_all(
-            db, status="confirmed", payment_status="paid",
-            user_id=uuid.uuid4(), search="HDH-2026",
+            db,
+            status="confirmed",
+            payment_status="paid",
+            user_id=uuid.uuid4(),
+            search="HDH-2026",
         )
         assert total == 0
 
@@ -357,13 +409,21 @@ class TestOrderRepository:
     async def test_add_item_returns_item(self):
         db = AsyncMock()
         db.add = MagicMock()
-        await self.repo.add_item(db, {
-            "id": uuid.uuid4(), "order_id": uuid.uuid4(),
-            "product_id": uuid.uuid4(), "quantity": 2,
-            "unit_price": 999.0, "product_name": "Ring",
-            "product_sku": "SR-001", "tax_rate": 3.0,
-            "tax_amount": 30.0, "line_total": 1029.0,
-        })
+        await self.repo.add_item(
+            db,
+            {
+                "id": uuid.uuid4(),
+                "order_id": uuid.uuid4(),
+                "product_id": uuid.uuid4(),
+                "quantity": 2,
+                "unit_price": 999.0,
+                "product_name": "Ring",
+                "product_sku": "SR-001",
+                "tax_rate": 3.0,
+                "tax_amount": 30.0,
+                "line_total": 1029.0,
+            },
+        )
         db.add.assert_called_once()
 
     async def test_update_executes_and_refetches(self):
@@ -381,9 +441,11 @@ class TestOrderRepository:
 
 # ─── ReviewRepository ─────────────────────────────────────────────────────────
 
+
 class TestReviewRepository:
     def setup_method(self):
         from app.modules.reviews.repository import ReviewRepository
+
         self.repo = ReviewRepository()
 
     async def test_get_by_id_returns_review(self):
@@ -399,12 +461,16 @@ class TestReviewRepository:
 
     async def test_has_delivered_order_item_returns_true(self):
         db = _db(_fetchone(MagicMock()))
-        result = await self.repo.has_delivered_order_item(db, user_id=uuid.uuid4(), product_id=uuid.uuid4())
+        result = await self.repo.has_delivered_order_item(
+            db, user_id=uuid.uuid4(), product_id=uuid.uuid4()
+        )
         assert result is True
 
     async def test_has_delivered_order_item_returns_false(self):
         db = _db(_fetchone(None))
-        result = await self.repo.has_delivered_order_item(db, user_id=uuid.uuid4(), product_id=uuid.uuid4())
+        result = await self.repo.has_delivered_order_item(
+            db, user_id=uuid.uuid4(), product_id=uuid.uuid4()
+        )
         assert result is False
 
     async def test_has_any_review_returns_true(self):
@@ -421,7 +487,9 @@ class TestReviewRepository:
     async def test_get_by_product_user_returns_review(self):
         mock_rev = MagicMock()
         db = _db(_scalar_one_or_none(mock_rev))
-        result = await self.repo.get_by_product_user(db, product_id=uuid.uuid4(), user_id=uuid.uuid4())
+        result = await self.repo.get_by_product_user(
+            db, product_id=uuid.uuid4(), user_id=uuid.uuid4()
+        )
         assert result is mock_rev
 
     async def test_create_review_adds_and_refreshes(self):
@@ -482,9 +550,11 @@ class TestReviewRepository:
 
 # ─── InventoryRepository ──────────────────────────────────────────────────────
 
+
 class TestInventoryRepository:
     def setup_method(self):
         from app.modules.inventory.repository import InventoryRepository
+
         self.repo = InventoryRepository()
 
     async def test_get_stock_snapshot_returns_dict(self):
@@ -503,11 +573,17 @@ class TestInventoryRepository:
     async def test_record_movement_adds(self):
         db = AsyncMock()
         db.add = MagicMock()
-        await self.repo.record(db, {
-            "id": uuid.uuid4(), "product_id": uuid.uuid4(),
-            "movement_type": "sale", "delta": -1,
-            "quantity_before": 10, "quantity_after": 9,
-        })
+        await self.repo.record(
+            db,
+            {
+                "id": uuid.uuid4(),
+                "product_id": uuid.uuid4(),
+                "movement_type": "sale",
+                "delta": -1,
+                "quantity_before": 10,
+                "quantity_after": 9,
+            },
+        )
         db.add.assert_called_once()
 
     async def test_list_for_product_returns_paginated(self):
@@ -525,9 +601,11 @@ class TestInventoryRepository:
 
 # ─── CollectionRepository ────────────────────────────────────────────────────
 
+
 class TestCollectionRepository:
     def setup_method(self):
         from app.modules.collections.repository import CollectionRepository
+
         self.repo = CollectionRepository()
 
     async def test_list_active_returns_list(self):
@@ -568,9 +646,11 @@ class TestCollectionRepository:
 
 # ─── CouponRepository ─────────────────────────────────────────────────────────
 
+
 class TestCouponRepository:
     def setup_method(self):
         from app.modules.coupons.repository import CouponRepository
+
         self.repo = CouponRepository()
 
     async def test_get_by_code_returns_coupon(self):
@@ -599,12 +679,18 @@ class TestCouponRepository:
     async def test_create_adds_and_refreshes(self):
         db = AsyncMock()
         db.add = MagicMock()
-        await self.repo.create(db, {
-            "id": uuid.uuid4(), "code": "SAVE10",
-            "coupon_type": "percentage", "value": 10,
-            "min_order_amount": 0, "per_user_limit": 5,
-            "is_active": True,
-        })
+        await self.repo.create(
+            db,
+            {
+                "id": uuid.uuid4(),
+                "code": "SAVE10",
+                "coupon_type": "percentage",
+                "value": 10,
+                "min_order_amount": 0,
+                "per_user_limit": 5,
+                "is_active": True,
+            },
+        )
         db.add.assert_called_once()
 
     async def test_get_user_usage_count_returns_count(self):
@@ -615,9 +701,11 @@ class TestCouponRepository:
 
 # ─── ProfileRepository ────────────────────────────────────────────────────────
 
+
 class TestProfileRepository:
     def setup_method(self):
         from app.modules.profiles.repository import ProfileRepository
+
         self.repo = ProfileRepository()
 
     async def test_get_by_id_returns_profile(self):
@@ -648,9 +736,11 @@ class TestProfileRepository:
 
 # ─── CategoryRepository ───────────────────────────────────────────────────────
 
+
 class TestCategoryRepository:
     def setup_method(self):
         from app.modules.categories.repository import CategoryRepository
+
         self.repo = CategoryRepository()
 
     async def test_list_all_active_returns_categories(self):

@@ -1,19 +1,30 @@
 from __future__ import annotations
+
 import uuid
 from datetime import UTC, datetime
 from typing import Any
+
 from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
+
 from app.modules.cms.models import (
-    AppSetting, Banner, CmsMedia, CmsPage, CmsPublishLog, CmsSectionItem,
-    CmsVersionHistory, LandingSection,
+    AppSetting,
+    Banner,
+    CmsMedia,
+    CmsPage,
+    CmsPublishLog,
+    CmsSectionItem,
+    CmsVersionHistory,
+    LandingSection,
 )
 
 
 class CMSRepository:
     # ── Banners ────────────────────────────────────────────────────────────────
 
-    async def get_active_banners(self, db: AsyncSession, banner_type: str | None = None) -> list[Banner]:
+    async def get_active_banners(
+        self, db: AsyncSession, banner_type: str | None = None
+    ) -> list[Banner]:
         q = select(Banner).where(Banner.is_active.is_(True), Banner.deleted_at.is_(None))
         if banner_type:
             q = q.where(Banner.banner_type == banner_type)
@@ -55,24 +66,22 @@ class CMSRepository:
         return list(result.scalars().all())
 
     async def get_all_sections(self, db: AsyncSession) -> list[LandingSection]:
-        result = await db.execute(
-            select(LandingSection).order_by(LandingSection.sort_order)
-        )
+        result = await db.execute(select(LandingSection).order_by(LandingSection.sort_order))
         return list(result.scalars().all())
 
     async def get_section_by_key(self, db: AsyncSession, key: str) -> LandingSection | None:
-        result = await db.execute(
-            select(LandingSection).where(LandingSection.section_key == key)
-        )
+        result = await db.execute(select(LandingSection).where(LandingSection.section_key == key))
         return result.scalar_one_or_none()
 
-    async def get_section_by_id(self, db: AsyncSession, section_id: uuid.UUID) -> LandingSection | None:
-        result = await db.execute(
-            select(LandingSection).where(LandingSection.id == section_id)
-        )
+    async def get_section_by_id(
+        self, db: AsyncSession, section_id: uuid.UUID
+    ) -> LandingSection | None:
+        result = await db.execute(select(LandingSection).where(LandingSection.id == section_id))
         return result.scalar_one_or_none()
 
-    async def update_section(self, db: AsyncSession, section: LandingSection, data: dict[str, Any]) -> LandingSection:
+    async def update_section(
+        self, db: AsyncSession, section: LandingSection, data: dict[str, Any]
+    ) -> LandingSection:
         for k, v in data.items():
             setattr(section, k, v)
         section.updated_at = datetime.now(UTC)
@@ -90,7 +99,9 @@ class CMSRepository:
 
     # ── Section items ──────────────────────────────────────────────────────────
 
-    async def get_items_for_section(self, db: AsyncSession, section_id: uuid.UUID) -> list[CmsSectionItem]:
+    async def get_items_for_section(
+        self, db: AsyncSession, section_id: uuid.UUID
+    ) -> list[CmsSectionItem]:
         result = await db.execute(
             select(CmsSectionItem)
             .where(CmsSectionItem.section_id == section_id)
@@ -99,18 +110,20 @@ class CMSRepository:
         return list(result.scalars().all())
 
     async def get_item(self, db: AsyncSession, item_id: uuid.UUID) -> CmsSectionItem | None:
-        result = await db.execute(
-            select(CmsSectionItem).where(CmsSectionItem.id == item_id)
-        )
+        result = await db.execute(select(CmsSectionItem).where(CmsSectionItem.id == item_id))
         return result.scalar_one_or_none()
 
-    async def create_item(self, db: AsyncSession, section_id: uuid.UUID, **kwargs: Any) -> CmsSectionItem:
+    async def create_item(
+        self, db: AsyncSession, section_id: uuid.UUID, **kwargs: Any
+    ) -> CmsSectionItem:
         item = CmsSectionItem(section_id=section_id, **kwargs)
         db.add(item)
         await db.flush()
         return item
 
-    async def update_item(self, db: AsyncSession, item: CmsSectionItem, data: dict[str, Any]) -> CmsSectionItem:
+    async def update_item(
+        self, db: AsyncSession, item: CmsSectionItem, data: dict[str, Any]
+    ) -> CmsSectionItem:
         for k, v in data.items():
             setattr(item, k, v)
         item.updated_at = datetime.now(UTC)
@@ -154,7 +167,9 @@ class CMSRepository:
         await db.flush()
         return v
 
-    async def get_versions(self, db: AsyncSession, section_id: uuid.UUID) -> list[CmsVersionHistory]:
+    async def get_versions(
+        self, db: AsyncSession, section_id: uuid.UUID
+    ) -> list[CmsVersionHistory]:
         result = await db.execute(
             select(CmsVersionHistory)
             .where(CmsVersionHistory.section_id == section_id)
@@ -162,7 +177,9 @@ class CMSRepository:
         )
         return list(result.scalars().all())
 
-    async def get_version(self, db: AsyncSession, version_id: uuid.UUID) -> CmsVersionHistory | None:
+    async def get_version(
+        self, db: AsyncSession, version_id: uuid.UUID
+    ) -> CmsVersionHistory | None:
         result = await db.execute(
             select(CmsVersionHistory).where(CmsVersionHistory.id == version_id)
         )
@@ -190,9 +207,7 @@ class CMSRepository:
 
     async def get_publish_log(self, db: AsyncSession, limit: int = 50) -> list[CmsPublishLog]:
         result = await db.execute(
-            select(CmsPublishLog)
-            .order_by(CmsPublishLog.created_at.desc())
-            .limit(limit)
+            select(CmsPublishLog).order_by(CmsPublishLog.created_at.desc()).limit(limit)
         )
         return list(result.scalars().all())
 
@@ -226,13 +241,13 @@ class CMSRepository:
         count_q = select(func.count()).select_from(q.subquery())
         total = (await db.execute(count_q)).scalar_one()
         result = await db.execute(
-            q.order_by(CmsMedia.created_at.desc())
-            .offset((page - 1) * page_size)
-            .limit(page_size)
+            q.order_by(CmsMedia.created_at.desc()).offset((page - 1) * page_size).limit(page_size)
         )
         return list(result.scalars().all()), total
 
-    async def update_media(self, db: AsyncSession, media: CmsMedia, data: dict[str, Any]) -> CmsMedia:
+    async def update_media(
+        self, db: AsyncSession, media: CmsMedia, data: dict[str, Any]
+    ) -> CmsMedia:
         for k, v in data.items():
             setattr(media, k, v)
         media.updated_at = datetime.now(UTC)

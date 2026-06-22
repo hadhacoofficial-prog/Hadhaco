@@ -1,3 +1,4 @@
+import asyncio
 from dataclasses import dataclass
 
 from app.core.events import BaseEvent, EventBus
@@ -20,6 +21,7 @@ class TestEventBus:
 
         bus.on(_TestEvent, lambda e: _collect(received, e))
         await bus.publish(_TestEvent(value="hello"))
+        await asyncio.sleep(0)  # let fire-and-forget tasks run
         assert len(received) == 1
         assert received[0].value == "hello"
 
@@ -43,6 +45,7 @@ class TestEventBus:
 
         # must not raise
         await bus.publish(_TestEvent(value="resilient"))
+        await asyncio.sleep(0)  # let fire-and-forget tasks run
         assert len(received) == 1
 
     async def test_publish_with_no_listeners_is_noop(self):

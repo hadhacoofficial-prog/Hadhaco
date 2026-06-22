@@ -1,14 +1,11 @@
 import uuid
 from typing import Any
 
-from sqlalchemy import func, select, text
+from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
-
-from app.core.config import settings
 
 
 class SearchService:
-
     async def full_text_search(
         self,
         db: AsyncSession,
@@ -77,7 +74,9 @@ class SearchService:
                 fallback_where.append("p.base_price <= :max_price")
 
             fallback_sql = " AND ".join(fallback_where)
-            count_fb = await db.execute(text(f"SELECT COUNT(*) FROM products p WHERE {fallback_sql}"), params)
+            count_fb = await db.execute(
+                text(f"SELECT COUNT(*) FROM products p WHERE {fallback_sql}"), params
+            )
             total = count_fb.scalar_one()
 
             items_sql = text(
@@ -99,6 +98,7 @@ class SearchService:
         items = [dict(r._mapping) for r in rows.fetchall()]
 
         import math
+
         return {
             "items": items,
             "total": total,
@@ -107,9 +107,7 @@ class SearchService:
             "total_pages": math.ceil(total / page_size) if total else 0,
         }
 
-    async def autocomplete(
-        self, db: AsyncSession, query: str, limit: int = 8
-    ) -> list[str]:
+    async def autocomplete(self, db: AsyncSession, query: str, limit: int = 8) -> list[str]:
         """Return product name suggestions for autocomplete."""
         if not query or len(query) < 2:
             return []

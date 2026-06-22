@@ -1,5 +1,5 @@
 """Unit tests for exception hierarchy and handlers."""
-import pytest
+
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
@@ -70,6 +70,7 @@ class TestExceptionHierarchy:
 
     def test_exception_inherits_from_base(self):
         from app.core.exceptions import HadhaException
+
         assert isinstance(NotFoundError("x"), HadhaException)
 
 

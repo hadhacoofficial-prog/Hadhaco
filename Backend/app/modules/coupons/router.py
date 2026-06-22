@@ -59,6 +59,7 @@ async def create_coupon(
     db: AsyncSession = Depends(get_db),
 ):
     from app.common.responses import created
+
     result = await _service.create(db, payload)
     return created(result, ResponseCode.COUPON_CREATED, "Coupon created successfully")
 

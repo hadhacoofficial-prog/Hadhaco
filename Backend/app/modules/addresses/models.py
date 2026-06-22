@@ -25,8 +25,12 @@ class UserAddress(Base):
     postal_code: Mapped[str] = mapped_column(String(20), nullable=False)
     country: Mapped[str] = mapped_column(String(2), nullable=False, server_default="IN")
     is_default: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="false")
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
-    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now())
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now()
+    )
     deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     __table_args__ = (

@@ -1,4 +1,5 @@
 """Unit tests for MSG91SMSProvider and related helpers."""
+
 from __future__ import annotations
 
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -8,8 +9,8 @@ import pytest
 
 from app.modules.notifications.providers.msg91_sms import MSG91SMSProvider, _normalize_mobile
 
-
 # ─── _normalize_mobile ────────────────────────────────────────────────────────
+
 
 class TestNormalizeMobile:
     def test_strips_plus_and_dashes(self):
@@ -30,6 +31,7 @@ class TestNormalizeMobile:
 
 # ─── MSG91SMSProvider ─────────────────────────────────────────────────────────
 
+
 class TestMSG91SMSProvider:
     def setup_method(self):
         self.provider = MSG91SMSProvider()
@@ -44,8 +46,10 @@ class TestMSG91SMSProvider:
         mock_response.json.return_value = {"type": "success", "request_id": "req-abc123"}
         mock_response.raise_for_status = MagicMock()
 
-        with patch("app.modules.notifications.providers.msg91_sms.settings") as mock_settings, \
-             patch("httpx.AsyncClient.post", new_callable=AsyncMock, return_value=mock_response):
+        with (
+            patch("app.modules.notifications.providers.msg91_sms.settings") as mock_settings,
+            patch("httpx.AsyncClient.post", new_callable=AsyncMock, return_value=mock_response),
+        ):
             mock_settings.MSG91_API_KEY = "test-api-key"
             mock_settings.MSG91_SENDER_ID = "HADHA"
             mock_settings.MSG91_TEMPLATE_ID = "tpl-001"
@@ -62,8 +66,10 @@ class TestMSG91SMSProvider:
             "401", request=MagicMock(), response=mock_response
         )
 
-        with patch("app.modules.notifications.providers.msg91_sms.settings") as mock_settings, \
-             patch("httpx.AsyncClient.post", new_callable=AsyncMock, return_value=mock_response):
+        with (
+            patch("app.modules.notifications.providers.msg91_sms.settings") as mock_settings,
+            patch("httpx.AsyncClient.post", new_callable=AsyncMock, return_value=mock_response),
+        ):
             mock_settings.MSG91_API_KEY = "bad-key"
             mock_settings.MSG91_SENDER_ID = "HADHA"
             mock_settings.MSG91_TEMPLATE_ID = "tpl-001"
@@ -77,8 +83,10 @@ class TestMSG91SMSProvider:
         mock_response.json.return_value = {"type": "error", "message": "Invalid template"}
         mock_response.raise_for_status = MagicMock()
 
-        with patch("app.modules.notifications.providers.msg91_sms.settings") as mock_settings, \
-             patch("httpx.AsyncClient.post", new_callable=AsyncMock, return_value=mock_response):
+        with (
+            patch("app.modules.notifications.providers.msg91_sms.settings") as mock_settings,
+            patch("httpx.AsyncClient.post", new_callable=AsyncMock, return_value=mock_response),
+        ):
             mock_settings.MSG91_API_KEY = "test-key"
             mock_settings.MSG91_SENDER_ID = "HADHA"
             mock_settings.MSG91_TEMPLATE_ID = "tpl-bad"
@@ -96,8 +104,10 @@ class TestMSG91SMSProvider:
             mock_resp.raise_for_status = MagicMock()
             return mock_resp
 
-        with patch("app.modules.notifications.providers.msg91_sms.settings") as mock_settings, \
-             patch("httpx.AsyncClient.post", new_callable=AsyncMock, side_effect=_fake_post):
+        with (
+            patch("app.modules.notifications.providers.msg91_sms.settings") as mock_settings,
+            patch("httpx.AsyncClient.post", new_callable=AsyncMock, side_effect=_fake_post),
+        ):
             mock_settings.MSG91_API_KEY = "key"
             mock_settings.MSG91_SENDER_ID = "HADHA"
             mock_settings.MSG91_TEMPLATE_ID = "tpl-1"
@@ -108,6 +118,7 @@ class TestMSG91SMSProvider:
 
 
 # ─── Configuration validation ─────────────────────────────────────────────────
+
 
 class TestConfigValidation:
     def test_validate_fails_fast_when_sms_enabled_without_credentials(self):
@@ -139,7 +150,7 @@ class TestConfigValidation:
                 FRONTEND_URL="http://localhost:3000",
                 ADMIN_URL="http://localhost:3001",
                 SMS_ENABLED=True,
-                MSG91_API_KEY="",   # missing
+                MSG91_API_KEY="",  # missing
                 MSG91_SENDER_ID="",  # missing
                 MSG91_TEMPLATE_ID="",  # missing
             )

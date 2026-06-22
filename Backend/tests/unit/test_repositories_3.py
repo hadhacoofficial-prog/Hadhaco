@@ -1,31 +1,32 @@
 """Tests for Wishlist, Support, Returns, Fraud, and Audit repositories."""
+
 import uuid
+from datetime import UTC
 from unittest.mock import AsyncMock, MagicMock
 
-import pytest
+import app.modules.addresses.models  # noqa: F401
+import app.modules.analytics.models  # noqa: F401
+import app.modules.audit.models  # noqa: F401
+import app.modules.cart.models  # noqa: F401
 
 # Force SQLAlchemy mapper init
 import app.modules.catalog.models  # noqa: F401
 import app.modules.categories.models  # noqa: F401
-import app.modules.orders.models  # noqa: F401
-import app.modules.reviews.models  # noqa: F401
-import app.modules.inventory.models  # noqa: F401
+import app.modules.cms.models  # noqa: F401
 import app.modules.collections.models  # noqa: F401
 import app.modules.coupons.models  # noqa: F401
+import app.modules.fraud.models  # noqa: F401
+import app.modules.inventory.models  # noqa: F401
+import app.modules.notifications.models  # noqa: F401
+import app.modules.orders.models  # noqa: F401
 import app.modules.payments.models  # noqa: F401
 import app.modules.profiles.models  # noqa: F401
-import app.modules.addresses.models  # noqa: F401
-import app.modules.shipping.models  # noqa: F401
-import app.modules.cart.models  # noqa: F401
-import app.modules.wishlist.models  # noqa: F401
-import app.modules.support.models  # noqa: F401
 import app.modules.returns.models  # noqa: F401
-import app.modules.cms.models  # noqa: F401
-import app.modules.notifications.models  # noqa: F401
+import app.modules.reviews.models  # noqa: F401
 import app.modules.settings.models  # noqa: F401
-import app.modules.analytics.models  # noqa: F401
-import app.modules.fraud.models  # noqa: F401
-import app.modules.audit.models  # noqa: F401
+import app.modules.shipping.models  # noqa: F401
+import app.modules.support.models  # noqa: F401
+import app.modules.wishlist.models  # noqa: F401
 
 
 def _scalars(items):
@@ -70,9 +71,11 @@ def _db(*results):
 
 # ─── WishlistRepository ───────────────────────────────────────────────────────
 
+
 class TestWishlistRepository:
     def setup_method(self):
         from app.modules.wishlist.repository import WishlistRepository
+
         self.repo = WishlistRepository()
 
     async def test_get_or_create_returns_existing(self):
@@ -83,6 +86,7 @@ class TestWishlistRepository:
 
     async def test_get_or_create_creates_new_when_not_found(self):
         from app.modules.wishlist.models import Wishlist
+
         db = AsyncMock()
         db.add = MagicMock()
         db.flush = AsyncMock()
@@ -92,6 +96,7 @@ class TestWishlistRepository:
         new_wishlist.id = uuid.uuid4()
 
         call_count = [0]
+
         async def mock_execute(stmt):
             r = MagicMock()
             call_count[0] += 1
@@ -102,6 +107,7 @@ class TestWishlistRepository:
                 r.scalar_one_or_none.return_value = new_wishlist
                 r.scalar_one.return_value = new_wishlist
             return r
+
         db.execute = mock_execute
         result = await self.repo.get_or_create(db, uuid.uuid4())
         db.add.assert_called_once()
@@ -155,19 +161,25 @@ class TestWishlistRepository:
 
 # ─── SupportRepository ────────────────────────────────────────────────────────
 
+
 class TestSupportRepository:
     def setup_method(self):
         from app.modules.support.repository import SupportRepository
+
         self.repo = SupportRepository()
 
     async def test_create_ticket(self):
         db = _db()
-        await self.repo.create_ticket(db, customer_id=uuid.uuid4(), subject="Order issue", status="open")
+        await self.repo.create_ticket(
+            db, customer_id=uuid.uuid4(), subject="Order issue", status="open"
+        )
         db.add.assert_called_once()
 
     async def test_add_message(self):
         db = _db()
-        await self.repo.add_message(db, ticket_id=uuid.uuid4(), sender_id=uuid.uuid4(), body="Hello")
+        await self.repo.add_message(
+            db, ticket_id=uuid.uuid4(), sender_id=uuid.uuid4(), body="Hello"
+        )
         db.add.assert_called_once()
 
     async def test_get_ticket_returns_none(self):
@@ -205,8 +217,9 @@ class TestSupportRepository:
         assert ticket.status == "resolved"
 
     async def test_next_ticket_number_format(self):
-        from datetime import datetime, timezone
-        year = datetime.now(timezone.utc).year
+        from datetime import datetime
+
+        year = datetime.now(UTC).year
         db = _db(_scalar(4))
         result = await self.repo.next_ticket_number(db)
         assert result.startswith(f"SUP-{year}-")
@@ -215,9 +228,11 @@ class TestSupportRepository:
 
 # ─── ReturnRepository ─────────────────────────────────────────────────────────
 
+
 class TestReturnRepository:
     def setup_method(self):
         from app.modules.returns.repository import ReturnRepository
+
         self.repo = ReturnRepository()
 
     async def test_get_returns_none(self):
@@ -245,7 +260,9 @@ class TestReturnRepository:
 
     async def test_create_return(self):
         db = _db()
-        await self.repo.create(db, order_id=uuid.uuid4(), customer_id=uuid.uuid4(), reason="Damaged")
+        await self.repo.create(
+            db, order_id=uuid.uuid4(), customer_id=uuid.uuid4(), reason="Damaged"
+        )
         db.add.assert_called_once()
 
     async def test_add_item(self):
@@ -277,14 +294,18 @@ class TestReturnRepository:
 
 # ─── FraudRepository ──────────────────────────────────────────────────────────
 
+
 class TestFraudRepository:
     def setup_method(self):
         from app.modules.fraud.repository import FraudRepository
+
         self.repo = FraudRepository()
 
     async def test_create_signal(self):
         db = _db()
-        await self.repo.create(db, signal_type="multiple_orders", user_id=uuid.uuid4(), is_resolved=False)
+        await self.repo.create(
+            db, signal_type="multiple_orders", user_id=uuid.uuid4(), is_resolved=False
+        )
         db.add.assert_called_once()
 
     async def test_get_returns_none(self):
@@ -307,15 +328,19 @@ class TestFraudRepository:
     async def test_update_sets_attrs(self):
         db = _db()
         signal = MagicMock()
-        result = await self.repo.update(db, signal, {"is_resolved": True, "resolved_by": uuid.uuid4()})
+        result = await self.repo.update(
+            db, signal, {"is_resolved": True, "resolved_by": uuid.uuid4()}
+        )
         assert signal.is_resolved is True
 
 
 # ─── AuditRepository ──────────────────────────────────────────────────────────
 
+
 class TestAuditRepository:
     def setup_method(self):
         from app.modules.audit.repository import AuditRepository
+
         self.repo = AuditRepository()
 
     async def test_list_paginated_no_filters(self):
@@ -330,7 +355,8 @@ class TestAuditRepository:
         assert items == [mock_log]
 
     async def test_list_paginated_with_all_filters(self):
-        from datetime import datetime, timezone
+        from datetime import datetime
+
         total_result = MagicMock()
         total_result.scalar_one.return_value = 0
         items_result = MagicMock()
@@ -341,8 +367,8 @@ class TestAuditRepository:
             actor_id=str(uuid.uuid4()),
             action="role_change",
             resource_type="profile",
-            date_from=datetime(2026, 1, 1, tzinfo=timezone.utc),
-            date_to=datetime(2026, 12, 31, tzinfo=timezone.utc),
+            date_from=datetime(2026, 1, 1, tzinfo=UTC),
+            date_to=datetime(2026, 12, 31, tzinfo=UTC),
         )
         assert total == 0
         assert items == []

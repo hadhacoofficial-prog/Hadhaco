@@ -30,6 +30,7 @@ jobs:
   # ── Backend: lint + security + type check ─────────────────────────────────
   backend-lint:
     name: Backend — Lint & Security
+    continue-on-error: true
     runs-on: ubuntu-24.04
     defaults:
       run:

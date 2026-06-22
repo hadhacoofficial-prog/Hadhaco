@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-import structlog
 import httpx
+import structlog
 
 from app.core.config import settings
 from app.modules.notifications.providers.base import NotificationProvider
@@ -20,7 +20,6 @@ class ResendDomainError(RuntimeError):
 
 
 class ResendProvider(NotificationProvider):
-
     async def send_email(self, *, to: str, subject: str, html: str) -> str:
         payload = {
             "from": f"{settings.EMAIL_FROM_NAME} <{settings.EMAIL_FROM}>",

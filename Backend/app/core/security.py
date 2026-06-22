@@ -23,9 +23,11 @@ def _get_fernet() -> Fernet:
 
 # ── JWT payload ────────────────────────────────────────────────────────────────
 
+
 @dataclass(frozen=True, slots=True)
 class JWTPayload:
     """Strongly typed, immutable Supabase JWT payload returned after verification."""
+
     sub: str
     email: str | None
     role: str | None
@@ -35,6 +37,7 @@ class JWTPayload:
 
 
 # ── Supabase JWT — ES256 + JWKS ───────────────────────────────────────────────
+
 
 async def verify_supabase_jwt(token: str) -> JWTPayload:
     """
@@ -108,6 +111,7 @@ async def verify_supabase_jwt(token: str) -> JWTPayload:
 
 # ── Encryption (TOTP secrets, sensitive fields) ────────────────────────────────
 
+
 def encrypt_value(plaintext: str) -> str:
     return _get_fernet().encrypt(plaintext.encode()).decode()
 
@@ -118,9 +122,11 @@ def decrypt_value(ciphertext: str) -> str:
 
 # ── Webhook signature verification ────────────────────────────────────────────
 
+
 def verify_razorpay_webhook_signature(body: bytes, signature: str) -> bool:
     import hashlib
     import hmac
+
     expected = hmac.new(
         settings.RAZORPAY_WEBHOOK_SECRET.encode(),
         body,
@@ -132,6 +138,7 @@ def verify_razorpay_webhook_signature(body: bytes, signature: str) -> bool:
 def verify_delivery_one_webhook_signature(body: bytes, signature: str) -> bool:
     import hashlib
     import hmac
+
     expected = hmac.new(
         settings.DELIVERY_ONE_WEBHOOK_SECRET.encode(),
         body,
@@ -141,6 +148,7 @@ def verify_delivery_one_webhook_signature(body: bytes, signature: str) -> bool:
 
 
 # ── Secure token generation ────────────────────────────────────────────────────
+
 
 def generate_secure_token(nbytes: int = 32) -> str:
     return secrets.token_urlsafe(nbytes)
@@ -153,11 +161,14 @@ def generate_backup_codes(count: int = 10) -> list[str]:
 
 # ── Backup code hashing (NOT for user passwords) ──────────────────────────────
 
+
 def hash_backup_code(code: str) -> str:
     import bcrypt
+
     return bcrypt.hashpw(code.encode(), bcrypt.gensalt()).decode()
 
 
 def verify_backup_code(code: str, hashed: str) -> bool:
     import bcrypt
+
     return bcrypt.checkpw(code.encode(), hashed.encode())

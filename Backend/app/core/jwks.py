@@ -5,6 +5,7 @@ memory, and refreshes automatically on expiry or unknown key ID.
 Never hits the network more than once per TTL window, even under concurrent
 requests, thanks to a single asyncio.Lock that serialises refreshes.
 """
+
 from __future__ import annotations
 
 import asyncio

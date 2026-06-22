@@ -4,9 +4,10 @@ Unit tests for app/core/security.py and app/core/jwks.py.
 JWT tests use a real EC P-256 key pair generated in-process.
 The JWKS network call is replaced by a mock so tests run offline.
 """
+
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock, patch
 
 import jwt
@@ -42,7 +43,7 @@ def _make_token(
     issuer: str | None = None,
     private_key=None,
 ) -> str:
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     payload = {
         "sub": "11111111-1111-1111-1111-111111111111",
         "email": "user@test.com",
@@ -61,6 +62,7 @@ def _make_token(
 
 
 # ── JWT / JWKS tests ──────────────────────────────────────────────────────────
+
 
 class TestSupabaseJwt:
     """ES256 verification via mocked JWKS public key."""
@@ -105,10 +107,15 @@ class TestSupabaseJwt:
 
     async def test_non_es256_algorithm_raises_401(self):
         # HS256 token — should be rejected at the header check (alg != "ES256")
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         hs_token = jwt.encode(
-            {"sub": "x", "aud": "authenticated", "iss": settings.supabase_issuer,
-             "exp": now + timedelta(minutes=5), "iat": now},
+            {
+                "sub": "x",
+                "aud": "authenticated",
+                "iss": settings.supabase_issuer,
+                "exp": now + timedelta(minutes=5),
+                "iat": now,
+            },
             "some-secret",
             algorithm="HS256",
             headers={"kid": _TEST_KID, "alg": "HS256"},
@@ -123,10 +130,15 @@ class TestSupabaseJwt:
         assert exc.value.status_code == 401
 
     async def test_token_missing_kid_raises_401(self):
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         token = jwt.encode(
-            {"sub": "x", "aud": "authenticated", "iss": settings.supabase_issuer,
-             "exp": now + timedelta(minutes=5), "iat": now},
+            {
+                "sub": "x",
+                "aud": "authenticated",
+                "iss": settings.supabase_issuer,
+                "exp": now + timedelta(minutes=5),
+                "iat": now,
+            },
             _PRIVATE_KEY,
             algorithm="ES256",
             # No kid in headers
@@ -155,6 +167,7 @@ class TestSupabaseJwt:
 
 # ── Encryption tests ──────────────────────────────────────────────────────────
 
+
 class TestEncryption:
     def test_encrypt_decrypt_roundtrip(self):
         secret = "JBSWY3DPEHPK3PXP"
@@ -166,15 +179,14 @@ class TestEncryption:
 
 # ── Webhook signature tests ───────────────────────────────────────────────────
 
+
 class TestWebhookSignature:
     def test_valid_signature_accepted(self):
         import hashlib
         import hmac
 
         body = b'{"event":"payment.captured"}'
-        sig = hmac.new(
-            settings.RAZORPAY_WEBHOOK_SECRET.encode(), body, hashlib.sha256
-        ).hexdigest()
+        sig = hmac.new(settings.RAZORPAY_WEBHOOK_SECRET.encode(), body, hashlib.sha256).hexdigest()
         assert verify_razorpay_webhook_signature(body, sig) is True
 
     def test_tampered_body_rejected(self):
@@ -188,6 +200,7 @@ class TestWebhookSignature:
 
 
 # ── Backup code tests ─────────────────────────────────────────────────────────
+
 
 class TestBackupCodes:
     def test_generates_requested_count_unique(self):

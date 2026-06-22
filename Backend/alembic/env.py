@@ -5,10 +5,10 @@ from sqlalchemy import pool
 from sqlalchemy.ext.asyncio import async_engine_from_config
 
 from alembic import context
+from app.core.config import settings
 
 # Import all models so Alembic can detect them
 from app.core.database import Base
-from app.core.config import settings
 
 
 def _import_all_models() -> None:

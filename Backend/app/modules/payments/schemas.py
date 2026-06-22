@@ -10,11 +10,11 @@ class CreatePaymentOrderRequest(BaseModel):
 
 class PaymentOrderResponse(BaseModel):
     razorpay_order_id: str
-    amount_paise: int        # Razorpay uses paise (INR × 100)
+    amount_paise: int  # Razorpay uses paise (INR × 100)
     currency: str
     order_id: uuid.UUID
-    payment_id: uuid.UUID    # Our internal payment record ID
-    key_id: str              # Razorpay key_id for frontend SDK init
+    payment_id: uuid.UUID  # Our internal payment record ID
+    key_id: str  # Razorpay key_id for frontend SDK init
 
 
 class VerifyPaymentRequest(BaseModel):
@@ -40,7 +40,9 @@ class PaymentResponse(BaseModel):
 
 
 class RefundRequest(BaseModel):
-    amount: float | None = Field(None, gt=0, description="Partial refund amount. Omit for full refund.")
+    amount: float | None = Field(
+        None, gt=0, description="Partial refund amount. Omit for full refund."
+    )
     reason: str | None = Field(None, max_length=500)
 
 

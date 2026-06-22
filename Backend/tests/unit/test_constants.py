@@ -1,13 +1,11 @@
 """Unit tests for constants, enums, and shared utilities."""
+
 from app.core.constants import (
     AuditAction,
     Gender,
-    InventoryMovementType,
     MetalType,
     NotificationChannel,
-    NotificationStatus,
     OrderStatus,
-    PaymentMethod,
     PaymentStatus,
     ProductStatus,
     ReturnStatus,

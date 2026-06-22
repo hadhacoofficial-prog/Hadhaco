@@ -10,15 +10,16 @@ Revision ID: 0004_cms_homepage_extension
 Revises: 0003_performance_indexes
 Create Date: 2026-06-20
 """
+
 from __future__ import annotations
 
 import json
-import uuid
 from collections.abc import Sequence
 
 import sqlalchemy as sa
-from alembic import op
 from sqlalchemy.dialects.postgresql import JSONB, UUID
+
+from alembic import op
 
 revision: str = "0004_cms_homepage_extension"
 down_revision: str | None = "0003_performance_indexes"

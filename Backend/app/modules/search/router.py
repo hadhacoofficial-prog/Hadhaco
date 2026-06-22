@@ -49,7 +49,11 @@ async def autocomplete(
     db: AsyncSession = Depends(get_db),
 ):
     suggestions = await _service.autocomplete(db, q, limit)
-    return ok({"suggestions": suggestions}, ResponseCode.SEARCH_AUTOCOMPLETE_FETCHED, "Autocomplete suggestions fetched")
+    return ok(
+        {"suggestions": suggestions},
+        ResponseCode.SEARCH_AUTOCOMPLETE_FETCHED,
+        "Autocomplete suggestions fetched",
+    )
 
 
 @router.get("/search/trending", response_model=BaseSuccessResponse[dict])
@@ -58,4 +62,6 @@ async def trending_searches(
     db: AsyncSession = Depends(get_db),
 ):
     result = await _service.trending_searches(db, limit)
-    return ok(result, ResponseCode.SEARCH_TRENDING_FETCHED, "Trending searches fetched successfully")
+    return ok(
+        result, ResponseCode.SEARCH_TRENDING_FETCHED, "Trending searches fetched successfully"
+    )

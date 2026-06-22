@@ -6,7 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.common.response_codes import ResponseCode
 from app.common.responses import BaseSuccessResponse, deleted, ok
 from app.core.database import get_db
-from app.core.dependencies import get_current_user, require_admin
+from app.core.dependencies import require_admin
 from app.modules.collections.schemas import (
     AddProductsToCollectionRequest,
     CollectionCreateRequest,
@@ -26,7 +26,9 @@ _service = CollectionService()
 )
 async def admin_list_collections(db: AsyncSession = Depends(get_db)):
     from sqlalchemy import select as sa_select
+
     from app.modules.collections.models import Collection
+
     result = await db.execute(
         sa_select(Collection)
         .where(Collection.deleted_at.is_(None))
@@ -63,6 +65,7 @@ async def create_collection(
     db: AsyncSession = Depends(get_db),
 ):
     from app.common.responses import created
+
     result = await _service.create(db, payload)
     return created(result, ResponseCode.COLLECTION_CREATED, "Collection created successfully")
 

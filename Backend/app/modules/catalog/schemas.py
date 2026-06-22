@@ -1,11 +1,10 @@
 import uuid
 from datetime import datetime
-from typing import Any
 
 from pydantic import BaseModel, Field, field_validator
 
-
 # ---------- Sub-schemas ----------
+
 
 class ProductImageResponse(BaseModel):
     id: uuid.UUID
@@ -59,6 +58,7 @@ class ProductAttributeCreateRequest(BaseModel):
 
 # ---------- Product ----------
 
+
 class ProductCreateRequest(BaseModel):
     sku: str = Field(..., min_length=1, max_length=100)
     name: str = Field(..., min_length=1, max_length=255)
@@ -109,6 +109,7 @@ class ProductCreateRequest(BaseModel):
     @classmethod
     def validate_slug(cls, v: str) -> str:
         import re
+
         if not re.match(r"^[a-z0-9-]+$", v):
             raise ValueError("slug must contain only lowercase letters, numbers, and hyphens")
         return v
@@ -162,6 +163,7 @@ class ProductUpdateRequest(BaseModel):
         if v is None:
             return v
         import re
+
         if not re.match(r"^[a-z0-9-]+$", v):
             raise ValueError("slug must contain only lowercase letters, numbers, and hyphens")
         return v
@@ -254,12 +256,14 @@ class ProductListResponse(BaseModel):
 
 # ---------- Stock adjustment ----------
 
+
 class StockAdjustRequest(BaseModel):
     delta: int = Field(..., description="Positive to add, negative to subtract")
     reason: str | None = None
 
 
 # ---------- Variant update ----------
+
 
 class ProductVariantUpdateRequest(BaseModel):
     name: str | None = Field(None, min_length=1, max_length=255)

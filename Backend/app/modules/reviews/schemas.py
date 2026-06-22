@@ -5,8 +5,8 @@ from datetime import datetime
 
 from pydantic import BaseModel, Field
 
-
 # ── Images ────────────────────────────────────────────────────────────────────
+
 
 class ReviewImageOut(BaseModel):
     id: uuid.UUID
@@ -17,6 +17,7 @@ class ReviewImageOut(BaseModel):
 
 
 # ── Submit / Edit ─────────────────────────────────────────────────────────────
+
 
 class ReviewCreate(BaseModel):
     product_id: uuid.UUID
@@ -33,6 +34,7 @@ class ReviewUpdate(BaseModel):
 
 
 # ── Response ──────────────────────────────────────────────────────────────────
+
 
 class ReviewOut(BaseModel):
     id: uuid.UUID
@@ -53,6 +55,7 @@ class ReviewOut(BaseModel):
 
 # ── Rating summary ────────────────────────────────────────────────────────────
 
+
 class ProductRatingSummary(BaseModel):
     product_id: uuid.UUID
     review_count: int
@@ -65,6 +68,7 @@ class ProductRatingSummary(BaseModel):
 
 
 # ── Vote ──────────────────────────────────────────────────────────────────────
+
 
 class ReviewVoteIn(BaseModel):
     is_helpful: bool
@@ -80,6 +84,7 @@ class ReviewVoteOut(BaseModel):
 
 
 # ── Admin ─────────────────────────────────────────────────────────────────────
+
 
 class AdminReviewAction(BaseModel):
     action: str  # "approve" | "reject" | "flag"

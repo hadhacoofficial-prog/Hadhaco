@@ -20,9 +20,10 @@ from __future__ import annotations
 
 import asyncio
 from collections import defaultdict
+from collections.abc import Callable, Coroutine
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
-from typing import Any, Callable, Coroutine, Type
+from datetime import UTC, datetime
+from typing import Any
 
 import structlog
 
@@ -32,13 +33,14 @@ log = structlog.get_logger(__name__)
 @dataclass
 class BaseEvent:
     event_type: str = field(init=False)
-    occurred_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
+    occurred_at: datetime = field(default_factory=lambda: datetime.now(UTC))
 
     def __post_init__(self) -> None:
         self.event_type = type(self).__name__
 
 
 # ── Concrete domain events ─────────────────────────────────────────────────────
+
 
 @dataclass
 class UserRegisteredEvent(BaseEvent):
@@ -151,16 +153,18 @@ AsyncListener = Callable[[Any], Coroutine[Any, Any, None]]
 
 class EventBus:
     def __init__(self) -> None:
-        self._listeners: dict[Type[BaseEvent], list[AsyncListener]] = defaultdict(list)
+        self._listeners: dict[type[BaseEvent], list[AsyncListener]] = defaultdict(list)
 
-    def subscribe(self, event_class: Type[BaseEvent]) -> Callable:
+    def subscribe(self, event_class: type[BaseEvent]) -> Callable:
         """Decorator to register an async listener for an event type."""
+
         def decorator(fn: AsyncListener) -> AsyncListener:
             self._listeners[event_class].append(fn)
             return fn
+
         return decorator
 
-    def on(self, event_class: Type[BaseEvent], listener: AsyncListener) -> None:
+    def on(self, event_class: type[BaseEvent], listener: AsyncListener) -> None:
         """Register a listener imperatively."""
         self._listeners[event_class].append(listener)
 

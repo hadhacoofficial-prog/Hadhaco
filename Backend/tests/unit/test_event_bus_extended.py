@@ -1,8 +1,8 @@
 """Extended tests for the EventBus and domain events."""
+
+import asyncio
 import uuid
 from dataclasses import dataclass
-
-import pytest
 
 from app.core.events import (
     BaseEvent,
@@ -28,15 +28,21 @@ class TestEventBusAdvanced:
         bus = EventBus()
         results = []
 
-        async def listener_a(e): results.append("a")
-        async def listener_b(e): results.append("b")
-        async def listener_c(e): results.append("c")
+        async def listener_a(e):
+            results.append("a")
+
+        async def listener_b(e):
+            results.append("b")
+
+        async def listener_c(e):
+            results.append("c")
 
         bus.on(_CountEvent, listener_a)
         bus.on(_CountEvent, listener_b)
         bus.on(_CountEvent, listener_c)
 
         await bus.publish(_CountEvent(count=1))
+        await asyncio.sleep(0)  # let fire-and-forget tasks run
         assert sorted(results) == ["a", "b", "c"]
 
     async def test_event_data_accessible_in_listener(self):
@@ -48,6 +54,7 @@ class TestEventBusAdvanced:
 
         bus.on(_CountEvent, listener)
         await bus.publish(_CountEvent(count=42))
+        await asyncio.sleep(0)  # let fire-and-forget tasks run
         assert captured == [42]
 
     async def test_sync_listener_wrapped_correctly(self):
@@ -68,12 +75,14 @@ class TestEventBusAdvanced:
         bus = EventBus()
         received = []
 
-        async def listener(e): received.append(e.count)
+        async def listener(e):
+            received.append(e.count)
 
         bus.on(_CountEvent, listener)
         await bus.publish(_CountEvent(count=1))
         await bus.publish(_CountEvent(count=2))
         await bus.publish(_CountEvent(count=3))
+        await asyncio.sleep(0)  # let all three fire-and-forget tasks run
         assert received == [1, 2, 3]
 
     async def test_subscribe_decorator_works(self):
@@ -85,6 +94,7 @@ class TestEventBusAdvanced:
             received.append(e.count)
 
         await bus.publish(_CountEvent(count=7))
+        await asyncio.sleep(0)  # let fire-and-forget tasks run
         assert received == [7]
 
 

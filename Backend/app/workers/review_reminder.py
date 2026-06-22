@@ -2,6 +2,7 @@
 Send review-request emails for orders delivered REVIEW_REMINDER_DELAY_HOURS ago.
 Runs hourly; the window query keeps each order from being emailed twice.
 """
+
 from __future__ import annotations
 
 import time
@@ -27,7 +28,7 @@ async def run() -> None:
     try:
         delay = timedelta(hours=settings.REVIEW_REMINDER_DELAY_HOURS)
         window_end = datetime.now(UTC) - delay
-        window_start = window_end - timedelta(hours=1)   # matches the hourly schedule
+        window_start = window_end - timedelta(hours=1)  # matches the hourly schedule
 
         async with AsyncSessionLocal() as db:
             result = await db.execute(
@@ -47,16 +48,20 @@ async def run() -> None:
                 already_reviewed = await _review_repo.has_any_review(db, order_id=order.id)
                 if already_reviewed:
                     continue
-                await event_bus.publish(ReviewRequestEvent(
-                    order_id=str(order.id),
-                    user_id=str(order.user_id),
-                    customer_email=email,
-                    order_number=order.order_number,
-                ))
+                await event_bus.publish(
+                    ReviewRequestEvent(
+                        order_id=str(order.id),
+                        user_id=str(order.user_id),
+                        customer_email=email,
+                        order_number=order.order_number,
+                    )
+                )
                 sent += 1
 
         duration_ms = round((time.perf_counter() - t0) * 1000)
-        log.info("review_reminder_completed", candidates=len(rows), sent=sent, duration_ms=duration_ms)
+        log.info(
+            "review_reminder_completed", candidates=len(rows), sent=sent, duration_ms=duration_ms
+        )
     except Exception:
         duration_ms = round((time.perf_counter() - t0) * 1000)
         log.exception("review_reminder_failed", duration_ms=duration_ms)
@@ -64,4 +69,5 @@ async def run() -> None:
 
 if __name__ == "__main__":
     import asyncio
+
     asyncio.run(run())

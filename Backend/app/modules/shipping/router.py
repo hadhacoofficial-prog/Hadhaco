@@ -22,6 +22,7 @@ _service = ShippingService()
 
 # ── Customer ──────────────────────────────────────────────────────────────────
 
+
 @router.get(
     "/orders/{order_id}/shipment",
     response_model=BaseSuccessResponse[ShipmentResponse],
@@ -59,6 +60,7 @@ async def get_shipping_rates(
 
 # ── Admin ─────────────────────────────────────────────────────────────────────
 
+
 @router.post(
     "/admin/orders/{order_id}/shipment",
     response_model=BaseSuccessResponse[ShipmentResponse],
@@ -71,6 +73,7 @@ async def create_shipment(
     db: AsyncSession = Depends(get_db),
 ):
     from app.common.responses import created
+
     payload.order_id = order_id
     result = await _service.create_shipment(db, order_id, payload)
     return created(result, ResponseCode.SHIPMENT_CREATED, "Shipment created successfully")

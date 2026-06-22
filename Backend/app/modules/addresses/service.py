@@ -3,7 +3,7 @@ import uuid
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import ConflictError, NotFoundError
-from app.modules.addresses.repository import AddressRepository, _MAX_ADDRESSES
+from app.modules.addresses.repository import _MAX_ADDRESSES, AddressRepository
 from app.modules.addresses.schemas import (
     AddressCreateRequest,
     AddressResponse,
@@ -14,7 +14,6 @@ _repo = AddressRepository()
 
 
 class AddressService:
-
     async def list(self, db: AsyncSession, user_id: uuid.UUID) -> list[AddressResponse]:
         addrs = await _repo.list_for_user(db, user_id)
         return [AddressResponse.model_validate(a) for a in addrs]
@@ -66,9 +65,7 @@ class AddressService:
         addr = await _repo.update(db, address_id, {"is_default": True})
         return AddressResponse.model_validate(addr)
 
-    async def delete(
-        self, db: AsyncSession, user_id: uuid.UUID, address_id: uuid.UUID
-    ) -> None:
+    async def delete(self, db: AsyncSession, user_id: uuid.UUID, address_id: uuid.UUID) -> None:
         existing = await _repo.get(db, address_id, user_id)
         if not existing:
             raise NotFoundError("Address not found")

@@ -6,6 +6,7 @@
 
 Usage: python scripts/fix_sql_idempotency.py
 """
+
 import re
 from pathlib import Path
 
@@ -16,7 +17,7 @@ POLICY_RE = re.compile(
     re.DOTALL,
 )
 TRIGGER_RE = re.compile(
-    r'(?<!OR REPLACE )CREATE TRIGGER (\w+)\s*\n((?:[^\n;]*\n)*?[^\n;]*?\bON\s+([a-zA-Z_.]+))'
+    r"(?<!OR REPLACE )CREATE TRIGGER (\w+)\s*\n((?:[^\n;]*\n)*?[^\n;]*?\bON\s+([a-zA-Z_.]+))"
 )
 
 
@@ -26,10 +27,10 @@ def fix_policies(text: str) -> str:
     for m in POLICY_RE.finditer(text):
         name, table = m.group(1), m.group(2)
         # skip if the preceding line already has the guard
-        prev = text[:m.start()].rstrip().splitlines()
+        prev = text[: m.start()].rstrip().splitlines()
         if prev and f"DROP POLICY IF EXISTS {name}" in prev[-1]:
             continue
-        out.append(text[last:m.start()])
+        out.append(text[last : m.start()])
         out.append(f"DROP POLICY IF EXISTS {name} ON {table};\nCREATE POLICY {name} ON {table}")
         last = m.end()
     out.append(text[last:])
@@ -42,13 +43,13 @@ def fix_triggers(text: str) -> str:
     for m in re.finditer(r"^CREATE TRIGGER (\w+)", text, re.MULTILINE):
         # find the ON <table> within the statement (up to the terminating ;)
         stmt_end = text.find(";", m.start())
-        stmt = text[m.start(): stmt_end]
+        stmt = text[m.start() : stmt_end]
         on = re.search(r"\bON\s+([a-zA-Z_][a-zA-Z_0-9.]*)", stmt)
         if not on:
             continue
         guard = f"DROP TRIGGER IF EXISTS {m.group(1)} ON {on.group(1)};\n"
         # skip if the previous line already drops this trigger
-        prev = text[:m.start()].rstrip().splitlines()
+        prev = text[: m.start()].rstrip().splitlines()
         if prev and f"DROP TRIGGER IF EXISTS {m.group(1)}" in prev[-1]:
             continue
         out.append((m.start(), guard))

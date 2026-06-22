@@ -1,7 +1,10 @@
 from __future__ import annotations
+
 from datetime import date
 from typing import Any
+
 from sqlalchemy.ext.asyncio import AsyncSession
+
 from app.modules.analytics.repository import AnalyticsRepository
 from app.modules.analytics.schemas import TrackEventRequest
 
@@ -54,8 +57,7 @@ class AnalyticsService:
                 for r in top
             ],
             "revenue_by_day": [
-                {"date": str(r["date"]), "total": float(r["revenue"])}
-                for r in by_day
+                {"date": str(r["date"]), "total": float(r["revenue"])} for r in by_day
             ],
             "orders_by_status": by_status,
         }

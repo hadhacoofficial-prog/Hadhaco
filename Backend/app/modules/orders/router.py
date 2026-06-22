@@ -27,6 +27,7 @@ _service = OrderService()
 
 # ── Customer endpoints ────────────────────────────────────────────────────────
 
+
 @router.post(
     "/orders",
     response_model=BaseSuccessResponse[OrderResponse],
@@ -39,6 +40,7 @@ async def create_order(
     current_user: Profile = Depends(get_current_user),
 ):
     from app.common.responses import created
+
     result = await _service.create_from_cart(db, current_user.id, payload)
     return created(result, ResponseCode.ORDER_CREATED, "Order created successfully")
 
@@ -55,7 +57,9 @@ async def list_my_orders(
     db: AsyncSession = Depends(get_db),
     current_user: Profile = Depends(get_current_user),
 ):
-    result = await _service.list_my_orders(db, current_user.id, page=page, page_size=page_size, status=status)
+    result = await _service.list_my_orders(
+        db, current_user.id, page=page, page_size=page_size, status=status
+    )
     return ok(result, ResponseCode.ORDER_LISTED, "Orders listed successfully")
 
 
@@ -85,6 +89,7 @@ async def create_payment_intent(
     current_user: Profile = Depends(get_current_user),
 ):
     from app.common.responses import created
+
     result = await _service.create_payment_intent(db, current_user.id, payload)
     return created(result, ResponseCode.ORDER_CREATED, "Payment intent created")
 
@@ -119,6 +124,7 @@ async def cancel_order(
 
 
 # ── Admin endpoints ───────────────────────────────────────────────────────────
+
 
 @router.get(
     "/admin/orders",

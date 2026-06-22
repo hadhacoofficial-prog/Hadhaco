@@ -1,25 +1,27 @@
 """Tests for OrderService.create_from_cart success path."""
+
 import uuid
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+import app.modules.addresses.models  # noqa: F401
+import app.modules.cart.models  # noqa: F401
+
 # Force mapper init
 import app.modules.catalog.models  # noqa: F401
 import app.modules.categories.models  # noqa: F401
-import app.modules.orders.models  # noqa: F401
-import app.modules.reviews.models  # noqa: F401
-import app.modules.inventory.models  # noqa: F401
 import app.modules.collections.models  # noqa: F401
 import app.modules.coupons.models  # noqa: F401
+import app.modules.inventory.models  # noqa: F401
+import app.modules.orders.models  # noqa: F401
 import app.modules.payments.models  # noqa: F401
 import app.modules.profiles.models  # noqa: F401
-import app.modules.addresses.models  # noqa: F401
-import app.modules.shipping.models  # noqa: F401
-import app.modules.cart.models  # noqa: F401
-import app.modules.wishlist.models  # noqa: F401
-import app.modules.support.models  # noqa: F401
 import app.modules.returns.models  # noqa: F401
+import app.modules.reviews.models  # noqa: F401
+import app.modules.shipping.models  # noqa: F401
+import app.modules.support.models  # noqa: F401
+import app.modules.wishlist.models  # noqa: F401
 
 
 def _make_cart_item(product_id=None, variant_id=None, quantity=2):
@@ -30,9 +32,17 @@ def _make_cart_item(product_id=None, variant_id=None, quantity=2):
     return ci
 
 
-def _make_prod_row(name="Ring", sku="RNG-001", base_price=500.0, tax_rate=3.0,
-                   stock_quantity=10, allow_backorder=False, track_inventory=True,
-                   variant_name=None, price_adj=0.0):
+def _make_prod_row(
+    name="Ring",
+    sku="RNG-001",
+    base_price=500.0,
+    tax_rate=3.0,
+    stock_quantity=10,
+    allow_backorder=False,
+    track_inventory=True,
+    variant_name=None,
+    price_adj=0.0,
+):
     row = MagicMock()
     row.name = name
     row.sku = sku
@@ -62,14 +72,14 @@ def _make_address():
 class TestOrderServiceCreateFromCart:
     def setup_method(self):
         from app.modules.orders.service import OrderService
+
         self.svc = OrderService()
 
     async def test_create_from_cart_success_no_coupon(self):
-        from app.modules.orders.schemas import CreateOrderRequest, OrderResponse
-        from app.modules.orders.repository import OrderRepository
-        from app.modules.cart.repository import CartRepository
         from app.modules.addresses.repository import AddressRepository
+        from app.modules.cart.repository import CartRepository
         from app.modules.inventory.service import InventoryService
+        from app.modules.orders.schemas import CreateOrderRequest, OrderResponse
         from app.modules.profiles.repository import ProfileRepository
 
         user_id = uuid.uuid4()
@@ -101,17 +111,25 @@ class TestOrderServiceCreateFromCart:
         mock_final_order = MagicMock()
         mock_response = MagicMock()
 
-        with patch.object(CartRepository, "get_for_user", AsyncMock(return_value=mock_cart)), \
-             patch.object(AddressRepository, "get", AsyncMock(return_value=mock_addr)), \
-             patch("app.modules.orders.service._repo.generate_order_number", AsyncMock(return_value="ORD-2026-0001")), \
-             patch("app.modules.orders.service._repo.create", AsyncMock(return_value=mock_order)), \
-             patch("app.modules.orders.service._repo.add_item", AsyncMock()), \
-             patch.object(InventoryService, "record_movement", AsyncMock()), \
-             patch.object(CartRepository, "clear_items", AsyncMock()), \
-             patch.object(ProfileRepository, "get_by_id", AsyncMock(return_value=mock_profile)), \
-             patch("app.core.events.event_bus.publish", AsyncMock()), \
-             patch("app.modules.orders.service._repo.get_by_id", AsyncMock(return_value=mock_final_order)), \
-             patch.object(OrderResponse, "model_validate", return_value=mock_response):
+        with (
+            patch.object(CartRepository, "get_for_user", AsyncMock(return_value=mock_cart)),
+            patch.object(AddressRepository, "get", AsyncMock(return_value=mock_addr)),
+            patch(
+                "app.modules.orders.service._repo.generate_order_number",
+                AsyncMock(return_value="ORD-2026-0001"),
+            ),
+            patch("app.modules.orders.service._repo.create", AsyncMock(return_value=mock_order)),
+            patch("app.modules.orders.service._repo.add_item", AsyncMock()),
+            patch.object(InventoryService, "record_movement", AsyncMock()),
+            patch.object(CartRepository, "clear_items", AsyncMock()),
+            patch.object(ProfileRepository, "get_by_id", AsyncMock(return_value=mock_profile)),
+            patch("app.core.events.event_bus.publish", AsyncMock()),
+            patch(
+                "app.modules.orders.service._repo.get_by_id",
+                AsyncMock(return_value=mock_final_order),
+            ),
+            patch.object(OrderResponse, "model_validate", return_value=mock_response),
+        ):
             result = await self.svc.create_from_cart(
                 db,
                 user_id=user_id,
@@ -124,10 +142,10 @@ class TestOrderServiceCreateFromCart:
         assert result is mock_response
 
     async def test_create_from_cart_product_not_found_raises(self):
-        from app.modules.orders.schemas import CreateOrderRequest
         from app.core.exceptions import ValidationError
-        from app.modules.cart.repository import CartRepository
         from app.modules.addresses.repository import AddressRepository
+        from app.modules.cart.repository import CartRepository
+        from app.modules.orders.schemas import CreateOrderRequest
 
         user_id = uuid.uuid4()
         cart_item = _make_cart_item()
@@ -141,9 +159,14 @@ class TestOrderServiceCreateFromCart:
         db = AsyncMock()
         db.execute = AsyncMock(return_value=none_result)
 
-        with patch.object(CartRepository, "get_for_user", AsyncMock(return_value=mock_cart)), \
-             patch.object(AddressRepository, "get", AsyncMock(return_value=mock_addr)), \
-             patch("app.modules.orders.service._repo.generate_order_number", AsyncMock(return_value="ORD-2026-0001")):
+        with (
+            patch.object(CartRepository, "get_for_user", AsyncMock(return_value=mock_cart)),
+            patch.object(AddressRepository, "get", AsyncMock(return_value=mock_addr)),
+            patch(
+                "app.modules.orders.service._repo.generate_order_number",
+                AsyncMock(return_value="ORD-2026-0001"),
+            ),
+        ):
             with pytest.raises(ValidationError, match="no longer available"):
                 await self.svc.create_from_cart(
                     db,
@@ -155,10 +178,10 @@ class TestOrderServiceCreateFromCart:
                 )
 
     async def test_create_from_cart_insufficient_stock_raises(self):
-        from app.modules.orders.schemas import CreateOrderRequest
         from app.core.exceptions import ValidationError
-        from app.modules.cart.repository import CartRepository
         from app.modules.addresses.repository import AddressRepository
+        from app.modules.cart.repository import CartRepository
+        from app.modules.orders.schemas import CreateOrderRequest
 
         user_id = uuid.uuid4()
         # Request 10, only 3 in stock, no backorder
@@ -173,9 +196,14 @@ class TestOrderServiceCreateFromCart:
         db = AsyncMock()
         db.execute = AsyncMock(return_value=prod_result)
 
-        with patch.object(CartRepository, "get_for_user", AsyncMock(return_value=mock_cart)), \
-             patch.object(AddressRepository, "get", AsyncMock(return_value=mock_addr)), \
-             patch("app.modules.orders.service._repo.generate_order_number", AsyncMock(return_value="ORD-2026-0001")):
+        with (
+            patch.object(CartRepository, "get_for_user", AsyncMock(return_value=mock_cart)),
+            patch.object(AddressRepository, "get", AsyncMock(return_value=mock_addr)),
+            patch(
+                "app.modules.orders.service._repo.generate_order_number",
+                AsyncMock(return_value="ORD-2026-0001"),
+            ),
+        ):
             with pytest.raises(ValidationError, match="Insufficient stock"):
                 await self.svc.create_from_cart(
                     db,
@@ -187,11 +215,10 @@ class TestOrderServiceCreateFromCart:
                 )
 
     async def test_create_from_cart_with_billing_address(self):
-        from app.modules.orders.schemas import CreateOrderRequest, OrderResponse
-        from app.modules.orders.repository import OrderRepository
-        from app.modules.cart.repository import CartRepository
         from app.modules.addresses.repository import AddressRepository
+        from app.modules.cart.repository import CartRepository
         from app.modules.inventory.service import InventoryService
+        from app.modules.orders.schemas import CreateOrderRequest, OrderResponse
         from app.modules.profiles.repository import ProfileRepository
 
         user_id = uuid.uuid4()
@@ -216,17 +243,25 @@ class TestOrderServiceCreateFromCart:
         mock_profile.email = "test@example.com"
         mock_profile.phone = None
 
-        with patch.object(CartRepository, "get_for_user", AsyncMock(return_value=mock_cart)), \
-             patch.object(AddressRepository, "get", AsyncMock(return_value=mock_addr)), \
-             patch("app.modules.orders.service._repo.generate_order_number", AsyncMock(return_value="ORD-2026-0002")), \
-             patch("app.modules.orders.service._repo.create", AsyncMock(return_value=mock_order)), \
-             patch("app.modules.orders.service._repo.add_item", AsyncMock()), \
-             patch.object(InventoryService, "record_movement", AsyncMock()), \
-             patch.object(CartRepository, "clear_items", AsyncMock()), \
-             patch.object(ProfileRepository, "get_by_id", AsyncMock(return_value=mock_profile)), \
-             patch("app.core.events.event_bus.publish", AsyncMock()), \
-             patch("app.modules.orders.service._repo.get_by_id", AsyncMock(return_value=mock_final_order)), \
-             patch.object(OrderResponse, "model_validate", return_value=mock_response):
+        with (
+            patch.object(CartRepository, "get_for_user", AsyncMock(return_value=mock_cart)),
+            patch.object(AddressRepository, "get", AsyncMock(return_value=mock_addr)),
+            patch(
+                "app.modules.orders.service._repo.generate_order_number",
+                AsyncMock(return_value="ORD-2026-0002"),
+            ),
+            patch("app.modules.orders.service._repo.create", AsyncMock(return_value=mock_order)),
+            patch("app.modules.orders.service._repo.add_item", AsyncMock()),
+            patch.object(InventoryService, "record_movement", AsyncMock()),
+            patch.object(CartRepository, "clear_items", AsyncMock()),
+            patch.object(ProfileRepository, "get_by_id", AsyncMock(return_value=mock_profile)),
+            patch("app.core.events.event_bus.publish", AsyncMock()),
+            patch(
+                "app.modules.orders.service._repo.get_by_id",
+                AsyncMock(return_value=mock_final_order),
+            ),
+            patch.object(OrderResponse, "model_validate", return_value=mock_response),
+        ):
             result = await self.svc.create_from_cart(
                 db,
                 user_id=user_id,
@@ -239,14 +274,13 @@ class TestOrderServiceCreateFromCart:
         assert result is mock_response
 
     async def test_create_from_cart_with_coupon(self):
-        from app.modules.orders.schemas import CreateOrderRequest, OrderResponse
-        from app.modules.orders.repository import OrderRepository
-        from app.modules.cart.repository import CartRepository
         from app.modules.addresses.repository import AddressRepository
-        from app.modules.inventory.service import InventoryService
-        from app.modules.profiles.repository import ProfileRepository
-        from app.modules.coupons.service import CouponService
+        from app.modules.cart.repository import CartRepository
         from app.modules.coupons.repository import CouponRepository
+        from app.modules.coupons.service import CouponService
+        from app.modules.inventory.service import InventoryService
+        from app.modules.orders.schemas import CreateOrderRequest, OrderResponse
+        from app.modules.profiles.repository import ProfileRepository
 
         user_id = uuid.uuid4()
         coupon_id = uuid.uuid4()
@@ -273,20 +307,30 @@ class TestOrderServiceCreateFromCart:
         mock_profile.email = "test@example.com"
         mock_profile.phone = "9999999999"
 
-        with patch.object(CartRepository, "get_for_user", AsyncMock(return_value=mock_cart)), \
-             patch.object(AddressRepository, "get", AsyncMock(return_value=mock_addr)), \
-             patch("app.modules.orders.service._repo.generate_order_number", AsyncMock(return_value="ORD-2026-0003")), \
-             patch("app.modules.orders.service._repo.create", AsyncMock(return_value=mock_order)), \
-             patch("app.modules.orders.service._repo.add_item", AsyncMock()), \
-             patch.object(CouponService, "apply_and_reserve", AsyncMock(return_value=(50.0, coupon_id))), \
-             patch.object(CouponRepository, "get_by_id", AsyncMock(return_value=mock_coupon)), \
-             patch.object(CouponService, "finalize_usage", AsyncMock()), \
-             patch.object(InventoryService, "record_movement", AsyncMock()), \
-             patch.object(CartRepository, "clear_items", AsyncMock()), \
-             patch.object(ProfileRepository, "get_by_id", AsyncMock(return_value=mock_profile)), \
-             patch("app.core.events.event_bus.publish", AsyncMock()), \
-             patch("app.modules.orders.service._repo.get_by_id", AsyncMock(return_value=mock_final_order)), \
-             patch.object(OrderResponse, "model_validate", return_value=mock_response):
+        with (
+            patch.object(CartRepository, "get_for_user", AsyncMock(return_value=mock_cart)),
+            patch.object(AddressRepository, "get", AsyncMock(return_value=mock_addr)),
+            patch(
+                "app.modules.orders.service._repo.generate_order_number",
+                AsyncMock(return_value="ORD-2026-0003"),
+            ),
+            patch("app.modules.orders.service._repo.create", AsyncMock(return_value=mock_order)),
+            patch("app.modules.orders.service._repo.add_item", AsyncMock()),
+            patch.object(
+                CouponService, "apply_and_reserve", AsyncMock(return_value=(50.0, coupon_id))
+            ),
+            patch.object(CouponRepository, "get_by_id", AsyncMock(return_value=mock_coupon)),
+            patch.object(CouponService, "finalize_usage", AsyncMock()),
+            patch.object(InventoryService, "record_movement", AsyncMock()),
+            patch.object(CartRepository, "clear_items", AsyncMock()),
+            patch.object(ProfileRepository, "get_by_id", AsyncMock(return_value=mock_profile)),
+            patch("app.core.events.event_bus.publish", AsyncMock()),
+            patch(
+                "app.modules.orders.service._repo.get_by_id",
+                AsyncMock(return_value=mock_final_order),
+            ),
+            patch.object(OrderResponse, "model_validate", return_value=mock_response),
+        ):
             result = await self.svc.create_from_cart(
                 db,
                 user_id=user_id,
@@ -300,13 +344,13 @@ class TestOrderServiceCreateFromCart:
 
     async def test_create_from_cart_free_shipping_coupon(self):
         """A free_shipping coupon type overrides shipping charge."""
-        from app.modules.orders.schemas import CreateOrderRequest, OrderResponse
-        from app.modules.cart.repository import CartRepository
         from app.modules.addresses.repository import AddressRepository
-        from app.modules.inventory.service import InventoryService
-        from app.modules.profiles.repository import ProfileRepository
-        from app.modules.coupons.service import CouponService
+        from app.modules.cart.repository import CartRepository
         from app.modules.coupons.repository import CouponRepository
+        from app.modules.coupons.service import CouponService
+        from app.modules.inventory.service import InventoryService
+        from app.modules.orders.schemas import CreateOrderRequest, OrderResponse
+        from app.modules.profiles.repository import ProfileRepository
 
         user_id = uuid.uuid4()
         coupon_id = uuid.uuid4()
@@ -334,20 +378,29 @@ class TestOrderServiceCreateFromCart:
         mock_profile.email = "t@t.com"
         mock_profile.phone = None
 
-        with patch.object(CartRepository, "get_for_user", AsyncMock(return_value=mock_cart)), \
-             patch.object(AddressRepository, "get", AsyncMock(return_value=mock_addr)), \
-             patch("app.modules.orders.service._repo.generate_order_number", AsyncMock(return_value="ORD-2026-0004")), \
-             patch("app.modules.orders.service._repo.create", AsyncMock(return_value=mock_order)), \
-             patch("app.modules.orders.service._repo.add_item", AsyncMock()), \
-             patch.object(CouponService, "apply_and_reserve", AsyncMock(return_value=(0.0, coupon_id))), \
-             patch.object(CouponRepository, "get_by_id", AsyncMock(return_value=mock_coupon)), \
-             patch.object(CouponService, "finalize_usage", AsyncMock()), \
-             patch.object(InventoryService, "record_movement", AsyncMock()), \
-             patch.object(CartRepository, "clear_items", AsyncMock()), \
-             patch.object(ProfileRepository, "get_by_id", AsyncMock(return_value=mock_profile)), \
-             patch("app.core.events.event_bus.publish", AsyncMock()), \
-             patch("app.modules.orders.service._repo.get_by_id", AsyncMock(return_value=MagicMock())), \
-             patch.object(OrderResponse, "model_validate", return_value=mock_response):
+        with (
+            patch.object(CartRepository, "get_for_user", AsyncMock(return_value=mock_cart)),
+            patch.object(AddressRepository, "get", AsyncMock(return_value=mock_addr)),
+            patch(
+                "app.modules.orders.service._repo.generate_order_number",
+                AsyncMock(return_value="ORD-2026-0004"),
+            ),
+            patch("app.modules.orders.service._repo.create", AsyncMock(return_value=mock_order)),
+            patch("app.modules.orders.service._repo.add_item", AsyncMock()),
+            patch.object(
+                CouponService, "apply_and_reserve", AsyncMock(return_value=(0.0, coupon_id))
+            ),
+            patch.object(CouponRepository, "get_by_id", AsyncMock(return_value=mock_coupon)),
+            patch.object(CouponService, "finalize_usage", AsyncMock()),
+            patch.object(InventoryService, "record_movement", AsyncMock()),
+            patch.object(CartRepository, "clear_items", AsyncMock()),
+            patch.object(ProfileRepository, "get_by_id", AsyncMock(return_value=mock_profile)),
+            patch("app.core.events.event_bus.publish", AsyncMock()),
+            patch(
+                "app.modules.orders.service._repo.get_by_id", AsyncMock(return_value=MagicMock())
+            ),
+            patch.object(OrderResponse, "model_validate", return_value=mock_response),
+        ):
             result = await self.svc.create_from_cart(
                 db,
                 user_id=user_id,
@@ -361,10 +414,10 @@ class TestOrderServiceCreateFromCart:
 
     async def test_create_from_cart_no_inventory_tracking(self):
         """track_inventory=False skips stock check."""
-        from app.modules.orders.schemas import CreateOrderRequest, OrderResponse
-        from app.modules.cart.repository import CartRepository
         from app.modules.addresses.repository import AddressRepository
+        from app.modules.cart.repository import CartRepository
         from app.modules.inventory.service import InventoryService
+        from app.modules.orders.schemas import CreateOrderRequest, OrderResponse
         from app.modules.profiles.repository import ProfileRepository
 
         user_id = uuid.uuid4()
@@ -389,19 +442,27 @@ class TestOrderServiceCreateFromCart:
         mock_profile.email = "a@b.com"
         mock_profile.phone = None
 
-        with patch.object(CartRepository, "get_for_user", AsyncMock(return_value=mock_cart)), \
-             patch.object(AddressRepository, "get", AsyncMock(return_value=mock_addr)), \
-             patch("app.modules.orders.service._repo.generate_order_number", AsyncMock(return_value="ORD-2026-0005")), \
-             patch("app.modules.orders.service._repo.create", AsyncMock(return_value=mock_order)), \
-             patch("app.modules.orders.service._repo.add_item", AsyncMock()), \
-             patch.object(InventoryService, "record_movement", AsyncMock()), \
-             patch.object(CartRepository, "clear_items", AsyncMock()), \
-             patch.object(ProfileRepository, "get_by_id", AsyncMock(return_value=mock_profile)), \
-             patch("app.core.events.event_bus.publish", AsyncMock()), \
-             patch("app.modules.orders.service._repo.get_by_id", AsyncMock(return_value=MagicMock())), \
-             patch.object(OrderResponse, "model_validate", return_value=mock_response):
+        with (
+            patch.object(CartRepository, "get_for_user", AsyncMock(return_value=mock_cart)),
+            patch.object(AddressRepository, "get", AsyncMock(return_value=mock_addr)),
+            patch(
+                "app.modules.orders.service._repo.generate_order_number",
+                AsyncMock(return_value="ORD-2026-0005"),
+            ),
+            patch("app.modules.orders.service._repo.create", AsyncMock(return_value=mock_order)),
+            patch("app.modules.orders.service._repo.add_item", AsyncMock()),
+            patch.object(InventoryService, "record_movement", AsyncMock()),
+            patch.object(CartRepository, "clear_items", AsyncMock()),
+            patch.object(ProfileRepository, "get_by_id", AsyncMock(return_value=mock_profile)),
+            patch("app.core.events.event_bus.publish", AsyncMock()),
+            patch(
+                "app.modules.orders.service._repo.get_by_id", AsyncMock(return_value=MagicMock())
+            ),
+            patch.object(OrderResponse, "model_validate", return_value=mock_response),
+        ):
             result = await self.svc.create_from_cart(
-                db, user_id=user_id,
+                db,
+                user_id=user_id,
                 payload=CreateOrderRequest(
                     shipping_address_id=uuid.uuid4(), payment_method="razorpay"
                 ),
@@ -409,10 +470,10 @@ class TestOrderServiceCreateFromCart:
         assert result is mock_response
 
     async def test_create_from_cart_address_not_found_raises(self):
-        from app.modules.orders.schemas import CreateOrderRequest
         from app.core.exceptions import NotFoundError
-        from app.modules.cart.repository import CartRepository
         from app.modules.addresses.repository import AddressRepository
+        from app.modules.cart.repository import CartRepository
+        from app.modules.orders.schemas import CreateOrderRequest
 
         user_id = uuid.uuid4()
         mock_cart = MagicMock()
@@ -420,11 +481,14 @@ class TestOrderServiceCreateFromCart:
 
         db = AsyncMock()
 
-        with patch.object(CartRepository, "get_for_user", AsyncMock(return_value=mock_cart)), \
-             patch.object(AddressRepository, "get", AsyncMock(return_value=None)):
+        with (
+            patch.object(CartRepository, "get_for_user", AsyncMock(return_value=mock_cart)),
+            patch.object(AddressRepository, "get", AsyncMock(return_value=None)),
+        ):
             with pytest.raises(NotFoundError, match="Address not found"):
                 await self.svc.create_from_cart(
-                    db, user_id=user_id,
+                    db,
+                    user_id=user_id,
                     payload=CreateOrderRequest(
                         shipping_address_id=uuid.uuid4(), payment_method="razorpay"
                     ),

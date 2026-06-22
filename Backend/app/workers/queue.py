@@ -6,6 +6,7 @@ package; intervals come from settings so ops can tune them per environment.
 
 Started/stopped from the FastAPI lifespan in app/main.py.
 """
+
 from __future__ import annotations
 
 from collections.abc import Awaitable, Callable
@@ -33,8 +34,8 @@ class QueueService:
             fn,
             IntervalTrigger(seconds=seconds),
             id=job_id,
-            max_instances=1,        # never overlap a slow run with the next tick
-            coalesce=True,          # collapse missed ticks into one run
+            max_instances=1,  # never overlap a slow run with the next tick
+            coalesce=True,  # collapse missed ticks into one run
             misfire_grace_time=60,
         )
 
@@ -71,9 +72,7 @@ def build_queue() -> QueueService:
     )
 
     queue = QueueService()
-    queue.add_interval_job(
-        cms_publish.run, seconds=60, job_id="cms_publish"
-    )
+    queue.add_interval_job(cms_publish.run, seconds=60, job_id="cms_publish")
     queue.add_interval_job(
         shipment_sync.run, seconds=settings.SHIPMENT_SYNC_INTERVAL, job_id="shipment_sync"
     )

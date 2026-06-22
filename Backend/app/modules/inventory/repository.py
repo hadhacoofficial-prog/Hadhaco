@@ -1,4 +1,3 @@
-import math
 import uuid
 from typing import Any
 
@@ -9,7 +8,6 @@ from app.modules.inventory.models import InventoryMovement
 
 
 class InventoryRepository:
-
     async def record(self, db: AsyncSession, data: dict[str, Any]) -> InventoryMovement:
         movement = InventoryMovement(**data)
         db.add(movement)
@@ -33,7 +31,11 @@ class InventoryRepository:
         count_q = select(func.count()).select_from(q.subquery())
         total: int = (await db.execute(count_q)).scalar_one()
 
-        q = q.order_by(InventoryMovement.created_at.desc()).offset((page - 1) * page_size).limit(page_size)
+        q = (
+            q.order_by(InventoryMovement.created_at.desc())
+            .offset((page - 1) * page_size)
+            .limit(page_size)
+        )
         result = await db.execute(q)
         return list(result.scalars().all()), total
 
@@ -46,9 +48,7 @@ class InventoryRepository:
         )
         return [dict(r._mapping) for r in result.fetchall()]
 
-    async def get_stock_snapshot(
-        self, db: AsyncSession, product_id: uuid.UUID
-    ) -> dict | None:
+    async def get_stock_snapshot(self, db: AsyncSession, product_id: uuid.UUID) -> dict | None:
         result = await db.execute(
             text(
                 "SELECT stock_quantity, low_stock_threshold, track_inventory, allow_backorder "

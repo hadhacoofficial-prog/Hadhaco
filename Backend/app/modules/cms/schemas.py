@@ -1,11 +1,13 @@
 from __future__ import annotations
+
 import uuid
 from datetime import datetime
 from typing import Any
+
 from pydantic import BaseModel, Field
 
-
 # ── Banners ───────────────────────────────────────────────────────────────────
+
 
 class BannerOut(BaseModel):
     id: uuid.UUID
@@ -47,6 +49,7 @@ class BannerUpdate(BaseModel):
 
 # ── Section items ─────────────────────────────────────────────────────────────
 
+
 class SectionItemOut(BaseModel):
     id: uuid.UUID
     section_id: uuid.UUID
@@ -76,6 +79,7 @@ class SectionItemReorderEntry(BaseModel):
 
 
 # ── Landing sections ──────────────────────────────────────────────────────────
+
 
 class LandingSectionOut(BaseModel):
     id: uuid.UUID
@@ -133,6 +137,7 @@ class ReorderSectionEntry(BaseModel):
 
 # ── Homepage public response ──────────────────────────────────────────────────
 
+
 class SectionDataOut(BaseModel):
     config: dict[str, Any]
     items: list[SectionItemOut] = []
@@ -153,6 +158,7 @@ class HomepageDataOut(BaseModel):
 
 
 # ── CMS Pages ─────────────────────────────────────────────────────────────────
+
 
 class CmsPageOut(BaseModel):
     id: uuid.UUID
@@ -183,6 +189,7 @@ class CmsPageUpdate(BaseModel):
 
 # ── Legacy (kept for backward compat with GET /cms/home) ─────────────────────
 
+
 class HomePageResponse(BaseModel):
     hero_banners: list[BannerOut] = []
     promo_strip: BannerOut | None = None
@@ -190,6 +197,7 @@ class HomePageResponse(BaseModel):
 
 
 # ── Version history ───────────────────────────────────────────────────────────
+
 
 class VersionHistoryOut(BaseModel):
     id: uuid.UUID
@@ -203,6 +211,7 @@ class VersionHistoryOut(BaseModel):
 
 
 # ── Media ─────────────────────────────────────────────────────────────────────
+
 
 class CmsMediaOut(BaseModel):
     id: uuid.UUID
@@ -239,6 +248,7 @@ class MediaListOut(BaseModel):
 
 
 # ── Publish log ───────────────────────────────────────────────────────────────
+
 
 class PublishLogOut(BaseModel):
     id: uuid.UUID

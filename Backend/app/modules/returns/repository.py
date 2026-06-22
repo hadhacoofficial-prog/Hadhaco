@@ -1,8 +1,11 @@
 from __future__ import annotations
+
 import uuid
 from typing import Any
+
 from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
+
 from app.modules.returns.models import Return, ReturnItem
 
 
@@ -13,7 +16,9 @@ class ReturnRepository:
 
     async def list_for_customer(self, db: AsyncSession, customer_id: uuid.UUID) -> list[Return]:
         result = await db.execute(
-            select(Return).where(Return.customer_id == customer_id).order_by(Return.created_at.desc())
+            select(Return)
+            .where(Return.customer_id == customer_id)
+            .order_by(Return.created_at.desc())
         )
         return list(result.scalars().all())
 
@@ -35,7 +40,9 @@ class ReturnRepository:
         await db.flush()
         return item
 
-    async def update_status(self, db: AsyncSession, ret: Return, status: str, **kwargs: Any) -> Return:
+    async def update_status(
+        self, db: AsyncSession, ret: Return, status: str, **kwargs: Any
+    ) -> Return:
         ret.status = status
         for k, v in kwargs.items():
             setattr(ret, k, v)

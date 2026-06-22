@@ -1,13 +1,17 @@
 from __future__ import annotations
 
 import uuid
-from datetime import UTC, datetime, timezone, timedelta
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.modules.notifications.models import NotificationLog, NotificationPreference, NotificationTemplate
+from app.modules.notifications.models import (
+    NotificationLog,
+    NotificationPreference,
+    NotificationTemplate,
+)
 
 _RETRY_DELAYS = [1, 5, 15]  # minutes
 
@@ -55,7 +59,9 @@ class NotificationRepository:
         db.add(log)
         await db.flush()
 
-    async def mark_permanently_failed(self, db: AsyncSession, log: NotificationLog, error: str) -> None:
+    async def mark_permanently_failed(
+        self, db: AsyncSession, log: NotificationLog, error: str
+    ) -> None:
         """Mark as failed immediately with no retry scheduled.
 
         Use for configuration errors (bad API key, unverified domain) that

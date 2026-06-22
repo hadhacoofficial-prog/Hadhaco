@@ -1,47 +1,50 @@
 """Tests for PaymentService and NotificationService."""
+
 import uuid
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-
 # ─── PaymentService ───────────────────────────────────────────────────────────
+
 
 class TestPaymentServiceCreateOrder:
     def setup_method(self):
         from app.modules.payments.service import PaymentService
+
         self.svc = PaymentService()
 
     async def test_raises_404_when_order_not_found(self):
         from app.core.exceptions import NotFoundError
-        from app.modules.payments.schemas import CreatePaymentOrderRequest
         from app.modules.orders.repository import OrderRepository
+        from app.modules.payments.schemas import CreatePaymentOrderRequest
+
         db = AsyncMock()
         with patch.object(OrderRepository, "get_by_id", AsyncMock(return_value=None)):
             with pytest.raises(NotFoundError):
                 await self.svc.create_razorpay_order(
-                    db, uuid.uuid4(),
-                    CreatePaymentOrderRequest(order_id=uuid.uuid4())
+                    db, uuid.uuid4(), CreatePaymentOrderRequest(order_id=uuid.uuid4())
                 )
 
     async def test_raises_404_when_wrong_user(self):
         from app.core.exceptions import NotFoundError
-        from app.modules.payments.schemas import CreatePaymentOrderRequest
         from app.modules.orders.repository import OrderRepository
+        from app.modules.payments.schemas import CreatePaymentOrderRequest
+
         db = AsyncMock()
         mock_order = MagicMock()
         mock_order.user_id = uuid.uuid4()  # different user
         with patch.object(OrderRepository, "get_by_id", AsyncMock(return_value=mock_order)):
             with pytest.raises(NotFoundError):
                 await self.svc.create_razorpay_order(
-                    db, uuid.uuid4(),
-                    CreatePaymentOrderRequest(order_id=uuid.uuid4())
+                    db, uuid.uuid4(), CreatePaymentOrderRequest(order_id=uuid.uuid4())
                 )
 
     async def test_raises_validation_error_when_already_paid(self):
         from app.core.exceptions import ValidationError
-        from app.modules.payments.schemas import CreatePaymentOrderRequest
         from app.modules.orders.repository import OrderRepository
+        from app.modules.payments.schemas import CreatePaymentOrderRequest
+
         db = AsyncMock()
         user_id = uuid.uuid4()
         mock_order = MagicMock()
@@ -50,14 +53,14 @@ class TestPaymentServiceCreateOrder:
         with patch.object(OrderRepository, "get_by_id", AsyncMock(return_value=mock_order)):
             with pytest.raises(ValidationError, match="already paid"):
                 await self.svc.create_razorpay_order(
-                    db, user_id,
-                    CreatePaymentOrderRequest(order_id=uuid.uuid4())
+                    db, user_id, CreatePaymentOrderRequest(order_id=uuid.uuid4())
                 )
 
     async def test_raises_validation_error_when_order_cancelled(self):
         from app.core.exceptions import ValidationError
-        from app.modules.payments.schemas import CreatePaymentOrderRequest
         from app.modules.orders.repository import OrderRepository
+        from app.modules.payments.schemas import CreatePaymentOrderRequest
+
         db = AsyncMock()
         user_id = uuid.uuid4()
         mock_order = MagicMock()
@@ -67,113 +70,141 @@ class TestPaymentServiceCreateOrder:
         with patch.object(OrderRepository, "get_by_id", AsyncMock(return_value=mock_order)):
             with pytest.raises(ValidationError, match="cancelled"):
                 await self.svc.create_razorpay_order(
-                    db, user_id,
-                    CreatePaymentOrderRequest(order_id=uuid.uuid4())
+                    db, user_id, CreatePaymentOrderRequest(order_id=uuid.uuid4())
                 )
 
 
 class TestPaymentServiceVerifyAndCapture:
     def setup_method(self):
         from app.modules.payments.service import PaymentService
+
         self.svc = PaymentService()
 
     async def test_raises_404_when_payment_not_found(self):
         from app.core.exceptions import NotFoundError
         from app.modules.payments.schemas import VerifyPaymentRequest
+
         db = AsyncMock()
         with patch("app.modules.payments.service._repo.get_by_id", AsyncMock(return_value=None)):
             with pytest.raises(NotFoundError):
                 await self.svc.verify_and_capture(
-                    db, uuid.uuid4(),
+                    db,
+                    uuid.uuid4(),
                     VerifyPaymentRequest(
                         payment_id=uuid.uuid4(),
                         razorpay_order_id="order_abc",
                         razorpay_payment_id="pay_abc",
                         razorpay_signature="sig_abc",
-                    )
+                    ),
                 )
 
     async def test_raises_404_when_wrong_user(self):
         from app.core.exceptions import NotFoundError
         from app.modules.payments.schemas import VerifyPaymentRequest
+
         db = AsyncMock()
         mock_payment = MagicMock()
         mock_payment.user_id = uuid.uuid4()
-        with patch("app.modules.payments.service._repo.get_by_id", AsyncMock(return_value=mock_payment)):
+        with patch(
+            "app.modules.payments.service._repo.get_by_id", AsyncMock(return_value=mock_payment)
+        ):
             with pytest.raises(NotFoundError):
                 await self.svc.verify_and_capture(
-                    db, uuid.uuid4(),
+                    db,
+                    uuid.uuid4(),
                     VerifyPaymentRequest(
                         payment_id=uuid.uuid4(),
                         razorpay_order_id="order_abc",
                         razorpay_payment_id="pay_abc",
                         razorpay_signature="sig_abc",
-                    )
+                    ),
                 )
 
     async def test_returns_response_when_already_captured(self):
         from app.modules.payments.schemas import VerifyPaymentRequest
+
         db = AsyncMock()
         user_id = uuid.uuid4()
         mock_payment = MagicMock()
         mock_payment.user_id = user_id
         mock_payment.status = "captured"
-        with patch("app.modules.payments.service._repo.get_by_id", AsyncMock(return_value=mock_payment)), \
-             patch("app.modules.payments.service.PaymentResponse.model_validate", return_value=MagicMock()):
+        with (
+            patch(
+                "app.modules.payments.service._repo.get_by_id", AsyncMock(return_value=mock_payment)
+            ),
+            patch(
+                "app.modules.payments.service.PaymentResponse.model_validate",
+                return_value=MagicMock(),
+            ),
+        ):
             result = await self.svc.verify_and_capture(
-                db, user_id,
+                db,
+                user_id,
                 VerifyPaymentRequest(
                     payment_id=uuid.uuid4(),
                     razorpay_order_id="order_abc",
                     razorpay_payment_id="pay_abc",
                     razorpay_signature="sig_abc",
-                )
+                ),
             )
         assert result is not None
 
     async def test_raises_validation_error_when_signature_invalid(self):
+        from app.core.events import event_bus
         from app.core.exceptions import ValidationError
         from app.modules.payments.schemas import VerifyPaymentRequest
-        from app.core.events import event_bus
+
         db = AsyncMock()
         user_id = uuid.uuid4()
         mock_payment = MagicMock()
         mock_payment.user_id = user_id
         mock_payment.status = "created"
-        with patch("app.modules.payments.service._repo.get_by_id", AsyncMock(return_value=mock_payment)), \
-             patch("app.modules.payments.service._verify_signature", return_value=False), \
-             patch("app.modules.payments.service._repo.update", AsyncMock()), \
-             patch.object(event_bus, "publish", AsyncMock()):
+        with (
+            patch(
+                "app.modules.payments.service._repo.get_by_id", AsyncMock(return_value=mock_payment)
+            ),
+            patch("app.modules.payments.service._verify_signature", return_value=False),
+            patch("app.modules.payments.service._repo.update", AsyncMock()),
+            patch.object(event_bus, "publish", AsyncMock()),
+        ):
             with pytest.raises(ValidationError, match="signature"):
                 await self.svc.verify_and_capture(
-                    db, user_id,
+                    db,
+                    user_id,
                     VerifyPaymentRequest(
                         payment_id=uuid.uuid4(),
                         razorpay_order_id="order_abc",
                         razorpay_payment_id="pay_abc",
                         razorpay_signature="bad_sig",
-                    )
+                    ),
                 )
 
 
 class TestPaymentServiceGetAndRefund:
     def setup_method(self):
         from app.modules.payments.service import PaymentService
+
         self.svc = PaymentService()
 
     async def test_get_payment_for_order_raises_404_when_not_found(self):
         from app.core.exceptions import NotFoundError
+
         db = AsyncMock()
-        with patch("app.modules.payments.service._repo.get_for_order", AsyncMock(return_value=None)):
+        with patch(
+            "app.modules.payments.service._repo.get_for_order", AsyncMock(return_value=None)
+        ):
             with pytest.raises(NotFoundError):
                 await self.svc.get_payment_for_order(db, uuid.uuid4())
 
     async def test_get_payment_for_order_raises_404_when_wrong_user(self):
         from app.core.exceptions import NotFoundError
+
         db = AsyncMock()
         mock_payment = MagicMock()
         mock_payment.user_id = uuid.uuid4()
-        with patch("app.modules.payments.service._repo.get_for_order", AsyncMock(return_value=mock_payment)):
+        with patch(
+            "app.modules.payments.service._repo.get_for_order", AsyncMock(return_value=mock_payment)
+        ):
             with pytest.raises(NotFoundError):
                 await self.svc.get_payment_for_order(db, uuid.uuid4(), user_id=uuid.uuid4())
 
@@ -182,37 +213,54 @@ class TestPaymentServiceGetAndRefund:
         user_id = uuid.uuid4()
         mock_payment = MagicMock()
         mock_payment.user_id = user_id
-        with patch("app.modules.payments.service._repo.get_for_order", AsyncMock(return_value=mock_payment)), \
-             patch("app.modules.payments.service.PaymentResponse.model_validate", return_value=MagicMock()):
+        with (
+            patch(
+                "app.modules.payments.service._repo.get_for_order",
+                AsyncMock(return_value=mock_payment),
+            ),
+            patch(
+                "app.modules.payments.service.PaymentResponse.model_validate",
+                return_value=MagicMock(),
+            ),
+        ):
             result = await self.svc.get_payment_for_order(db, uuid.uuid4(), user_id=user_id)
         assert result is not None
 
     async def test_initiate_refund_raises_404_when_no_payment(self):
         from app.core.exceptions import NotFoundError
         from app.modules.payments.schemas import RefundRequest
+
         db = AsyncMock()
-        with patch("app.modules.payments.service._repo.get_for_order", AsyncMock(return_value=None)):
+        with patch(
+            "app.modules.payments.service._repo.get_for_order", AsyncMock(return_value=None)
+        ):
             with pytest.raises(NotFoundError):
                 await self.svc.initiate_refund(db, uuid.uuid4(), RefundRequest(reason="Defective"))
 
     async def test_initiate_refund_raises_validation_error_when_not_captured(self):
         from app.core.exceptions import ValidationError
         from app.modules.payments.schemas import RefundRequest
+
         db = AsyncMock()
         mock_payment = MagicMock()
         mock_payment.status = "created"  # not "captured"
-        with patch("app.modules.payments.service._repo.get_for_order", AsyncMock(return_value=mock_payment)):
+        with patch(
+            "app.modules.payments.service._repo.get_for_order", AsyncMock(return_value=mock_payment)
+        ):
             with pytest.raises(ValidationError, match="Cannot refund"):
                 await self.svc.initiate_refund(db, uuid.uuid4(), RefundRequest(reason="Defective"))
 
     async def test_initiate_refund_raises_validation_error_when_amount_exceeds(self):
         from app.core.exceptions import ValidationError
         from app.modules.payments.schemas import RefundRequest
+
         db = AsyncMock()
         mock_payment = MagicMock()
         mock_payment.status = "captured"
         mock_payment.amount = 500.0
-        with patch("app.modules.payments.service._repo.get_for_order", AsyncMock(return_value=mock_payment)):
+        with patch(
+            "app.modules.payments.service._repo.get_for_order", AsyncMock(return_value=mock_payment)
+        ):
             with pytest.raises(ValidationError, match="exceeds"):
                 await self.svc.initiate_refund(
                     db, uuid.uuid4(), RefundRequest(reason="Defective", amount=999.0)
@@ -221,25 +269,37 @@ class TestPaymentServiceGetAndRefund:
     async def test_list_refunds_returns_validated_list(self):
         db = AsyncMock()
         mock_refund = MagicMock()
-        with patch("app.modules.payments.service._repo.get_refunds_for_order", AsyncMock(return_value=[mock_refund])), \
-             patch("app.modules.payments.service.RefundResponse.model_validate", return_value=MagicMock()):
+        with (
+            patch(
+                "app.modules.payments.service._repo.get_refunds_for_order",
+                AsyncMock(return_value=[mock_refund]),
+            ),
+            patch(
+                "app.modules.payments.service.RefundResponse.model_validate",
+                return_value=MagicMock(),
+            ),
+        ):
             result = await self.svc.list_refunds(db, uuid.uuid4())
         assert len(result) == 1
 
 
 # ─── _verify_signature pure function ─────────────────────────────────────────
 
+
 class TestVerifySignature:
     def test_returns_false_on_bad_signature(self):
         from app.modules.payments.service import _verify_signature
+
         result = _verify_signature("order_abc", "pay_abc", "bad_sig")
         assert result is False
 
     def test_correct_signature_returns_true(self):
         import hashlib
         import hmac as hmac_mod
+
         from app.core.config import settings
         from app.modules.payments.service import _verify_signature
+
         msg = "order_abc|pay_abc"
         expected = hmac_mod.new(
             settings.RAZORPAY_KEY_SECRET.encode(),
@@ -251,10 +311,12 @@ class TestVerifySignature:
 
 # ─── NotificationService ──────────────────────────────────────────────────────
 
+
 class TestNotificationServiceSendEmail:
     def setup_method(self):
-        from app.modules.notifications.service import NotificationService
         from app.modules.notifications.repository import NotificationRepository
+        from app.modules.notifications.service import NotificationService
+
         self.svc = NotificationService()
         self.repo_cls = NotificationRepository
 
@@ -277,10 +339,12 @@ class TestNotificationServiceSendEmail:
         mock_template.template_body = "Hello {{ full_name }}"
         mock_log = MagicMock()
 
-        with patch.object(self.repo_cls, "get_template", AsyncMock(return_value=mock_template)), \
-             patch.object(self.repo_cls, "create_log", AsyncMock(return_value=mock_log)), \
-             patch.object(self.repo_cls, "mark_sent", AsyncMock()) as mock_sent, \
-             patch.object(self.svc._email_primary, "send_email", AsyncMock(return_value="msg-123")):
+        with (
+            patch.object(self.repo_cls, "get_template", AsyncMock(return_value=mock_template)),
+            patch.object(self.repo_cls, "create_log", AsyncMock(return_value=mock_log)),
+            patch.object(self.repo_cls, "mark_sent", AsyncMock()) as mock_sent,
+            patch.object(self.svc._email_primary, "send_email", AsyncMock(return_value="msg-123")),
+        ):
             await self.svc.send_email(
                 db,
                 user_id=uuid.uuid4(),
@@ -297,10 +361,14 @@ class TestNotificationServiceSendEmail:
         mock_template.template_body = "Hello"
         mock_log = MagicMock()
 
-        with patch.object(self.repo_cls, "get_template", AsyncMock(return_value=mock_template)), \
-             patch.object(self.repo_cls, "create_log", AsyncMock(return_value=mock_log)), \
-             patch.object(self.repo_cls, "mark_failed", AsyncMock()) as mock_failed, \
-             patch.object(self.svc._email_primary, "send_email", AsyncMock(side_effect=Exception("SMTP down"))):
+        with (
+            patch.object(self.repo_cls, "get_template", AsyncMock(return_value=mock_template)),
+            patch.object(self.repo_cls, "create_log", AsyncMock(return_value=mock_log)),
+            patch.object(self.repo_cls, "mark_failed", AsyncMock()) as mock_failed,
+            patch.object(
+                self.svc._email_primary, "send_email", AsyncMock(side_effect=Exception("SMTP down"))
+            ),
+        ):
             await self.svc.send_email(
                 db,
                 user_id=None,
@@ -313,8 +381,9 @@ class TestNotificationServiceSendEmail:
 
 class TestNotificationServiceSendSMS:
     def setup_method(self):
-        from app.modules.notifications.service import NotificationService
         from app.modules.notifications.repository import NotificationRepository
+        from app.modules.notifications.service import NotificationService
+
         self.svc = NotificationService()
         self.repo_cls = NotificationRepository
 
@@ -334,11 +403,13 @@ class TestNotificationServiceSendSMS:
         mock_template = MagicMock()
         mock_template.template_body = "Your order {{ order_number }} shipped"
         mock_log = MagicMock()
-        with patch("app.modules.notifications.service.settings") as mock_settings, \
-             patch.object(self.repo_cls, "get_template", AsyncMock(return_value=mock_template)), \
-             patch.object(self.repo_cls, "create_log", AsyncMock(return_value=mock_log)), \
-             patch.object(self.repo_cls, "mark_sent", AsyncMock()) as mock_sent, \
-             patch.object(self.svc._sms, "send_sms", AsyncMock(return_value="req-123")):
+        with (
+            patch("app.modules.notifications.service.settings") as mock_settings,
+            patch.object(self.repo_cls, "get_template", AsyncMock(return_value=mock_template)),
+            patch.object(self.repo_cls, "create_log", AsyncMock(return_value=mock_log)),
+            patch.object(self.repo_cls, "mark_sent", AsyncMock()) as mock_sent,
+            patch.object(self.svc._sms, "send_sms", AsyncMock(return_value="req-123")),
+        ):
             mock_settings.SMS_ENABLED = True
             await self.svc.send_sms(
                 db,
@@ -367,11 +438,13 @@ class TestNotificationServiceSendSMS:
         mock_template = MagicMock()
         mock_template.template_body = "SMS body"
         mock_log = MagicMock()
-        with patch("app.modules.notifications.service.settings") as mock_settings, \
-             patch.object(self.repo_cls, "get_template", AsyncMock(return_value=mock_template)), \
-             patch.object(self.repo_cls, "create_log", AsyncMock(return_value=mock_log)), \
-             patch.object(self.repo_cls, "mark_failed", AsyncMock()) as mock_failed, \
-             patch.object(self.svc._sms, "send_sms", AsyncMock(side_effect=Exception("MSG91 down"))):
+        with (
+            patch("app.modules.notifications.service.settings") as mock_settings,
+            patch.object(self.repo_cls, "get_template", AsyncMock(return_value=mock_template)),
+            patch.object(self.repo_cls, "create_log", AsyncMock(return_value=mock_log)),
+            patch.object(self.repo_cls, "mark_failed", AsyncMock()) as mock_failed,
+            patch.object(self.svc._sms, "send_sms", AsyncMock(side_effect=Exception("MSG91 down"))),
+        ):
             mock_settings.SMS_ENABLED = True
             await self.svc.send_sms(
                 db,
@@ -385,8 +458,9 @@ class TestNotificationServiceSendSMS:
 
 class TestNotificationServiceRetry:
     def setup_method(self):
-        from app.modules.notifications.service import NotificationService
         from app.modules.notifications.repository import NotificationRepository
+        from app.modules.notifications.service import NotificationService
+
         self.svc = NotificationService()
         self.repo_cls = NotificationRepository
 
@@ -394,8 +468,12 @@ class TestNotificationServiceRetry:
         db = AsyncMock()
         mock_log1 = MagicMock()
         mock_log2 = MagicMock()
-        with patch.object(self.repo_cls, "get_pending_retries", AsyncMock(return_value=[mock_log1, mock_log2])), \
-             patch.object(self.svc, "_retry_log", AsyncMock()) as mock_retry:
+        with (
+            patch.object(
+                self.repo_cls, "get_pending_retries", AsyncMock(return_value=[mock_log1, mock_log2])
+            ),
+            patch.object(self.svc, "_retry_log", AsyncMock()) as mock_retry,
+        ):
             await self.svc.retry_pending(db)
         assert mock_retry.await_count == 2
 
@@ -416,9 +494,13 @@ class TestNotificationServiceRetry:
         mock_template = MagicMock()
         mock_template.subject = "Test"
         mock_template.template_body = "<p>Hello</p>"
-        with patch.object(self.repo_cls, "get_template", AsyncMock(return_value=mock_template)), \
-             patch.object(self.repo_cls, "mark_sent", AsyncMock()) as mock_sent, \
-             patch.object(self.svc._email_primary, "send_email", AsyncMock(return_value="msg-retry")):
+        with (
+            patch.object(self.repo_cls, "get_template", AsyncMock(return_value=mock_template)),
+            patch.object(self.repo_cls, "mark_sent", AsyncMock()) as mock_sent,
+            patch.object(
+                self.svc._email_primary, "send_email", AsyncMock(return_value="msg-retry")
+            ),
+        ):
             await self.svc._retry_log(db, mock_log)
         mock_sent.assert_awaited_once()
 
@@ -431,10 +513,12 @@ class TestNotificationServiceRetry:
         mock_template = MagicMock()
         mock_template.subject = None
         mock_template.template_body = "Order shipped"
-        with patch("app.modules.notifications.service.settings") as mock_settings, \
-             patch.object(self.repo_cls, "get_template", AsyncMock(return_value=mock_template)), \
-             patch.object(self.repo_cls, "mark_sent", AsyncMock()) as mock_sent, \
-             patch.object(self.svc._sms, "send_sms", AsyncMock(return_value="req-retry")):
+        with (
+            patch("app.modules.notifications.service.settings") as mock_settings,
+            patch.object(self.repo_cls, "get_template", AsyncMock(return_value=mock_template)),
+            patch.object(self.repo_cls, "mark_sent", AsyncMock()) as mock_sent,
+            patch.object(self.svc._sms, "send_sms", AsyncMock(return_value="req-retry")),
+        ):
             mock_settings.SMS_ENABLED = True
             await self.svc._retry_log(db, mock_log)
         mock_sent.assert_awaited_once()
@@ -448,8 +532,10 @@ class TestNotificationServiceRetry:
         mock_template = MagicMock()
         mock_template.subject = None
         mock_template.template_body = "Order shipped"
-        with patch("app.modules.notifications.service.settings") as mock_settings, \
-             patch.object(self.repo_cls, "get_template", AsyncMock(return_value=mock_template)):
+        with (
+            patch("app.modules.notifications.service.settings") as mock_settings,
+            patch.object(self.repo_cls, "get_template", AsyncMock(return_value=mock_template)),
+        ):
             mock_settings.SMS_ENABLED = False
             await self.svc._retry_log(db, mock_log)
         db.commit.assert_not_called()
@@ -463,8 +549,14 @@ class TestNotificationServiceRetry:
         mock_template = MagicMock()
         mock_template.subject = "Test"
         mock_template.template_body = "HTML"
-        with patch.object(self.repo_cls, "get_template", AsyncMock(return_value=mock_template)), \
-             patch.object(self.repo_cls, "mark_failed", AsyncMock()) as mock_failed, \
-             patch.object(self.svc._email_primary, "send_email", AsyncMock(side_effect=Exception("Send error"))):
+        with (
+            patch.object(self.repo_cls, "get_template", AsyncMock(return_value=mock_template)),
+            patch.object(self.repo_cls, "mark_failed", AsyncMock()) as mock_failed,
+            patch.object(
+                self.svc._email_primary,
+                "send_email",
+                AsyncMock(side_effect=Exception("Send error")),
+            ),
+        ):
             await self.svc._retry_log(db, mock_log)
         mock_failed.assert_awaited_once()

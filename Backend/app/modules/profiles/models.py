@@ -5,8 +5,8 @@ from sqlalchemy import Boolean, DateTime, ForeignKey, Index, String, Text, func
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
-from app.core.database import Base
 from app.core.constants import UserRole
+from app.core.database import Base
 
 
 class Profile(Base):
@@ -19,14 +19,10 @@ class Profile(Base):
     full_name: Mapped[str | None] = mapped_column(Text, nullable=True)
     phone: Mapped[str | None] = mapped_column(String(20), nullable=True)
     avatar_url: Mapped[str | None] = mapped_column(Text, nullable=True)
-    role: Mapped[str] = mapped_column(
-        String(20), nullable=False, default=UserRole.CUSTOMER
-    )
+    role: Mapped[str] = mapped_column(String(20), nullable=False, default=UserRole.CUSTOMER)
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     is_verified: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
-    deleted_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True
-    )
+    deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )
@@ -51,9 +47,7 @@ class Profile(Base):
 class Admin2FA(Base):
     __tablename__ = "admin_2fa"
 
-    id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
-    )
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     user_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("profiles.id", ondelete="CASCADE"),
@@ -65,9 +59,7 @@ class Admin2FA(Base):
         Text, nullable=False, default="[]"
     )  # JSON array of bcrypt-hashed codes
     is_enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
-    enabled_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True
-    )
+    enabled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )
@@ -82,9 +74,7 @@ class Admin2FA(Base):
 class AdminSession(Base):
     __tablename__ = "admin_sessions"
 
-    id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
-    )
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     user_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("profiles.id", ondelete="CASCADE"), nullable=False
     )

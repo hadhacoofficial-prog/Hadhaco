@@ -42,10 +42,12 @@ class ReviewRepository:
     async def has_any_review(self, db: AsyncSession, *, order_id: uuid.UUID) -> bool:
         """Return True if any review exists for the given order."""
         result = await db.execute(
-            select(Review.id).where(
+            select(Review.id)
+            .where(
                 Review.order_id == order_id,
                 Review.deleted_at.is_(None),
-            ).limit(1)
+            )
+            .limit(1)
         )
         return result.scalar_one_or_none() is not None
 
@@ -70,9 +72,7 @@ class ReviewRepository:
         await db.refresh(review)
         return review
 
-    async def update(
-        self, db: AsyncSession, review: Review, data: dict[str, Any]
-    ) -> Review:
+    async def update(self, db: AsyncSession, review: Review, data: dict[str, Any]) -> Review:
         for k, v in data.items():
             setattr(review, k, v)
         db.add(review)
@@ -81,7 +81,8 @@ class ReviewRepository:
         return review
 
     async def soft_delete(self, db: AsyncSession, review: Review) -> None:
-        from datetime import UTC, datetime, timezone
+        from datetime import UTC, datetime
+
         review.deleted_at = datetime.now(UTC)
         db.add(review)
         await db.flush()
@@ -153,7 +154,13 @@ class ReviewRepository:
     # ── Images ────────────────────────────────────────────────────────────────
 
     async def add_image(
-        self, db: AsyncSession, *, review_id: uuid.UUID, url: str, r2_key: str | None, sort_order: int = 0
+        self,
+        db: AsyncSession,
+        *,
+        review_id: uuid.UUID,
+        url: str,
+        r2_key: str | None,
+        sort_order: int = 0,
     ) -> ReviewImage:
         img = ReviewImage(review_id=review_id, url=url, r2_key=r2_key, sort_order=sort_order)
         db.add(img)
@@ -195,6 +202,4 @@ class ReviewRepository:
             )
         )
         count = result.scalar() or 0
-        await db.execute(
-            update(Review).where(Review.id == review_id).values(helpful_count=count)
-        )
+        await db.execute(update(Review).where(Review.id == review_id).values(helpful_count=count))

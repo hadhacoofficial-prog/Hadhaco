@@ -1,31 +1,35 @@
 """Unit tests for the APScheduler queue service."""
-from unittest.mock import MagicMock, patch
 
-import pytest
+from unittest.mock import MagicMock, patch
 
 
 class TestQueueService:
     def test_queue_service_starts_scheduler(self):
         from app.workers.queue import QueueService
+
         svc = QueueService()
         with patch.object(svc._scheduler, "start") as mock_start:
             svc.start()
             mock_start.assert_called_once()
 
     def test_queue_service_shutdown_when_running(self):
+
         from app.workers.queue import QueueService
-        from apscheduler.schedulers.asyncio import AsyncIOScheduler
+
         svc = QueueService()
         # Start the scheduler first so running=True, then shut it down
         with patch.object(svc._scheduler, "start"):
             svc._scheduler._state = 1  # RUNNING state in APScheduler
         with patch.object(svc._scheduler, "shutdown") as mock_shutdown:
-            with patch.object(type(svc._scheduler), "running", new_callable=lambda: property(lambda self: True)):
+            with patch.object(
+                type(svc._scheduler), "running", new_callable=lambda: property(lambda self: True)
+            ):
                 svc.shutdown()
                 mock_shutdown.assert_called_once_with(wait=False)
 
     def test_queue_service_shutdown_not_called_when_already_stopped(self):
         from app.workers.queue import QueueService
+
         svc = QueueService()
         # Scheduler not started → running=False → shutdown() skips the call
         with patch.object(svc._scheduler, "shutdown") as mock_shutdown:
@@ -34,6 +38,7 @@ class TestQueueService:
 
     def test_add_interval_job_registers_with_correct_id(self):
         from app.workers.queue import QueueService
+
         svc = QueueService()
         mock_fn = MagicMock()
         with patch.object(svc._scheduler, "add_job") as mock_add:
@@ -45,6 +50,7 @@ class TestQueueService:
 
     def test_add_cron_job_registers_with_correct_id(self):
         from app.workers.queue import QueueService
+
         svc = QueueService()
         mock_fn = MagicMock()
         with patch.object(svc._scheduler, "add_job") as mock_add:
@@ -55,13 +61,17 @@ class TestQueueService:
 
     def test_build_queue_returns_queue_service(self):
         from app.workers.queue import QueueService, build_queue
-        with patch.object(QueueService, "add_interval_job"), \
-             patch.object(QueueService, "add_cron_job"):
+
+        with (
+            patch.object(QueueService, "add_interval_job"),
+            patch.object(QueueService, "add_cron_job"),
+        ):
             q = build_queue()
             assert isinstance(q, QueueService)
 
-    def test_build_queue_registers_exactly_six_workers(self):
+    def test_build_queue_registers_exactly_seven_workers(self):
         from app.workers.queue import QueueService, build_queue
+
         interval_ids = []
         cron_ids = []
 
@@ -74,11 +84,13 @@ class TestQueueService:
         def capture_cron(self, fn, *, cron, job_id):
             cron_ids.append(job_id)
 
-        with patch.object(QueueService, "add_interval_job", capture_interval), \
-             patch.object(QueueService, "add_cron_job", capture_cron):
+        with (
+            patch.object(QueueService, "add_interval_job", capture_interval),
+            patch.object(QueueService, "add_cron_job", capture_cron),
+        ):
             build_queue()
 
-        assert len(interval_ids) + len(cron_ids) == 6
+        assert len(interval_ids) + len(cron_ids) == 7
         assert "partition_manager" in cron_ids
         assert "shipment_sync" in interval_ids
         assert "abandoned_cart" in interval_ids

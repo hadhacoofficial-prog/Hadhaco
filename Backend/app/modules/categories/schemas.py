@@ -1,6 +1,5 @@
 import uuid
 from datetime import datetime
-from typing import Optional
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -8,13 +7,13 @@ from pydantic import BaseModel, ConfigDict, Field
 class CategoryBase(BaseModel):
     name: str = Field(max_length=200)
     slug: str = Field(max_length=200)
-    description: Optional[str] = None
-    image_url: Optional[str] = None
+    description: str | None = None
+    image_url: str | None = None
     sort_order: int = 0
     is_active: bool = True
-    seo_title: Optional[str] = None
-    seo_description: Optional[str] = None
-    parent_id: Optional[uuid.UUID] = None
+    seo_title: str | None = None
+    seo_description: str | None = None
+    parent_id: uuid.UUID | None = None
 
 
 class CategoryCreateRequest(CategoryBase):
@@ -22,30 +21,30 @@ class CategoryCreateRequest(CategoryBase):
 
 
 class CategoryUpdateRequest(BaseModel):
-    name: Optional[str] = Field(default=None, max_length=200)
-    slug: Optional[str] = Field(default=None, max_length=200)
-    description: Optional[str] = None
-    image_url: Optional[str] = None
-    sort_order: Optional[int] = None
-    is_active: Optional[bool] = None
-    seo_title: Optional[str] = None
-    seo_description: Optional[str] = None
-    parent_id: Optional[uuid.UUID] = None
+    name: str | None = Field(default=None, max_length=200)
+    slug: str | None = Field(default=None, max_length=200)
+    description: str | None = None
+    image_url: str | None = None
+    sort_order: int | None = None
+    is_active: bool | None = None
+    seo_title: str | None = None
+    seo_description: str | None = None
+    parent_id: uuid.UUID | None = None
 
 
 class CategoryResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     id: uuid.UUID
-    parent_id: Optional[uuid.UUID]
+    parent_id: uuid.UUID | None
     name: str
     slug: str
-    description: Optional[str]
-    image_url: Optional[str]
+    description: str | None
+    image_url: str | None
     sort_order: int
     is_active: bool
-    seo_title: Optional[str]
-    seo_description: Optional[str]
+    seo_title: str | None
+    seo_description: str | None
     created_at: datetime
     updated_at: datetime
 
@@ -54,10 +53,10 @@ class CategoryTreeNode(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     id: uuid.UUID
-    parent_id: Optional[uuid.UUID]
+    parent_id: uuid.UUID | None
     name: str
     slug: str
-    image_url: Optional[str]
+    image_url: str | None
     sort_order: int
     product_count: int = 0
     children: list["CategoryTreeNode"] = []
@@ -80,7 +79,7 @@ class NavCategoryItem(BaseModel):
     id: uuid.UUID
     name: str
     slug: str
-    image_url: Optional[str] = None
+    image_url: str | None = None
 
 
 class NavigationCategoriesResponse(BaseModel):

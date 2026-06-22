@@ -1,11 +1,11 @@
 from fastapi import APIRouter, Depends, Header, HTTPException, Request
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.common.response_codes import ResponseCode
-from app.common.responses import BaseSuccessResponse, ok
+from app.common.responses import ok
 from app.core.database import get_db
 from app.middleware.rate_limit import rate_limit_webhook
 from app.modules.webhooks.service import WebhookService
-from sqlalchemy.ext.asyncio import AsyncSession
 
 router = APIRouter()
 _service = WebhookService()

@@ -25,7 +25,6 @@ def _split_name(full_name: str | None) -> tuple[str | None, str | None]:
 
 
 class DevAuthService:
-
     async def login(self, db: AsyncSession, email: str, password: str) -> DevLoginResponse:
         supabase_data = await self._supabase_sign_in(email, password)
 
@@ -77,7 +76,9 @@ class DevAuthService:
             "Content-Type": "application/json",
         }
         async with httpx.AsyncClient(timeout=10) as client:
-            resp = await client.post(url, headers=headers, json={"email": email, "password": password})
+            resp = await client.post(
+                url, headers=headers, json={"email": email, "password": password}
+            )
 
         if resp.status_code in (400, 401, 422):
             body = resp.json()

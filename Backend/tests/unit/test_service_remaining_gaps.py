@@ -1,112 +1,182 @@
 """Final coverage push: inventory, fraud, collections, coupons, profiles, catalog, orders."""
+
 import uuid
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+import app.modules.addresses.models  # noqa: F401
+import app.modules.cart.models  # noqa: F401
+
 # Force mapper init
 import app.modules.catalog.models  # noqa: F401
 import app.modules.categories.models  # noqa: F401
-import app.modules.orders.models  # noqa: F401
-import app.modules.reviews.models  # noqa: F401
-import app.modules.inventory.models  # noqa: F401
 import app.modules.collections.models  # noqa: F401
 import app.modules.coupons.models  # noqa: F401
+import app.modules.inventory.models  # noqa: F401
+import app.modules.orders.models  # noqa: F401
 import app.modules.payments.models  # noqa: F401
 import app.modules.profiles.models  # noqa: F401
-import app.modules.addresses.models  # noqa: F401
-import app.modules.shipping.models  # noqa: F401
-import app.modules.cart.models  # noqa: F401
-import app.modules.wishlist.models  # noqa: F401
-import app.modules.support.models  # noqa: F401
 import app.modules.returns.models  # noqa: F401
+import app.modules.reviews.models  # noqa: F401
+import app.modules.shipping.models  # noqa: F401
+import app.modules.support.models  # noqa: F401
+import app.modules.wishlist.models  # noqa: F401
 
 
 def _sone(v):
-    r = MagicMock(); r.scalar_one_or_none.return_value = v; return r
+    r = MagicMock()
+    r.scalar_one_or_none.return_value = v
+    return r
 
 
 def _sall(items):
-    r = MagicMock(); r.scalars.return_value.all.return_value = items; return r
+    r = MagicMock()
+    r.scalars.return_value.all.return_value = items
+    return r
 
 
 def _scalar_one(v):
-    r = MagicMock(); r.scalar_one.return_value = v; return r
+    r = MagicMock()
+    r.scalar_one.return_value = v
+    return r
 
 
 def _db(*results):
     db = AsyncMock()
     db.execute = AsyncMock(side_effect=list(results))
-    db.add = MagicMock(); db.flush = AsyncMock(); db.refresh = AsyncMock(); db.delete = AsyncMock()
+    db.add = MagicMock()
+    db.flush = AsyncMock()
+    db.refresh = AsyncMock()
+    db.delete = AsyncMock()
     return db
 
 
 # ─── InventoryService ─────────────────────────────────────────────────────────
 
+
 class TestInventoryService:
     def setup_method(self):
         from app.modules.inventory.service import InventoryService
+
         self.svc = InventoryService()
 
     async def test_record_movement_success(self):
         from app.modules.inventory.schemas import InventoryMovementResponse
-        from app.modules.inventory.repository import InventoryRepository
+
         db = AsyncMock()
         db.execute = AsyncMock()  # stock update execute
         product_id = uuid.uuid4()
-        snapshot = {"stock_quantity": 10, "allow_backorder": False, "low_stock_threshold": 2, "sku": "ABC", "product_name": "Ring"}
+        snapshot = {
+            "stock_quantity": 10,
+            "allow_backorder": False,
+            "low_stock_threshold": 2,
+            "sku": "ABC",
+            "product_name": "Ring",
+        }
         mock_movement = MagicMock()
         mock_resp = MagicMock()
-        with patch("app.modules.inventory.service._repo.get_stock_snapshot", AsyncMock(return_value=snapshot)), \
-             patch("app.modules.inventory.service._repo.record", AsyncMock(return_value=mock_movement)), \
-             patch("app.core.events.event_bus.publish", AsyncMock()), \
-             patch.object(InventoryMovementResponse, "model_validate", return_value=mock_resp):
-            result = await self.svc.record_movement(db, product_id=product_id, delta=-5, movement_type="sale")
+        with (
+            patch(
+                "app.modules.inventory.service._repo.get_stock_snapshot",
+                AsyncMock(return_value=snapshot),
+            ),
+            patch(
+                "app.modules.inventory.service._repo.record", AsyncMock(return_value=mock_movement)
+            ),
+            patch("app.core.events.event_bus.publish", AsyncMock()),
+            patch.object(InventoryMovementResponse, "model_validate", return_value=mock_resp),
+        ):
+            result = await self.svc.record_movement(
+                db, product_id=product_id, delta=-5, movement_type="sale"
+            )
         assert result is mock_resp
 
     async def test_record_movement_triggers_low_stock_event(self):
         from app.modules.inventory.schemas import InventoryMovementResponse
+
         db = AsyncMock()
         db.execute = AsyncMock()
         product_id = uuid.uuid4()
         # after delta=-9, quantity_after=1 <= threshold=5 → triggers event
-        snapshot = {"stock_quantity": 10, "allow_backorder": False, "low_stock_threshold": 5, "sku": "SKU1", "product_name": "Ring"}
-        with patch("app.modules.inventory.service._repo.get_stock_snapshot", AsyncMock(return_value=snapshot)), \
-             patch("app.modules.inventory.service._repo.record", AsyncMock(return_value=MagicMock())), \
-             patch("app.core.events.event_bus.publish", AsyncMock()) as mock_pub, \
-             patch.object(InventoryMovementResponse, "model_validate", return_value=MagicMock()):
-            await self.svc.record_movement(db, product_id=product_id, delta=-9, movement_type="sale")
+        snapshot = {
+            "stock_quantity": 10,
+            "allow_backorder": False,
+            "low_stock_threshold": 5,
+            "sku": "SKU1",
+            "product_name": "Ring",
+        }
+        with (
+            patch(
+                "app.modules.inventory.service._repo.get_stock_snapshot",
+                AsyncMock(return_value=snapshot),
+            ),
+            patch(
+                "app.modules.inventory.service._repo.record", AsyncMock(return_value=MagicMock())
+            ),
+            patch("app.core.events.event_bus.publish", AsyncMock()) as mock_pub,
+            patch.object(InventoryMovementResponse, "model_validate", return_value=MagicMock()),
+        ):
+            await self.svc.record_movement(
+                db, product_id=product_id, delta=-9, movement_type="sale"
+            )
         mock_pub.assert_awaited_once()
 
     async def test_record_movement_raises_not_found(self):
         from app.core.exceptions import NotFoundError
+
         db = AsyncMock()
-        with patch("app.modules.inventory.service._repo.get_stock_snapshot", AsyncMock(return_value=None)):
+        with patch(
+            "app.modules.inventory.service._repo.get_stock_snapshot", AsyncMock(return_value=None)
+        ):
             with pytest.raises(NotFoundError):
-                await self.svc.record_movement(db, product_id=uuid.uuid4(), delta=-1, movement_type="sale")
+                await self.svc.record_movement(
+                    db, product_id=uuid.uuid4(), delta=-1, movement_type="sale"
+                )
 
     async def test_record_movement_raises_validation_on_insufficient_stock(self):
         from app.core.exceptions import ValidationError
+
         db = AsyncMock()
         snapshot = {"stock_quantity": 3, "allow_backorder": False, "low_stock_threshold": 5}
-        with patch("app.modules.inventory.service._repo.get_stock_snapshot", AsyncMock(return_value=snapshot)):
+        with patch(
+            "app.modules.inventory.service._repo.get_stock_snapshot",
+            AsyncMock(return_value=snapshot),
+        ):
             with pytest.raises(ValidationError):
-                await self.svc.record_movement(db, product_id=uuid.uuid4(), delta=-10, movement_type="sale")
+                await self.svc.record_movement(
+                    db, product_id=uuid.uuid4(), delta=-10, movement_type="sale"
+                )
 
     async def test_manual_adjustment_delegates_to_record_movement(self):
-        from app.modules.inventory.schemas import ManualAdjustmentRequest, InventoryMovementResponse
+        from app.modules.inventory.schemas import InventoryMovementResponse, ManualAdjustmentRequest
+
         db = AsyncMock()
         db.execute = AsyncMock()
         product_id = uuid.uuid4()
-        snapshot = {"stock_quantity": 20, "allow_backorder": True, "low_stock_threshold": 2, "sku": "S", "product_name": "P"}
+        snapshot = {
+            "stock_quantity": 20,
+            "allow_backorder": True,
+            "low_stock_threshold": 2,
+            "sku": "S",
+            "product_name": "P",
+        }
         mock_resp = MagicMock()
-        with patch("app.modules.inventory.service._repo.get_stock_snapshot", AsyncMock(return_value=snapshot)), \
-             patch("app.modules.inventory.service._repo.record", AsyncMock(return_value=MagicMock())), \
-             patch("app.core.events.event_bus.publish", AsyncMock()), \
-             patch.object(InventoryMovementResponse, "model_validate", return_value=mock_resp):
+        with (
+            patch(
+                "app.modules.inventory.service._repo.get_stock_snapshot",
+                AsyncMock(return_value=snapshot),
+            ),
+            patch(
+                "app.modules.inventory.service._repo.record", AsyncMock(return_value=MagicMock())
+            ),
+            patch("app.core.events.event_bus.publish", AsyncMock()),
+            patch.object(InventoryMovementResponse, "model_validate", return_value=mock_resp),
+        ):
             result = await self.svc.manual_adjustment(
-                db, product_id=product_id,
+                db,
+                product_id=product_id,
                 payload=ManualAdjustmentRequest(delta=5, notes="stock add"),
                 actor_id=uuid.uuid4(),
             )
@@ -114,42 +184,65 @@ class TestInventoryService:
 
     async def test_get_history_raises_not_found(self):
         from app.core.exceptions import NotFoundError
+
         db = AsyncMock()
-        with patch("app.modules.inventory.service._repo.get_stock_snapshot", AsyncMock(return_value=None)):
+        with patch(
+            "app.modules.inventory.service._repo.get_stock_snapshot", AsyncMock(return_value=None)
+        ):
             with pytest.raises(NotFoundError):
                 await self.svc.get_history(db, uuid.uuid4())
 
     async def test_get_history_success(self):
         from app.modules.inventory.schemas import InventoryMovementResponse
+
         db = AsyncMock()
         snapshot = {"stock_quantity": 5, "allow_backorder": False, "low_stock_threshold": 2}
         mock_movement = MagicMock()
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         # Build a real schema object so InventoryMovementListResponse validates it
         real_item = InventoryMovementResponse.model_construct(
-            id=uuid.uuid4(), product_id=uuid.uuid4(), variant_id=None,
-            movement_type="sale", delta=-2, quantity_before=10, quantity_after=8,
-            reference_type=None, reference_id=None, notes=None,
-            created_by=None, created_at=now,
+            id=uuid.uuid4(),
+            product_id=uuid.uuid4(),
+            variant_id=None,
+            movement_type="sale",
+            delta=-2,
+            quantity_before=10,
+            quantity_after=8,
+            reference_type=None,
+            reference_id=None,
+            notes=None,
+            created_by=None,
+            created_at=now,
         )
-        with patch("app.modules.inventory.service._repo.get_stock_snapshot", AsyncMock(return_value=snapshot)), \
-             patch("app.modules.inventory.service._repo.list_for_product", AsyncMock(return_value=([mock_movement], 1))), \
-             patch.object(InventoryMovementResponse, "model_validate", return_value=real_item):
+        with (
+            patch(
+                "app.modules.inventory.service._repo.get_stock_snapshot",
+                AsyncMock(return_value=snapshot),
+            ),
+            patch(
+                "app.modules.inventory.service._repo.list_for_product",
+                AsyncMock(return_value=([mock_movement], 1)),
+            ),
+            patch.object(InventoryMovementResponse, "model_validate", return_value=real_item),
+        ):
             result = await self.svc.get_history(db, uuid.uuid4())
         assert result.total == 1
 
 
 # ─── FraudService ─────────────────────────────────────────────────────────────
 
+
 class TestFraudService:
     def setup_method(self):
-        from app.modules.fraud.service import FraudService
         from app.modules.fraud.repository import FraudRepository
+        from app.modules.fraud.service import FraudService
+
         self.svc = FraudService()
         self.repo_cls = FraudRepository
 
     async def test_record_signal(self):
         from app.modules.fraud.schemas import FraudSignalCreate
+
         db = AsyncMock()
         db.commit = AsyncMock()
         db.refresh = AsyncMock()
@@ -174,37 +267,56 @@ class TestFraudService:
 
     async def test_resolve_signal_raises_404(self):
         from fastapi import HTTPException
+
         from app.modules.fraud.schemas import FraudResolveRequest
+
         db = AsyncMock()
         with patch.object(self.repo_cls, "get", AsyncMock(return_value=None)):
             with pytest.raises(HTTPException) as exc:
-                await self.svc.resolve_signal(db, signal_id=uuid.uuid4(), resolver_id=uuid.uuid4(), data=FraudResolveRequest(is_resolved=True))
+                await self.svc.resolve_signal(
+                    db,
+                    signal_id=uuid.uuid4(),
+                    resolver_id=uuid.uuid4(),
+                    data=FraudResolveRequest(is_resolved=True),
+                )
         assert exc.value.status_code == 404
 
     async def test_resolve_signal_success(self):
         from app.modules.fraud.schemas import FraudResolveRequest
+
         db = AsyncMock()
         db.commit = AsyncMock()
         db.refresh = AsyncMock()
         mock_signal = MagicMock()
         mock_updated = MagicMock()
-        with patch.object(self.repo_cls, "get", AsyncMock(return_value=mock_signal)), \
-             patch.object(self.repo_cls, "update", AsyncMock(return_value=mock_updated)):
-            result = await self.svc.resolve_signal(db, signal_id=uuid.uuid4(), resolver_id=uuid.uuid4(), data=FraudResolveRequest(is_resolved=True))
+        with (
+            patch.object(self.repo_cls, "get", AsyncMock(return_value=mock_signal)),
+            patch.object(self.repo_cls, "update", AsyncMock(return_value=mock_updated)),
+        ):
+            result = await self.svc.resolve_signal(
+                db,
+                signal_id=uuid.uuid4(),
+                resolver_id=uuid.uuid4(),
+                data=FraudResolveRequest(is_resolved=True),
+            )
         assert result is mock_updated
 
 
 # ─── CollectionsRepository extra ─────────────────────────────────────────────
 
+
 class TestCollectionsRepositoryExtra:
     def setup_method(self):
         from app.modules.collections.repository import CollectionRepository
+
         self.repo = CollectionRepository()
 
     async def test_add_products_executes_upsert(self):
         db = AsyncMock()
         db.execute = AsyncMock()
-        await self.repo.add_products(db, col_id=uuid.uuid4(), product_ids=[uuid.uuid4(), uuid.uuid4()])
+        await self.repo.add_products(
+            db, col_id=uuid.uuid4(), product_ids=[uuid.uuid4(), uuid.uuid4()]
+        )
         assert db.execute.await_count == 2
 
     async def test_add_products_empty_list(self):
@@ -228,56 +340,76 @@ class TestCollectionsRepositoryExtra:
 
 # ─── CouponService extra ──────────────────────────────────────────────────────
 
+
 class TestCouponServiceExtra:
     def setup_method(self):
         from app.modules.coupons.service import CouponService
+
         self.svc = CouponService()
 
     async def test_create_success(self):
         from app.modules.coupons.schemas import CouponCreateRequest, CouponResponse
+
         db = AsyncMock()
         mock_coupon = MagicMock()
         mock_resp = MagicMock()
-        with patch("app.modules.coupons.service._repo.get_by_code", AsyncMock(return_value=None)), \
-             patch("app.modules.coupons.service._repo.create", AsyncMock(return_value=mock_coupon)), \
-             patch.object(CouponResponse, "model_validate", return_value=mock_resp):
+        with (
+            patch("app.modules.coupons.service._repo.get_by_code", AsyncMock(return_value=None)),
+            patch("app.modules.coupons.service._repo.create", AsyncMock(return_value=mock_coupon)),
+            patch.object(CouponResponse, "model_validate", return_value=mock_resp),
+        ):
             result = await self.svc.create(
                 db,
                 payload=CouponCreateRequest(
-                    code="SAVE20", coupon_type="percentage", value=20,
-                    min_order_amount=0, per_user_limit=1,
+                    code="SAVE20",
+                    coupon_type="percentage",
+                    value=20,
+                    min_order_amount=0,
+                    per_user_limit=1,
                 ),
             )
         assert result is mock_resp
 
     async def test_create_raises_conflict_when_code_exists(self):
-        from app.modules.coupons.schemas import CouponCreateRequest
         from app.core.exceptions import ConflictError
+        from app.modules.coupons.schemas import CouponCreateRequest
+
         db = AsyncMock()
-        with patch("app.modules.coupons.service._repo.get_by_code", AsyncMock(return_value=MagicMock())):
+        with patch(
+            "app.modules.coupons.service._repo.get_by_code", AsyncMock(return_value=MagicMock())
+        ):
             with pytest.raises(ConflictError):
                 await self.svc.create(
                     db,
                     payload=CouponCreateRequest(
-                        code="DUP", coupon_type="fixed_amount", value=50,
-                        min_order_amount=0, per_user_limit=1,
+                        code="DUP",
+                        coupon_type="fixed_amount",
+                        value=50,
+                        min_order_amount=0,
+                        per_user_limit=1,
                     ),
                 )
 
     async def test_update_success(self):
-        from app.modules.coupons.schemas import CouponUpdateRequest, CouponResponse
+        from app.modules.coupons.schemas import CouponResponse, CouponUpdateRequest
+
         db = AsyncMock()
         mock_coupon = MagicMock()
         mock_updated = MagicMock()
         mock_resp = MagicMock()
-        with patch("app.modules.coupons.service._repo.get_by_id", AsyncMock(return_value=mock_coupon)), \
-             patch("app.modules.coupons.service._repo.update", AsyncMock(return_value=mock_updated)), \
-             patch.object(CouponResponse, "model_validate", return_value=mock_resp):
+        with (
+            patch(
+                "app.modules.coupons.service._repo.get_by_id", AsyncMock(return_value=mock_coupon)
+            ),
+            patch("app.modules.coupons.service._repo.update", AsyncMock(return_value=mock_updated)),
+            patch.object(CouponResponse, "model_validate", return_value=mock_resp),
+        ):
             result = await self.svc.update(db, uuid.uuid4(), CouponUpdateRequest(is_active=False))
         assert result is mock_resp
 
     async def test_apply_and_reserve_success(self):
-        from app.modules.coupons.schemas import CouponValidateResponse, CouponResponse
+        from app.modules.coupons.schemas import CouponResponse
+
         db = AsyncMock()
         coupon_id = uuid.uuid4()
         mock_coupon = MagicMock()
@@ -291,27 +423,47 @@ class TestCouponServiceExtra:
         mock_coupon.coupon_type = "flat"
         mock_coupon.value = 50
         mock_coupon.max_discount = None
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         mock_resp = CouponResponse.model_construct(
-            id=coupon_id, code="FLAT50", coupon_type="fixed_amount", value=50,
-            min_order_amount=0, per_user_limit=99, usage_count=0,
-            is_active=True, max_discount=None, usage_limit=None,
-            description=None, valid_from=None, valid_until=None, created_at=now,
+            id=coupon_id,
+            code="FLAT50",
+            coupon_type="fixed_amount",
+            value=50,
+            min_order_amount=0,
+            per_user_limit=99,
+            usage_count=0,
+            is_active=True,
+            max_discount=None,
+            usage_limit=None,
+            description=None,
+            valid_from=None,
+            valid_until=None,
+            created_at=now,
         )
-        with patch("app.modules.coupons.service._repo.get_by_code", AsyncMock(return_value=mock_coupon)), \
-             patch("app.modules.coupons.service._repo.get_user_usage_count", AsyncMock(return_value=0)), \
-             patch("app.modules.coupons.service._repo.record_usage", AsyncMock()), \
-             patch("app.modules.coupons.service._repo.increment_usage", AsyncMock()), \
-             patch.object(CouponResponse, "model_validate", return_value=mock_resp):
-            discount, c_id = await self.svc.apply_and_reserve(db, code="FLAT50", subtotal=200.0, user_id=uuid.uuid4())
+        with (
+            patch(
+                "app.modules.coupons.service._repo.get_by_code", AsyncMock(return_value=mock_coupon)
+            ),
+            patch(
+                "app.modules.coupons.service._repo.get_user_usage_count", AsyncMock(return_value=0)
+            ),
+            patch("app.modules.coupons.service._repo.record_usage", AsyncMock()),
+            patch("app.modules.coupons.service._repo.increment_usage", AsyncMock()),
+            patch.object(CouponResponse, "model_validate", return_value=mock_resp),
+        ):
+            discount, c_id = await self.svc.apply_and_reserve(
+                db, code="FLAT50", subtotal=200.0, user_id=uuid.uuid4()
+            )
         assert c_id == coupon_id
 
 
 # ─── ProfilesRepository extra ─────────────────────────────────────────────────
 
+
 class TestProfilesRepositoryExtra:
     def setup_method(self):
         from app.modules.profiles.repository import ProfileRepository
+
         self.repo = ProfileRepository()
 
     async def test_create_profile(self):
@@ -319,7 +471,9 @@ class TestProfilesRepositoryExtra:
         db.add = MagicMock()
         db.flush = AsyncMock()
         db.refresh = AsyncMock()
-        await self.repo.create(db, {"id": str(uuid.uuid4()), "email": "x@x.com", "role": "customer"})
+        await self.repo.create(
+            db, {"id": str(uuid.uuid4()), "email": "x@x.com", "role": "customer"}
+        )
         db.add.assert_called_once()
 
     async def test_list_paginated_with_role_filter(self):
@@ -359,26 +513,33 @@ class TestProfilesRepositoryExtra:
 
 # ─── CatalogService extra paths ───────────────────────────────────────────────
 
+
 class TestCatalogServiceExtra:
     def setup_method(self):
-        from app.modules.catalog.service import CatalogService
         from app.modules.catalog.repository import ProductRepository
+        from app.modules.catalog.service import CatalogService
+
         self.svc = CatalogService()
         self.repo_cls = ProductRepository
 
     async def test_get_by_slug_success(self):
         from app.modules.catalog.schemas import ProductResponse
+
         db = AsyncMock()
         mock_product = MagicMock()
         mock_resp = MagicMock()
-        with patch("app.modules.catalog.service._repo.get_by_slug", AsyncMock(return_value=mock_product)), \
-             patch.object(ProductResponse, "model_validate", return_value=mock_resp):
+        with (
+            patch(
+                "app.modules.catalog.service._repo.get_by_slug",
+                AsyncMock(return_value=mock_product),
+            ),
+            patch.object(ProductResponse, "model_validate", return_value=mock_resp),
+        ):
             result = await self.svc.get_by_slug(db, "silver-ring")
         assert result is mock_resp
 
     async def test_list_products_no_primary_image_falls_back(self):
         """When no image is_primary, falls back to first image url."""
-        from app.modules.catalog.schemas import ProductListResponse
         db = AsyncMock()
         mock_product = MagicMock()
         img = MagicMock()
@@ -399,95 +560,143 @@ class TestCatalogServiceExtra:
         mock_product.is_featured = False
         mock_product.is_new_arrival = True
         mock_product.is_best_seller = False
-        mock_product.created_at = datetime.now(timezone.utc)
-        with patch("app.modules.catalog.service._repo.list_paginated", AsyncMock(return_value=([mock_product], 1))):
+        mock_product.created_at = datetime.now(UTC)
+        with patch(
+            "app.modules.catalog.service._repo.list_paginated",
+            AsyncMock(return_value=([mock_product], 1)),
+        ):
             result = await self.svc.list_products(db)
         assert result.items[0].primary_image == "https://cdn/first.jpg"
 
     async def test_create_with_active_status_sets_published_at(self):
         from app.modules.catalog.schemas import ProductCreateRequest, ProductResponse
+
         db = AsyncMock()
         mock_product = MagicMock()
         mock_product.id = uuid.uuid4()
         mock_resp = MagicMock()
-        with patch("app.modules.catalog.service._repo.get_by_sku", AsyncMock(return_value=None)), \
-             patch("app.modules.catalog.service._repo.get_by_slug", AsyncMock(return_value=None)), \
-             patch("app.modules.catalog.service._repo.create", AsyncMock(return_value=mock_product)), \
-             patch("app.modules.catalog.service._repo.add_variant", AsyncMock()), \
-             patch("app.modules.catalog.service._repo.upsert_attribute", AsyncMock()), \
-             patch("app.modules.catalog.service._repo.get_by_id", AsyncMock(return_value=mock_product)), \
-             patch.object(ProductResponse, "model_validate", return_value=mock_resp):
+        with (
+            patch("app.modules.catalog.service._repo.get_by_sku", AsyncMock(return_value=None)),
+            patch("app.modules.catalog.service._repo.get_by_slug", AsyncMock(return_value=None)),
+            patch("app.modules.catalog.service._repo.create", AsyncMock(return_value=mock_product)),
+            patch("app.modules.catalog.service._repo.add_variant", AsyncMock()),
+            patch("app.modules.catalog.service._repo.upsert_attribute", AsyncMock()),
+            patch(
+                "app.modules.catalog.service._repo.get_by_id", AsyncMock(return_value=mock_product)
+            ),
+            patch.object(ProductResponse, "model_validate", return_value=mock_resp),
+        ):
             result = await self.svc.create(
                 db,
                 payload=ProductCreateRequest(
-                    sku="SKU-NEW", name="Gold Ring", slug="gold-ring",
-                    base_price=2000, status="active",
-                    metal_type="gold", category_id=uuid.uuid4(),
+                    sku="SKU-NEW",
+                    name="Gold Ring",
+                    slug="gold-ring",
+                    base_price=2000,
+                    status="active",
+                    metal_type="gold",
+                    category_id=uuid.uuid4(),
                 ),
             )
         assert result is mock_resp
 
     async def test_update_sets_published_at_when_activating(self):
-        from app.modules.catalog.schemas import ProductUpdateRequest, ProductResponse
+        from app.modules.catalog.schemas import ProductResponse, ProductUpdateRequest
+
         db = AsyncMock()
         mock_product = MagicMock()
         mock_product.slug = "silver-ring"
         mock_product.status = "draft"  # currently draft
         mock_updated = MagicMock()
         mock_resp = MagicMock()
-        with patch("app.modules.catalog.service._repo.get_by_id", AsyncMock(return_value=mock_product)), \
-             patch("app.modules.catalog.service._repo.update", AsyncMock(return_value=mock_updated)), \
-             patch.object(ProductResponse, "model_validate", return_value=mock_resp):
+        with (
+            patch(
+                "app.modules.catalog.service._repo.get_by_id", AsyncMock(return_value=mock_product)
+            ),
+            patch("app.modules.catalog.service._repo.update", AsyncMock(return_value=mock_updated)),
+            patch.object(ProductResponse, "model_validate", return_value=mock_resp),
+        ):
             result = await self.svc.update(
-                db, uuid.uuid4(),
+                db,
+                uuid.uuid4(),
                 payload=ProductUpdateRequest(status="active"),  # activating
             )
         assert result is mock_resp
 
     async def test_update_variant_success(self):
         from app.modules.catalog.schemas import ProductVariantUpdateRequest
+
         db = AsyncMock()
         mock_variant = MagicMock()
         mock_updated = MagicMock()
-        with patch("app.modules.catalog.service._repo.get_variant", AsyncMock(return_value=mock_variant)), \
-             patch("app.modules.catalog.service._repo.update_variant", AsyncMock(return_value=mock_updated)):
-            result = await self.svc.update_variant(db, uuid.uuid4(), ProductVariantUpdateRequest(price_adjustment=100))
+        with (
+            patch(
+                "app.modules.catalog.service._repo.get_variant",
+                AsyncMock(return_value=mock_variant),
+            ),
+            patch(
+                "app.modules.catalog.service._repo.update_variant",
+                AsyncMock(return_value=mock_updated),
+            ),
+        ):
+            result = await self.svc.update_variant(
+                db, uuid.uuid4(), ProductVariantUpdateRequest(price_adjustment=100)
+            )
         assert result is mock_updated
 
     async def test_upsert_attribute_success(self):
         from app.modules.catalog.schemas import ProductAttributeCreateRequest
+
         db = AsyncMock()
         mock_product = MagicMock()
         mock_attr = MagicMock()
-        with patch("app.modules.catalog.service._repo.get_by_id", AsyncMock(return_value=mock_product)), \
-             patch("app.modules.catalog.service._repo.upsert_attribute", AsyncMock(return_value=mock_attr)):
+        with (
+            patch(
+                "app.modules.catalog.service._repo.get_by_id", AsyncMock(return_value=mock_product)
+            ),
+            patch(
+                "app.modules.catalog.service._repo.upsert_attribute",
+                AsyncMock(return_value=mock_attr),
+            ),
+        ):
             result = await self.svc.upsert_attribute(
-                db, uuid.uuid4(),
+                db,
+                uuid.uuid4(),
                 ProductAttributeCreateRequest(name="purity", value="925", sort_order=0),
             )
         assert result is mock_attr
 
     async def test_adjust_stock_raises_when_negative(self):
         from app.core.exceptions import ValidationError
+
         db = AsyncMock()
         mock_product = MagicMock()
         from app.modules.catalog.schemas import StockAdjustRequest
-        with patch("app.modules.catalog.service._repo.get_by_id", AsyncMock(return_value=mock_product)), \
-             patch("app.modules.catalog.service._repo.adjust_stock", AsyncMock(side_effect=[-5, 5])):  # negative then rollback
+
+        with (
+            patch(
+                "app.modules.catalog.service._repo.get_by_id", AsyncMock(return_value=mock_product)
+            ),
+            patch("app.modules.catalog.service._repo.adjust_stock", AsyncMock(side_effect=[-5, 5])),
+        ):  # negative then rollback
             with pytest.raises(ValidationError):
                 await self.svc.adjust_stock(db, uuid.uuid4(), StockAdjustRequest(delta=-100))
 
 
 # ─── OrderService — optional fields + cancel with items ─────────────────────
 
+
 class TestOrderServiceExtra:
     def setup_method(self):
         from app.modules.orders.service import OrderService
+
         self.svc = OrderService()
 
     async def test_update_status_with_tracking_info(self):
-        from app.modules.orders.schemas import UpdateOrderStatusRequest, OrderResponse
         from datetime import datetime as dt
+
+        from app.modules.orders.schemas import OrderResponse, UpdateOrderStatusRequest
+
         db = AsyncMock()
         db.commit = AsyncMock()
         mock_order = MagicMock()
@@ -495,24 +704,28 @@ class TestOrderServiceExtra:
         mock_order.user_id = uuid.uuid4()
         mock_updated = MagicMock()
         mock_resp = MagicMock()
-        with patch("app.modules.orders.service._repo.get_by_id", AsyncMock(return_value=mock_order)), \
-             patch("app.modules.orders.service._repo.update", AsyncMock(return_value=mock_updated)), \
-             patch("app.core.events.event_bus.publish", AsyncMock()), \
-             patch.object(OrderResponse, "model_validate", return_value=mock_resp):
+        with (
+            patch("app.modules.orders.service._repo.get_by_id", AsyncMock(return_value=mock_order)),
+            patch("app.modules.orders.service._repo.update", AsyncMock(return_value=mock_updated)),
+            patch("app.core.events.event_bus.publish", AsyncMock()),
+            patch.object(OrderResponse, "model_validate", return_value=mock_resp),
+        ):
             result = await self.svc.update_status(
-                db, order_id=uuid.uuid4(),
+                db,
+                order_id=uuid.uuid4(),
                 payload=UpdateOrderStatusRequest(
                     status="shipped",
                     tracking_number="TRK123",
                     shipping_provider="Delhivery",
-                    estimated_delivery=dt(2026, 7, 1, tzinfo=timezone.utc),
+                    estimated_delivery=dt(2026, 7, 1, tzinfo=UTC),
                 ),
             )
         assert result is mock_resp
 
     async def test_cancel_order_restores_inventory(self):
-        from app.modules.orders.schemas import CancelOrderRequest, OrderResponse
         from app.modules.inventory.service import InventoryService
+        from app.modules.orders.schemas import CancelOrderRequest, OrderResponse
+
         db = AsyncMock()
         db.commit = AsyncMock()
         user_id = uuid.uuid4()
@@ -526,13 +739,17 @@ class TestOrderServiceExtra:
         mock_order.items = [mock_item]
         mock_updated = MagicMock()
         mock_resp = MagicMock()
-        with patch("app.modules.orders.service._repo.get_by_id", AsyncMock(return_value=mock_order)), \
-             patch("app.modules.orders.service._repo.update", AsyncMock(return_value=mock_updated)), \
-             patch.object(InventoryService, "record_movement", AsyncMock()) as mock_inv, \
-             patch("app.core.events.event_bus.publish", AsyncMock()), \
-             patch.object(OrderResponse, "model_validate", return_value=mock_resp):
+        with (
+            patch("app.modules.orders.service._repo.get_by_id", AsyncMock(return_value=mock_order)),
+            patch("app.modules.orders.service._repo.update", AsyncMock(return_value=mock_updated)),
+            patch.object(InventoryService, "record_movement", AsyncMock()) as mock_inv,
+            patch("app.core.events.event_bus.publish", AsyncMock()),
+            patch.object(OrderResponse, "model_validate", return_value=mock_resp),
+        ):
             result = await self.svc.cancel_order(
-                db, order_id=uuid.uuid4(), user_id=user_id,
+                db,
+                order_id=uuid.uuid4(),
+                user_id=user_id,
                 payload=CancelOrderRequest(reason="Changed my mind"),
             )
         mock_inv.assert_awaited_once()

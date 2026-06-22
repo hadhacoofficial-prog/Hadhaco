@@ -1,16 +1,19 @@
 from __future__ import annotations
+
 import uuid
+from datetime import datetime
+
 from fastapi import APIRouter, Depends, Query
+from pydantic import BaseModel
 from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.dialects.postgresql import insert
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from app.common.response_codes import ResponseCode
 from app.common.responses import BaseSuccessResponse, ok
 from app.core.database import get_db
 from app.core.dependencies import get_current_user, require_admin
 from app.modules.notifications.models import NotificationLog, NotificationPreference
-from pydantic import BaseModel
-from datetime import datetime
 
 router = APIRouter(prefix="/notifications", tags=["notifications"])
 
@@ -44,21 +47,32 @@ async def get_preferences(db: AsyncSession = Depends(get_db), user=Depends(get_c
         select(NotificationPreference).where(NotificationPreference.user_id == user.id)
     )
     prefs = list(result.scalars().all())
-    return ok(prefs, ResponseCode.NOTIFICATION_PREFERENCES_FETCHED, "Preferences fetched successfully")
+    return ok(
+        prefs, ResponseCode.NOTIFICATION_PREFERENCES_FETCHED, "Preferences fetched successfully"
+    )
 
 
 @router.put("/preferences", response_model=BaseSuccessResponse[PreferenceOut])
-async def upsert_preference(data: PreferenceIn, db: AsyncSession = Depends(get_db), user=Depends(get_current_user)):
-    stmt = insert(NotificationPreference).values(
-        user_id=user.id, channel=data.channel, event_type=data.event_type, enabled=data.enabled
-    ).on_conflict_do_update(
-        index_elements=["user_id", "channel", "event_type"],
-        set_={"enabled": data.enabled},
-    ).returning(NotificationPreference)
+async def upsert_preference(
+    data: PreferenceIn, db: AsyncSession = Depends(get_db), user=Depends(get_current_user)
+):
+    stmt = (
+        insert(NotificationPreference)
+        .values(
+            user_id=user.id, channel=data.channel, event_type=data.event_type, enabled=data.enabled
+        )
+        .on_conflict_do_update(
+            index_elements=["user_id", "channel", "event_type"],
+            set_={"enabled": data.enabled},
+        )
+        .returning(NotificationPreference)
+    )
     result = await db.execute(stmt)
     await db.commit()
     pref = result.scalar_one()
-    return ok(pref, ResponseCode.NOTIFICATION_PREFERENCE_UPSERTED, "Preference updated successfully")
+    return ok(
+        pref, ResponseCode.NOTIFICATION_PREFERENCE_UPSERTED, "Preference updated successfully"
+    )
 
 
 @router.get("/admin/logs", response_model=BaseSuccessResponse[list[NotificationLogOut]])

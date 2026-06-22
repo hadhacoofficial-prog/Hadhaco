@@ -2,6 +2,7 @@
 Create next-month partitions for analytics_events and audit_logs.
 Run first day of each month.
 """
+
 from __future__ import annotations
 
 import time
@@ -26,7 +27,8 @@ async def run() -> None:
             start = next_month
             end = (start + timedelta(days=32)).replace(day=1)
             partition_name = f"audit_logs_{start.strftime('%Y_%m')}"
-            await db.execute(text(f"""
+            await db.execute(
+                text(f"""
                 DO $$
                 BEGIN
                     IF NOT EXISTS (SELECT 1 FROM pg_class WHERE relname = '{partition_name}') THEN
@@ -35,7 +37,8 @@ async def run() -> None:
                     END IF;
                 END;
                 $$
-            """))
+            """)
+            )
             await db.commit()
         duration_ms = round((time.perf_counter() - t0) * 1000)
         log.info("partition_manager_completed", month=str(next_month), duration_ms=duration_ms)
@@ -46,4 +49,5 @@ async def run() -> None:
 
 if __name__ == "__main__":
     import asyncio
+
     asyncio.run(run())

@@ -15,6 +15,7 @@ Revision ID: 0001_baseline
 Revises:
 Create Date: 2026-06-11
 """
+
 from collections.abc import Sequence
 
 revision: str = "0001_baseline"

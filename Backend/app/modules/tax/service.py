@@ -6,6 +6,7 @@ single product-level rate applies to the whole taxable amount.
 
 Tax is locked on the order row at creation time and never recalculated.
 """
+
 from decimal import ROUND_HALF_UP, Decimal
 
 from app.core.config import settings
@@ -19,7 +20,6 @@ def _money(value: Decimal) -> Decimal:
 
 
 class TaxService:
-
     @staticmethod
     def calculate_gst(
         taxable_amount: Decimal | float,

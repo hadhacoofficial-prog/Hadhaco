@@ -12,8 +12,12 @@ class Payment(Base):
     __tablename__ = "payments"
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    order_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("orders.id", ondelete="RESTRICT"), nullable=False)
-    user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("profiles.id", ondelete="RESTRICT"), nullable=False)
+    order_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("orders.id", ondelete="RESTRICT"), nullable=False
+    )
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("profiles.id", ondelete="RESTRICT"), nullable=False
+    )
     razorpay_order_id: Mapped[str] = mapped_column(String(100), nullable=False)
     razorpay_payment_id: Mapped[str | None] = mapped_column(String(100), nullable=True)
     razorpay_signature: Mapped[str | None] = mapped_column(String(255), nullable=True)
@@ -23,8 +27,12 @@ class Payment(Base):
     status: Mapped[str] = mapped_column(String(20), nullable=False, server_default="created")
     failure_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
     captured_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
-    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now())
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now()
+    )
 
     __table_args__ = (
         Index("idx_payments_order_id", "order_id"),
@@ -38,15 +46,23 @@ class Refund(Base):
     __tablename__ = "refunds"
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    payment_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("payments.id", ondelete="RESTRICT"), nullable=False)
-    order_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("orders.id", ondelete="RESTRICT"), nullable=False)
+    payment_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("payments.id", ondelete="RESTRICT"), nullable=False
+    )
+    order_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("orders.id", ondelete="RESTRICT"), nullable=False
+    )
     razorpay_refund_id: Mapped[str | None] = mapped_column(String(100), nullable=True)
     amount: Mapped[float] = mapped_column(Numeric(12, 2), nullable=False)
     reason: Mapped[str | None] = mapped_column(Text, nullable=True)
     status: Mapped[str] = mapped_column(String(20), nullable=False, server_default="pending")
     processed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
-    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now())
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now()
+    )
 
     __table_args__ = (
         Index("idx_refunds_payment_id", "payment_id"),
@@ -58,13 +74,20 @@ class Invoice(Base):
     __tablename__ = "invoices"
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    order_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("orders.id", ondelete="RESTRICT"), nullable=False, unique=True)
+    order_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("orders.id", ondelete="RESTRICT"),
+        nullable=False,
+        unique=True,
+    )
     invoice_number: Mapped[str] = mapped_column(String(30), nullable=False, unique=True)
     pdf_url: Mapped[str | None] = mapped_column(Text, nullable=True)
     pdf_r2_key: Mapped[str | None] = mapped_column(String(512), nullable=True)
-    issued_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
-
-    __table_args__ = (
-        Index("idx_invoices_order_id", "order_id"),
+    issued_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
     )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+    __table_args__ = (Index("idx_invoices_order_id", "order_id"),)

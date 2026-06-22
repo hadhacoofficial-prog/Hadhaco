@@ -8,7 +8,6 @@ from app.modules.audit.models import AuditLog
 
 
 class AuditService:
-
     async def log(
         self,
         db: AsyncSession,

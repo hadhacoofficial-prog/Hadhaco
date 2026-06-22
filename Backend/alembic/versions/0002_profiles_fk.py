@@ -15,6 +15,7 @@ Revision ID: 0002_profiles_fk
 Revises: 0001_baseline
 Create Date: 2026-06-18
 """
+
 from collections.abc import Sequence
 
 from alembic import op

@@ -86,7 +86,8 @@ async def rate_limit_auth(request: Request) -> None:
     """Dependency for auth endpoints."""
     redis = get_redis_pool()
     await check_rate_limit(
-        request, redis,
+        request,
+        redis,
         limit=settings.RATE_LIMIT_AUTH,
         window=60,
         key_prefix="rl:auth",
@@ -97,7 +98,8 @@ async def rate_limit_upload(request: Request) -> None:
     """Dependency for file upload endpoints."""
     redis = get_redis_pool()
     await check_rate_limit(
-        request, redis,
+        request,
+        redis,
         limit=settings.RATE_LIMIT_UPLOAD,
         window=60,
         key_prefix="rl:upload",
@@ -108,7 +110,8 @@ async def rate_limit_webhook(request: Request) -> None:
     """Dependency for webhook endpoints."""
     redis = get_redis_pool()
     await check_rate_limit(
-        request, redis,
+        request,
+        redis,
         limit=settings.RATE_LIMIT_WEBHOOK,
         window=60,
         key_prefix="rl:webhook",

@@ -1,5 +1,7 @@
 """CMS Media Service — uploads images/videos to R2 and records in cms_media."""
+
 from __future__ import annotations
+
 import io
 import uuid
 
@@ -76,7 +78,9 @@ class CmsMediaService:
 
         data = await file.read()
         if len(data) > _MAX_FILE_SIZE:
-            raise HTTPException(status.HTTP_413_REQUEST_ENTITY_TOO_LARGE, "File exceeds 50 MB limit")
+            raise HTTPException(
+                status.HTTP_413_REQUEST_ENTITY_TOO_LARGE, "File exceeds 50 MB limit"
+            )
 
         media_id = uuid.uuid4()
         original_filename = file.filename or "upload"

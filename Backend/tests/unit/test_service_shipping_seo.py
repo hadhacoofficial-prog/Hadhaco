@@ -1,17 +1,18 @@
 """Tests for ShippingService (pure function + error paths) and SeoService."""
+
 import uuid
+from datetime import UTC
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from app.modules.shipping.repository import ShipmentRepository
-
-
 # ─── _map_do_status pure function ────────────────────────────────────────────
+
 
 class TestMapDoStatus:
     def _fn(self, s):
         from app.modules.shipping.service import _map_do_status
+
         return _map_do_status(s)
 
     def test_created(self):
@@ -50,63 +51,86 @@ class TestMapDoStatus:
 
 # ─── ShippingService error paths ──────────────────────────────────────────────
 
+
 class TestShippingServiceCreateShipment:
     def setup_method(self):
         from app.modules.shipping.service import ShippingService
+
         self.svc = ShippingService()
 
     def _payload(self):
         from app.modules.shipping.schemas import CreateShipmentRequest
+
         return CreateShipmentRequest(order_id=uuid.uuid4(), weight_grams=500)
 
     async def test_raises_conflict_when_active_shipment_exists(self):
         from app.core.exceptions import ConflictError
+
         db = AsyncMock()
         mock_existing = MagicMock()
         mock_existing.status = "created"  # not failed/cancelled
-        with patch("app.modules.shipping.service._repo.get_for_order", AsyncMock(return_value=mock_existing)):
+        with patch(
+            "app.modules.shipping.service._repo.get_for_order",
+            AsyncMock(return_value=mock_existing),
+        ):
             with pytest.raises(ConflictError):
                 await self.svc.create_shipment(db, uuid.uuid4(), self._payload())
 
     async def test_allows_retry_when_shipment_is_failed(self):
         from app.core.exceptions import NotFoundError
+
         db = AsyncMock()
         mock_existing = MagicMock()
         mock_existing.status = "failed"
         from app.modules.orders.repository import OrderRepository
-        with patch("app.modules.shipping.service._repo.get_for_order", AsyncMock(return_value=mock_existing)), \
-             patch.object(OrderRepository, "get_by_id", AsyncMock(return_value=None)):
+
+        with (
+            patch(
+                "app.modules.shipping.service._repo.get_for_order",
+                AsyncMock(return_value=mock_existing),
+            ),
+            patch.object(OrderRepository, "get_by_id", AsyncMock(return_value=None)),
+        ):
             with pytest.raises(NotFoundError):  # fails at next guard
                 await self.svc.create_shipment(db, uuid.uuid4(), self._payload())
 
     async def test_raises_not_found_when_order_missing(self):
         from app.core.exceptions import NotFoundError
         from app.modules.orders.repository import OrderRepository
+
         db = AsyncMock()
-        with patch("app.modules.shipping.service._repo.get_for_order", AsyncMock(return_value=None)), \
-             patch.object(OrderRepository, "get_by_id", AsyncMock(return_value=None)):
+        with (
+            patch("app.modules.shipping.service._repo.get_for_order", AsyncMock(return_value=None)),
+            patch.object(OrderRepository, "get_by_id", AsyncMock(return_value=None)),
+        ):
             with pytest.raises(NotFoundError):
                 await self.svc.create_shipment(db, uuid.uuid4(), self._payload())
 
     async def test_raises_validation_error_for_wrong_order_status(self):
         from app.core.exceptions import ValidationError
         from app.modules.orders.repository import OrderRepository
+
         db = AsyncMock()
         mock_order = MagicMock()
         mock_order.status = "delivered"  # not confirmed or processing
-        with patch("app.modules.shipping.service._repo.get_for_order", AsyncMock(return_value=None)), \
-             patch.object(OrderRepository, "get_by_id", AsyncMock(return_value=mock_order)):
+        with (
+            patch("app.modules.shipping.service._repo.get_for_order", AsyncMock(return_value=None)),
+            patch.object(OrderRepository, "get_by_id", AsyncMock(return_value=mock_order)),
+        ):
             with pytest.raises(ValidationError):
                 await self.svc.create_shipment(db, uuid.uuid4(), self._payload())
 
     async def test_raises_validation_error_for_cancelled_order(self):
         from app.core.exceptions import ValidationError
         from app.modules.orders.repository import OrderRepository
+
         db = AsyncMock()
         mock_order = MagicMock()
         mock_order.status = "cancelled"
-        with patch("app.modules.shipping.service._repo.get_for_order", AsyncMock(return_value=None)), \
-             patch.object(OrderRepository, "get_by_id", AsyncMock(return_value=mock_order)):
+        with (
+            patch("app.modules.shipping.service._repo.get_for_order", AsyncMock(return_value=None)),
+            patch.object(OrderRepository, "get_by_id", AsyncMock(return_value=mock_order)),
+        ):
             with pytest.raises(ValidationError):
                 await self.svc.create_shipment(db, uuid.uuid4(), self._payload())
 
@@ -114,11 +138,13 @@ class TestShippingServiceCreateShipment:
 class TestShippingServiceGetShipment:
     def setup_method(self):
         from app.modules.shipping.service import ShippingService
+
         self.svc = ShippingService()
 
     async def test_raises_404_when_order_not_found_for_user(self):
         from app.core.exceptions import NotFoundError
         from app.modules.orders.repository import OrderRepository
+
         db = AsyncMock()
         with patch.object(OrderRepository, "get_by_id", AsyncMock(return_value=None)):
             with pytest.raises(NotFoundError):
@@ -127,6 +153,7 @@ class TestShippingServiceGetShipment:
     async def test_raises_404_when_wrong_user(self):
         from app.core.exceptions import NotFoundError
         from app.modules.orders.repository import OrderRepository
+
         db = AsyncMock()
         mock_order = MagicMock()
         mock_order.user_id = uuid.uuid4()  # different from caller
@@ -136,8 +163,11 @@ class TestShippingServiceGetShipment:
 
     async def test_raises_404_when_no_shipment_found(self):
         from app.core.exceptions import NotFoundError
+
         db = AsyncMock()
-        with patch("app.modules.shipping.service._repo.get_for_order", AsyncMock(return_value=None)):
+        with patch(
+            "app.modules.shipping.service._repo.get_for_order", AsyncMock(return_value=None)
+        ):
             with pytest.raises(NotFoundError):
                 await self.svc.get_shipment(db, uuid.uuid4(), user_id=None)
 
@@ -145,10 +175,12 @@ class TestShippingServiceGetShipment:
 class TestShippingServiceTrack:
     def setup_method(self):
         from app.modules.shipping.service import ShippingService
+
         self.svc = ShippingService()
 
     async def test_raises_404_when_shipment_not_found_by_awb(self):
         from app.core.exceptions import NotFoundError
+
         db = AsyncMock()
         with patch("app.modules.shipping.service._repo.get_by_awb", AsyncMock(return_value=None)):
             with pytest.raises(NotFoundError):
@@ -160,8 +192,16 @@ class TestShippingServiceTrack:
         mock_shipment.status = "in_transit"
         mock_shipment.estimated_delivery = None
         mock_shipment.events = []
-        with patch("app.modules.shipping.service._repo.get_by_awb", AsyncMock(return_value=mock_shipment)), \
-             patch("app.modules.shipping.service._client.track", AsyncMock(side_effect=Exception("network error"))):
+        with (
+            patch(
+                "app.modules.shipping.service._repo.get_by_awb",
+                AsyncMock(return_value=mock_shipment),
+            ),
+            patch(
+                "app.modules.shipping.service._client.track",
+                AsyncMock(side_effect=Exception("network error")),
+            ),
+        ):
             result = await self.svc.track(db, "AWB-123")
         assert result.awb_number == "AWB-123"
         assert result.status == "in_transit"
@@ -170,9 +210,11 @@ class TestShippingServiceTrack:
 
 # ─── SeoService ──────────────────────────────────────────────────────────────
 
+
 class TestSeoService:
     def setup_method(self):
         from app.modules.seo.service import SeoService
+
         self.svc = SeoService()
 
     def _mock_execute(self, fetchone_return=None, fetchall_return=None):
@@ -230,17 +272,20 @@ class TestSeoService:
         mock_result.fetchone.return_value = mock_row
         db = AsyncMock()
         db.execute = AsyncMock(return_value=mock_result)
-        result = await self.svc.upsert_page(db, {
-            "path": "/test",
-            "title": "Test",
-            "description": None,
-            "canonical_url": None,
-            "og_image": None,
-            "og_title": None,
-            "og_description": None,
-            "structured_data": None,
-            "noindex": False,
-        })
+        result = await self.svc.upsert_page(
+            db,
+            {
+                "path": "/test",
+                "title": "Test",
+                "description": None,
+                "canonical_url": None,
+                "og_image": None,
+                "og_title": None,
+                "og_description": None,
+                "structured_data": None,
+                "noindex": False,
+            },
+        )
         assert result["path"] == "/test"
 
     async def test_generate_sitemap_contains_static_pages(self):
@@ -258,10 +303,11 @@ class TestSeoService:
         assert "/categories" in result
 
     async def test_generate_sitemap_includes_product_slugs(self):
-        from datetime import datetime, timezone
-        now = datetime.now(timezone.utc)
+        from datetime import datetime
+
+        now = datetime.now(UTC)
         mock_row = MagicMock()
-        mock_row.__getitem__ = lambda self, i: ("silver-ring" if i == 0 else now)
+        mock_row.__getitem__ = lambda self, i: "silver-ring" if i == 0 else now
 
         mock_products_result = MagicMock()
         mock_products_result.fetchall.return_value = [mock_row]

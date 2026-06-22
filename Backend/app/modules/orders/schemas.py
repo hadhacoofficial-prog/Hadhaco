@@ -102,6 +102,7 @@ class CancelOrderRequest(BaseModel):
 
 # ── Razorpay direct checkout ──────────────────────────────────────────────────
 
+
 class CreatePaymentIntentRequest(BaseModel):
     shipping_address_id: uuid.UUID
     billing_address_id: uuid.UUID | None = None
@@ -112,7 +113,7 @@ class CreatePaymentIntentRequest(BaseModel):
 class CreatePaymentIntentResponse(BaseModel):
     order_id: str
     razorpay_order_id: str
-    amount: int          # paise (INR × 100)
+    amount: int  # paise (INR × 100)
     currency: str
     key: str
 

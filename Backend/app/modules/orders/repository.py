@@ -1,5 +1,5 @@
-import math
 import uuid
+from datetime import UTC
 from typing import Any
 
 from sqlalchemy import func, select, update
@@ -10,7 +10,6 @@ from app.modules.orders.models import Order, OrderItem
 
 
 class OrderRepository:
-
     def _with_items(self):
         return selectinload(Order.items)
 
@@ -118,14 +117,17 @@ class OrderRepository:
         await db.flush()
         return item
 
-    async def update(self, db: AsyncSession, order_id: uuid.UUID, data: dict[str, Any]) -> Order | None:
+    async def update(
+        self, db: AsyncSession, order_id: uuid.UUID, data: dict[str, Any]
+    ) -> Order | None:
         await db.execute(update(Order).where(Order.id == order_id).values(**data))
         return await self.get_by_id(db, order_id)
 
     async def generate_order_number(self, db: AsyncSession) -> str:
         """Generate sequential order number: HDH-YYYYMM-NNNNNN"""
-        from datetime import datetime, timezone
-        now = datetime.now(timezone.utc)
+        from datetime import datetime
+
+        now = datetime.now(UTC)
         prefix = f"HDH-{now.year}{now.month:02d}-"
         result = await db.execute(
             select(func.count(Order.id)).where(Order.order_number.like(f"{prefix}%"))

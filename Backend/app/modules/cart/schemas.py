@@ -31,7 +31,7 @@ class CartSummary(BaseModel):
     items: list[CartItemResponse]
     item_count: int
     subtotal: float
-    tax_amount: float       # flat 3% GST — refined per-item in orders phase
+    tax_amount: float  # flat 3% GST — refined per-item in orders phase
     discount: float
     total: float
     coupon_code: str | None

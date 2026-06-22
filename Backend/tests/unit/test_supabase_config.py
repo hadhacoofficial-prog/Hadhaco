@@ -1,6 +1,5 @@
 """Unit tests for Supabase config key alias logic."""
 
-
 _BASE_SETTINGS = dict(
     SECRET_KEY="a" * 40,
     ENCRYPTION_KEY="ScMKcnTeUAIxkeKkhFe-n7BTVisJRW2qpeNc3vqdah0=",
@@ -33,6 +32,7 @@ class TestSupabaseKeyAlias:
 
     def test_supabase_key_takes_precedence(self):
         from app.core.config import Settings
+
         s = Settings(
             **_BASE_SETTINGS,
             SUPABASE_KEY="sb_publishable_newkey",
@@ -42,6 +42,7 @@ class TestSupabaseKeyAlias:
 
     def test_legacy_anon_key_fallback(self):
         from app.core.config import Settings
+
         s = Settings(
             **_BASE_SETTINGS,
             SUPABASE_KEY="",
@@ -51,6 +52,7 @@ class TestSupabaseKeyAlias:
 
     def test_both_empty_returns_empty(self):
         from app.core.config import Settings
+
         s = Settings(
             **_BASE_SETTINGS,
             SUPABASE_KEY="",

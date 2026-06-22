@@ -1,14 +1,13 @@
 import uuid
 from typing import Any
 
-from sqlalchemy import func, select, update
+from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.modules.categories.models import Category
 
 
 class CategoryRepository:
-
     async def get_by_id(self, db: AsyncSession, cat_id: str | uuid.UUID) -> Category | None:
         result = await db.execute(
             select(Category).where(Category.id == cat_id, Category.deleted_at.is_(None))
@@ -36,22 +35,29 @@ class CategoryRepository:
         await db.refresh(cat)
         return cat
 
-    async def update(self, db: AsyncSession, cat_id: str | uuid.UUID, data: dict[str, Any]) -> Category | None:
+    async def update(
+        self, db: AsyncSession, cat_id: str | uuid.UUID, data: dict[str, Any]
+    ) -> Category | None:
         await db.execute(update(Category).where(Category.id == cat_id).values(**data))
         return await self.get_by_id(db, cat_id)
 
     async def soft_delete(self, db: AsyncSession, cat_id: str | uuid.UUID) -> None:
-        from datetime import UTC, datetime, timezone
+        from datetime import UTC, datetime
+
         await db.execute(
-            update(Category).where(Category.id == cat_id)
+            update(Category)
+            .where(Category.id == cat_id)
             .values(deleted_at=datetime.now(UTC), is_active=False)
         )
 
     async def has_active_products(self, db: AsyncSession, cat_id: str | uuid.UUID) -> bool:
         # Avoid circular import — use raw SQL text
         from sqlalchemy import text
+
         result = await db.execute(
-            text("SELECT 1 FROM products WHERE category_id = :cid AND deleted_at IS NULL AND status = 'active' LIMIT 1"),
+            text(
+                "SELECT 1 FROM products WHERE category_id = :cid AND deleted_at IS NULL AND status = 'active' LIMIT 1"
+            ),
             {"cid": str(cat_id)},
         )
         return result.first() is not None
@@ -62,6 +68,7 @@ class CategoryRepository:
         Uses raw SQL to avoid a circular import with the catalog module.
         """
         from sqlalchemy import text
+
         result = await db.execute(
             text(
                 "SELECT DISTINCT category_id::text FROM products "

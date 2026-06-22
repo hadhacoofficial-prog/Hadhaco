@@ -4,8 +4,15 @@ import uuid
 from datetime import UTC, datetime
 
 from sqlalchemy import (
-    Boolean, CheckConstraint, DateTime, ForeignKey, Integer,
-    SmallInteger, Text, UniqueConstraint, VARCHAR,
+    VARCHAR,
+    Boolean,
+    CheckConstraint,
+    DateTime,
+    ForeignKey,
+    Integer,
+    SmallInteger,
+    Text,
+    UniqueConstraint,
 )
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -21,9 +28,15 @@ class Review(Base):
     )
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    product_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("products.id", ondelete="CASCADE"), nullable=False)
-    user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("profiles.id", ondelete="CASCADE"), nullable=False)
-    order_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("orders.id", ondelete="SET NULL"), nullable=True)
+    product_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("products.id", ondelete="CASCADE"), nullable=False
+    )
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("profiles.id", ondelete="CASCADE"), nullable=False
+    )
+    order_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("orders.id", ondelete="SET NULL"), nullable=True
+    )
     rating: Mapped[int] = mapped_column(SmallInteger, nullable=False)
     title: Mapped[str | None] = mapped_column(VARCHAR(255), nullable=True)
     body: Mapped[str | None] = mapped_column(Text, nullable=True)
@@ -31,37 +44,55 @@ class Review(Base):
     is_approved: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     is_flagged: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     helpful_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(UTC))
-    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(UTC))
-    deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True, default=None)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=lambda: datetime.now(UTC)
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=lambda: datetime.now(UTC)
+    )
+    deleted_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True, default=None
+    )
 
-    images: Mapped[list[ReviewImage]] = relationship("ReviewImage", back_populates="review", lazy="selectin")
-    votes: Mapped[list[ReviewVote]] = relationship("ReviewVote", back_populates="review", lazy="selectin")
+    images: Mapped[list[ReviewImage]] = relationship(
+        "ReviewImage", back_populates="review", lazy="selectin"
+    )
+    votes: Mapped[list[ReviewVote]] = relationship(
+        "ReviewVote", back_populates="review", lazy="selectin"
+    )
 
 
 class ReviewImage(Base):
     __tablename__ = "review_images"
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    review_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("reviews.id", ondelete="CASCADE"), nullable=False)
+    review_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("reviews.id", ondelete="CASCADE"), nullable=False
+    )
     url: Mapped[str] = mapped_column(Text, nullable=False)
     r2_key: Mapped[str | None] = mapped_column(VARCHAR(512), nullable=True)
     sort_order: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(UTC))
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=lambda: datetime.now(UTC)
+    )
 
     review: Mapped[Review] = relationship("Review", back_populates="images")
 
 
 class ReviewVote(Base):
     __tablename__ = "review_votes"
-    __table_args__ = (
-        UniqueConstraint("review_id", "user_id", name="uq_review_votes_review_user"),
-    )
+    __table_args__ = (UniqueConstraint("review_id", "user_id", name="uq_review_votes_review_user"),)
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    review_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("reviews.id", ondelete="CASCADE"), nullable=False)
-    user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("profiles.id", ondelete="CASCADE"), nullable=False)
+    review_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("reviews.id", ondelete="CASCADE"), nullable=False
+    )
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("profiles.id", ondelete="CASCADE"), nullable=False
+    )
     is_helpful: Mapped[bool] = mapped_column(Boolean, nullable=False)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(UTC))
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=lambda: datetime.now(UTC)
+    )
 
     review: Mapped[Review] = relationship("Review", back_populates="votes")

@@ -20,6 +20,7 @@ so they're easy to grep for without filtering by duration.
 Health-check paths are intentionally skipped — they fire every few seconds from
 load balancers and would dominate the log stream.
 """
+
 from __future__ import annotations
 
 import time
@@ -33,13 +34,15 @@ from starlette.types import ASGIApp
 log = structlog.get_logger(__name__)
 
 # Paths that should never appear in the access log.
-_SKIP_PATHS = frozenset({
-    "/health",
-    "/health/ready",
-    "/health/live",
-    "/",
-    "/favicon.ico",
-})
+_SKIP_PATHS = frozenset(
+    {
+        "/health",
+        "/health/ready",
+        "/health/live",
+        "/",
+        "/favicon.ico",
+    }
+)
 
 # Requests that take longer than this get an extra WARNING line.
 _SLOW_MS = 500

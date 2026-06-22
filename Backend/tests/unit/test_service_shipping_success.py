@@ -1,5 +1,7 @@
 """Tests for ShippingService success paths and advanced branches."""
+
 import uuid
+from datetime import UTC
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -8,10 +10,12 @@ import pytest
 class TestShippingServiceCreateShipmentSuccess:
     def setup_method(self):
         from app.modules.shipping.service import ShippingService
+
         self.svc = ShippingService()
 
     def _payload(self, weight=500):
         from app.modules.shipping.schemas import CreateShipmentRequest
+
         return CreateShipmentRequest(order_id=uuid.uuid4(), weight_grams=weight)
 
     def _mock_order(self):
@@ -32,6 +36,7 @@ class TestShippingServiceCreateShipmentSuccess:
         from app.core.events import event_bus
         from app.modules.orders.repository import OrderRepository
         from app.modules.profiles.repository import ProfileRepository
+
         db = AsyncMock()
         mock_order = self._mock_order()
         mock_shipment = MagicMock()
@@ -40,37 +45,71 @@ class TestShippingServiceCreateShipmentSuccess:
         mock_profile = MagicMock()
         mock_profile.email = "alice@example.com"
 
-        with patch("app.modules.shipping.service._repo.get_for_order", AsyncMock(return_value=None)), \
-             patch.object(OrderRepository, "get_by_id", AsyncMock(return_value=mock_order)), \
-             patch("app.modules.shipping.service._client.create_shipment", AsyncMock(return_value={"id": "DO-123", "awb_number": "AWB-001"})), \
-             patch("app.modules.shipping.service._repo.create", AsyncMock(return_value=mock_shipment)), \
-             patch("app.modules.shipping.service._client.get_label", AsyncMock(return_value=b"%PDF-label")), \
-             patch.object(self.svc, "_upload_label", AsyncMock(return_value=("https://cdn/label.pdf", "labels/key"))), \
-             patch("app.modules.shipping.service._repo.update", AsyncMock(return_value=mock_shipment)), \
-             patch("app.modules.shipping.service._repo.get_by_id", AsyncMock(return_value=mock_shipment)), \
-             patch.object(OrderRepository, "update", AsyncMock()), \
-             patch.object(ProfileRepository, "get_by_id", AsyncMock(return_value=mock_profile)), \
-             patch.object(event_bus, "publish", AsyncMock()), \
-             patch("app.modules.shipping.service.ShipmentResponse.model_validate", return_value=MagicMock()):
+        with (
+            patch("app.modules.shipping.service._repo.get_for_order", AsyncMock(return_value=None)),
+            patch.object(OrderRepository, "get_by_id", AsyncMock(return_value=mock_order)),
+            patch(
+                "app.modules.shipping.service._client.create_shipment",
+                AsyncMock(return_value={"id": "DO-123", "awb_number": "AWB-001"}),
+            ),
+            patch(
+                "app.modules.shipping.service._repo.create", AsyncMock(return_value=mock_shipment)
+            ),
+            patch(
+                "app.modules.shipping.service._client.get_label",
+                AsyncMock(return_value=b"%PDF-label"),
+            ),
+            patch.object(
+                self.svc,
+                "_upload_label",
+                AsyncMock(return_value=("https://cdn/label.pdf", "labels/key")),
+            ),
+            patch(
+                "app.modules.shipping.service._repo.update", AsyncMock(return_value=mock_shipment)
+            ),
+            patch(
+                "app.modules.shipping.service._repo.get_by_id",
+                AsyncMock(return_value=mock_shipment),
+            ),
+            patch.object(OrderRepository, "update", AsyncMock()),
+            patch.object(ProfileRepository, "get_by_id", AsyncMock(return_value=mock_profile)),
+            patch.object(event_bus, "publish", AsyncMock()),
+            patch(
+                "app.modules.shipping.service.ShipmentResponse.model_validate",
+                return_value=MagicMock(),
+            ),
+        ):
             result = await self.svc.create_shipment(db, uuid.uuid4(), self._payload())
         assert result is not None
 
     async def test_create_shipment_records_failed_when_client_raises(self):
         from app.modules.orders.repository import OrderRepository
+
         db = AsyncMock()
         mock_order = self._mock_order()
         mock_shipment = MagicMock()
 
-        with patch("app.modules.shipping.service._repo.get_for_order", AsyncMock(return_value=None)), \
-             patch.object(OrderRepository, "get_by_id", AsyncMock(return_value=mock_order)), \
-             patch("app.modules.shipping.service._client.create_shipment", AsyncMock(side_effect=Exception("API timeout"))), \
-             patch("app.modules.shipping.service._repo.create", AsyncMock(return_value=mock_shipment)), \
-             patch("app.modules.shipping.service.ShipmentResponse.model_validate", return_value=MagicMock()):
+        with (
+            patch("app.modules.shipping.service._repo.get_for_order", AsyncMock(return_value=None)),
+            patch.object(OrderRepository, "get_by_id", AsyncMock(return_value=mock_order)),
+            patch(
+                "app.modules.shipping.service._client.create_shipment",
+                AsyncMock(side_effect=Exception("API timeout")),
+            ),
+            patch(
+                "app.modules.shipping.service._repo.create", AsyncMock(return_value=mock_shipment)
+            ),
+            patch(
+                "app.modules.shipping.service.ShipmentResponse.model_validate",
+                return_value=MagicMock(),
+            ),
+        ):
             result = await self.svc.create_shipment(db, uuid.uuid4(), self._payload())
         assert result is not None
 
     async def test_create_shipment_allows_retry_on_failed_existing(self):
         from app.modules.orders.repository import OrderRepository
+
         db = AsyncMock()
         mock_order = self._mock_order()
         mock_existing = MagicMock()
@@ -79,21 +118,43 @@ class TestShippingServiceCreateShipmentSuccess:
         mock_shipment.id = uuid.uuid4()
         mock_shipment.provider_shipment_id = None
 
-        with patch("app.modules.shipping.service._repo.get_for_order", AsyncMock(return_value=mock_existing)), \
-             patch.object(OrderRepository, "get_by_id", AsyncMock(return_value=mock_order)), \
-             patch("app.modules.shipping.service._client.create_shipment", AsyncMock(return_value={"id": "DO-456", "awb_number": "AWB-002"})), \
-             patch("app.modules.shipping.service._repo.create", AsyncMock(return_value=mock_shipment)), \
-             patch("app.modules.shipping.service._repo.update", AsyncMock(return_value=mock_shipment)), \
-             patch("app.modules.shipping.service._repo.get_by_id", AsyncMock(return_value=mock_shipment)), \
-             patch.object(OrderRepository, "update", AsyncMock()), \
-             patch("app.modules.profiles.repository.ProfileRepository.get_by_id", AsyncMock(return_value=MagicMock())), \
-             patch("app.core.events.event_bus.publish", AsyncMock()), \
-             patch("app.modules.shipping.service.ShipmentResponse.model_validate", return_value=MagicMock()):
+        with (
+            patch(
+                "app.modules.shipping.service._repo.get_for_order",
+                AsyncMock(return_value=mock_existing),
+            ),
+            patch.object(OrderRepository, "get_by_id", AsyncMock(return_value=mock_order)),
+            patch(
+                "app.modules.shipping.service._client.create_shipment",
+                AsyncMock(return_value={"id": "DO-456", "awb_number": "AWB-002"}),
+            ),
+            patch(
+                "app.modules.shipping.service._repo.create", AsyncMock(return_value=mock_shipment)
+            ),
+            patch(
+                "app.modules.shipping.service._repo.update", AsyncMock(return_value=mock_shipment)
+            ),
+            patch(
+                "app.modules.shipping.service._repo.get_by_id",
+                AsyncMock(return_value=mock_shipment),
+            ),
+            patch.object(OrderRepository, "update", AsyncMock()),
+            patch(
+                "app.modules.profiles.repository.ProfileRepository.get_by_id",
+                AsyncMock(return_value=MagicMock()),
+            ),
+            patch("app.core.events.event_bus.publish", AsyncMock()),
+            patch(
+                "app.modules.shipping.service.ShipmentResponse.model_validate",
+                return_value=MagicMock(),
+            ),
+        ):
             result = await self.svc.create_shipment(db, uuid.uuid4(), self._payload())
         assert result is not None
 
     async def test_create_shipment_with_no_weight_queries_db(self):
         from app.modules.orders.repository import OrderRepository
+
         db = AsyncMock()
         mock_order = self._mock_order()
         mock_shipment = MagicMock()
@@ -107,33 +168,57 @@ class TestShippingServiceCreateShipmentSuccess:
         weight_result.fetchone.return_value = weight_row
         db.execute = AsyncMock(return_value=weight_result)
 
-        with patch("app.modules.shipping.service._repo.get_for_order", AsyncMock(return_value=None)), \
-             patch.object(OrderRepository, "get_by_id", AsyncMock(return_value=mock_order)), \
-             patch("app.modules.shipping.service._client.create_shipment", AsyncMock(return_value={"id": "DO-789", "awb_number": ""})), \
-             patch("app.modules.shipping.service._repo.create", AsyncMock(return_value=mock_shipment)), \
-             patch("app.modules.shipping.service._repo.update", AsyncMock(return_value=mock_shipment)), \
-             patch("app.modules.shipping.service._repo.get_by_id", AsyncMock(return_value=mock_shipment)), \
-             patch.object(OrderRepository, "update", AsyncMock()), \
-             patch("app.modules.profiles.repository.ProfileRepository.get_by_id", AsyncMock(return_value=MagicMock())), \
-             patch("app.core.events.event_bus.publish", AsyncMock()), \
-             patch("app.modules.shipping.service.ShipmentResponse.model_validate", return_value=MagicMock()):
+        with (
+            patch("app.modules.shipping.service._repo.get_for_order", AsyncMock(return_value=None)),
+            patch.object(OrderRepository, "get_by_id", AsyncMock(return_value=mock_order)),
+            patch(
+                "app.modules.shipping.service._client.create_shipment",
+                AsyncMock(return_value={"id": "DO-789", "awb_number": ""}),
+            ),
+            patch(
+                "app.modules.shipping.service._repo.create", AsyncMock(return_value=mock_shipment)
+            ),
+            patch(
+                "app.modules.shipping.service._repo.update", AsyncMock(return_value=mock_shipment)
+            ),
+            patch(
+                "app.modules.shipping.service._repo.get_by_id",
+                AsyncMock(return_value=mock_shipment),
+            ),
+            patch.object(OrderRepository, "update", AsyncMock()),
+            patch(
+                "app.modules.profiles.repository.ProfileRepository.get_by_id",
+                AsyncMock(return_value=MagicMock()),
+            ),
+            patch("app.core.events.event_bus.publish", AsyncMock()),
+            patch(
+                "app.modules.shipping.service.ShipmentResponse.model_validate",
+                return_value=MagicMock(),
+            ),
+        ):
             # payload with no weight
             from app.modules.shipping.schemas import CreateShipmentRequest
-            result = await self.svc.create_shipment(db, uuid.uuid4(), CreateShipmentRequest(order_id=uuid.uuid4()))
+
+            result = await self.svc.create_shipment(
+                db, uuid.uuid4(), CreateShipmentRequest(order_id=uuid.uuid4())
+            )
         assert result is not None
 
 
 class TestShippingServiceTrackSuccess:
     def setup_method(self):
         from app.modules.shipping.service import ShippingService
+
         self.svc = ShippingService()
 
     async def test_track_success_syncs_events_and_updates_status(self):
-        from datetime import datetime, timezone
+        from datetime import datetime
+
         from app.modules.shipping.schemas import ShipmentEventResponse
+
         db = AsyncMock()
 
-        existing_time = datetime(2026, 1, 1, 12, 0, 0, tzinfo=timezone.utc)
+        existing_time = datetime(2026, 1, 1, 12, 0, 0, tzinfo=UTC)
         existing_event = MagicMock()
         existing_event.occurred_at = existing_time
 
@@ -149,7 +234,7 @@ class TestShippingServiceTrackSuccess:
             status="in_transit",
             description="Arrived at hub",
             location="Delhi",
-            occurred_at=datetime(2026, 1, 1, 15, 0, 0, tzinfo=timezone.utc),
+            occurred_at=datetime(2026, 1, 1, 15, 0, 0, tzinfo=UTC),
         )
         mock_updated = MagicMock()
         mock_updated.status = "in_transit"
@@ -173,19 +258,30 @@ class TestShippingServiceTrackSuccess:
             ]
         }
 
-        with patch("app.modules.shipping.service._repo.get_by_awb", AsyncMock(return_value=mock_shipment)), \
-             patch("app.modules.shipping.service._client.track", AsyncMock(return_value=tracking_data)), \
-             patch("app.modules.shipping.service._repo.add_event", AsyncMock()), \
-             patch("app.modules.shipping.service._repo.update", AsyncMock(return_value=mock_updated)), \
-             patch("app.modules.shipping.service._repo.get_by_id", AsyncMock(return_value=mock_updated)):
+        with (
+            patch(
+                "app.modules.shipping.service._repo.get_by_awb",
+                AsyncMock(return_value=mock_shipment),
+            ),
+            patch(
+                "app.modules.shipping.service._client.track", AsyncMock(return_value=tracking_data)
+            ),
+            patch("app.modules.shipping.service._repo.add_event", AsyncMock()),
+            patch(
+                "app.modules.shipping.service._repo.update", AsyncMock(return_value=mock_updated)
+            ),
+            patch(
+                "app.modules.shipping.service._repo.get_by_id", AsyncMock(return_value=mock_updated)
+            ),
+        ):
             result = await self.svc.track(db, "AWB-123")
         assert result.awb_number == "AWB-123"
 
     async def test_track_publishes_delivered_event(self):
-        from datetime import datetime, timezone
         from app.core.events import event_bus
         from app.modules.orders.repository import OrderRepository
         from app.modules.profiles.repository import ProfileRepository
+
         db = AsyncMock()
 
         order_id = uuid.uuid4()
@@ -220,15 +316,26 @@ class TestShippingServiceTrackSuccess:
             ]
         }
 
-        with patch("app.modules.shipping.service._repo.get_by_awb", AsyncMock(return_value=mock_shipment)), \
-             patch("app.modules.shipping.service._client.track", AsyncMock(return_value=tracking_data)), \
-             patch("app.modules.shipping.service._repo.add_event", AsyncMock()), \
-             patch("app.modules.shipping.service._repo.update", AsyncMock(return_value=mock_updated)), \
-             patch("app.modules.shipping.service._repo.get_by_id", AsyncMock(return_value=mock_updated)), \
-             patch.object(OrderRepository, "get_by_id", AsyncMock(return_value=mock_order)), \
-             patch.object(OrderRepository, "update", AsyncMock()), \
-             patch.object(ProfileRepository, "get_by_id", AsyncMock(return_value=mock_profile)), \
-             patch.object(event_bus, "publish", AsyncMock()) as mock_publish:
+        with (
+            patch(
+                "app.modules.shipping.service._repo.get_by_awb",
+                AsyncMock(return_value=mock_shipment),
+            ),
+            patch(
+                "app.modules.shipping.service._client.track", AsyncMock(return_value=tracking_data)
+            ),
+            patch("app.modules.shipping.service._repo.add_event", AsyncMock()),
+            patch(
+                "app.modules.shipping.service._repo.update", AsyncMock(return_value=mock_updated)
+            ),
+            patch(
+                "app.modules.shipping.service._repo.get_by_id", AsyncMock(return_value=mock_updated)
+            ),
+            patch.object(OrderRepository, "get_by_id", AsyncMock(return_value=mock_order)),
+            patch.object(OrderRepository, "update", AsyncMock()),
+            patch.object(ProfileRepository, "get_by_id", AsyncMock(return_value=mock_profile)),
+            patch.object(event_bus, "publish", AsyncMock()) as mock_publish,
+        ):
             result = await self.svc.track(db, "AWB-123")
         mock_publish.assert_awaited_once()
 
@@ -236,18 +343,24 @@ class TestShippingServiceTrackSuccess:
 class TestShippingServiceSyncStatus:
     def setup_method(self):
         from app.modules.shipping.service import ShippingService
+
         self.svc = ShippingService()
 
     async def test_sync_returns_early_when_no_shipment(self):
         db = AsyncMock()
-        with patch("app.modules.shipping.service._repo.get_for_order", AsyncMock(return_value=None)):
+        with patch(
+            "app.modules.shipping.service._repo.get_for_order", AsyncMock(return_value=None)
+        ):
             await self.svc.sync_shipment_status(db, uuid.uuid4())
 
     async def test_sync_returns_early_when_no_awb(self):
         db = AsyncMock()
         mock_shipment = MagicMock()
         mock_shipment.awb_number = None
-        with patch("app.modules.shipping.service._repo.get_for_order", AsyncMock(return_value=mock_shipment)):
+        with patch(
+            "app.modules.shipping.service._repo.get_for_order",
+            AsyncMock(return_value=mock_shipment),
+        ):
             await self.svc.sync_shipment_status(db, uuid.uuid4())
 
     async def test_sync_returns_early_when_delivered(self):
@@ -255,7 +368,10 @@ class TestShippingServiceSyncStatus:
         mock_shipment = MagicMock()
         mock_shipment.awb_number = "AWB-123"
         mock_shipment.status = "delivered"
-        with patch("app.modules.shipping.service._repo.get_for_order", AsyncMock(return_value=mock_shipment)):
+        with patch(
+            "app.modules.shipping.service._repo.get_for_order",
+            AsyncMock(return_value=mock_shipment),
+        ):
             await self.svc.sync_shipment_status(db, uuid.uuid4())
 
     async def test_sync_calls_track_for_active_shipment(self):
@@ -263,8 +379,13 @@ class TestShippingServiceSyncStatus:
         mock_shipment = MagicMock()
         mock_shipment.awb_number = "AWB-123"
         mock_shipment.status = "in_transit"
-        with patch("app.modules.shipping.service._repo.get_for_order", AsyncMock(return_value=mock_shipment)), \
-             patch.object(self.svc, "track", AsyncMock()) as mock_track:
+        with (
+            patch(
+                "app.modules.shipping.service._repo.get_for_order",
+                AsyncMock(return_value=mock_shipment),
+            ),
+            patch.object(self.svc, "track", AsyncMock()) as mock_track,
+        ):
             await self.svc.sync_shipment_status(db, uuid.uuid4())
         mock_track.assert_awaited_once_with(db, "AWB-123")
 
@@ -272,21 +393,29 @@ class TestShippingServiceSyncStatus:
 class TestShippingServiceCancelAndRates:
     def setup_method(self):
         from app.modules.shipping.service import ShippingService
+
         self.svc = ShippingService()
 
     async def test_cancel_shipment_raises_404_when_not_found(self):
         from app.core.exceptions import NotFoundError
+
         db = AsyncMock()
-        with patch("app.modules.shipping.service._repo.get_for_order", AsyncMock(return_value=None)):
+        with patch(
+            "app.modules.shipping.service._repo.get_for_order", AsyncMock(return_value=None)
+        ):
             with pytest.raises(NotFoundError):
                 await self.svc.cancel_shipment(db, uuid.uuid4())
 
     async def test_cancel_shipment_raises_validation_error_when_delivered(self):
         from app.core.exceptions import ValidationError
+
         db = AsyncMock()
         mock_shipment = MagicMock()
         mock_shipment.status = "delivered"
-        with patch("app.modules.shipping.service._repo.get_for_order", AsyncMock(return_value=mock_shipment)):
+        with patch(
+            "app.modules.shipping.service._repo.get_for_order",
+            AsyncMock(return_value=mock_shipment),
+        ):
             with pytest.raises(ValidationError):
                 await self.svc.cancel_shipment(db, uuid.uuid4())
 
@@ -296,10 +425,20 @@ class TestShippingServiceCancelAndRates:
         mock_shipment.status = "created"
         mock_shipment.provider_shipment_id = "DO-123"
         mock_updated = MagicMock()
-        with patch("app.modules.shipping.service._repo.get_for_order", AsyncMock(return_value=mock_shipment)), \
-             patch("app.modules.shipping.service._client.cancel_shipment", AsyncMock()), \
-             patch("app.modules.shipping.service._repo.update", AsyncMock(return_value=mock_updated)), \
-             patch("app.modules.shipping.service.ShipmentResponse.model_validate", return_value=MagicMock()):
+        with (
+            patch(
+                "app.modules.shipping.service._repo.get_for_order",
+                AsyncMock(return_value=mock_shipment),
+            ),
+            patch("app.modules.shipping.service._client.cancel_shipment", AsyncMock()),
+            patch(
+                "app.modules.shipping.service._repo.update", AsyncMock(return_value=mock_updated)
+            ),
+            patch(
+                "app.modules.shipping.service.ShipmentResponse.model_validate",
+                return_value=MagicMock(),
+            ),
+        ):
             result = await self.svc.cancel_shipment(db, uuid.uuid4(), reason="Customer request")
         assert result is not None
 
@@ -309,23 +448,49 @@ class TestShippingServiceCancelAndRates:
         mock_shipment.status = "in_transit"
         mock_shipment.provider_shipment_id = "DO-789"
         mock_updated = MagicMock()
-        with patch("app.modules.shipping.service._repo.get_for_order", AsyncMock(return_value=mock_shipment)), \
-             patch("app.modules.shipping.service._client.cancel_shipment", AsyncMock(side_effect=Exception("API error"))), \
-             patch("app.modules.shipping.service._repo.update", AsyncMock(return_value=mock_updated)), \
-             patch("app.modules.shipping.service.ShipmentResponse.model_validate", return_value=MagicMock()):
+        with (
+            patch(
+                "app.modules.shipping.service._repo.get_for_order",
+                AsyncMock(return_value=mock_shipment),
+            ),
+            patch(
+                "app.modules.shipping.service._client.cancel_shipment",
+                AsyncMock(side_effect=Exception("API error")),
+            ),
+            patch(
+                "app.modules.shipping.service._repo.update", AsyncMock(return_value=mock_updated)
+            ),
+            patch(
+                "app.modules.shipping.service.ShipmentResponse.model_validate",
+                return_value=MagicMock(),
+            ),
+        ):
             result = await self.svc.cancel_shipment(db, uuid.uuid4())
         assert result is not None
 
     async def test_get_rates_returns_rates_from_client(self):
-        with patch("app.modules.shipping.service._client.get_rates", AsyncMock(return_value=[
-            {"service_name": "Express", "estimated_days": 2, "charge": 150, "is_recommended": True}
-        ])):
+        with patch(
+            "app.modules.shipping.service._client.get_rates",
+            AsyncMock(
+                return_value=[
+                    {
+                        "service_name": "Express",
+                        "estimated_days": 2,
+                        "charge": 150,
+                        "is_recommended": True,
+                    }
+                ]
+            ),
+        ):
             result = await self.svc.get_rates(500, "400001")
         assert len(result) == 1
         assert result[0].charge == 150.0
 
     async def test_get_rates_returns_default_on_api_failure(self):
-        with patch("app.modules.shipping.service._client.get_rates", AsyncMock(side_effect=Exception("API down"))):
+        with patch(
+            "app.modules.shipping.service._client.get_rates",
+            AsyncMock(side_effect=Exception("API down")),
+        ):
             result = await self.svc.get_rates(500, "400001")
         assert len(result) == 1
         assert result[0].service_name == "Standard Delivery"
@@ -334,7 +499,15 @@ class TestShippingServiceCancelAndRates:
     async def test_get_shipment_success_without_user(self):
         db = AsyncMock()
         mock_shipment = MagicMock()
-        with patch("app.modules.shipping.service._repo.get_for_order", AsyncMock(return_value=mock_shipment)), \
-             patch("app.modules.shipping.service.ShipmentResponse.model_validate", return_value=MagicMock()):
+        with (
+            patch(
+                "app.modules.shipping.service._repo.get_for_order",
+                AsyncMock(return_value=mock_shipment),
+            ),
+            patch(
+                "app.modules.shipping.service.ShipmentResponse.model_validate",
+                return_value=MagicMock(),
+            ),
+        ):
             result = await self.svc.get_shipment(db, uuid.uuid4(), user_id=None)
         assert result is not None

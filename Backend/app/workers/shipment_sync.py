@@ -2,6 +2,7 @@
 Poll Delivery One for in-transit shipments and update order status.
 Run every 15 minutes via APScheduler.
 """
+
 from __future__ import annotations
 
 import time
@@ -32,7 +33,9 @@ async def run() -> None:
                     errors += 1
                     log.exception("shipment_sync_order_failed", order_id=str(order.id))
         duration_ms = round((time.perf_counter() - t0) * 1000)
-        log.info("shipment_sync_completed", total=len(orders), errors=errors, duration_ms=duration_ms)
+        log.info(
+            "shipment_sync_completed", total=len(orders), errors=errors, duration_ms=duration_ms
+        )
     except Exception:
         duration_ms = round((time.perf_counter() - t0) * 1000)
         log.exception("shipment_sync_failed", duration_ms=duration_ms)
@@ -40,4 +43,5 @@ async def run() -> None:
 
 if __name__ == "__main__":
     import asyncio
+
     asyncio.run(run())

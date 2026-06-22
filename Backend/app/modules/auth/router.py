@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, Request, status
+from fastapi import APIRouter, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.common.response_codes import ResponseCode
@@ -9,9 +9,7 @@ from app.core.dependencies import (
     require_admin,
     require_super_admin,
 )
-from app.middleware.rate_limit import rate_limit_auth
 from app.modules.auth.schemas import (
-    AdminSessionResponse,
     Setup2FAResponse,
     Validate2FARequest,
     Validate2FAResponse,
@@ -77,6 +75,7 @@ async def force_logout(
 
 # ── Admin 2FA endpoints ────────────────────────────────────────────────────────
 
+
 @router.post(
     "/admin/2fa/setup",
     response_model=BaseSuccessResponse[Setup2FAResponse],
@@ -100,9 +99,7 @@ async def verify_2fa(
     current_user: Profile = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ) -> BaseSuccessResponse[Verify2FAResponse]:
-    backup_codes = await _svc.verify_and_activate_2fa(
-        db, str(current_user.id), body.totp_code
-    )
+    backup_codes = await _svc.verify_and_activate_2fa(db, str(current_user.id), body.totp_code)
     return ok(
         Verify2FAResponse(
             message="2FA activated successfully. Save your backup codes — they will not be shown again.",

@@ -13,6 +13,7 @@ Usage anywhere in the app:
     log = structlog.get_logger(__name__)
     log.info("order_created", order_id=str(order.id), total=order.total)
 """
+
 from __future__ import annotations
 
 import logging
@@ -71,7 +72,7 @@ def configure_logging(debug: bool = False, log_sql: bool = False) -> None:
     # These run for both structlog-native loggers AND stdlib loggers that are
     # routed through structlog's ProcessorFormatter (uvicorn, sqlalchemy, etc.).
     shared_processors: list = [
-        structlog.contextvars.merge_contextvars,        # inject request_id, user_id, ip
+        structlog.contextvars.merge_contextvars,  # inject request_id, user_id, ip
         structlog.stdlib.add_log_level,
         structlog.stdlib.add_logger_name,
         structlog.processors.TimeStamper(fmt="%H:%M:%S.%f" if debug else "iso"),
@@ -82,12 +83,15 @@ def configure_logging(debug: bool = False, log_sql: bool = False) -> None:
     if debug:
         # Show the exact module and function that emitted the log — helpful when
         # chasing down where a log line comes from during local development.
-        shared_processors.insert(0, structlog.processors.CallsiteParameterAdder(
-            parameters=[
-                structlog.processors.CallsiteParameter.MODULE,
-                structlog.processors.CallsiteParameter.FUNC_NAME,
-            ]
-        ))
+        shared_processors.insert(
+            0,
+            structlog.processors.CallsiteParameterAdder(
+                parameters=[
+                    structlog.processors.CallsiteParameter.MODULE,
+                    structlog.processors.CallsiteParameter.FUNC_NAME,
+                ]
+            ),
+        )
         renderer: structlog.types.Processor = structlog.dev.ConsoleRenderer(
             colors=True,
             exception_formatter=structlog.dev.plain_traceback,

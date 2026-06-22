@@ -10,7 +10,6 @@ _MAX_ADDRESSES = 10
 
 
 class AddressRepository:
-
     async def list_for_user(self, db: AsyncSession, user_id: uuid.UUID) -> list[UserAddress]:
         result = await db.execute(
             select(UserAddress)
@@ -19,7 +18,9 @@ class AddressRepository:
         )
         return list(result.scalars().all())
 
-    async def get(self, db: AsyncSession, address_id: uuid.UUID, user_id: uuid.UUID) -> UserAddress | None:
+    async def get(
+        self, db: AsyncSession, address_id: uuid.UUID, user_id: uuid.UUID
+    ) -> UserAddress | None:
         result = await db.execute(
             select(UserAddress).where(
                 UserAddress.id == address_id,
@@ -31,8 +32,11 @@ class AddressRepository:
 
     async def count_for_user(self, db: AsyncSession, user_id: uuid.UUID) -> int:
         from sqlalchemy import func
+
         result = await db.execute(
-            select(func.count()).select_from(UserAddress).where(
+            select(func.count())
+            .select_from(UserAddress)
+            .where(
                 UserAddress.user_id == user_id,
                 UserAddress.deleted_at.is_(None),
             )
@@ -66,7 +70,8 @@ class AddressRepository:
         )
 
     async def soft_delete(self, db: AsyncSession, address_id: uuid.UUID) -> None:
-        from datetime import UTC, datetime, timezone
+        from datetime import UTC, datetime
+
         await db.execute(
             update(UserAddress)
             .where(UserAddress.id == address_id)

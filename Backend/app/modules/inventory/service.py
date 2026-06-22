@@ -1,6 +1,5 @@
 import math
 import uuid
-from typing import Any
 
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -19,7 +18,6 @@ _repo = InventoryRepository()
 
 
 class InventoryService:
-
     async def record_movement(
         self,
         db: AsyncSession,

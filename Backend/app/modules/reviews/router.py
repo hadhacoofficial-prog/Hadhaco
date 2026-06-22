@@ -26,6 +26,7 @@ _svc = ReviewService()
 
 # ── Public ────────────────────────────────────────────────────────────────────
 
+
 @router.get("/products/{product_id}", response_model=BaseSuccessResponse[list[ReviewOut]])
 async def list_product_reviews(
     product_id: uuid.UUID,
@@ -37,7 +38,9 @@ async def list_product_reviews(
     return ok(result, ResponseCode.REVIEW_LISTED, "Reviews listed successfully")
 
 
-@router.get("/products/{product_id}/summary", response_model=BaseSuccessResponse[ProductRatingSummary])
+@router.get(
+    "/products/{product_id}/summary", response_model=BaseSuccessResponse[ProductRatingSummary]
+)
 async def product_rating_summary(
     product_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
@@ -61,6 +64,7 @@ async def product_rating_summary(
 
 # ── Customer (auth required) ──────────────────────────────────────────────────
 
+
 @router.post("", response_model=BaseSuccessResponse[ReviewOut], status_code=201)
 async def submit_review(
     data: ReviewCreate,
@@ -69,6 +73,7 @@ async def submit_review(
     user=Depends(get_current_user),
 ):
     from app.common.responses import created
+
     result = await _svc.submit_review(db, user_id=user.id, data=data, images=images or None)
     return created(result, ResponseCode.REVIEW_SUBMITTED, "Review submitted successfully")
 
@@ -106,6 +111,7 @@ async def vote_review(
 
 
 # ── Admin ─────────────────────────────────────────────────────────────────────
+
 
 @router.get("/admin/pending", response_model=BaseSuccessResponse[list[ReviewOut]])
 async def list_pending_reviews(

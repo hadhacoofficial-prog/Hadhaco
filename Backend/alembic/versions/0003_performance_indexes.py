@@ -9,6 +9,7 @@ Revision ID: 0003_performance_indexes
 Revises: 0002_profiles_fk
 Create Date: 2026-06-20
 """
+
 from collections.abc import Sequence
 
 from alembic import op

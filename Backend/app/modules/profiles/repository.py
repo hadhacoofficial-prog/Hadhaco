@@ -1,4 +1,3 @@
-import math
 import uuid
 from typing import Any
 
@@ -9,7 +8,6 @@ from app.modules.profiles.models import Profile
 
 
 class ProfileRepository:
-
     async def get_by_id(self, db: AsyncSession, user_id: str | uuid.UUID) -> Profile | None:
         result = await db.execute(
             select(Profile).where(
@@ -41,11 +39,7 @@ class ProfileRepository:
         user_id: str | uuid.UUID,
         data: dict[str, Any],
     ) -> Profile | None:
-        await db.execute(
-            update(Profile)
-            .where(Profile.id == user_id)
-            .values(**data)
-        )
+        await db.execute(update(Profile).where(Profile.id == user_id).values(**data))
         return await self.get_by_id(db, user_id)
 
     async def list_paginated(
@@ -96,7 +90,8 @@ class ProfileRepository:
         return items, total
 
     async def soft_delete(self, db: AsyncSession, user_id: str | uuid.UUID) -> None:
-        from datetime import UTC, datetime, timezone
+        from datetime import UTC, datetime
+
         await db.execute(
             update(Profile)
             .where(Profile.id == user_id)

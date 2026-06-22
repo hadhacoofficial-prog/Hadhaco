@@ -1,5 +1,4 @@
 import uuid
-from datetime import datetime, timezone
 from typing import Any
 
 from sqlalchemy import func, select, update
@@ -9,7 +8,6 @@ from app.modules.coupons.models import Coupon, CouponUsage
 
 
 class CouponRepository:
-
     async def get_by_code(self, db: AsyncSession, code: str) -> Coupon | None:
         result = await db.execute(select(Coupon).where(Coupon.code == code.upper()))
         return result.scalar_one_or_none()
@@ -31,22 +29,24 @@ class CouponRepository:
         await db.refresh(coupon)
         return coupon
 
-    async def update(self, db: AsyncSession, coupon_id: uuid.UUID, data: dict[str, Any]) -> Coupon | None:
+    async def update(
+        self, db: AsyncSession, coupon_id: uuid.UUID, data: dict[str, Any]
+    ) -> Coupon | None:
         await db.execute(update(Coupon).where(Coupon.id == coupon_id).values(**data))
         return await self.get_by_id(db, coupon_id)
 
     async def increment_usage(self, db: AsyncSession, coupon_id: uuid.UUID) -> None:
         await db.execute(
-            update(Coupon)
-            .where(Coupon.id == coupon_id)
-            .values(usage_count=Coupon.usage_count + 1)
+            update(Coupon).where(Coupon.id == coupon_id).values(usage_count=Coupon.usage_count + 1)
         )
 
     async def get_user_usage_count(
         self, db: AsyncSession, coupon_id: uuid.UUID, user_id: uuid.UUID
     ) -> int:
         result = await db.execute(
-            select(func.count()).select_from(CouponUsage).where(
+            select(func.count())
+            .select_from(CouponUsage)
+            .where(
                 CouponUsage.coupon_id == coupon_id,
                 CouponUsage.user_id == user_id,
             )
@@ -86,7 +86,6 @@ class CouponRepository:
         )
 
     async def delete(self, db: AsyncSession, coupon_id: uuid.UUID) -> None:
-        from sqlalchemy import delete as sql_delete
         coupon = await self.get_by_id(db, coupon_id)
         if coupon:
             await db.delete(coupon)

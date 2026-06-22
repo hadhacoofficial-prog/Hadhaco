@@ -11,24 +11,22 @@ from app.modules.categories.schemas import (
     CategoryCreateRequest,
     CategoryTreeNode,
     CategoryUpdateRequest,
-    NavCategoryItem,
     NavbarCategoriesResponse,
+    NavCategoryItem,
     NavigationCategoriesResponse,
 )
-
 
 # Maps the parent-category slug in the DB to the gender key used in the API response.
 # Add "shop-unisex": "unisex" here once that parent category is seeded.
 _GENDER_SLUG_MAP: dict[str, str] = {
     "shop-women": "women",
-    "shop-men":   "men",
+    "shop-men": "men",
     "shop-unisex": "unisex",
-    "shop-kids":  "kids",
+    "shop-kids": "kids",
 }
 
 
 class CategoryService:
-
     def __init__(self) -> None:
         self._repo = CategoryRepository()
 
@@ -42,7 +40,10 @@ class CategoryService:
         tree = _build_tree(all_cats, parent_id=None)
 
         buckets: dict[str, list[CategoryTreeNode]] = {
-            "women": [], "men": [], "unisex": [], "kids": []
+            "women": [],
+            "men": [],
+            "unisex": [],
+            "kids": [],
         }
         for node in tree:
             gender = _GENDER_SLUG_MAP.get(node.slug)
@@ -63,13 +64,18 @@ class CategoryService:
         tree = _build_tree(all_cats, parent_id=None)
 
         buckets: dict[str, list[NavCategoryItem]] = {
-            "women": [], "men": [], "unisex": [], "kids": []
+            "women": [],
+            "men": [],
+            "unisex": [],
+            "kids": [],
         }
         for node in tree:
             gender = _GENDER_SLUG_MAP.get(node.slug)
             if gender:
                 buckets[gender] = [
-                    NavCategoryItem(id=child.id, name=child.name, slug=child.slug, image_url=child.image_url)
+                    NavCategoryItem(
+                        id=child.id, name=child.name, slug=child.slug, image_url=child.image_url
+                    )
                     for child in node.children
                 ]
 
@@ -81,7 +87,9 @@ class CategoryService:
             raise NotFoundError(f"Category '{slug}' not found")
         return cat
 
-    async def create(self, db: AsyncSession, data: CategoryCreateRequest, actor_id: str) -> Category:
+    async def create(
+        self, db: AsyncSession, data: CategoryCreateRequest, actor_id: str
+    ) -> Category:
         slug = data.slug or slugify(data.name)
         existing = await self._repo.get_by_slug(db, slug)
         if existing:
@@ -89,7 +97,9 @@ class CategoryService:
         payload: dict[str, Any] = {**data.model_dump(exclude_none=True), "slug": slug}
         return await self._repo.create(db, payload)
 
-    async def update(self, db: AsyncSession, cat_id: str | uuid.UUID, data: CategoryUpdateRequest) -> Category:
+    async def update(
+        self, db: AsyncSession, cat_id: str | uuid.UUID, data: CategoryUpdateRequest
+    ) -> Category:
         cat = await self._repo.get_by_id(db, cat_id)
         if not cat:
             raise NotFoundError("Category not found")

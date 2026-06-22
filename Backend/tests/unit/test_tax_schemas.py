@@ -1,9 +1,7 @@
 """Tests for tax schemas and serialization."""
+
 from decimal import Decimal
 
-import pytest
-
-from app.modules.tax.schemas import TaxBreakdown
 from app.modules.tax.service import TaxService
 
 

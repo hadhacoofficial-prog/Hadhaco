@@ -63,6 +63,7 @@ async def create_redirect(
     db: AsyncSession = Depends(get_db),
 ):
     from app.common.responses import created
+
     await _service.create_redirect(db, payload.from_path, payload.to_path, payload.status_code)
     return created(None, ResponseCode.SEO_REDIRECT_CREATED, "Redirect created successfully")
 

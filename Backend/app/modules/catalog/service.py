@@ -1,11 +1,10 @@
 import math
 import uuid
-from datetime import UTC, datetime, timezone
+from datetime import UTC, datetime
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import ConflictError, NotFoundError, ValidationError
-from app.modules.catalog.models import Product
 from app.modules.catalog.repository import ProductRepository
 from app.modules.catalog.schemas import (
     ProductAttributeCreateRequest,
@@ -22,7 +21,6 @@ _repo = ProductRepository()
 
 
 class CatalogService:
-
     async def get_by_id(self, db: AsyncSession, product_id: uuid.UUID) -> ProductResponse:
         product = await _repo.get_by_id(db, product_id)
         if not product:
@@ -106,9 +104,7 @@ class CatalogService:
             total_pages=math.ceil(total / page_size) if total else 0,
         )
 
-    async def create(
-        self, db: AsyncSession, payload: ProductCreateRequest
-    ) -> ProductResponse:
+    async def create(self, db: AsyncSession, payload: ProductCreateRequest) -> ProductResponse:
         if await _repo.get_by_sku(db, payload.sku):
             raise ConflictError("Product with this SKU already exists")
         if await _repo.get_by_slug(db, payload.slug):
@@ -196,11 +192,11 @@ class CatalogService:
         product = await _repo.get_by_id(db, product_id)
         if not product:
             raise NotFoundError("Product not found")
-        return await _repo.upsert_attribute(db, product_id, payload.name, payload.value, payload.sort_order)
+        return await _repo.upsert_attribute(
+            db, product_id, payload.name, payload.value, payload.sort_order
+        )
 
-    async def delete_attribute(
-        self, db: AsyncSession, product_id: uuid.UUID, name: str
-    ) -> None:
+    async def delete_attribute(self, db: AsyncSession, product_id: uuid.UUID, name: str) -> None:
         if not await _repo.delete_attribute(db, product_id, name):
             raise NotFoundError("Attribute not found")
 

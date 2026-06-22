@@ -10,13 +10,13 @@ Usage:
 Both return a synchronous Supabase client; for async FastAPI code wrap calls
 with `asyncio.to_thread()` or use the underlying httpx session directly.
 """
+
 from __future__ import annotations
 
 from functools import lru_cache
 
-from supabase import Client, create_client
-
 from app.core.config import settings
+from supabase import Client, create_client
 
 
 @lru_cache(maxsize=1)

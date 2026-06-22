@@ -9,7 +9,6 @@ from app.modules.wishlist.models import Wishlist, WishlistItem
 
 
 class WishlistRepository:
-
     async def get_or_create(self, db: AsyncSession, user_id: uuid.UUID) -> Wishlist:
         result = await db.execute(
             select(Wishlist)
@@ -24,20 +23,30 @@ class WishlistRepository:
             await db.refresh(wishlist)
             # reload with items relationship
             result = await db.execute(
-                select(Wishlist).where(Wishlist.id == wishlist.id).options(selectinload(Wishlist.items))
+                select(Wishlist)
+                .where(Wishlist.id == wishlist.id)
+                .options(selectinload(Wishlist.items))
             )
             wishlist = result.scalar_one()
         return wishlist
 
     async def add_item(
-        self, db: AsyncSession, wishlist_id: uuid.UUID, product_id: uuid.UUID, variant_id: uuid.UUID | None
+        self,
+        db: AsyncSession,
+        wishlist_id: uuid.UUID,
+        product_id: uuid.UUID,
+        variant_id: uuid.UUID | None,
     ) -> WishlistItem:
-        stmt = pg_insert(WishlistItem).values(
-            id=uuid.uuid4(),
-            wishlist_id=wishlist_id,
-            product_id=product_id,
-            variant_id=variant_id,
-        ).on_conflict_do_nothing(constraint="uq_wishlist_items")
+        stmt = (
+            pg_insert(WishlistItem)
+            .values(
+                id=uuid.uuid4(),
+                wishlist_id=wishlist_id,
+                product_id=product_id,
+                variant_id=variant_id,
+            )
+            .on_conflict_do_nothing(constraint="uq_wishlist_items")
+        )
         await db.execute(stmt)
 
         result = await db.execute(
@@ -50,7 +59,11 @@ class WishlistRepository:
         return result.scalar_one()
 
     async def remove_item(
-        self, db: AsyncSession, wishlist_id: uuid.UUID, product_id: uuid.UUID, variant_id: uuid.UUID | None
+        self,
+        db: AsyncSession,
+        wishlist_id: uuid.UUID,
+        product_id: uuid.UUID,
+        variant_id: uuid.UUID | None,
     ) -> bool:
         q = delete(WishlistItem).where(
             WishlistItem.wishlist_id == wishlist_id,
@@ -64,7 +77,11 @@ class WishlistRepository:
         return result.rowcount > 0
 
     async def is_in_wishlist(
-        self, db: AsyncSession, wishlist_id: uuid.UUID, product_id: uuid.UUID, variant_id: uuid.UUID | None
+        self,
+        db: AsyncSession,
+        wishlist_id: uuid.UUID,
+        product_id: uuid.UUID,
+        variant_id: uuid.UUID | None,
     ) -> bool:
         q = select(WishlistItem.id).where(
             WishlistItem.wishlist_id == wishlist_id,

@@ -4,7 +4,7 @@ import hmac
 import math
 import time
 import uuid
-from datetime import UTC, datetime, timezone
+from datetime import UTC, datetime
 
 import razorpay
 import structlog
@@ -12,11 +12,15 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
-from app.core.events import OrderCreatedEvent, OrderStatusChangedEvent, PaymentCapturedEvent, event_bus
+from app.core.events import (
+    OrderCreatedEvent,
+    OrderStatusChangedEvent,
+    PaymentCapturedEvent,
+    event_bus,
+)
 from app.core.exceptions import NotFoundError, ValidationError
 
 log = structlog.get_logger(__name__)
-from app.modules.orders.models import Order
 from app.modules.orders.repository import OrderRepository
 from app.modules.orders.schemas import (
     CancelOrderRequest,
@@ -33,12 +37,11 @@ from app.modules.orders.schemas import (
 _repo = OrderRepository()
 
 _CANCELLABLE_STATUSES = {"pending", "confirmed"}
-_FREE_SHIPPING_THRESHOLD = 999.0   # ₹999+ → free shipping
+_FREE_SHIPPING_THRESHOLD = 999.0  # ₹999+ → free shipping
 _SHIPPING_CHARGE = 99.0
 
 
 class OrderService:
-
     async def create_from_cart(
         self,
         db: AsyncSession,
@@ -47,6 +50,7 @@ class OrderService:
     ) -> OrderResponse:
         # 1. Fetch cart
         from app.modules.cart.repository import CartRepository
+
         cart_repo = CartRepository()
         cart = await cart_repo.get_for_user(db, user_id)
         if not cart or not cart.items:
@@ -93,19 +97,21 @@ class OrderService:
             tax_amt = round(pre_tax * tax_rate / 100, 2)
             line_total = round(pre_tax + tax_amt, 2)
 
-            line_items.append({
-                "id": uuid.uuid4(),
-                "product_id": ci.product_id,
-                "variant_id": ci.variant_id,
-                "product_name": prod.name,
-                "product_sku": prod.sku,
-                "variant_name": prod.variant_name,
-                "unit_price": unit_price,
-                "quantity": ci.quantity,
-                "tax_rate": tax_rate,
-                "tax_amount": tax_amt,
-                "line_total": line_total,
-            })
+            line_items.append(
+                {
+                    "id": uuid.uuid4(),
+                    "product_id": ci.product_id,
+                    "variant_id": ci.variant_id,
+                    "product_name": prod.name,
+                    "product_sku": prod.sku,
+                    "variant_name": prod.variant_name,
+                    "unit_price": unit_price,
+                    "quantity": ci.quantity,
+                    "tax_rate": tax_rate,
+                    "tax_amount": tax_amt,
+                    "line_total": line_total,
+                }
+            )
 
         # 5. Totals before coupon
         subtotal = round(sum(i["unit_price"] * i["quantity"] for i in line_items), 2)
@@ -118,6 +124,7 @@ class OrderService:
         coupon_code = None
         if payload.coupon_code:
             from app.modules.coupons.service import CouponService
+
             coupon_svc = CouponService()
             discount, coupon_id = await coupon_svc.apply_and_reserve(
                 db, payload.coupon_code, subtotal, user_id
@@ -126,6 +133,7 @@ class OrderService:
             # Free shipping coupon type overrides shipping charge
             if coupon_id:
                 from app.modules.coupons.repository import CouponRepository
+
                 c = await CouponRepository().get_by_id(db, coupon_id)
                 if c and c.coupon_type == "free_shipping":
                     shipping_charge = 0.0
@@ -179,6 +187,7 @@ class OrderService:
 
         # 9. Reserve inventory (deduct stock)
         from app.modules.inventory.service import InventoryService
+
         inv_svc = InventoryService()
         for item in line_items:
             await inv_svc.record_movement(
@@ -194,23 +203,28 @@ class OrderService:
         # 10. Finalize coupon usage
         if coupon_id:
             from app.modules.coupons.service import CouponService
+
             await CouponService().finalize_usage(db, coupon_id, user_id, order.id)
 
         # 11. Clear cart
         from app.modules.cart.repository import CartRepository
+
         await CartRepository().clear_items(db, cart.id)
 
         # 12. Publish event (recipient details resolved here so listeners stay DB-free)
         from app.modules.profiles.repository import ProfileRepository
+
         profile = await ProfileRepository().get_by_id(db, user_id)
-        await event_bus.publish(OrderCreatedEvent(
-            order_id=str(order.id),
-            user_id=str(user_id),
-            order_number=order_number,
-            total_amount=float(total),
-            customer_email=(profile.email if profile else "") or "",
-            customer_phone=(profile.phone if profile else None) or addr.get("phone") or "",
-        ))
+        await event_bus.publish(
+            OrderCreatedEvent(
+                order_id=str(order.id),
+                user_id=str(user_id),
+                order_number=order_number,
+                total_amount=float(total),
+                customer_email=(profile.email if profile else "") or "",
+                customer_phone=(profile.phone if profile else None) or addr.get("phone") or "",
+            )
+        )
 
         order = await _repo.get_by_id(db, order.id)
         return OrderResponse.model_validate(order)
@@ -234,18 +248,22 @@ class OrderService:
         page_size: int = 10,
         status: str | None = None,
     ) -> OrderListResponse:
-        items, total = await _repo.list_for_user(db, user_id, page=page, page_size=page_size, status=status)
+        items, total = await _repo.list_for_user(
+            db, user_id, page=page, page_size=page_size, status=status
+        )
         list_items = []
         for o in items:
-            list_items.append({
-                "id": o.id,
-                "order_number": o.order_number,
-                "status": o.status,
-                "payment_status": o.payment_status,
-                "total": float(o.total),
-                "item_count": getattr(o, "_item_count", 0),
-                "created_at": o.created_at,
-            })
+            list_items.append(
+                {
+                    "id": o.id,
+                    "order_number": o.order_number,
+                    "status": o.status,
+                    "payment_status": o.payment_status,
+                    "total": float(o.total),
+                    "item_count": getattr(o, "_item_count", 0),
+                    "created_at": o.created_at,
+                }
+            )
         return OrderListResponse(
             items=list_items,
             total=total,
@@ -320,12 +338,14 @@ class OrderService:
         prev_status = order.status
         updated = await _repo.update(db, order_id, data)
 
-        await event_bus.publish(OrderStatusChangedEvent(
-            order_id=str(order_id),
-            user_id=str(order.user_id),
-            old_status=prev_status,
-            new_status=payload.status,
-        ))
+        await event_bus.publish(
+            OrderStatusChangedEvent(
+                order_id=str(order_id),
+                user_id=str(order.user_id),
+                old_status=prev_status,
+                new_status=payload.status,
+            )
+        )
 
         return OrderResponse.model_validate(updated)
 
@@ -344,14 +364,19 @@ class OrderService:
         if order.status not in _CANCELLABLE_STATUSES:
             raise ValidationError(f"Order in '{order.status}' status cannot be cancelled")
 
-        updated = await _repo.update(db, order_id, {
-            "status": "cancelled",
-            "cancellation_reason": payload.reason,
-            "cancelled_at": datetime.now(UTC),
-        })
+        updated = await _repo.update(
+            db,
+            order_id,
+            {
+                "status": "cancelled",
+                "cancellation_reason": payload.reason,
+                "cancelled_at": datetime.now(UTC),
+            },
+        )
 
         # Return stock
         from app.modules.inventory.service import InventoryService
+
         inv_svc = InventoryService()
         for item in order.items:
             if item.product_id:
@@ -365,12 +390,14 @@ class OrderService:
                     reference_id=str(order_id),
                 )
 
-        await event_bus.publish(OrderStatusChangedEvent(
-            order_id=str(order_id),
-            user_id=str(user_id),
-            old_status=order.status,
-            new_status="cancelled",
-        ))
+        await event_bus.publish(
+            OrderStatusChangedEvent(
+                order_id=str(order_id),
+                user_id=str(user_id),
+                old_status=order.status,
+                new_status="cancelled",
+            )
+        )
 
         return OrderResponse.model_validate(updated)
 
@@ -388,6 +415,7 @@ class OrderService:
         """
         # 1. Fetch cart
         from app.modules.cart.repository import CartRepository
+
         cart_repo = CartRepository()
         cart = await cart_repo.get_for_user(db, user_id)
         if not cart or not cart.items:
@@ -431,19 +459,21 @@ class OrderService:
             tax_amt = round(pre_tax * tax_rate / 100, 2)
             line_total = round(pre_tax + tax_amt, 2)
 
-            line_items.append({
-                "id": uuid.uuid4(),
-                "product_id": ci.product_id,
-                "variant_id": ci.variant_id,
-                "product_name": prod.name,
-                "product_sku": prod.sku,
-                "variant_name": prod.variant_name,
-                "unit_price": unit_price,
-                "quantity": ci.quantity,
-                "tax_rate": tax_rate,
-                "tax_amount": tax_amt,
-                "line_total": line_total,
-            })
+            line_items.append(
+                {
+                    "id": uuid.uuid4(),
+                    "product_id": ci.product_id,
+                    "variant_id": ci.variant_id,
+                    "product_name": prod.name,
+                    "product_sku": prod.sku,
+                    "variant_name": prod.variant_name,
+                    "unit_price": unit_price,
+                    "quantity": ci.quantity,
+                    "tax_rate": tax_rate,
+                    "tax_amount": tax_amt,
+                    "line_total": line_total,
+                }
+            )
 
         # 4. Totals before coupon
         subtotal = round(sum(i["unit_price"] * i["quantity"] for i in line_items), 2)
@@ -456,6 +486,7 @@ class OrderService:
         coupon_code = None
         if payload.coupon_code:
             from app.modules.coupons.service import CouponService
+
             coupon_svc = CouponService()
             discount, coupon_id = await coupon_svc.apply_and_reserve(
                 db, payload.coupon_code, subtotal, user_id
@@ -463,6 +494,7 @@ class OrderService:
             coupon_code = payload.coupon_code.upper()
             if coupon_id:
                 from app.modules.coupons.repository import CouponRepository
+
                 c = await CouponRepository().get_by_id(db, coupon_id)
                 if c and c.coupon_type == "free_shipping":
                     shipping_charge = 0.0
@@ -578,14 +610,18 @@ class OrderService:
 
         # 2. Idempotency: already fulfilled
         if order.payment_status == "paid":
-            log.info("payment_already_verified", order_id=str(order.id), order_number=order.order_number)
+            log.info(
+                "payment_already_verified", order_id=str(order.id), order_number=order.order_number
+            )
             return VerifyOrderPaymentResponse(
                 success=True,
                 order_id=str(order.id),
                 order_number=order.order_number,
             )
 
-        log.info("payment_verification_started", order_id=str(order.id), order_number=order.order_number)
+        log.info(
+            "payment_verification_started", order_id=str(order.id), order_number=order.order_number
+        )
 
         # 3. Verify HMAC signature before any DB writes
         msg = f"{payload.razorpay_order_id}|{payload.razorpay_payment_id}"
@@ -602,6 +638,7 @@ class OrderService:
 
         # 4. Deduct inventory
         from app.modules.inventory.service import InventoryService
+
         inv_svc = InventoryService()
         for item in order.items:
             if item.product_id:
@@ -619,11 +656,13 @@ class OrderService:
         # 5. Finalize coupon
         if order.coupon_id:
             from app.modules.coupons.service import CouponService
+
             await CouponService().finalize_usage(db, order.coupon_id, user_id, order.id)
             log.info("coupon_finalized", order_id=str(order.id), coupon_id=str(order.coupon_id))
 
         # 6. Clear cart
         from app.modules.cart.repository import CartRepository
+
         cart_repo = CartRepository()
         cart = await cart_repo.get_for_user(db, user_id)
         if cart:
@@ -631,26 +670,34 @@ class OrderService:
 
         # 7. Record payment
         from app.modules.payments.repository import PaymentRepository
+
         now = datetime.now(UTC)
-        await PaymentRepository().create(db, {
-            "id": uuid.uuid4(),
-            "order_id": order.id,
-            "user_id": user_id,
-            "razorpay_order_id": payload.razorpay_order_id,
-            "razorpay_payment_id": payload.razorpay_payment_id,
-            "razorpay_signature": payload.razorpay_signature,
-            "amount": float(order.total),
-            "currency": settings.RAZORPAY_CURRENCY,
-            "status": "captured",
-            "captured_at": now,
-        })
+        await PaymentRepository().create(
+            db,
+            {
+                "id": uuid.uuid4(),
+                "order_id": order.id,
+                "user_id": user_id,
+                "razorpay_order_id": payload.razorpay_order_id,
+                "razorpay_payment_id": payload.razorpay_payment_id,
+                "razorpay_signature": payload.razorpay_signature,
+                "amount": float(order.total),
+                "currency": settings.RAZORPAY_CURRENCY,
+                "status": "captured",
+                "captured_at": now,
+            },
+        )
 
         # 8. Mark order as confirmed + paid
-        await _repo.update(db, order.id, {
-            "status": "confirmed",
-            "payment_status": "paid",
-            "razorpay_payment_id": payload.razorpay_payment_id,
-        })
+        await _repo.update(
+            db,
+            order.id,
+            {
+                "status": "confirmed",
+                "payment_status": "paid",
+                "razorpay_payment_id": payload.razorpay_payment_id,
+            },
+        )
         log.info("order_confirmed", order_id=str(order.id), order_number=order.order_number)
 
         # 9. Commit BEFORE publishing events.
@@ -664,27 +711,32 @@ class OrderService:
         # 10. Publish events — non-blocking, returns immediately.
         # Subsequent get_db commit (in the FastAPI dependency) is now a no-op.
         from app.modules.profiles.repository import ProfileRepository
+
         profile = await ProfileRepository().get_by_id(db, user_id)
         customer_email = (profile.email if profile else "") or ""
         customer_phone = (profile.phone if profile else None) or order.shipping_phone or ""
 
-        await event_bus.publish(OrderCreatedEvent(
-            order_id=str(order.id),
-            user_id=str(user_id),
-            order_number=order.order_number,
-            total_amount=float(order.total),
-            customer_email=customer_email,
-            customer_phone=customer_phone,
-        ))
-        await event_bus.publish(PaymentCapturedEvent(
-            order_id=str(order.id),
-            payment_id=payload.razorpay_payment_id,
-            user_id=str(user_id),
-            amount=float(order.total),
-            order_number=order.order_number,
-            customer_email=customer_email,
-            customer_phone=customer_phone,
-        ))
+        await event_bus.publish(
+            OrderCreatedEvent(
+                order_id=str(order.id),
+                user_id=str(user_id),
+                order_number=order.order_number,
+                total_amount=float(order.total),
+                customer_email=customer_email,
+                customer_phone=customer_phone,
+            )
+        )
+        await event_bus.publish(
+            PaymentCapturedEvent(
+                order_id=str(order.id),
+                payment_id=payload.razorpay_payment_id,
+                user_id=str(user_id),
+                amount=float(order.total),
+                order_number=order.order_number,
+                customer_email=customer_email,
+                customer_phone=customer_phone,
+            )
+        )
 
         duration_ms = round((time.perf_counter() - t0) * 1000)
         log.info(
@@ -705,6 +757,7 @@ class OrderService:
         self, db: AsyncSession, address_id: uuid.UUID, user_id: uuid.UUID
     ) -> dict:
         from app.modules.addresses.repository import AddressRepository
+
         addr = await AddressRepository().get(db, address_id, user_id)
         if not addr:
             raise NotFoundError("Address not found")

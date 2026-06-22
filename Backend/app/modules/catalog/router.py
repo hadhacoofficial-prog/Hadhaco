@@ -31,29 +31,32 @@ _PRODUCT_LIST_TTL = 300  # 5 minutes — catalog changes via admin only
 
 
 def _product_list_cache_key(**params) -> str:
-    h = hashlib.sha256(
-        json.dumps(params, sort_keys=True, default=str).encode()
-    ).hexdigest()[:12]
+    h = hashlib.sha256(json.dumps(params, sort_keys=True, default=str).encode()).hexdigest()[:12]
     return f"products:list:v1:{h}"
 
 
 async def _bust_product_list_cache(redis: aioredis.Redis) -> None:
     """Delete all cached product list pages after any catalog mutation."""
     from app.core.redis import redis_available
+
     if not redis_available():
         return
     try:
         import asyncio
+
         keys = await asyncio.wait_for(redis.keys("products:list:v1:*"), timeout=0.3)
         if keys:
             from app.core.redis import safe_redis_delete
+
             await safe_redis_delete(redis, *keys)
     except Exception:
         from app.core.redis import mark_redis_error
+
         mark_redis_error()
 
 
 # ---------- Public ----------
+
 
 @router.get("/products", response_model=BaseSuccessResponse[ProductListResponse])
 async def list_products(
@@ -78,16 +81,25 @@ async def list_products(
     resolved_category_id = category_id
     if category_slug and not category_id:
         from app.modules.categories.repository import CategoryRepository
+
         cat = await CategoryRepository().get_by_slug(db, category_slug)
         if cat:
             resolved_category_id = cat.id
 
     cache_key = _product_list_cache_key(
-        page=page, page_size=page_size, category_id=resolved_category_id,
-        metal_type=metal_type, gender=gender, is_featured=is_featured,
-        is_new_arrival=is_new_arrival, is_best_seller=is_best_seller,
-        min_price=min_price, max_price=max_price, search=search,
-        sort_by=sort_by, sort_dir=sort_dir,
+        page=page,
+        page_size=page_size,
+        category_id=resolved_category_id,
+        metal_type=metal_type,
+        gender=gender,
+        is_featured=is_featured,
+        is_new_arrival=is_new_arrival,
+        is_best_seller=is_best_seller,
+        min_price=min_price,
+        max_price=max_price,
+        search=search,
+        sort_by=sort_by,
+        sort_dir=sort_dir,
     )
     cached = await safe_redis_get(redis, cache_key)
     if cached:
@@ -126,6 +138,7 @@ async def get_product_by_slug(slug: str, db: AsyncSession = Depends(get_db)):
 
 # ---------- Admin ----------
 
+
 @router.get(
     "/admin/products",
     response_model=BaseSuccessResponse[ProductListResponse],
@@ -139,7 +152,9 @@ async def admin_list_products(
     metal_type: str | None = None,
     gender: str | None = None,
     search: str | None = Query(None, max_length=200),
-    sort_by: str = Query("created_at", pattern="^(created_at|base_price|name|stock_quantity|status)$"),
+    sort_by: str = Query(
+        "created_at", pattern="^(created_at|base_price|name|stock_quantity|status)$"
+    ),
     sort_dir: str = Query("desc", pattern="^(asc|desc)$"),
     db: AsyncSession = Depends(get_db),
 ):
@@ -170,6 +185,7 @@ async def create_product(
     redis: aioredis.Redis = Depends(get_redis),
 ):
     from app.common.responses import created
+
     result = await _service.create(db, payload)
     await _bust_product_list_cache(redis)
     return created(result, ResponseCode.PRODUCT_CREATED, "Product created successfully")
@@ -184,8 +200,11 @@ async def generate_sku(
     prefix: str = Query("XX", max_length=4),
     db: AsyncSession = Depends(get_db),
 ):
-    from sqlalchemy import func, select as sa_select
+    from sqlalchemy import func
+    from sqlalchemy import select as sa_select
+
     from app.modules.catalog.models import Product
+
     count_result = await db.execute(
         sa_select(func.count(Product.id)).where(Product.deleted_at.is_(None))
     )
@@ -239,6 +258,7 @@ async def delete_product(
 
 # ---------- Variants ----------
 
+
 @router.post(
     "/admin/products/{product_id}/variants",
     response_model=BaseSuccessResponse[ProductVariantResponse],
@@ -252,6 +272,7 @@ async def add_variant(
     redis: aioredis.Redis = Depends(get_redis),
 ):
     from app.common.responses import created
+
     variant = await _service.add_variant(db, product_id, payload)
     await _bust_product_list_cache(redis)
     return created(
@@ -299,6 +320,7 @@ async def delete_variant(
 
 # ---------- Attributes ----------
 
+
 @router.put(
     "/admin/products/{product_id}/attributes",
     response_model=BaseSuccessResponse[None],
@@ -331,6 +353,7 @@ async def delete_attribute(
 
 # ---------- Stock ----------
 
+
 @router.get(
     "/admin/products/{product_id}/collections",
     response_model=BaseSuccessResponse[list],
@@ -338,15 +361,19 @@ async def delete_attribute(
 )
 async def get_product_collections(product_id: uuid.UUID, db: AsyncSession = Depends(get_db)):
     from sqlalchemy import select as sa_select
+
     from app.modules.collections.models import Collection, ProductCollection
     from app.modules.collections.schemas import CollectionResponse as CR
+
     result = await db.execute(
         sa_select(Collection)
         .join(ProductCollection, ProductCollection.collection_id == Collection.id)
         .where(ProductCollection.product_id == product_id, Collection.deleted_at.is_(None))
     )
     cols = list(result.scalars().all())
-    return ok([CR.model_validate(c) for c in cols], ResponseCode.COLLECTION_LISTED, "Product collections")
+    return ok(
+        [CR.model_validate(c) for c in cols], ResponseCode.COLLECTION_LISTED, "Product collections"
+    )
 
 
 @router.post(
@@ -360,4 +387,8 @@ async def adjust_stock(
     db: AsyncSession = Depends(get_db),
 ):
     new_qty = await _service.adjust_stock(db, product_id, payload)
-    return ok({"stock_quantity": new_qty}, ResponseCode.PRODUCT_STOCK_ADJUSTED, "Stock adjusted successfully")
+    return ok(
+        {"stock_quantity": new_qty},
+        ResponseCode.PRODUCT_STOCK_ADJUSTED,
+        "Stock adjusted successfully",
+    )

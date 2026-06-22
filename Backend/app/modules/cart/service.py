@@ -1,15 +1,13 @@
 import uuid
-from typing import Any
 
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import NotFoundError, ValidationError
-from app.modules.cart.models import Cart, CartItem
+from app.modules.cart.models import Cart
 from app.modules.cart.repository import CartRepository
 from app.modules.cart.schemas import (
     AddToCartRequest,
-    ApplyCouponRequest,
     CartItemResponse,
     CartSummary,
     UpdateCartItemRequest,
@@ -40,7 +38,6 @@ def _build_summary(cart: Cart) -> CartSummary:
 
 
 class CartService:
-
     async def _get_or_create(
         self,
         db: AsyncSession,
@@ -59,7 +56,9 @@ class CartService:
             raise ValidationError("Either user_id or session_id is required")
         return cart
 
-    async def _fetch_product_price(self, db: AsyncSession, product_id: uuid.UUID, variant_id: uuid.UUID | None) -> float:
+    async def _fetch_product_price(
+        self, db: AsyncSession, product_id: uuid.UUID, variant_id: uuid.UUID | None
+    ) -> float:
         if variant_id:
             row = await db.execute(
                 text(
@@ -101,7 +100,9 @@ class CartService:
     ) -> CartSummary:
         cart = await self._get_or_create(db, user_id, session_id)
         unit_price = await self._fetch_product_price(db, payload.product_id, payload.variant_id)
-        await _repo.upsert_item(db, cart.id, payload.product_id, payload.variant_id, payload.quantity, unit_price)
+        await _repo.upsert_item(
+            db, cart.id, payload.product_id, payload.variant_id, payload.quantity, unit_price
+        )
         # Reload with fresh items
         cart = await _repo.get_by_id(db, cart.id)
         return _build_summary(cart)

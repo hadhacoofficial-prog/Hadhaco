@@ -1,4 +1,5 @@
 from contextlib import asynccontextmanager
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
@@ -19,6 +20,7 @@ async def lifespan(app: FastAPI):
     configure_logging(debug=settings.APP_DEBUG, log_sql=settings.LOG_SQL)
 
     import structlog as _structlog
+
     _log = _structlog.get_logger("app.startup")
 
     # ── Verify Resend API key is live ─────────────────────────────────────────
@@ -28,6 +30,7 @@ async def lifespan(app: FastAPI):
     # (Resend might be temporarily unreachable) but we DO abort on 401/403.
     try:
         import httpx as _httpx
+
         async with _httpx.AsyncClient(timeout=5.0) as _hc:
             _r = await _hc.get(
                 "https://api.resend.com/domains",
@@ -41,6 +44,7 @@ async def lifespan(app: FastAPI):
             )
         if _r.status_code == 200:
             import json as _json
+
             _domains = _json.loads(_r.text).get("data", [])
             _verified = [d["name"] for d in _domains if d.get("status") == "verified"]
             _log.info("resend_connected", verified_domains=_verified)
@@ -53,13 +57,17 @@ async def lifespan(app: FastAPI):
         _log.warning("resend_probe_failed", error=str(_exc))
 
     # Register domain event listeners
+    from app.modules.notifications.service import (
+        register_listeners as register_notification_listeners,
+    )
     from app.modules.shipping.service import register_shipping_listeners
-    from app.modules.notifications.service import register_listeners as register_notification_listeners
+
     register_shipping_listeners()
     register_notification_listeners()
 
     # Start background job scheduler (shipment sync, notification retry, etc.)
     from app.workers.queue import build_queue
+
     queue = build_queue()
     queue.start()
 
@@ -87,8 +95,10 @@ def create_app() -> FastAPI:
 
     # Middleware execution order (request in): CORS → Audit → Security → RequestID → RequestLogging → app
     # Starlette executes last-added first, so we add them in reverse execution order.
-    app.add_middleware(RequestLoggingMiddleware)  # innermost: runs after RequestID has bound context
-    app.add_middleware(RequestIDMiddleware)        # binds request_id, method, path to context vars
+    app.add_middleware(
+        RequestLoggingMiddleware
+    )  # innermost: runs after RequestID has bound context
+    app.add_middleware(RequestIDMiddleware)  # binds request_id, method, path to context vars
     app.add_middleware(SecurityHeadersMiddleware)
     app.add_middleware(AuditMiddleware)
 
@@ -110,34 +120,34 @@ def create_app() -> FastAPI:
 def _mount_routers(app: FastAPI) -> None:
     prefix = settings.API_V1_PREFIX
 
-    from app.modules.auth.router import router as auth_router
-    from app.modules.profiles.router import router as profiles_router
-    from app.modules.categories.router import router as categories_router
-    from app.modules.collections.router import router as collections_router
-    from app.modules.catalog.router import router as catalog_router
-    from app.modules.media.router import router as media_router
-    from app.modules.search.router import router as search_router
-    from app.modules.seo.router import router as seo_router
-    from app.modules.inventory.router import router as inventory_router
     from app.modules.addresses.router import router as addresses_router
-    from app.modules.wishlist.router import router as wishlist_router
+    from app.modules.admin.router import router as admin_router
+    from app.modules.analytics.router import router as analytics_router
+    from app.modules.auth.router import router as auth_router
     from app.modules.cart.router import router as cart_router
+    from app.modules.catalog.router import router as catalog_router
+    from app.modules.categories.router import router as categories_router
+    from app.modules.cms.router import router as cms_router
+    from app.modules.collections.router import router as collections_router
     from app.modules.coupons.router import router as coupons_router
+    from app.modules.dev_auth.router import router as dev_auth_router
+    from app.modules.fraud.router import router as fraud_router
+    from app.modules.inventory.router import router as inventory_router
+    from app.modules.invoices.router import router as invoices_router
+    from app.modules.media.router import router as media_router
+    from app.modules.notifications.router import router as notifications_router
     from app.modules.orders.router import router as orders_router
     from app.modules.payments.router import router as payments_router
-    from app.modules.invoices.router import router as invoices_router
-    from app.modules.webhooks.router import router as webhooks_router
-    from app.modules.shipping.router import router as shipping_router
-    from app.modules.reviews.router import router as reviews_router
-    from app.modules.cms.router import router as cms_router
-    from app.modules.analytics.router import router as analytics_router
+    from app.modules.profiles.router import router as profiles_router
     from app.modules.returns.router import router as returns_router
-    from app.modules.support.router import router as support_router
-    from app.modules.notifications.router import router as notifications_router
-    from app.modules.fraud.router import router as fraud_router
+    from app.modules.reviews.router import router as reviews_router
+    from app.modules.search.router import router as search_router
+    from app.modules.seo.router import router as seo_router
     from app.modules.settings.router import router as settings_router
-    from app.modules.admin.router import router as admin_router
-    from app.modules.dev_auth.router import router as dev_auth_router
+    from app.modules.shipping.router import router as shipping_router
+    from app.modules.support.router import router as support_router
+    from app.modules.webhooks.router import router as webhooks_router
+    from app.modules.wishlist.router import router as wishlist_router
 
     app.include_router(dev_auth_router, prefix=prefix, tags=["dev-auth"])
     app.include_router(auth_router, prefix=prefix, tags=["auth"])
@@ -168,16 +178,17 @@ def _mount_routers(app: FastAPI) -> None:
     app.include_router(settings_router, prefix=prefix, tags=["settings"])
     app.include_router(admin_router, prefix=prefix, tags=["admin"])
 
-
     @app.get("/health", tags=["ops"], include_in_schema=False)
     async def health() -> dict:
         return {"status": "ok", "version": settings.APP_VERSION}
 
     @app.get("/health/ready", tags=["ops"], include_in_schema=False)
     async def readiness() -> dict:
+        from sqlalchemy import text
+
         from app.core.database import AsyncSessionLocal
         from app.core.redis import get_redis
-        from sqlalchemy import text
+
         checks: dict = {}
         try:
             async with AsyncSessionLocal() as db:
@@ -195,9 +206,12 @@ def _mount_routers(app: FastAPI) -> None:
 
         healthy = all(v == "ok" for v in checks.values())
         from fastapi import Response
+
         status_code = 200 if healthy else 503
         return Response(
-            content=__import__("json").dumps({"status": "ready" if healthy else "degraded", "checks": checks}),
+            content=__import__("json").dumps(
+                {"status": "ready" if healthy else "degraded", "checks": checks}
+            ),
             status_code=status_code,
             media_type="application/json",
         )

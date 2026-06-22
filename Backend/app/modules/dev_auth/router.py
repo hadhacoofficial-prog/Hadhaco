@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
-
 import structlog
 from fastapi import APIRouter, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -25,15 +23,28 @@ _svc = DevAuthService()
 _ROLE_PERMISSIONS: dict[str, list[str]] = {
     "customer": ["read:own_profile", "read:products", "write:own_orders", "write:own_cart"],
     "admin": [
-        "read:own_profile", "read:products", "write:own_orders", "write:own_cart",
-        "admin:read_all", "admin:write_products", "admin:write_orders",
-        "admin:write_users", "admin:write_cms",
+        "read:own_profile",
+        "read:products",
+        "write:own_orders",
+        "write:own_cart",
+        "admin:read_all",
+        "admin:write_products",
+        "admin:write_orders",
+        "admin:write_users",
+        "admin:write_cms",
     ],
     "super_admin": [
-        "read:own_profile", "read:products", "write:own_orders", "write:own_cart",
-        "admin:read_all", "admin:write_products", "admin:write_orders",
-        "admin:write_users", "admin:write_cms",
-        "super_admin:manage_roles", "super_admin:force_logout",
+        "read:own_profile",
+        "read:products",
+        "write:own_orders",
+        "write:own_cart",
+        "admin:read_all",
+        "admin:write_products",
+        "admin:write_orders",
+        "admin:write_users",
+        "admin:write_cms",
+        "super_admin:manage_roles",
+        "super_admin:force_logout",
         "super_admin:manage_settings",
     ],
 }

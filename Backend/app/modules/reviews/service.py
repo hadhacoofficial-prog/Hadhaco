@@ -101,7 +101,9 @@ class ReviewService:
             db, product_id=product_id, approved_only=True, offset=offset, limit=limit
         )
 
-    async def rating_summary(self, db: AsyncSession, product_id: uuid.UUID) -> dict[str, Any] | None:
+    async def rating_summary(
+        self, db: AsyncSession, product_id: uuid.UUID
+    ) -> dict[str, Any] | None:
         return await self._repo.rating_summary(db, product_id)
 
     # ── Votes ─────────────────────────────────────────────────────────────────
@@ -119,15 +121,15 @@ class ReviewService:
             raise HTTPException(status.HTTP_404_NOT_FOUND, "Review not found")
         if review.user_id == user_id:
             raise HTTPException(status.HTTP_400_BAD_REQUEST, "Cannot vote on your own review")
-        vote = await self._repo.upsert_vote(db, review_id=review_id, user_id=user_id, is_helpful=is_helpful)
+        vote = await self._repo.upsert_vote(
+            db, review_id=review_id, user_id=user_id, is_helpful=is_helpful
+        )
         await db.commit()
         return vote
 
     # ── Admin ─────────────────────────────────────────────────────────────────
 
-    async def admin_action(
-        self, db: AsyncSession, *, review_id: uuid.UUID, action: str
-    ) -> Review:
+    async def admin_action(self, db: AsyncSession, *, review_id: uuid.UUID, action: str) -> Review:
         review = await self._repo.get_by_id(db, review_id)
         if not review:
             raise HTTPException(status.HTTP_404_NOT_FOUND, "Review not found")
@@ -153,6 +155,7 @@ class ReviewService:
     @staticmethod
     def register_review_request_listener() -> None:
         """Subscribe to ReviewRequestEvent (fired after order delivery)."""
+
         # ReviewRequestEvent is informational — could trigger email/push.
         # Implementation here is a no-op hook; notification module handles delivery.
         async def _on_review_request(event: ReviewRequestEvent) -> None:

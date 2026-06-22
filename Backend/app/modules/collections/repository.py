@@ -8,7 +8,6 @@ from app.modules.collections.models import Collection, ProductCollection
 
 
 class CollectionRepository:
-
     async def get_by_id(self, db: AsyncSession, col_id: str | uuid.UUID) -> Collection | None:
         result = await db.execute(
             select(Collection).where(Collection.id == col_id, Collection.deleted_at.is_(None))
@@ -36,27 +35,38 @@ class CollectionRepository:
         await db.refresh(col)
         return col
 
-    async def update(self, db: AsyncSession, col_id: str | uuid.UUID, data: dict[str, Any]) -> Collection | None:
+    async def update(
+        self, db: AsyncSession, col_id: str | uuid.UUID, data: dict[str, Any]
+    ) -> Collection | None:
         await db.execute(update(Collection).where(Collection.id == col_id).values(**data))
         return await self.get_by_id(db, col_id)
 
     async def soft_delete(self, db: AsyncSession, col_id: str | uuid.UUID) -> None:
-        from datetime import UTC, datetime, timezone
+        from datetime import UTC, datetime
+
         await db.execute(
-            update(Collection).where(Collection.id == col_id)
+            update(Collection)
+            .where(Collection.id == col_id)
             .values(deleted_at=datetime.now(UTC), is_active=False)
         )
 
-    async def add_products(self, db: AsyncSession, col_id: uuid.UUID, product_ids: list[uuid.UUID]) -> None:
+    async def add_products(
+        self, db: AsyncSession, col_id: uuid.UUID, product_ids: list[uuid.UUID]
+    ) -> None:
         for pid in product_ids:
             # Upsert via INSERT ... ON CONFLICT DO NOTHING
             from sqlalchemy.dialects.postgresql import insert as pg_insert
-            stmt = pg_insert(ProductCollection).values(
-                product_id=pid, collection_id=col_id, sort_order=0
-            ).on_conflict_do_nothing()
+
+            stmt = (
+                pg_insert(ProductCollection)
+                .values(product_id=pid, collection_id=col_id, sort_order=0)
+                .on_conflict_do_nothing()
+            )
             await db.execute(stmt)
 
-    async def remove_product(self, db: AsyncSession, col_id: uuid.UUID, product_id: uuid.UUID) -> None:
+    async def remove_product(
+        self, db: AsyncSession, col_id: uuid.UUID, product_id: uuid.UUID
+    ) -> None:
         await db.execute(
             delete(ProductCollection).where(
                 ProductCollection.collection_id == col_id,

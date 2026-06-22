@@ -21,11 +21,9 @@ from app.modules.profiles.models import Admin2FA, AdminSession, Profile
 
 
 class AuthService:
-
-    async def verify_token_and_get_profile(
-        self, db: AsyncSession, user_id: str
-    ) -> Profile:
+    async def verify_token_and_get_profile(self, db: AsyncSession, user_id: str) -> Profile:
         from app.modules.profiles.repository import ProfileRepository
+
         repo = ProfileRepository()
         profile = await repo.get_by_id(db, user_id)
         if not profile:
@@ -61,9 +59,7 @@ class AuthService:
         encrypted_secret = encrypt_value(secret)
 
         # Upsert
-        existing = await db.execute(
-            select(Admin2FA).where(Admin2FA.user_id == user_id)
-        )
+        existing = await db.execute(select(Admin2FA).where(Admin2FA.user_id == user_id))
         record = existing.scalar_one_or_none()
 
         if record:
@@ -73,13 +69,15 @@ class AuthService:
                 .values(totp_secret=encrypted_secret, is_enabled=False, backup_codes="[]")
             )
         else:
-            db.add(Admin2FA(
-                id=uuid.uuid4(),
-                user_id=uuid.UUID(user_id),
-                totp_secret=encrypted_secret,
-                is_enabled=False,
-                backup_codes="[]",
-            ))
+            db.add(
+                Admin2FA(
+                    id=uuid.uuid4(),
+                    user_id=uuid.UUID(user_id),
+                    totp_secret=encrypted_secret,
+                    is_enabled=False,
+                    backup_codes="[]",
+                )
+            )
 
         return {
             "totp_uri": uri,
@@ -104,7 +102,8 @@ class AuthService:
         plain_codes = generate_backup_codes()
         hashed_codes = json.dumps([hash_backup_code(c) for c in plain_codes])
 
-        from datetime import UTC, datetime, timezone
+        from datetime import UTC, datetime
+
         await db.execute(
             update(Admin2FA)
             .where(Admin2FA.user_id == user_id)
@@ -116,9 +115,7 @@ class AuthService:
         )
         return plain_codes
 
-    async def validate_2fa(
-        self, db: AsyncSession, user_id: str, totp_code: str
-    ) -> bool:
+    async def validate_2fa(self, db: AsyncSession, user_id: str, totp_code: str) -> bool:
         """
         Validate TOTP code on every admin login. Also accepts backup codes.
         Consumes backup code if matched (removes from list).
@@ -148,6 +145,7 @@ class AuthService:
     async def logout(self, db: AsyncSession, user_id: str) -> None:
         """Revoke Supabase session via service role API."""
         import httpx
+
         async with httpx.AsyncClient() as client:
             await client.post(
                 f"{settings.SUPABASE_URL}/auth/v1/admin/users/{user_id}/logout",
@@ -168,17 +166,17 @@ class AuthService:
         ip_address: str,
         user_agent: str | None = None,
     ) -> None:
-        db.add(AdminSession(
-            id=uuid.uuid4(),
-            user_id=uuid.UUID(user_id),
-            ip_address=ip_address,
-            user_agent=user_agent,
-        ))
+        db.add(
+            AdminSession(
+                id=uuid.uuid4(),
+                user_id=uuid.UUID(user_id),
+                ip_address=ip_address,
+                user_agent=user_agent,
+            )
+        )
 
     async def _get_2fa_record(self, db: AsyncSession, user_id: str) -> Admin2FA:
-        result = await db.execute(
-            select(Admin2FA).where(Admin2FA.user_id == user_id)
-        )
+        result = await db.execute(select(Admin2FA).where(Admin2FA.user_id == user_id))
         record = result.scalar_one_or_none()
         if not record:
             raise NotFoundError("2FA not configured for this account")

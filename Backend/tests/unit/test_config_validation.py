@@ -1,6 +1,6 @@
 import pytest
 
-from app.core.config import Settings, validate_required_settings, settings
+from app.core.config import Settings, settings, validate_required_settings
 
 
 class TestConfigValidation:

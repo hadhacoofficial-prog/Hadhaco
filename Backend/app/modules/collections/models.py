@@ -24,8 +24,12 @@ class Collection(Base):
     starts_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     ends_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
-    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now())
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now()
+    )
 
     __table_args__ = (
         Index("idx_collections_slug", "slug"),
@@ -45,6 +49,4 @@ class ProductCollection(Base):
     )
     sort_order: Mapped[int] = mapped_column(Integer, default=0)
 
-    __table_args__ = (
-        Index("idx_product_collections_col", "collection_id"),
-    )
+    __table_args__ = (Index("idx_product_collections_col", "collection_id"),)

@@ -2,6 +2,7 @@
 Promote CMS sections whose status='scheduled' and scheduled_at <= now() to published.
 Runs every 60 seconds so sections go live within a minute of their scheduled time.
 """
+
 from __future__ import annotations
 
 import time

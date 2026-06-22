@@ -7,7 +7,9 @@ from pydantic import BaseModel, Field, field_validator
 class CouponCreateRequest(BaseModel):
     code: str = Field(..., min_length=1, max_length=50)
     description: str | None = None
-    coupon_type: str = Field(default="percentage", pattern="^(percentage|fixed_amount|free_shipping)$")
+    coupon_type: str = Field(
+        default="percentage", pattern="^(percentage|fixed_amount|free_shipping)$"
+    )
     value: float = Field(..., gt=0)
     min_order_amount: float = Field(default=0.0, ge=0)
     max_discount: float | None = Field(None, gt=0)

@@ -4,18 +4,17 @@ import uuid
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.constants import UserRole
-from app.core.exceptions import ConflictError, NotFoundError
+from app.core.exceptions import NotFoundError
 from app.modules.profiles.models import Profile
 from app.modules.profiles.repository import ProfileRepository
 from app.modules.profiles.schemas import (
-    AdminUserListResponse,
     AdminUserListItem,
+    AdminUserListResponse,
     ProfileUpdateRequest,
 )
 
 
 class ProfileService:
-
     def __init__(self) -> None:
         self._repo = ProfileRepository()
 
@@ -96,6 +95,7 @@ class ProfileService:
 
         # Audit log
         from app.modules.audit.service import AuditService
+
         audit = AuditService()
         await audit.log(
             db,
@@ -121,6 +121,7 @@ class ProfileService:
         updated = await self._repo.update(db, target_user_id, {"is_active": is_active})
 
         from app.modules.audit.service import AuditService
+
         audit = AuditService()
         await audit.log(
             db,

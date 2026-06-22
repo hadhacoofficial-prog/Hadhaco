@@ -16,7 +16,7 @@ _redis_pool: aioredis.Redis | None = None
 _circuit_ok: bool = True
 _circuit_failed_at: float = 0.0
 _CIRCUIT_RETRY_AFTER: float = 30.0  # seconds before retrying a down Redis
-_REDIS_OP_TIMEOUT: float = 0.3      # max seconds per cache operation
+_REDIS_OP_TIMEOUT: float = 0.3  # max seconds per cache operation
 
 
 def redis_available() -> bool:
@@ -115,6 +115,7 @@ class RedisCache:
 
     async def get(self, key: str) -> Any | None:
         import json
+
         value = await self._redis.get(key)
         if value is None:
             return None
@@ -122,6 +123,7 @@ class RedisCache:
 
     async def set(self, key: str, value: Any, ttl: int | None = None) -> None:
         import json
+
         serialized = json.dumps(value, default=str)
         await self._redis.set(key, serialized, ex=ttl or settings.REDIS_CACHE_TTL)
 

@@ -9,7 +9,6 @@ from app.modules.catalog.models import Product, ProductAttribute, ProductImage, 
 
 
 class ProductRepository:
-
     def _base_query(self, include_deleted: bool = False):
         q = select(Product).options(
             selectinload(Product.images),
@@ -125,9 +124,11 @@ class ProductRepository:
         return await self.get_by_id(db, product_id)
 
     async def soft_delete(self, db: AsyncSession, product_id: uuid.UUID) -> None:
-        from datetime import UTC, datetime, timezone
+        from datetime import UTC, datetime
+
         await db.execute(
-            update(Product).where(Product.id == product_id)
+            update(Product)
+            .where(Product.id == product_id)
             .values(deleted_at=datetime.now(UTC), status="archived")
         )
 
@@ -141,16 +142,16 @@ class ProductRepository:
         return img
 
     async def delete_image(self, db: AsyncSession, image_id: uuid.UUID) -> bool:
-        result = await db.execute(
-            select(ProductImage).where(ProductImage.id == image_id)
-        )
+        result = await db.execute(select(ProductImage).where(ProductImage.id == image_id))
         img = result.scalar_one_or_none()
         if not img:
             return False
         await db.delete(img)
         return True
 
-    async def set_primary_image(self, db: AsyncSession, product_id: uuid.UUID, image_id: uuid.UUID) -> None:
+    async def set_primary_image(
+        self, db: AsyncSession, product_id: uuid.UUID, image_id: uuid.UUID
+    ) -> None:
         # Clear all
         await db.execute(
             update(ProductImage)
@@ -159,9 +160,7 @@ class ProductRepository:
         )
         # Set new primary
         await db.execute(
-            update(ProductImage)
-            .where(ProductImage.id == image_id)
-            .values(is_primary=True)
+            update(ProductImage).where(ProductImage.id == image_id).values(is_primary=True)
         )
 
     # ---------- Variants ----------
@@ -180,7 +179,9 @@ class ProductRepository:
     async def update_variant(
         self, db: AsyncSession, variant_id: uuid.UUID, data: dict[str, Any]
     ) -> ProductVariant | None:
-        await db.execute(update(ProductVariant).where(ProductVariant.id == variant_id).values(**data))
+        await db.execute(
+            update(ProductVariant).where(ProductVariant.id == variant_id).values(**data)
+        )
         return await self.get_variant(db, variant_id)
 
     async def delete_variant(self, db: AsyncSession, variant_id: uuid.UUID) -> bool:
@@ -233,9 +234,7 @@ class ProductRepository:
 
     # ---------- Stock ----------
 
-    async def adjust_stock(
-        self, db: AsyncSession, product_id: uuid.UUID, delta: int
-    ) -> int:
+    async def adjust_stock(self, db: AsyncSession, product_id: uuid.UUID, delta: int) -> int:
         """Atomically adjusts stock. Returns new quantity."""
         result = await db.execute(
             text(

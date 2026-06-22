@@ -1,9 +1,8 @@
 import uuid
-from datetime import UTC, datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from sqlalchemy import delete, select, update
-from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -14,7 +13,6 @@ _AUTHENTICATED_CART_TTL_DAYS = 90
 
 
 class CartRepository:
-
     def _expiry(self, authenticated: bool = False) -> datetime:
         days = _AUTHENTICATED_CART_TTL_DAYS if authenticated else _CART_TTL_DAYS
         return datetime.now(UTC) + timedelta(days=days)
@@ -46,7 +44,9 @@ class CartRepository:
         )
         return result.scalar_one_or_none()
 
-    async def create(self, db: AsyncSession, user_id: uuid.UUID | None, session_id: str | None) -> Cart:
+    async def create(
+        self, db: AsyncSession, user_id: uuid.UUID | None, session_id: str | None
+    ) -> Cart:
         cart = Cart(
             id=uuid.uuid4(),
             user_id=user_id,
@@ -72,7 +72,11 @@ class CartRepository:
             CartItem.cart_id == cart_id,
             CartItem.product_id == product_id,
         )
-        q = q.where(CartItem.variant_id == variant_id) if variant_id else q.where(CartItem.variant_id.is_(None))
+        q = (
+            q.where(CartItem.variant_id == variant_id)
+            if variant_id
+            else q.where(CartItem.variant_id.is_(None))
+        )
         result = await db.execute(q)
         existing = result.scalar_one_or_none()
 
@@ -126,7 +130,5 @@ class CartRepository:
             )
         # Expire guest cart immediately
         await db.execute(
-            update(Cart)
-            .where(Cart.id == guest_cart.id)
-            .values(expires_at=datetime.now(UTC))
+            update(Cart).where(Cart.id == guest_cart.id).values(expires_at=datetime.now(UTC))
         )

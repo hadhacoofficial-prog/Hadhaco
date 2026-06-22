@@ -2,6 +2,7 @@
 Retry notifications stuck in 'retrying' whose next_retry_at has passed.
 Run every NOTIFICATION_RETRY_INTERVAL seconds.
 """
+
 from __future__ import annotations
 
 import time
@@ -30,4 +31,5 @@ async def run() -> None:
 
 if __name__ == "__main__":
     import asyncio
+
     asyncio.run(run())

@@ -1,5 +1,4 @@
 from functools import lru_cache
-from typing import Optional
 
 from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -17,7 +16,7 @@ class Settings(BaseSettings):
     APP_NAME: str = "Hadha.co"
     APP_ENV: str = "development"
     APP_DEBUG: bool = False
-    LOG_SQL: bool = False       # echo SQL statements; never enable in production
+    LOG_SQL: bool = False  # echo SQL statements; never enable in production
     APP_VERSION: str = "1.0.0"
     ENABLE_DEV_AUTH: bool = False
 
@@ -35,12 +34,12 @@ class Settings(BaseSettings):
 
     # ── Supabase ───────────────────────────────────────────────────────────────
     SUPABASE_URL: str
-    SUPABASE_ANON_KEY: str = ""   # legacy var name
-    SUPABASE_KEY: str = ""        # publishable/anon key (new format: sb_publishable_*)
+    SUPABASE_ANON_KEY: str = ""  # legacy var name
+    SUPABASE_KEY: str = ""  # publishable/anon key (new format: sb_publishable_*)
     SUPABASE_SERVICE_ROLE_KEY: str
 
     # ── JWT / JWKS ─────────────────────────────────────────────────────────────
-    JWKS_CACHE_TTL: int = 600     # seconds between JWKS refreshes (10 minutes)
+    JWKS_CACHE_TTL: int = 600  # seconds between JWKS refreshes (10 minutes)
 
     @property
     def supabase_anon_key(self) -> str:
@@ -78,7 +77,7 @@ class Settings(BaseSettings):
 
     # ── Email ──────────────────────────────────────────────────────────────────
     RESEND_API_KEY: str
-    EMAIL_FROM: str          # must be from a domain verified in your Resend dashboard
+    EMAIL_FROM: str  # must be from a domain verified in your Resend dashboard
     EMAIL_REPLY_TO: str
     EMAIL_FROM_NAME: str = "Hadha.co"
     ADMIN_ALERT_EMAIL: str = "admin@hadha.co"
@@ -230,9 +229,9 @@ def validate_required_settings(s: Settings) -> None:
     # it at startup before any requests arrive.
     if s.RESEND_API_KEY and not s.RESEND_API_KEY.startswith("re_"):
         raise SystemExit(
-            f"\n[Hadha.co] RESEND_API_KEY does not look like a valid Resend API key "
-            f"(expected it to start with 're_').\n"
-            f"Generate a fresh key at https://resend.com/api-keys and update your .env.\n"
+            "\n[Hadha.co] RESEND_API_KEY does not look like a valid Resend API key "
+            "(expected it to start with 're_').\n"
+            "Generate a fresh key at https://resend.com/api-keys and update your .env.\n"
         )
 
     # Validate EMAIL_FROM contains an '@' — catches obvious misconfiguration.

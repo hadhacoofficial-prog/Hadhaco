@@ -7,6 +7,7 @@ a real PostgreSQL.
 
 Usage: python scripts/check_sql_order.py
 """
+
 import re
 import sys
 from pathlib import Path
@@ -34,7 +35,8 @@ def main() -> int:
 
         for m in re.finditer(
             r"CREATE (?:TABLE|VIEW|MATERIALIZED VIEW)(?: IF NOT EXISTS)?\s+(?:public\.)?([a-z_0-9]+)",
-            text, re.I,
+            text,
+            re.I,
         ):
             created.add(norm(m.group(1)))
         for m in re.finditer(
@@ -62,7 +64,8 @@ def main() -> int:
 
         for m in re.finditer(
             r"CREATE TRIGGER\s+\w+\s+(?:BEFORE|AFTER)\s+[\w\s,]+?\bON\s+((?:public\.|auth\.)?[a-z_0-9]+)",
-            text, re.I,
+            text,
+            re.I,
         ):
             ref = m.group(1).lower()
             ref = ref if ref.startswith("auth.") else norm(ref)

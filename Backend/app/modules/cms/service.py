@@ -1,18 +1,28 @@
 from __future__ import annotations
+
 import json
 import uuid
 from datetime import UTC, datetime
+
+import redis.asyncio as aioredis
 from fastapi import HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
-import redis.asyncio as aioredis
 
 from app.core.redis import safe_redis_delete, safe_redis_get, safe_redis_setex
 from app.modules.cms.models import Banner, CmsMedia, CmsPage, LandingSection
 from app.modules.cms.repository import CMSRepository
 from app.modules.cms.schemas import (
-    BannerCreate, BannerUpdate, CmsMediaUpdate, CmsPageCreate, CmsPageUpdate,
-    LandingSectionUpdate, PublishSectionRequest, SaveDraftRequest,
-    ReorderSectionEntry, SectionItemCreate, SectionItemReorderEntry,
+    BannerCreate,
+    BannerUpdate,
+    CmsMediaUpdate,
+    CmsPageCreate,
+    CmsPageUpdate,
+    LandingSectionUpdate,
+    PublishSectionRequest,
+    ReorderSectionEntry,
+    SaveDraftRequest,
+    SectionItemCreate,
+    SectionItemReorderEntry,
     SectionItemUpdate,
 )
 
@@ -44,7 +54,9 @@ class CMSService:
             return json.loads(raw)
 
         data = await self._build_homepage(db)
-        await safe_redis_setex(redis, _HOMEPAGE_CACHE_KEY, _HOMEPAGE_CACHE_TTL, json.dumps(data, default=str))
+        await safe_redis_setex(
+            redis, _HOMEPAGE_CACHE_KEY, _HOMEPAGE_CACHE_TTL, json.dumps(data, default=str)
+        )
         return data
 
     async def _build_homepage(self, db: AsyncSession) -> dict:
@@ -52,13 +64,15 @@ class CMSService:
         layout: list[dict] = []
         sections_map: dict[str, dict] = {}
         for s in sections:
-            layout.append({
-                "section_key": s.section_key,
-                "section_type": s.section_type,
-                "sort_order": s.sort_order,
-                "is_active": s.is_active,
-                "title": s.title,
-            })
+            layout.append(
+                {
+                    "section_key": s.section_key,
+                    "section_type": s.section_type,
+                    "sort_order": s.sort_order,
+                    "is_active": s.is_active,
+                    "title": s.title,
+                }
+            )
             items = await self._repo.get_items_for_section(db, s.id)
             sections_map[s.section_key] = {
                 "config": s.config,
@@ -78,7 +92,9 @@ class CMSService:
             }
         return {"cache_version": 1, "layout": layout, "sections": sections_map}
 
-    async def invalidate_homepage_cache(self, db: AsyncSession, redis: aioredis.Redis, admin_id: uuid.UUID | None = None) -> None:
+    async def invalidate_homepage_cache(
+        self, db: AsyncSession, redis: aioredis.Redis, admin_id: uuid.UUID | None = None
+    ) -> None:
         await safe_redis_delete(redis, _HOMEPAGE_CACHE_KEY)
         await self._repo.create_publish_log(db, "cache_invalidated", None, admin_id, {})
 
@@ -102,7 +118,9 @@ class CMSService:
         items = await self._repo.get_items_for_section(db, s.id)
         return {"section": s, "items": items}
 
-    async def update_section(self, db: AsyncSession, key: str, data: LandingSectionUpdate) -> LandingSection:
+    async def update_section(
+        self, db: AsyncSession, key: str, data: LandingSectionUpdate
+    ) -> LandingSection:
         s = await self._repo.get_section_by_key(db, key)
         if not s:
             raise HTTPException(status.HTTP_404_NOT_FOUND, "Section not found")
@@ -151,7 +169,12 @@ class CMSService:
         # Snapshot items
         items = await self._repo.get_items_for_section(db, s.id)
         items_snapshot = [
-            {"id": str(i.id), "sort_order": i.sort_order, "is_enabled": i.is_enabled, "config": i.config}
+            {
+                "id": str(i.id),
+                "sort_order": i.sort_order,
+                "is_enabled": i.is_enabled,
+                "config": i.config,
+            }
             for i in items
         ]
 
@@ -175,7 +198,9 @@ class CMSService:
             "scheduled_at": None,
         }
         s = await self._repo.update_section(db, s, updates)
-        await self._repo.create_publish_log(db, "published", key, admin_id, {"version": new_version})
+        await self._repo.create_publish_log(
+            db, "published", key, admin_id, {"version": new_version}
+        )
         await safe_redis_delete(redis, _HOMEPAGE_CACHE_KEY)
         await db.commit()
         await db.refresh(s)
@@ -283,7 +308,9 @@ class CMSService:
         await db.refresh(item)
         return item
 
-    async def update_item(self, db: AsyncSession, key: str, item_id: uuid.UUID, data: SectionItemUpdate):
+    async def update_item(
+        self, db: AsyncSession, key: str, item_id: uuid.UUID, data: SectionItemUpdate
+    ):
         s = await self._repo.get_section_by_key(db, key)
         if not s:
             raise HTTPException(status.HTTP_404_NOT_FOUND, "Section not found")
@@ -305,7 +332,9 @@ class CMSService:
         await self._repo.delete_item(db, item)
         await db.commit()
 
-    async def reorder_items(self, db: AsyncSession, key: str, entries: list[SectionItemReorderEntry]) -> None:
+    async def reorder_items(
+        self, db: AsyncSession, key: str, entries: list[SectionItemReorderEntry]
+    ) -> None:
         s = await self._repo.get_section_by_key(db, key)
         if not s:
             raise HTTPException(status.HTTP_404_NOT_FOUND, "Section not found")
@@ -326,7 +355,9 @@ class CMSService:
     ) -> tuple[list[CmsMedia], int]:
         return await self._repo.list_media(db, folder, mime_prefix, page, page_size)
 
-    async def update_media(self, db: AsyncSession, media_id: uuid.UUID, data: CmsMediaUpdate) -> CmsMedia:
+    async def update_media(
+        self, db: AsyncSession, media_id: uuid.UUID, data: CmsMediaUpdate
+    ) -> CmsMedia:
         m = await self._repo.get_media(db, media_id)
         if not m:
             raise HTTPException(status.HTTP_404_NOT_FOUND, "Media not found")
@@ -358,7 +389,9 @@ class CMSService:
         await db.refresh(b)
         return b
 
-    async def update_banner(self, db: AsyncSession, banner_id: uuid.UUID, data: BannerUpdate) -> Banner:
+    async def update_banner(
+        self, db: AsyncSession, banner_id: uuid.UUID, data: BannerUpdate
+    ) -> Banner:
         b = await self._repo.get_banner(db, banner_id)
         if not b:
             raise HTTPException(status.HTTP_404_NOT_FOUND, "Banner not found")
@@ -388,7 +421,9 @@ class CMSService:
         await db.refresh(p)
         return p
 
-    async def update_page(self, db: AsyncSession, page_id: uuid.UUID, data: CmsPageUpdate) -> CmsPage:
+    async def update_page(
+        self, db: AsyncSession, page_id: uuid.UUID, data: CmsPageUpdate
+    ) -> CmsPage:
         p = await self._repo.get_page_by_id(db, page_id)
         if not p:
             raise HTTPException(status.HTTP_404_NOT_FOUND, "Page not found")

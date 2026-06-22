@@ -1,11 +1,11 @@
 import json
 import uuid
-from datetime import UTC, datetime, timezone
+from datetime import UTC, datetime
 
 import structlog
 
 from app.core.config import settings
-from app.core.events import OrderShippedEvent, OrderDeliveredEvent, event_bus
+from app.core.events import OrderDeliveredEvent, OrderShippedEvent, event_bus
 from app.core.exceptions import ConflictError, NotFoundError, ValidationError
 from app.modules.shipping.client import DeliveryOneClient
 from app.modules.shipping.repository import ShipmentRepository
@@ -21,7 +21,7 @@ _repo = ShipmentRepository()
 _client = DeliveryOneClient()
 
 # Pickup address comes from settings (warehouse/store address)
-_PICKUP_PINCODE = "400001"   # Override via settings if needed
+_PICKUP_PINCODE = "400001"  # Override via settings if needed
 
 
 def _map_do_status(do_status: str) -> str:
@@ -35,13 +35,12 @@ def _map_do_status(do_status: str) -> str:
         "DELIVERED": "delivered",
         "CANCELLED": "cancelled",
         "FAILED": "failed",
-        "RTO": "failed",         # Return to origin
+        "RTO": "failed",  # Return to origin
     }
     return mapping.get(do_status.upper(), "in_transit")
 
 
 class ShippingService:
-
     async def create_shipment(
         self,
         db,
@@ -54,6 +53,7 @@ class ShippingService:
 
         # Fetch order for address data
         from app.modules.orders.repository import OrderRepository
+
         order = await OrderRepository().get_by_id(db, order_id)
         if not order:
             raise NotFoundError("Order not found")
@@ -65,6 +65,7 @@ class ShippingService:
         if not weight:
             # Fetch product weights
             from sqlalchemy import text
+
             result = await db.execute(
                 text(
                     "SELECT COALESCE(SUM(p.weight_grams * oi.quantity), 500) AS total_weight "
@@ -83,11 +84,11 @@ class ShippingService:
             "length": float(payload.length_cm or 10),
             "width": float(payload.width_cm or 10),
             "height": float(payload.height_cm or 5),
-            "cod_amount": 0,   # prepaid
+            "cod_amount": 0,  # prepaid
             "pickup_address": {
                 "pincode": _PICKUP_PINCODE,
                 "name": settings.APP_NAME,
-                "phone": "9999999999",   # TODO: move to settings
+                "phone": "9999999999",  # TODO: move to settings
                 "address": "Warehouse Address",
                 "city": "Mumbai",
                 "state": "Maharashtra",
@@ -111,13 +112,16 @@ class ShippingService:
         except Exception as exc:
             log.error("delivery_one_create_shipment_failed", order_id=str(order_id), error=str(exc))
             # Record failed shipment so admin can retry
-            shipment = await _repo.create(db, {
-                "id": uuid.uuid4(),
-                "order_id": order_id,
-                "status": "failed",
-                "weight_grams": weight,
-                "raw_response": str(exc),
-            })
+            shipment = await _repo.create(
+                db,
+                {
+                    "id": uuid.uuid4(),
+                    "order_id": order_id,
+                    "status": "failed",
+                    "weight_grams": weight,
+                    "raw_response": str(exc),
+                },
+            )
             return ShipmentResponse.model_validate(shipment)
 
         shipment_data = {
@@ -140,31 +144,41 @@ class ShippingService:
             try:
                 label_bytes = await _client.get_label(provider_id)
                 label_url, r2_key = await self._upload_label(label_bytes, order_id, shipment.id)
-                await _repo.update(db, shipment.id, {"label_url": label_url, "label_r2_key": r2_key})
+                await _repo.update(
+                    db, shipment.id, {"label_url": label_url, "label_r2_key": r2_key}
+                )
                 shipment = await _repo.get_by_id(db, shipment.id)
             except Exception as exc:
                 log.warning("label_fetch_failed", shipment_id=str(shipment.id), error=str(exc))
 
         # Update order status to processing
         from app.modules.orders.repository import OrderRepository
-        await OrderRepository().update(db, order_id, {
-            "status": "processing",
-            "tracking_number": awb,
-            "shipping_provider": "delivery_one",
-        })
+
+        await OrderRepository().update(
+            db,
+            order_id,
+            {
+                "status": "processing",
+                "tracking_number": awb,
+                "shipping_provider": "delivery_one",
+            },
+        )
 
         from app.modules.profiles.repository import ProfileRepository
+
         profile = await ProfileRepository().get_by_id(db, order.user_id)
-        await event_bus.publish(OrderShippedEvent(
-            order_id=str(order_id),
-            user_id=str(order.user_id),
-            shipment_id=str(shipment.id),
-            tracking_number=awb,
-            awb=awb,
-            tracking_url=f"{settings.FRONTEND_URL.rstrip('/')}/track/{awb}",
-            order_number=order.order_number,
-            customer_email=(profile.email if profile else "") or "",
-        ))
+        await event_bus.publish(
+            OrderShippedEvent(
+                order_id=str(order_id),
+                user_id=str(order.user_id),
+                shipment_id=str(shipment.id),
+                tracking_number=awb,
+                awb=awb,
+                tracking_url=f"{settings.FRONTEND_URL.rstrip('/')}/track/{awb}",
+                order_number=order.order_number,
+                customer_email=(profile.email if profile else "") or "",
+            )
+        )
 
         return ShipmentResponse.model_validate(shipment)
 
@@ -174,6 +188,7 @@ class ShippingService:
         # Verify ownership if user_id provided
         if user_id:
             from app.modules.orders.repository import OrderRepository
+
             order = await OrderRepository().get_by_id(db, order_id)
             if not order or order.user_id != user_id:
                 raise NotFoundError("Order not found")
@@ -211,35 +226,46 @@ class ShippingService:
                 continue
             if occurred in existing_times:
                 continue
-            await _repo.add_event(db, {
-                "id": uuid.uuid4(),
-                "shipment_id": shipment.id,
-                "status": raw_evt.get("status", ""),
-                "description": raw_evt.get("description"),
-                "location": raw_evt.get("location"),
-                "occurred_at": occurred,
-            })
+            await _repo.add_event(
+                db,
+                {
+                    "id": uuid.uuid4(),
+                    "shipment_id": shipment.id,
+                    "status": raw_evt.get("status", ""),
+                    "description": raw_evt.get("description"),
+                    "location": raw_evt.get("location"),
+                    "occurred_at": occurred,
+                },
+            )
             new_status = _map_do_status(raw_evt.get("status", ""))
 
         update_data: dict = {"status": new_status}
         if new_status == "delivered":
             update_data["delivered_at"] = datetime.now(UTC)
             from app.modules.orders.repository import OrderRepository
+
             order_repo = OrderRepository()
             order = await order_repo.get_by_id(db, shipment.order_id)
             if order and order.status != "delivered":
-                await order_repo.update(db, shipment.order_id, {
-                    "status": "delivered",
-                    "delivered_at": datetime.now(UTC),
-                })
+                await order_repo.update(
+                    db,
+                    shipment.order_id,
+                    {
+                        "status": "delivered",
+                        "delivered_at": datetime.now(UTC),
+                    },
+                )
                 from app.modules.profiles.repository import ProfileRepository
+
                 profile = await ProfileRepository().get_by_id(db, order.user_id)
-                await event_bus.publish(OrderDeliveredEvent(
-                    order_id=str(shipment.order_id),
-                    user_id=str(order.user_id),
-                    order_number=order.order_number,
-                    customer_email=(profile.email if profile else "") or "",
-                ))
+                await event_bus.publish(
+                    OrderDeliveredEvent(
+                        order_id=str(shipment.order_id),
+                        user_id=str(order.user_id),
+                        order_number=order.order_number,
+                        customer_email=(profile.email if profile else "") or "",
+                    )
+                )
 
         await _repo.update(db, shipment.id, update_data)
         shipment = await _repo.get_by_id(db, shipment.id)
@@ -277,16 +303,18 @@ class ShippingService:
             except Exception as exc:
                 log.warning("cancel_shipment_api_failed", error=str(exc))
 
-        updated = await _repo.update(db, shipment.id, {
-            "status": "cancelled",
-            "cancelled_at": datetime.now(UTC),
-            "cancel_reason": reason,
-        })
+        updated = await _repo.update(
+            db,
+            shipment.id,
+            {
+                "status": "cancelled",
+                "cancelled_at": datetime.now(UTC),
+                "cancel_reason": reason,
+            },
+        )
         return ShipmentResponse.model_validate(updated)
 
-    async def get_rates(
-        self, weight_grams: int, pincode_to: str
-    ) -> list[ShippingRateResponse]:
+    async def get_rates(self, weight_grams: int, pincode_to: str) -> list[ShippingRateResponse]:
         try:
             rates = await _client.get_rates(weight_grams, _PICKUP_PINCODE, pincode_to)
             return [
@@ -302,17 +330,22 @@ class ShippingService:
         except Exception as exc:
             log.warning("get_rates_failed", error=str(exc))
             # Return default rate on API failure
-            return [ShippingRateResponse(
-                provider="delivery_one",
-                service_name="Standard Delivery",
-                estimated_days=5,
-                charge=99.0,
-                is_recommended=True,
-            )]
+            return [
+                ShippingRateResponse(
+                    provider="delivery_one",
+                    service_name="Standard Delivery",
+                    estimated_days=5,
+                    charge=99.0,
+                    is_recommended=True,
+                )
+            ]
 
-    async def _upload_label(self, pdf_bytes: bytes, order_id: uuid.UUID, shipment_id: uuid.UUID) -> tuple[str, str]:
+    async def _upload_label(
+        self, pdf_bytes: bytes, order_id: uuid.UUID, shipment_id: uuid.UUID
+    ) -> tuple[str, str]:
         import boto3
         from botocore.config import Config
+
         r2_key = f"labels/{order_id}/{shipment_id}.pdf"
         client = boto3.client(
             "s3",
@@ -334,12 +367,14 @@ class ShippingService:
 
 # ── Event listener ────────────────────────────────────────────────────────────
 
+
 async def _on_payment_captured(event) -> None:
     """
     Auto-create shipment when payment is captured for non-COD orders.
     Runs async — failures are logged, not propagated.
     """
     from app.core.database import AsyncSessionLocal
+
     async with AsyncSessionLocal() as db:
         async with db.begin():
             try:
@@ -357,4 +392,5 @@ async def _on_payment_captured(event) -> None:
 
 def register_shipping_listeners() -> None:
     from app.core.events import PaymentCapturedEvent
+
     event_bus.on(PaymentCapturedEvent, _on_payment_captured)

@@ -79,16 +79,32 @@ class Product(Base):
     search_vector: Mapped[str | None] = mapped_column(TSVECTOR, nullable=True)
 
     # Timestamps
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
-    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now())
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now()
+    )
     published_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
     # Relationships
-    category: Mapped["app.modules.categories.models.Category | None"] = relationship("Category", foreign_keys=[category_id], lazy="select")
-    variants: Mapped[list["ProductVariant"]] = relationship("ProductVariant", back_populates="product", cascade="all, delete-orphan", lazy="select")
-    images: Mapped[list["ProductImage"]] = relationship("ProductImage", back_populates="product", cascade="all, delete-orphan", order_by="ProductImage.sort_order", lazy="select")
-    attributes: Mapped[list["ProductAttribute"]] = relationship("ProductAttribute", back_populates="product", cascade="all, delete-orphan", lazy="select")
+    category: Mapped["app.modules.categories.models.Category | None"] = relationship(
+        "Category", foreign_keys=[category_id], lazy="select"
+    )
+    variants: Mapped[list["ProductVariant"]] = relationship(
+        "ProductVariant", back_populates="product", cascade="all, delete-orphan", lazy="select"
+    )
+    images: Mapped[list["ProductImage"]] = relationship(
+        "ProductImage",
+        back_populates="product",
+        cascade="all, delete-orphan",
+        order_by="ProductImage.sort_order",
+        lazy="select",
+    )
+    attributes: Mapped[list["ProductAttribute"]] = relationship(
+        "ProductAttribute", back_populates="product", cascade="all, delete-orphan", lazy="select"
+    )
 
     __table_args__ = (
         Index("idx_products_slug", "slug"),
@@ -110,14 +126,20 @@ class ProductVariant(Base):
     )
     sku: Mapped[str] = mapped_column(String(100), nullable=False, unique=True)
     name: Mapped[str] = mapped_column(String(255), nullable=False)
-    price_adjustment: Mapped[float] = mapped_column(Numeric(12, 2), nullable=False, server_default="0")
+    price_adjustment: Mapped[float] = mapped_column(
+        Numeric(12, 2), nullable=False, server_default="0"
+    )
     stock_quantity: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
     weight_grams: Mapped[float | None] = mapped_column(Numeric(10, 3), nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="true")
     sort_order: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
 
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
-    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now())
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now()
+    )
 
     product: Mapped["Product"] = relationship("Product", back_populates="variants")
 
@@ -141,13 +163,13 @@ class ProductImage(Base):
     is_primary: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="false")
     sort_order: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
 
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
 
     product: Mapped["Product"] = relationship("Product", back_populates="images")
 
-    __table_args__ = (
-        Index("idx_product_images_product_id", "product_id"),
-    )
+    __table_args__ = (Index("idx_product_images_product_id", "product_id"),)
 
 
 class ProductAttribute(Base):

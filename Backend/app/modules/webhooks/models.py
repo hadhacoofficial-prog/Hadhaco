@@ -19,7 +19,9 @@ class WebhookEvent(Base):
     status: Mapped[str] = mapped_column(String(20), nullable=False, server_default="received")
     error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
     processed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
 
     __table_args__ = (
         Index("idx_webhook_events_provider", "provider"),

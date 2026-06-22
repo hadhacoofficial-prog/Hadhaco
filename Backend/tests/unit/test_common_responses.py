@@ -1,5 +1,5 @@
 """Tests for app/common/responses.py and app/common/response_codes.py."""
-import pytest
+
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
@@ -13,8 +13,8 @@ from app.common.responses import (
     ok,
 )
 
-
 # ── Unit tests for helpers ────────────────────────────────────────────────────
+
 
 class TestOkHelper:
     def test_returns_base_success_response(self):
@@ -112,6 +112,7 @@ class TestAcceptedHelper:
 
 # ── BaseErrorResponse ─────────────────────────────────────────────────────────
 
+
 class TestBaseErrorResponse:
     def test_success_is_false(self):
         err = BaseErrorResponse(code="NOT_FOUND", message="Not found")
@@ -130,11 +131,14 @@ class TestBaseErrorResponse:
         assert err.data is None
 
     def test_data_can_be_list(self):
-        err = BaseErrorResponse(code="VALIDATION_ERROR", message="Invalid", data=[{"field": "email"}])
+        err = BaseErrorResponse(
+            code="VALIDATION_ERROR", message="Invalid", data=[{"field": "email"}]
+        )
         assert err.data == [{"field": "email"}]
 
 
 # ── ResponseCode enum ─────────────────────────────────────────────────────────
+
 
 class TestResponseCode:
     def test_is_string(self):
@@ -167,6 +171,7 @@ class TestResponseCode:
 
 
 # ── FastAPI integration: envelope in real HTTP response ───────────────────────
+
 
 def _make_app() -> FastAPI:
     from pydantic import BaseModel
@@ -223,10 +228,12 @@ class TestEnvelopeIntegration:
 
 # ── Exception handler envelope ────────────────────────────────────────────────
 
+
 class TestExceptionHandlerEnvelope:
     def setup_method(self):
         from fastapi import FastAPI
-        from app.core.exceptions import register_exception_handlers, NotFoundError
+
+        from app.core.exceptions import NotFoundError, register_exception_handlers
 
         app = FastAPI()
         register_exception_handlers(app)

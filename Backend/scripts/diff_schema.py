@@ -4,6 +4,7 @@ Reports, per table: columns the SQL is missing, and SQL-only columns the ORM
 does not know about. Crude SQL parsing — good enough for drift detection.
 Usage: python scripts/diff_schema.py
 """
+
 import importlib
 import os
 import pkgutil
@@ -20,7 +21,13 @@ from app.core.database import Base
 SQL_DIR = Path(__file__).resolve().parent.parent / "supabase" / "sql"
 
 SQL_KEYWORDS = {
-    "primary", "foreign", "unique", "check", "constraint", "exclude", "like",
+    "primary",
+    "foreign",
+    "unique",
+    "check",
+    "constraint",
+    "exclude",
+    "like",
 }
 
 

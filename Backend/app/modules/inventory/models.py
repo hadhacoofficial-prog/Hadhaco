@@ -3,7 +3,7 @@ from datetime import datetime
 
 from sqlalchemy import DateTime, ForeignKey, Index, Integer, String, Text, func
 from sqlalchemy.dialects.postgresql import ENUM, UUID
-from sqlalchemy.orm import Mapped, mapped_column, relationship
+from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.database import Base
 
@@ -24,7 +24,13 @@ class InventoryMovement(Base):
     )
     movement_type: Mapped[str] = mapped_column(
         ENUM(
-            "purchase", "sale", "return", "adjustment", "damage", "transfer", "correction",
+            "purchase",
+            "sale",
+            "return",
+            "adjustment",
+            "damage",
+            "transfer",
+            "correction",
             name="inventory_movement_type",
             create_type=False,
         ),

@@ -3,7 +3,7 @@ Delivery One API client.
 Docs: https://docs.deliveryone.in (placeholder — adapt to actual API schema).
 All methods raise httpx.HTTPStatusError on non-2xx; callers must handle.
 """
-import json
+
 from typing import Any
 
 import httpx
@@ -23,7 +23,6 @@ def _headers() -> dict:
 
 
 class DeliveryOneClient:
-
     async def create_shipment(self, payload: dict[str, Any]) -> dict:
         """
         POST /shipments

@@ -1,4 +1,3 @@
-import uuid
 from typing import Any
 
 from sqlalchemy import text
@@ -8,7 +7,6 @@ from app.core.config import settings
 
 
 class SeoService:
-
     async def get_page(self, db: AsyncSession, path: str) -> dict | None:
         result = await db.execute(
             text(
@@ -81,7 +79,9 @@ class SeoService:
 
         # Active products
         products = await db.execute(
-            text("SELECT slug, updated_at FROM products WHERE status = 'active' AND deleted_at IS NULL")
+            text(
+                "SELECT slug, updated_at FROM products WHERE status = 'active' AND deleted_at IS NULL"
+            )
         )
         for row in products.fetchall():
             lastmod = row[1].strftime("%Y-%m-%d") if row[1] else ""
