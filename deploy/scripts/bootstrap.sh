@@ -202,13 +202,29 @@ cat "${SSH_DIR}/id_ed25519_github"
 echo "═══════════════════════════════════════════════════════"
 echo ""
 
+# ── Generate Redis password ───────────────────────────────────────────────────
+section "10. Redis password"
+REDIS_PW=$(python3 -c "import secrets; print(secrets.token_hex(32))" 2>/dev/null || \
+           openssl rand -hex 32)
+echo ""
+echo "═══════════════════════════════════════════════════════"
+echo "  Generated Redis password (save this securely):"
+echo "  ${REDIS_PW}"
+echo ""
+echo "  Add to GitHub Secret:  REDIS_PASSWORD"
+echo "  Add to server .env:    REDIS_PASSWORD=${REDIS_PW}"
+echo "═══════════════════════════════════════════════════════"
+echo ""
+
 # ── Summary ───────────────────────────────────────────────────────────────────
 section "Bootstrap complete"
 echo ""
 echo "Next steps:"
 echo "  1. Copy the SSH private key above to GitHub Secret: SSH_PRIVATE_KEY"
-echo "  2. Set remaining GitHub Secrets (see DEVOPS.md)"
+echo "  2. Set remaining GitHub Secrets (see DEVOPS.md), including:"
+echo "       REDIS_PASSWORD  ← use the generated value printed above"
 echo "  3. Copy .env files to /opt/hadha/.env.production and /opt/hadha/.env.frontend.production"
+echo "       Both files must contain: REDIS_PASSWORD=<value above>"
 echo "  4. Copy docker-compose files to /opt/hadha/"
 echo "  5. Push to main branch to trigger first deployment"
 echo ""

@@ -7,6 +7,9 @@ services:
       dockerfile: docker/Dockerfile
     restart: unless-stopped
     env_file: ../.env
+    environment:
+      # Override REDIS_URL so it uses the Docker service name and optional auth.
+      REDIS_URL: redis://:${REDIS_PASSWORD:-}@redis:6379/0
     ports:
       - "8000:8000"
     depends_on:
@@ -24,13 +27,24 @@ services:
   redis:
     image: redis:7-alpine
     restart: unless-stopped
-    command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru
+    # Optional auth: set REDIS_PASSWORD to enable --requirepass at startup.
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD:-}
+    command:
+      - sh
+      - -c
+      - >-
+        exec redis-server
+        --appendonly yes
+        --maxmemory 256mb
+        --maxmemory-policy allkeys-lru
+        $${REDIS_PASSWORD:+--requirepass $${REDIS_PASSWORD}}
     volumes:
       - redis_data:/data
     networks:
       - hadha-net
     healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
+      test: ["CMD-SHELL", "redis-cli $${REDIS_PASSWORD:+-a $${REDIS_PASSWORD}} ping | grep -q PONG"]
       interval: 10s
       timeout: 5s
       retries: 5

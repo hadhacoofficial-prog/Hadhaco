@@ -448,6 +448,67 @@ asyncio.run(check())
 "
 ```
 
+### Rotating the Redis password
+
+Redis passwords are runtime-only configuration — data files are never encrypted by the password, so rotation requires no data migration.
+
+**Step 1 — Generate a new password**
+
+```bash
+python3 -c "import secrets; print(secrets.token_hex(32))"
+# Example output: a3f8c2e1d94b7065f2a1b8c3d4e5f60712345678901234567890abcdef012345
+```
+
+**Step 2 — Set the live Redis password without restart (optional zero-downtime)**
+
+```bash
+# SSH onto the server and set the new password in the running Redis first.
+# This lets the backend keep working while you update config.
+docker exec hadha-redis redis-cli -a "${OLD_REDIS_PASSWORD}" \
+  CONFIG SET requirepass "${NEW_REDIS_PASSWORD}"
+```
+
+**Step 3 — Update server .env files**
+
+```bash
+# On the VPS:
+sed -i "s/^REDIS_PASSWORD=.*/REDIS_PASSWORD=${NEW_REDIS_PASSWORD}/" /opt/hadha/.env.production
+sed -i "s/^REDIS_PASSWORD=.*/REDIS_PASSWORD=${NEW_REDIS_PASSWORD}/" /opt/hadha-staging/.env.staging
+```
+
+**Step 4 — Update GitHub Secret**
+
+In GitHub → Settings → Secrets and variables → Actions → update `REDIS_PASSWORD` to the new value.
+
+**Step 5 — Redeploy**
+
+```bash
+# Trigger a fresh deploy so all containers pick up the new password.
+# The deploy will restart Redis (with the new --requirepass) and the backend
+# (with the new REDIS_URL containing the new password).
+export REDIS_PASSWORD="${NEW_REDIS_PASSWORD}"
+/opt/hadha/scripts/deploy.sh production "${CURRENT_IMAGE_TAG}"
+```
+
+**Step 6 — Verify**
+
+```bash
+docker exec hadha-redis redis-cli -a "${NEW_REDIS_PASSWORD}" ping
+# Expected: PONG
+
+docker exec hadha-backend python -c "
+import asyncio, os
+import redis.asyncio as r
+async def check():
+    client = r.from_url(os.environ['REDIS_URL'])
+    print(await client.ping())
+asyncio.run(check())
+"
+# Expected: True
+```
+
+> **Important:** Steps 2 and 5 overlap — Step 2 hot-patches the running Redis; Step 5 makes the new password permanent via `--requirepass` in the compose command. Skipping Step 2 means there will be a brief auth failure window while containers restart (usually < 5 seconds; the circuit breaker handles it gracefully).
+
 ### SSL certificate issues
 
 ```bash

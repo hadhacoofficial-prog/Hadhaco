@@ -16,7 +16,9 @@ services:
     env_file: ./Backend/.env
     environment:
       # Docker service-name overrides — take precedence over values in .env.
-      REDIS_URL: redis://hadha-redis:6379/0
+      # If REDIS_PASSWORD is set in the root .env / shell, the URL includes it.
+      # Empty password → redis://:@host:6379/0 → redis-py skips AUTH (falsy).
+      REDIS_URL: redis://:${REDIS_PASSWORD:-}@hadha-redis:6379/0
       # localhost:8080 = browser→frontend dev server (host-mapped port).
       # frontend:8080  = inter-container name, used by SSR/Nitro server calls.
       ALLOWED_ORIGINS: "http://localhost:8080,http://localhost:5173,http://frontend:8080"
@@ -86,11 +88,20 @@ services:
     image: redis:7-alpine
     container_name: hadha-redis
     restart: unless-stopped
-    command: >
-      redis-server
+    # Optional auth: set REDIS_PASSWORD in .env or environment to enable.
+    # $$ → $ after Docker Compose variable substitution, so ${REDIS_PASSWORD:+...}
+    # is evaluated at container startup by the shell — not at compose parse time.
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD:-}
+    command:
+      - sh
+      - -c
+      - >-
+        exec redis-server
         --appendonly yes
         --maxmemory 256mb
         --maxmemory-policy allkeys-lru
+        $${REDIS_PASSWORD:+--requirepass $${REDIS_PASSWORD}}
     ports:
       - "6379:6379"
     volumes:
@@ -98,7 +109,7 @@ services:
     networks:
       - hadha-network
     healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
+      test: ["CMD-SHELL", "redis-cli $${REDIS_PASSWORD:+-a $${REDIS_PASSWORD}} ping | grep -q PONG"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -110,8 +121,8 @@ services:
     container_name: hadha-redis-commander
     restart: unless-stopped
     environment:
-      # Format: label:host:port  — host must be the Docker service name.
-      REDIS_HOSTS: "hadha:hadha-redis:6379"
+      # Format: label:host:port[:db[:password]] — empty password = no auth.
+      REDIS_HOSTS: "hadha:hadha-redis:6379:0:${REDIS_PASSWORD:-}"
     ports:
       - "8082:8081"
     depends_on:
