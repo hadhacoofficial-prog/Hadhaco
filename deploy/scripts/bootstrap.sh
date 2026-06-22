@@ -3,7 +3,7 @@
 # bootstrap.sh — First-time VPS setup for Hadha.co
 #
 # Run as root or with sudo on a fresh Ubuntu 24.04 VPS:
-#   curl -fsSL https://raw.githubusercontent.com/OWNER/REPO/main/deploy/scripts/bootstrap.sh | sudo bash
+#   curl -fsSL https://raw.githubusercontent.com/hadhacoofficial-prog/Hadhaco/main/deploy/scripts/bootstrap.sh | sudo bash
 #
 # What this script does:
 #   1. System hardening (SSH, firewall, fail2ban)

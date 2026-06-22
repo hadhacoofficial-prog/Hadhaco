@@ -3,8 +3,8 @@ name: hadha-staging
 # ─────────────────────────────────────────────────────────────────────────────
 # Staging — mirrors production but with reduced resources and staging configs.
 # Image tags use the develop branch SHA:
-#   BACKEND_IMAGE  — ghcr.io/owner/hadha-backend:develop-abc1234
-#   FRONTEND_IMAGE — ghcr.io/owner/hadha-frontend:develop-abc1234
+#   BACKEND_IMAGE  — ghcr.io/hadhacoofficial-prog/hadha-backend:develop-abc1234
+#   FRONTEND_IMAGE — ghcr.io/hadhacoofficial-prog/hadha-frontend:develop-abc1234
 # ─────────────────────────────────────────────────────────────────────────────
 
 services:
@@ -16,7 +16,8 @@ services:
     env_file: /opt/hadha-staging/.env.staging
     environment:
       APP_ENV: staging
-      REDIS_URL: redis://hadha-staging-redis:6379/0
+      # Include Redis password in URL — overrides env_file value
+      REDIS_URL: "redis://:${REDIS_PASSWORD}@hadha-staging-redis:6379/0"
       ALLOWED_ORIGINS: "https://staging.hadha.co"
       ALLOWED_HOSTS: "staging.hadha.co"
     expose:
@@ -82,6 +83,9 @@ services:
         --maxmemory 128mb
         --maxmemory-policy allkeys-lru
         --requirepass ${REDIS_PASSWORD:?REDIS_PASSWORD is required}
+    environment:
+      # Expose password as env var so CMD-SHELL healthcheck can expand it
+      REDIS_PASSWORD: ${REDIS_PASSWORD}
     expose:
       - "6379"
     volumes:
@@ -89,14 +93,14 @@ services:
     networks:
       - hadha-staging-internal
     healthcheck:
-      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD}", "ping"]
+      test: ["CMD-SHELL", "redis-cli -a $$REDIS_PASSWORD ping | grep -q PONG"]
       interval: 10s
       timeout: 5s
       retries: 5
       start_period: 5s
 
   redis-commander:
-    image: rediscommander/redis-commander:latest
+    image: rediscommander/redis-commander:0.8.0
     container_name: hadha-staging-redis-commander
     restart: unless-stopped
     environment:
@@ -111,7 +115,7 @@ services:
       - hadha-staging-internal
 
   dozzle:
-    image: amir20/dozzle:latest
+    image: amir20/dozzle:v8
     container_name: hadha-staging-dozzle
     restart: unless-stopped
     environment:

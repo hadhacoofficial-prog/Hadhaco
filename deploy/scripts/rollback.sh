@@ -45,13 +45,14 @@ log "Environment: ${ENVIRONMENT}"
 # ── Resolve previous images from backup metadata if not passed ────────────────
 if [[ -z "${PREV_BACKEND}" ]] || [[ -z "${PREV_FRONTEND}" ]]; then
   log "No image args — reading from most recent backup metadata"
-  LATEST_META=$(ls -t "${BACKUP_DIR}"/metadata_*.json 2>/dev/null | head -1)
+  LATEST_META=$(ls -t "${BACKUP_DIR}"/metadata_*.json 2>/dev/null | head -1 || echo "")
   if [[ -z "${LATEST_META}" ]]; then
     die "No backup metadata found in ${BACKUP_DIR} and no image arguments provided"
   fi
   log "Using metadata: ${LATEST_META}"
-  PREV_BACKEND=$(python3  -c "import json,sys; d=json.load(open('${LATEST_META}')); print(d['backend_image'])"  2>/dev/null || "")
-  PREV_FRONTEND=$(python3 -c "import json,sys; d=json.load(open('${LATEST_META}')); print(d['frontend_image'])" 2>/dev/null || "")
+  # Fix: || echo "" (not || "") — bash subshell must produce output, not evaluate a string
+  PREV_BACKEND=$(python3  -c "import json; d=json.load(open('${LATEST_META}')); print(d['backend_image'])"  2>/dev/null || echo "")
+  PREV_FRONTEND=$(python3 -c "import json; d=json.load(open('${LATEST_META}')); print(d['frontend_image'])" 2>/dev/null || echo "")
 fi
 
 [[ -n "${PREV_BACKEND}"  ]] || die "Cannot determine previous backend image for rollback"

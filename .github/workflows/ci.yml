@@ -7,12 +7,15 @@ on:
   pull_request:
     branches: ["*"]
   push:
-    branches: ["*"]
+    # Exclude main and develop — those branches run CI via staging.yml / production.yml
+    # which call this workflow as a reusable workflow. Running it directly here too
+    # would double the CI cost on every push to main or develop.
+    branches-ignore: [main, develop]
     paths-ignore:
       - "*.md"
       - "Docs/**"
       - ".github/ISSUE_TEMPLATE/**"
-  # Allow staging.yml and production.yml to call this as a reusable workflow
+  # staging.yml and production.yml call this as a reusable workflow
   workflow_call:
 
 concurrency:
