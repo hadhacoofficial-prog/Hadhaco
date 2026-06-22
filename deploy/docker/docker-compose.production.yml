@@ -191,7 +191,7 @@ services:
 
   # ── Nginx reverse proxy ──────────────────────────────────────────────────────
   nginx:
-    image: nginx:1.27-alpine
+    image: nginx:stable-alpine
     container_name: hadha-nginx
     restart: unless-stopped
     ports:
