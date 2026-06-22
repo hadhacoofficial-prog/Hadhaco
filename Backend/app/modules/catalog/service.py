@@ -8,6 +8,7 @@ from app.core.exceptions import ConflictError, NotFoundError, ValidationError
 from app.modules.catalog.repository import ProductRepository
 from app.modules.catalog.schemas import (
     ProductAttributeCreateRequest,
+    ProductCollectionRef,
     ProductCreateRequest,
     ProductListItem,
     ProductListResponse,
@@ -28,13 +29,19 @@ class CatalogService:
         product = await _repo.get_by_id(db, product_id)
         if not product:
             raise NotFoundError("Product not found")
-        return ProductResponse.model_validate(product)
+        response = ProductResponse.model_validate(product)
+        cols = await _repo.get_collections_for_product(db, product_id)
+        response.collections = [ProductCollectionRef.model_validate(c) for c in cols]
+        return response
 
     async def get_by_slug(self, db: AsyncSession, slug: str) -> ProductResponse:
         product = await _repo.get_by_slug(db, slug)
         if not product:
             raise NotFoundError("Product not found")
-        return ProductResponse.model_validate(product)
+        response = ProductResponse.model_validate(product)
+        cols = await _repo.get_collections_for_product(db, product.id)
+        response.collections = [ProductCollectionRef.model_validate(c) for c in cols]
+        return response
 
     async def list_products(
         self,
@@ -44,6 +51,7 @@ class CatalogService:
         page_size: int = 20,
         status: str | None = None,
         category_id: uuid.UUID | None = None,
+        collection_id: uuid.UUID | None = None,
         metal_type: str | None = None,
         gender: str | None = None,
         is_featured: bool | None = None,
@@ -62,6 +70,7 @@ class CatalogService:
             page_size=page_size,
             status=status,
             category_id=category_id,
+            collection_id=collection_id,
             metal_type=metal_type,
             gender=gender,
             is_featured=is_featured,
@@ -74,11 +83,16 @@ class CatalogService:
             sort_dir=sort_dir,
             include_deleted=include_deleted,
         )
+
+        product_ids = [p.id for p in items]
+        col_map = await _repo.get_collections_for_products(db, product_ids)
+
         list_items = []
         for p in items:
             primary_img = next((img.url for img in p.images if img.is_primary), None)
             if primary_img is None and p.images:
                 primary_img = p.images[0].url
+            cols = [ProductCollectionRef.model_validate(c) for c in col_map.get(p.id, [])]
             list_items.append(
                 ProductListItem(
                     id=p.id,
@@ -97,6 +111,7 @@ class CatalogService:
                     is_best_seller=p.is_best_seller,
                     created_at=p.created_at,
                     primary_image=primary_img,
+                    collections=cols,
                 )
             )
 
@@ -118,7 +133,8 @@ class CatalogService:
 
         variants_data = payload.variants
         attributes_data = payload.attributes
-        data = payload.model_dump(exclude={"variants", "attributes"})
+        collection_ids = payload.collection_ids
+        data = payload.model_dump(exclude={"variants", "attributes", "collection_ids"})
 
         if data.get("status") == "active":
             data["published_at"] = datetime.now(UTC)
@@ -135,10 +151,21 @@ class CatalogService:
         for a in attributes_data:
             await _repo.upsert_attribute(db, product.id, a.name, a.value, a.sort_order)
 
+        if collection_ids:
+            from app.modules.collections.repository import CollectionRepository
+
+            col_repo = CollectionRepository()
+            for col_id in collection_ids:
+                await col_repo.add_products(db, col_id, [product.id])
+
         # Reload with relations
         product = await _repo.get_by_id(db, product.id)  # type: ignore[assignment]
         assert product is not None
-        return ProductResponse.model_validate(product)
+        response = ProductResponse.model_validate(product)
+        if collection_ids:
+            cols = await _repo.get_collections_for_product(db, product.id)
+            response.collections = [ProductCollectionRef.model_validate(c) for c in cols]
+        return response
 
     async def update(
         self, db: AsyncSession, product_id: uuid.UUID, payload: ProductUpdateRequest
@@ -148,6 +175,7 @@ class CatalogService:
             raise NotFoundError("Product not found")
 
         data = payload.model_dump(exclude_unset=True)
+        new_collection_ids: list[uuid.UUID] | None = data.pop("collection_ids", None)
 
         if "slug" in data and data["slug"] != product.slug:
             if await _repo.get_by_slug(db, data["slug"]):
@@ -157,7 +185,27 @@ class CatalogService:
             data["published_at"] = datetime.now(UTC)
 
         updated = await _repo.update(db, product_id, data)
-        return ProductResponse.model_validate(updated)
+
+        if new_collection_ids is not None:
+            from app.modules.collections.repository import CollectionRepository
+            from sqlalchemy import delete as sa_delete
+            from app.modules.collections.models import ProductCollection
+
+            col_repo = CollectionRepository()
+            # Remove all existing memberships for this product
+            await db.execute(
+                sa_delete(ProductCollection).where(
+                    ProductCollection.product_id == product_id
+                )
+            )
+            # Add the new memberships
+            for col_id in new_collection_ids:
+                await col_repo.add_products(db, col_id, [product_id])
+
+        response = ProductResponse.model_validate(updated)
+        cols = await _repo.get_collections_for_product(db, product_id)
+        response.collections = [ProductCollectionRef.model_validate(c) for c in cols]
+        return response
 
     async def delete(self, db: AsyncSession, product_id: uuid.UUID) -> None:
         product = await _repo.get_by_id(db, product_id)

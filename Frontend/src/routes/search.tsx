@@ -38,10 +38,10 @@ function SearchPage() {
     if (q) push(q);
   }, [q, push]);
 
-  // cat is used as a search term when q is not set (backend has no collection_slug filter)
   const apiParams = useMemo(
     () => ({
-      search: q || (cat ? cat.replace(/-/g, " ") : undefined),
+      search: q || undefined,
+      collection_slug: cat || undefined,
       gender: gender && gender !== "all" ? gender : undefined,
       is_new_arrival: filter === "new" ? true : undefined,
       is_best_seller: filter === "bestseller" ? true : undefined,

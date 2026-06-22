@@ -21,6 +21,7 @@ const makeListItem = (overrides: Partial<ProductListItem> = {}): ProductListItem
   is_best_seller: false,
   created_at: "2024-01-01T00:00:00Z",
   primary_image: "https://cdn.example.com/ring.jpg",
+  collections: [],
   ...overrides,
 });
 

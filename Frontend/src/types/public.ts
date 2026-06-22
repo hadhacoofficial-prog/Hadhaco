@@ -105,12 +105,23 @@ export interface NavCategoryItem {
   image_url: string | null;
 }
 
+/** Top-level gender category metadata (Women / Men / Unisex / Kids) */
+export interface GenderMeta {
+  id: string;
+  name: string;
+  slug: string;
+  image_url: string | null;
+  sort_order: number;
+}
+
 /** Response shape from GET /categories/navigation */
 export interface NavigationCategoriesResponse {
   women: NavCategoryItem[];
   men: NavCategoryItem[];
   unisex: NavCategoryItem[];
   kids: NavCategoryItem[];
+  /** Top-level gender category metadata keyed by gender key */
+  gender_meta: Record<string, GenderMeta>;
 }
 
 // ── Reviews ───────────────────────────────────────────────────────────────────

@@ -26,6 +26,8 @@ import {
   Ticket,
   BarChart3,
   LogOut,
+  FolderOpen,
+  Tag,
 } from "lucide-react";
 import markAsset from "@/assets/hadha-mark.png";
 
@@ -74,6 +76,8 @@ export const Route = createFileRoute("/admin")({
 type NavTo =
   | "/admin"
   | "/admin/products"
+  | "/admin/collections"
+  | "/admin/categories"
   | "/admin/inventory"
   | "/admin/orders"
   | "/admin/customers"
@@ -87,6 +91,8 @@ type NavItem = { to: NavTo; label: string; icon: React.ReactNode; exact?: boolea
 const nav: NavItem[] = [
   { to: "/admin", label: "Dashboard", icon: <LayoutDashboard className="size-4" />, exact: true },
   { to: "/admin/products", label: "Products", icon: <Package className="size-4" /> },
+  { to: "/admin/collections", label: "Collections", icon: <FolderOpen className="size-4" /> },
+  { to: "/admin/categories", label: "Categories", icon: <Tag className="size-4" /> },
   { to: "/admin/inventory", label: "Inventory", icon: <Boxes className="size-4" /> },
   { to: "/admin/orders", label: "Orders", icon: <ShoppingBag className="size-4" /> },
   { to: "/admin/customers", label: "Customers", icon: <Users className="size-4" /> },

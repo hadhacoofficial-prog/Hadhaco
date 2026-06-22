@@ -16,6 +16,7 @@ import {
   Copy,
   Star,
   Info,
+  Sparkles,
 } from "lucide-react";
 import { toast } from "sonner";
 import { api } from "@/lib/api/client";
@@ -25,6 +26,7 @@ import { formatINR } from "@/lib/format";
 import type {
   CategoryTreeNode,
   CollectionDto,
+  CollectionListResponse,
   ProductDetail,
   ProductStatus,
   ProductImage,
@@ -258,6 +260,124 @@ function validateForm(
   if (pendingImages.length === 0 && savedImages.length === 0)
     e.images = "At least one image is required";
   return e;
+}
+
+// ─── SEO generation helpers ───────────────────────────────────────────────────
+
+function generateMetaTitle(name: string, metalType: string, purity: string): string {
+  const n = name.trim();
+  if (!n) return "";
+  const BRAND = "Hadha";
+  const metal = metalType.trim();
+  const pur = purity.trim();
+  const metalStr =
+    metal && pur && !metal.toLowerCase().startsWith(pur.toLowerCase())
+      ? `${pur} ${metal}`
+      : metal;
+
+  const withMetal = metalStr ? `${n} | ${metalStr} | ${BRAND}` : `${n} | ${BRAND}`;
+  if (withMetal.length <= 60) return withMetal;
+
+  const withoutMetal = `${n} | ${BRAND}`;
+  if (withoutMetal.length <= 60) return withoutMetal;
+
+  // Trim name intelligently — never cut mid-word
+  const suffix = ` | ${BRAND}`;
+  const available = 60 - suffix.length;
+  let trimmed = n.slice(0, available);
+  const lastSpace = trimmed.lastIndexOf(" ");
+  if (lastSpace > available / 2) trimmed = trimmed.slice(0, lastSpace);
+  return trimmed + suffix;
+}
+
+function generateMetaDescription(
+  shortDesc: string,
+  description: string,
+  name: string,
+  categoryName: string,
+  metalType: string,
+): string {
+  const source = (shortDesc || description || "").replace(/\s+/g, " ").trim();
+  if (!source) {
+    const parts = [name, categoryName, metalType].filter(Boolean);
+    const base = parts.join(", ");
+    return (base + ". Shop authentic silver jewellery at Hadha.").slice(0, 160);
+  }
+
+  if (source.length >= 120 && source.length <= 160) return source;
+
+  if (source.length > 160) {
+    const at160 = source.slice(0, 160);
+    const lastDot = at160.lastIndexOf(".");
+    if (lastDot >= 100) return source.slice(0, lastDot + 1);
+    const lastSpace = at160.lastIndexOf(" ");
+    return at160.slice(0, lastSpace > 0 ? lastSpace : 160).replace(/[,;:]$/, "") + ".";
+  }
+
+  // Under 120 — append brand tagline if it fits
+  const tagline = " Shop authentic silver jewellery at Hadha.";
+  const extended = source + tagline;
+  return extended.length <= 160 ? extended : source;
+}
+
+function generateMetaKeywords(
+  name: string,
+  categoryName: string,
+  collectionNames: string[],
+  gender: string,
+  metalType: string,
+  purity: string,
+): string {
+  const seen = new Set<string>();
+  const kws: string[] = [];
+
+  const add = (kw: string) => {
+    const k = kw.toLowerCase().trim();
+    if (k && k.length > 1 && !seen.has(k)) {
+      seen.add(k);
+      kws.push(k);
+    }
+  };
+
+  const nameLower = name.toLowerCase().trim();
+  const catLower = categoryName.toLowerCase().trim();
+  const metalLower = metalType.toLowerCase().trim();
+  const purStr = purity.trim();
+
+  if (nameLower) add(nameLower);
+
+  if (purStr && metalLower) {
+    const combined = metalLower.startsWith(purStr.toLowerCase())
+      ? metalLower
+      : `${purStr} ${metalLower}`;
+    add(combined);
+    add(`${purStr} silver`);
+    add("sterling silver");
+  } else if (metalLower) {
+    add(metalLower);
+  }
+
+  if (catLower) {
+    add(catLower);
+    if (purStr) add(`${purStr} ${catLower}`);
+  }
+
+  if (nameLower && catLower) {
+    const nameWords = nameLower.split(/\s+/);
+    if (nameWords.length > 1) add(`${nameWords.slice(0, 2).join(" ")} ${catLower}`);
+  }
+
+  if (gender && catLower) {
+    add(`${gender} ${catLower}`);
+    if (purStr) add(`${gender} ${purStr} ${catLower}`);
+  }
+
+  collectionNames.forEach((c) => add(c));
+
+  add("silver jewellery");
+  add("hadha jewellery");
+
+  return kws.slice(0, 15).join(", ");
 }
 
 // ─── Section wrapper ──────────────────────────────────────────────────────────
@@ -595,10 +715,9 @@ function ProductInfoSection({
   const slugManualRef = useRef(false);
 
   const handleNameChange = (v: string) => {
-    set({ name: v });
-    if (!slugManualRef.current) {
-      set({ slug: toSlug(v), meta_title: v });
-    }
+    const patch: Partial<FormState> = { name: v };
+    if (!slugManualRef.current) patch.slug = toSlug(v);
+    set(patch);
   };
 
   return (
@@ -1670,54 +1789,265 @@ function AttributesSection({
 
 // ─── SEO Section ──────────────────────────────────────────────────────────────
 
-function SeoSection({ form, set }: { form: FormState; set: (patch: Partial<FormState>) => void }) {
-  const title = form.meta_title || form.name || "Product Title";
-  const desc = form.meta_description || form.short_description || "Product description…";
+interface SeoEdited {
+  title: boolean;
+  desc: boolean;
+  kw: boolean;
+}
+
+function SeoCharCounter({
+  count,
+  min,
+  max,
+  warnLow,
+  warnHigh,
+}: {
+  count: number;
+  min: number;
+  max: number;
+  warnLow: number;
+  warnHigh: number;
+}) {
+  const color =
+    count >= min && count <= max
+      ? "text-emerald-600"
+      : (count >= warnLow && count < min) || (count > max && count <= warnHigh)
+        ? "text-amber-500"
+        : "text-destructive";
+  return (
+    <span className={`text-[11px] tabular-nums font-mono ${color}`}>
+      {count} / {max}
+    </span>
+  );
+}
+
+function SeoBadge({ edited }: { edited: boolean }) {
+  return (
+    <span
+      className={`text-[9px] uppercase tracking-[0.15em] px-1.5 py-0.5 font-medium border ${
+        edited
+          ? "bg-secondary text-muted-foreground border-border"
+          : "bg-primary/10 text-primary border-primary/20"
+      }`}
+    >
+      {edited ? "Custom" : "Auto Generated"}
+    </span>
+  );
+}
+
+function SeoFieldHeader({
+  label,
+  edited,
+  onRegenerate,
+  counter,
+}: {
+  label: string;
+  edited: boolean;
+  onRegenerate: () => void;
+  counter?: React.ReactNode;
+}) {
+  return (
+    <div className="flex items-center justify-between gap-2 flex-wrap">
+      <label className="text-[11px] uppercase tracking-[0.18em] text-muted-foreground">
+        {label}
+      </label>
+      <div className="flex items-center gap-2">
+        <SeoBadge edited={edited} />
+        {counter}
+        <button
+          type="button"
+          onClick={onRegenerate}
+          className="flex items-center gap-1 text-[11px] text-muted-foreground hover:text-primary transition-colors"
+        >
+          <Sparkles className="size-3" />
+          Regenerate
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function SeoSection({
+  form,
+  set,
+  mode,
+  categoryName,
+  collectionNames,
+  seoEdited,
+  onSetSeoEdited,
+}: {
+  form: FormState;
+  set: (patch: Partial<FormState>) => void;
+  mode: "new" | "edit";
+  categoryName: string;
+  collectionNames: string[];
+  seoEdited: SeoEdited;
+  onSetSeoEdited: (patch: Partial<SeoEdited>) => void;
+}) {
+  const previewTitle = form.meta_title || form.name || "Product Title";
+  const previewDesc = form.meta_description || form.short_description || "Product description…";
+
+  const regenTitle = () => {
+    set({ meta_title: generateMetaTitle(form.name, form.metal_type, form.purity) });
+    onSetSeoEdited({ title: false });
+  };
+
+  const regenDesc = () => {
+    set({
+      meta_description: generateMetaDescription(
+        form.short_description,
+        form.description,
+        form.name,
+        categoryName,
+        form.metal_type,
+      ),
+    });
+    onSetSeoEdited({ desc: false });
+  };
+
+  const regenKw = () => {
+    set({
+      meta_keywords: generateMetaKeywords(
+        form.name,
+        categoryName,
+        collectionNames,
+        form.gender,
+        form.metal_type,
+        form.purity,
+      ),
+    });
+    onSetSeoEdited({ kw: false });
+  };
+
+  const regenAll = () => {
+    set({
+      meta_title: generateMetaTitle(form.name, form.metal_type, form.purity),
+      meta_description: generateMetaDescription(
+        form.short_description,
+        form.description,
+        form.name,
+        categoryName,
+        form.metal_type,
+      ),
+      meta_keywords: generateMetaKeywords(
+        form.name,
+        categoryName,
+        collectionNames,
+        form.gender,
+        form.metal_type,
+        form.purity,
+      ),
+    });
+    onSetSeoEdited({ title: false, desc: false, kw: false });
+  };
+
+  const kwCount = form.meta_keywords
+    ? form.meta_keywords.split(",").filter((k) => k.trim()).length
+    : 0;
 
   return (
     <div className="flex flex-col gap-5 pt-5">
-      <Field
-        label="Meta Title"
-        hint={`${form.meta_title.length}/255 · Auto-filled from product name`}
-      >
+      {/* Header row with Regenerate All */}
+      <div className="flex items-center justify-between">
+        <p className="text-xs text-muted-foreground">
+          Auto-generated from product details. Edit any field to customise.
+        </p>
+        <button
+          type="button"
+          onClick={regenAll}
+          className="flex items-center gap-1.5 text-[11px] uppercase tracking-[0.18em] text-primary hover:opacity-75 transition-opacity shrink-0"
+        >
+          <Sparkles className="size-3.5" />
+          Regenerate All
+        </button>
+      </div>
+
+      {/* Meta Title */}
+      <div className="flex flex-col gap-1.5">
+        <SeoFieldHeader
+          label="Meta Title"
+          edited={seoEdited.title}
+          onRegenerate={regenTitle}
+          counter={
+            <SeoCharCounter
+              count={form.meta_title.length}
+              min={40}
+              max={60}
+              warnLow={30}
+              warnHigh={70}
+            />
+          }
+        />
         <TextInput
           value={form.meta_title}
-          onChange={(v) => set({ meta_title: v })}
-          placeholder="SEO title…"
+          onChange={(v) => {
+            set({ meta_title: v });
+            onSetSeoEdited({ title: true });
+          }}
+          placeholder="Automatically generated from the product name."
         />
-      </Field>
+      </div>
 
-      <Field
-        label="Meta Description"
-        hint={`${form.meta_description.length}/500 · Auto-filled from short description`}
-      >
+      {/* Meta Description */}
+      <div className="flex flex-col gap-1.5">
+        <SeoFieldHeader
+          label="Meta Description"
+          edited={seoEdited.desc}
+          onRegenerate={regenDesc}
+          counter={
+            <SeoCharCounter
+              count={form.meta_description.length}
+              min={120}
+              max={160}
+              warnLow={100}
+              warnHigh={180}
+            />
+          }
+        />
         <textarea
           value={form.meta_description}
-          onChange={(e) => set({ meta_description: e.target.value })}
-          maxLength={500}
+          onChange={(e) => {
+            set({ meta_description: e.target.value });
+            onSetSeoEdited({ desc: true });
+          }}
           rows={3}
-          placeholder="SEO description…"
+          placeholder="Automatically generated from the short description."
           className="border border-border px-3 py-2 bg-transparent text-sm outline-none w-full resize-none"
         />
-      </Field>
+      </div>
 
-      <Field label="Meta Keywords" hint="Comma-separated">
+      {/* Meta Keywords */}
+      <div className="flex flex-col gap-1.5">
+        <SeoFieldHeader
+          label="Meta Keywords"
+          edited={seoEdited.kw}
+          onRegenerate={regenKw}
+        />
         <TextInput
           value={form.meta_keywords}
-          onChange={(v) => set({ meta_keywords: v })}
-          placeholder="silver ring, 925 ring, twisted ring…"
+          onChange={(v) => {
+            set({ meta_keywords: v });
+            onSetSeoEdited({ kw: true });
+          }}
+          placeholder="Automatically generated from the product details."
         />
-      </Field>
+        {kwCount > 0 && (
+          <p className="text-[11px] text-muted-foreground">{kwCount} keyword{kwCount !== 1 ? "s" : ""} · comma-separated</p>
+        )}
+      </div>
 
+      {/* Google Search Preview */}
       <div className="border border-border p-4 bg-white text-black">
-        <p className="text-[11px] text-muted-foreground mb-2 text-gray-400 uppercase tracking-wider">
+        <p className="text-[11px] uppercase tracking-wider text-gray-400 mb-2">
           Google Search Preview
         </p>
-        <p className="text-blue-600 text-base truncate">
-          hadha.co › products › {form.slug || "product-slug"}
+        <p className="text-[13px] text-green-700 truncate mb-0.5">
+          hadha.co &rsaquo; products &rsaquo; {form.slug || "product-slug"}
         </p>
-        <p className="text-blue-700 text-lg font-medium truncate">{title}</p>
-        <p className="text-gray-600 text-sm line-clamp-2">{desc}</p>
+        <p className="text-blue-700 text-[18px] font-medium leading-snug truncate">
+          {previewTitle}
+        </p>
+        <p className="text-gray-600 text-sm mt-0.5 line-clamp-2 leading-relaxed">{previewDesc}</p>
       </div>
     </div>
   );
@@ -1869,11 +2199,15 @@ export function ProductForm({ mode, initialProduct, initialCollectionIds }: Prod
     staleTime: 300_000,
   });
 
-  const { data: collections = [] } = useQuery({
-    queryKey: queryKeys.admin.collections,
-    queryFn: () => api.get<CollectionDto[]>("/admin/collections"),
+  const { data: collectionsResponse } = useQuery({
+    queryKey: queryKeys.admin.collectionsList({ page_size: 200 }),
+    queryFn: () =>
+      api.get<CollectionListResponse>("/admin/collections", {
+        params: { page_size: 200 },
+      }),
     staleTime: 300_000,
   });
+  const collections: CollectionDto[] = collectionsResponse?.items ?? [];
 
   // ── Local state ─────────────────────────────────────────────────────────────
 
@@ -1909,6 +2243,23 @@ export function ProductForm({ mode, initialProduct, initialCollectionIds }: Prod
   const [deletedVariantIds, setDeletedVariantIds] = useState<string[]>([]);
   const [deletedAttributeNames, setDeletedAttributeNames] = useState<string[]>([]);
   const initialCollectionIdsRef = useRef<string[]>(initialCollectionIds ?? []);
+
+  // SEO override flags — true means the admin edited that field manually
+  const [seoEdited, setSeoEdited] = useState<SeoEdited>({
+    title: mode === "edit",
+    desc: mode === "edit",
+    kw: mode === "edit",
+  });
+
+  const updateSeoEdited = useCallback((patch: Partial<SeoEdited>) => {
+    setSeoEdited((prev) => ({ ...prev, ...patch }));
+  }, []);
+
+  // Keep a ref to description so auto-gen effects don't need it as a dep
+  const descriptionRef = useRef(form.description);
+  useEffect(() => {
+    descriptionRef.current = form.description;
+  }, [form.description]);
 
   // Sync when initialProduct data becomes available (edit mode with loading)
   useEffect(() => {
@@ -1962,6 +2313,67 @@ export function ProductForm({ mode, initialProduct, initialCollectionIds }: Prod
       generateSku();
     }
   }, [form.parent_category_id, form.sku, mode]);
+
+  // ── Auto-generate SEO (create mode only, respects manual-edit flags) ─────────
+
+  useEffect(() => {
+    if (mode === "edit" || seoEdited.title) return;
+    const v = generateMetaTitle(form.name, form.metal_type, form.purity);
+    if (v) set({ meta_title: v });
+  }, [form.name, form.metal_type, form.purity, seoEdited.title, mode]);
+
+  useEffect(() => {
+    if (mode === "edit" || seoEdited.desc) return;
+    const catName =
+      categoryTreeLocal.flatMap((p) => p.children).find((c) => c.id === form.category_id)?.name ??
+      "";
+    const v = generateMetaDescription(
+      form.short_description,
+      descriptionRef.current,
+      form.name,
+      catName,
+      form.metal_type,
+    );
+    if (v) set({ meta_description: v });
+  }, [
+    form.name,
+    form.short_description,
+    form.category_id,
+    form.metal_type,
+    seoEdited.desc,
+    mode,
+    categoryTreeLocal,
+  ]);
+
+  useEffect(() => {
+    if (mode === "edit" || seoEdited.kw) return;
+    const catName =
+      categoryTreeLocal.flatMap((p) => p.children).find((c) => c.id === form.category_id)?.name ??
+      "";
+    const colNames = (collectionsLocal.length ? collectionsLocal : collections)
+      .filter((c) => form.collection_ids.includes(c.id))
+      .map((c) => c.name);
+    const v = generateMetaKeywords(
+      form.name,
+      catName,
+      colNames,
+      form.gender,
+      form.metal_type,
+      form.purity,
+    );
+    if (v) set({ meta_keywords: v });
+  }, [
+    form.name,
+    form.category_id,
+    form.collection_ids,
+    form.gender,
+    form.metal_type,
+    form.purity,
+    seoEdited.kw,
+    mode,
+    categoryTreeLocal,
+    collectionsLocal,
+  ]);
 
   // ── Image handlers ──────────────────────────────────────────────────────────
 
@@ -2233,6 +2645,10 @@ export function ProductForm({ mode, initialProduct, initialCollectionIds }: Prod
   const selectedCategoryName =
     categoryTreeLocal.flatMap((p) => p.children).find((c) => c.id === form.category_id)?.name ?? "";
 
+  const selectedCollectionNames = (collectionsLocal.length ? collectionsLocal : collections)
+    .filter((c) => form.collection_ids.includes(c.id))
+    .map((c) => c.name);
+
   // Track variant deletions in edit mode
   const handleSetForm = useCallback(
     (patch: Partial<FormState>) => {
@@ -2377,7 +2793,15 @@ export function ProductForm({ mode, initialProduct, initialCollectionIds }: Prod
           </Section>
 
           <Section title="SEO" defaultOpen={false}>
-            <SeoSection form={form} set={handleSetForm} />
+            <SeoSection
+              form={form}
+              set={handleSetForm}
+              mode={mode}
+              categoryName={selectedCategoryName}
+              collectionNames={selectedCollectionNames}
+              seoEdited={seoEdited}
+              onSetSeoEdited={updateSeoEdited}
+            />
           </Section>
         </div>
 

@@ -54,11 +54,12 @@ export const Route = createFileRoute("/collections/$slug")({
 function CollectionPage() {
   const { collection } = Route.useLoaderData();
   const [filters, setFilters] = useState<FilterValues>({});
-  const [sort, setSort] = useState<"featured" | "price-asc" | "price-desc" | "newest">("featured");
+  const [sort, setSort] = useState<"featured" | "price-asc" | "price-desc" | "newest">("newest");
   const [mobileFilterOpen, setMobileFilterOpen] = useState(false);
 
   const apiParams = useMemo(
     () => ({
+      collection_slug: collection.slug,
       page_size: 24,
       is_featured: sort === "featured" ? true : undefined,
       is_new_arrival: filters.isNew || undefined,
@@ -71,7 +72,7 @@ function CollectionPage() {
           : ("created_at" as const),
       sort_dir: sort === "price-asc" ? ("asc" as const) : ("desc" as const),
     }),
-    [filters, sort],
+    [collection.slug, filters, sort],
   );
 
   const { data, isLoading } = useQuery({

@@ -21,6 +21,64 @@ export interface CategoryTreeNode {
   children: CategoryTreeNode[];
 }
 
+export interface CategoryAdminListItem {
+  id: string;
+  parent_id: string | null;
+  name: string;
+  slug: string;
+  image_url: string | null;
+  sort_order: number;
+  is_active: boolean;
+  product_count: number;
+  children_count: number;
+  updated_at: string;
+}
+
+export interface CategoryAdminListResponse {
+  items: CategoryAdminListItem[];
+  total: number;
+  page: number;
+  page_size: number;
+  total_pages: number;
+}
+
+export interface CategoryDetail {
+  id: string;
+  parent_id: string | null;
+  name: string;
+  slug: string;
+  description: string | null;
+  image_url: string | null;
+  sort_order: number;
+  is_active: boolean;
+  seo_title: string | null;
+  seo_description: string | null;
+  product_count: number;
+  children_count: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface CategoryProductItem {
+  id: string;
+  sku: string;
+  name: string;
+  slug: string;
+  base_price: number;
+  stock_quantity: number;
+  status: string;
+  is_featured: boolean;
+  primary_image: string | null;
+}
+
+export interface CategoryProductsResponse {
+  items: CategoryProductItem[];
+  total: number;
+  page: number;
+  page_size: number;
+  total_pages: number;
+}
+
 // ── Collections ───────────────────────────────────────────────────────────────
 export interface CollectionDto {
   id: string;
@@ -33,7 +91,74 @@ export interface CollectionDto {
   sort_order: number;
 }
 
+export interface CollectionListItem {
+  id: string;
+  name: string;
+  slug: string;
+  description: string | null;
+  image_url: string | null;
+  is_active: boolean;
+  is_featured: boolean;
+  sort_order: number;
+  product_count: number;
+  updated_at: string;
+}
+
+export interface CollectionListResponse {
+  items: CollectionListItem[];
+  total: number;
+  page: number;
+  page_size: number;
+  total_pages: number;
+}
+
+export interface CollectionDetail {
+  id: string;
+  name: string;
+  slug: string;
+  description: string | null;
+  image_url: string | null;
+  is_active: boolean;
+  is_featured: boolean;
+  sort_order: number;
+  seo_title: string | null;
+  seo_description: string | null;
+  starts_at: string | null;
+  ends_at: string | null;
+  product_count: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface CollectionProductItem {
+  id: string;
+  sku: string;
+  name: string;
+  slug: string;
+  category_id: string | null;
+  base_price: number;
+  stock_quantity: number;
+  status: string;
+  is_featured: boolean;
+  primary_image: string | null;
+  sort_order: number;
+}
+
+export interface CollectionProductsResponse {
+  items: CollectionProductItem[];
+  total: number;
+  page: number;
+  page_size: number;
+  total_pages: number;
+}
+
 // ── Products (admin) ─────────────────────────────────────────────────────────
+export interface ProductCollectionRef {
+  id: string;
+  name: string;
+  slug: string;
+}
+
 export interface ProductListItem {
   id: string;
   sku: string;
@@ -51,6 +176,7 @@ export interface ProductListItem {
   is_best_seller: boolean;
   created_at: string;
   primary_image: string | null;
+  collections: ProductCollectionRef[];
 }
 
 export interface ProductListResponse {
@@ -130,6 +256,7 @@ export interface ProductDetail {
   images: ProductImage[];
   variants: ProductVariant[];
   attributes: ProductAttribute[];
+  collections: ProductCollectionRef[];
   created_at: string;
   updated_at: string;
   published_at: string | null;

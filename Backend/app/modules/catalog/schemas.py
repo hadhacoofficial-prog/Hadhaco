@@ -6,6 +6,14 @@ from pydantic import BaseModel, Field, field_validator
 # ---------- Sub-schemas ----------
 
 
+class ProductCollectionRef(BaseModel):
+    id: uuid.UUID
+    name: str
+    slug: str
+
+    model_config = {"from_attributes": True}
+
+
 class ProductImageResponse(BaseModel):
     id: uuid.UUID
     url: str
@@ -104,6 +112,7 @@ class ProductCreateRequest(BaseModel):
 
     variants: list[ProductVariantCreateRequest] = []
     attributes: list[ProductAttributeCreateRequest] = []
+    collection_ids: list[uuid.UUID] = []
 
     @field_validator("slug")
     @classmethod
@@ -158,6 +167,7 @@ class ProductUpdateRequest(BaseModel):
     meta_title: str | None = Field(None, max_length=255)
     meta_description: str | None = Field(None, max_length=500)
     meta_keywords: str | None = None
+    collection_ids: list[uuid.UUID] | None = None
 
     @field_validator("slug")
     @classmethod
@@ -225,6 +235,7 @@ class ProductResponse(BaseModel):
     images: list[ProductImageResponse] = []
     variants: list[ProductVariantResponse] = []
     attributes: list[ProductAttributeResponse] = []
+    collections: list[ProductCollectionRef] = []
 
     model_config = {"from_attributes": True}
 
@@ -246,6 +257,7 @@ class ProductListItem(BaseModel):
     is_best_seller: bool
     created_at: datetime
     primary_image: str | None = None
+    collections: list[ProductCollectionRef] = []
 
     model_config = {"from_attributes": True}
 

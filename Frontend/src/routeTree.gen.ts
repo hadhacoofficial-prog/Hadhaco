@@ -37,17 +37,29 @@ import { Route as AdminLoginRouteImport } from './routes/admin.login'
 import { Route as AdminInventoryRouteImport } from './routes/admin.inventory'
 import { Route as AdminCustomersRouteImport } from './routes/admin.customers'
 import { Route as AdminCouponsRouteImport } from './routes/admin.coupons'
+import { Route as AdminCollectionsRouteImport } from './routes/admin.collections'
 import { Route as AdminCmsRouteImport } from './routes/admin.cms'
+import { Route as AdminCategoriesRouteImport } from './routes/admin.categories'
 import { Route as AccountResetPasswordRouteImport } from './routes/account.reset-password'
 import { Route as AccountRegisterRouteImport } from './routes/account.register'
 import { Route as AccountLoginRouteImport } from './routes/account.login'
 import { Route as AccountForgotPasswordRouteImport } from './routes/account.forgot-password'
 import { Route as AdminProductsIndexRouteImport } from './routes/admin.products.index'
+import { Route as AdminCollectionsIndexRouteImport } from './routes/admin.collections.index'
 import { Route as AdminCmsIndexRouteImport } from './routes/admin.cms.index'
+import { Route as AdminCategoriesIndexRouteImport } from './routes/admin.categories.index'
 import { Route as AdminProductsNewRouteImport } from './routes/admin.products.new'
 import { Route as AdminProductsProductIdRouteImport } from './routes/admin.products.$productId'
+import { Route as AdminCollectionsNewRouteImport } from './routes/admin.collections.new'
+import { Route as AdminCollectionsCollectionIdRouteImport } from './routes/admin.collections.$collectionId'
 import { Route as AdminCmsMediaRouteImport } from './routes/admin.cms.media'
 import { Route as AdminCmsSectionKeyRouteImport } from './routes/admin.cms.$sectionKey'
+import { Route as AdminCategoriesNewRouteImport } from './routes/admin.categories.new'
+import { Route as AdminCategoriesCategoryIdRouteImport } from './routes/admin.categories.$categoryId'
+import { Route as AdminCollectionsCollectionIdIndexRouteImport } from './routes/admin.collections.$collectionId.index'
+import { Route as AdminCategoriesCategoryIdIndexRouteImport } from './routes/admin.categories.$categoryId.index'
+import { Route as AdminCollectionsCollectionIdEditRouteImport } from './routes/admin.collections.$collectionId.edit'
+import { Route as AdminCategoriesCategoryIdEditRouteImport } from './routes/admin.categories.$categoryId.edit'
 
 const WishlistRoute = WishlistRouteImport.update({
   id: '/wishlist',
@@ -189,9 +201,19 @@ const AdminCouponsRoute = AdminCouponsRouteImport.update({
   path: '/coupons',
   getParentRoute: () => AdminRoute,
 } as any)
+const AdminCollectionsRoute = AdminCollectionsRouteImport.update({
+  id: '/collections',
+  path: '/collections',
+  getParentRoute: () => AdminRoute,
+} as any)
 const AdminCmsRoute = AdminCmsRouteImport.update({
   id: '/cms',
   path: '/cms',
+  getParentRoute: () => AdminRoute,
+} as any)
+const AdminCategoriesRoute = AdminCategoriesRouteImport.update({
+  id: '/categories',
+  path: '/categories',
   getParentRoute: () => AdminRoute,
 } as any)
 const AccountResetPasswordRoute = AccountResetPasswordRouteImport.update({
@@ -219,10 +241,20 @@ const AdminProductsIndexRoute = AdminProductsIndexRouteImport.update({
   path: '/',
   getParentRoute: () => AdminProductsRoute,
 } as any)
+const AdminCollectionsIndexRoute = AdminCollectionsIndexRouteImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => AdminCollectionsRoute,
+} as any)
 const AdminCmsIndexRoute = AdminCmsIndexRouteImport.update({
   id: '/',
   path: '/',
   getParentRoute: () => AdminCmsRoute,
+} as any)
+const AdminCategoriesIndexRoute = AdminCategoriesIndexRouteImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => AdminCategoriesRoute,
 } as any)
 const AdminProductsNewRoute = AdminProductsNewRouteImport.update({
   id: '/new',
@@ -234,6 +266,17 @@ const AdminProductsProductIdRoute = AdminProductsProductIdRouteImport.update({
   path: '/$productId',
   getParentRoute: () => AdminProductsRoute,
 } as any)
+const AdminCollectionsNewRoute = AdminCollectionsNewRouteImport.update({
+  id: '/new',
+  path: '/new',
+  getParentRoute: () => AdminCollectionsRoute,
+} as any)
+const AdminCollectionsCollectionIdRoute =
+  AdminCollectionsCollectionIdRouteImport.update({
+    id: '/$collectionId',
+    path: '/$collectionId',
+    getParentRoute: () => AdminCollectionsRoute,
+  } as any)
 const AdminCmsMediaRoute = AdminCmsMediaRouteImport.update({
   id: '/media',
   path: '/media',
@@ -244,6 +287,41 @@ const AdminCmsSectionKeyRoute = AdminCmsSectionKeyRouteImport.update({
   path: '/$sectionKey',
   getParentRoute: () => AdminCmsRoute,
 } as any)
+const AdminCategoriesNewRoute = AdminCategoriesNewRouteImport.update({
+  id: '/new',
+  path: '/new',
+  getParentRoute: () => AdminCategoriesRoute,
+} as any)
+const AdminCategoriesCategoryIdRoute =
+  AdminCategoriesCategoryIdRouteImport.update({
+    id: '/$categoryId',
+    path: '/$categoryId',
+    getParentRoute: () => AdminCategoriesRoute,
+  } as any)
+const AdminCollectionsCollectionIdIndexRoute =
+  AdminCollectionsCollectionIdIndexRouteImport.update({
+    id: '/',
+    path: '/',
+    getParentRoute: () => AdminCollectionsCollectionIdRoute,
+  } as any)
+const AdminCategoriesCategoryIdIndexRoute =
+  AdminCategoriesCategoryIdIndexRouteImport.update({
+    id: '/',
+    path: '/',
+    getParentRoute: () => AdminCategoriesCategoryIdRoute,
+  } as any)
+const AdminCollectionsCollectionIdEditRoute =
+  AdminCollectionsCollectionIdEditRouteImport.update({
+    id: '/edit',
+    path: '/edit',
+    getParentRoute: () => AdminCollectionsCollectionIdRoute,
+  } as any)
+const AdminCategoriesCategoryIdEditRoute =
+  AdminCategoriesCategoryIdEditRouteImport.update({
+    id: '/edit',
+    path: '/edit',
+    getParentRoute: () => AdminCategoriesCategoryIdRoute,
+  } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -263,7 +341,9 @@ export interface FileRoutesByFullPath {
   '/account/login': typeof AccountLoginRoute
   '/account/register': typeof AccountRegisterRoute
   '/account/reset-password': typeof AccountResetPasswordRoute
+  '/admin/categories': typeof AdminCategoriesRouteWithChildren
   '/admin/cms': typeof AdminCmsRouteWithChildren
+  '/admin/collections': typeof AdminCollectionsRouteWithChildren
   '/admin/coupons': typeof AdminCouponsRoute
   '/admin/customers': typeof AdminCustomersRoute
   '/admin/inventory': typeof AdminInventoryRoute
@@ -279,12 +359,22 @@ export interface FileRoutesByFullPath {
   '/admin/': typeof AdminIndexRoute
   '/collections/': typeof CollectionsIndexRoute
   '/products/': typeof ProductsIndexRoute
+  '/admin/categories/$categoryId': typeof AdminCategoriesCategoryIdRouteWithChildren
+  '/admin/categories/new': typeof AdminCategoriesNewRoute
   '/admin/cms/$sectionKey': typeof AdminCmsSectionKeyRoute
   '/admin/cms/media': typeof AdminCmsMediaRoute
+  '/admin/collections/$collectionId': typeof AdminCollectionsCollectionIdRouteWithChildren
+  '/admin/collections/new': typeof AdminCollectionsNewRoute
   '/admin/products/$productId': typeof AdminProductsProductIdRoute
   '/admin/products/new': typeof AdminProductsNewRoute
+  '/admin/categories/': typeof AdminCategoriesIndexRoute
   '/admin/cms/': typeof AdminCmsIndexRoute
+  '/admin/collections/': typeof AdminCollectionsIndexRoute
   '/admin/products/': typeof AdminProductsIndexRoute
+  '/admin/categories/$categoryId/edit': typeof AdminCategoriesCategoryIdEditRoute
+  '/admin/collections/$collectionId/edit': typeof AdminCollectionsCollectionIdEditRoute
+  '/admin/categories/$categoryId/': typeof AdminCategoriesCategoryIdIndexRoute
+  '/admin/collections/$collectionId/': typeof AdminCollectionsCollectionIdIndexRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -317,12 +407,20 @@ export interface FileRoutesByTo {
   '/admin': typeof AdminIndexRoute
   '/collections': typeof CollectionsIndexRoute
   '/products': typeof ProductsIndexRoute
+  '/admin/categories/new': typeof AdminCategoriesNewRoute
   '/admin/cms/$sectionKey': typeof AdminCmsSectionKeyRoute
   '/admin/cms/media': typeof AdminCmsMediaRoute
+  '/admin/collections/new': typeof AdminCollectionsNewRoute
   '/admin/products/$productId': typeof AdminProductsProductIdRoute
   '/admin/products/new': typeof AdminProductsNewRoute
+  '/admin/categories': typeof AdminCategoriesIndexRoute
   '/admin/cms': typeof AdminCmsIndexRoute
+  '/admin/collections': typeof AdminCollectionsIndexRoute
   '/admin/products': typeof AdminProductsIndexRoute
+  '/admin/categories/$categoryId/edit': typeof AdminCategoriesCategoryIdEditRoute
+  '/admin/collections/$collectionId/edit': typeof AdminCollectionsCollectionIdEditRoute
+  '/admin/categories/$categoryId': typeof AdminCategoriesCategoryIdIndexRoute
+  '/admin/collections/$collectionId': typeof AdminCollectionsCollectionIdIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -343,7 +441,9 @@ export interface FileRoutesById {
   '/account/login': typeof AccountLoginRoute
   '/account/register': typeof AccountRegisterRoute
   '/account/reset-password': typeof AccountResetPasswordRoute
+  '/admin/categories': typeof AdminCategoriesRouteWithChildren
   '/admin/cms': typeof AdminCmsRouteWithChildren
+  '/admin/collections': typeof AdminCollectionsRouteWithChildren
   '/admin/coupons': typeof AdminCouponsRoute
   '/admin/customers': typeof AdminCustomersRoute
   '/admin/inventory': typeof AdminInventoryRoute
@@ -359,12 +459,22 @@ export interface FileRoutesById {
   '/admin/': typeof AdminIndexRoute
   '/collections/': typeof CollectionsIndexRoute
   '/products/': typeof ProductsIndexRoute
+  '/admin/categories/$categoryId': typeof AdminCategoriesCategoryIdRouteWithChildren
+  '/admin/categories/new': typeof AdminCategoriesNewRoute
   '/admin/cms/$sectionKey': typeof AdminCmsSectionKeyRoute
   '/admin/cms/media': typeof AdminCmsMediaRoute
+  '/admin/collections/$collectionId': typeof AdminCollectionsCollectionIdRouteWithChildren
+  '/admin/collections/new': typeof AdminCollectionsNewRoute
   '/admin/products/$productId': typeof AdminProductsProductIdRoute
   '/admin/products/new': typeof AdminProductsNewRoute
+  '/admin/categories/': typeof AdminCategoriesIndexRoute
   '/admin/cms/': typeof AdminCmsIndexRoute
+  '/admin/collections/': typeof AdminCollectionsIndexRoute
   '/admin/products/': typeof AdminProductsIndexRoute
+  '/admin/categories/$categoryId/edit': typeof AdminCategoriesCategoryIdEditRoute
+  '/admin/collections/$collectionId/edit': typeof AdminCollectionsCollectionIdEditRoute
+  '/admin/categories/$categoryId/': typeof AdminCategoriesCategoryIdIndexRoute
+  '/admin/collections/$collectionId/': typeof AdminCollectionsCollectionIdIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -386,7 +496,9 @@ export interface FileRouteTypes {
     | '/account/login'
     | '/account/register'
     | '/account/reset-password'
+    | '/admin/categories'
     | '/admin/cms'
+    | '/admin/collections'
     | '/admin/coupons'
     | '/admin/customers'
     | '/admin/inventory'
@@ -402,12 +514,22 @@ export interface FileRouteTypes {
     | '/admin/'
     | '/collections/'
     | '/products/'
+    | '/admin/categories/$categoryId'
+    | '/admin/categories/new'
     | '/admin/cms/$sectionKey'
     | '/admin/cms/media'
+    | '/admin/collections/$collectionId'
+    | '/admin/collections/new'
     | '/admin/products/$productId'
     | '/admin/products/new'
+    | '/admin/categories/'
     | '/admin/cms/'
+    | '/admin/collections/'
     | '/admin/products/'
+    | '/admin/categories/$categoryId/edit'
+    | '/admin/collections/$collectionId/edit'
+    | '/admin/categories/$categoryId/'
+    | '/admin/collections/$collectionId/'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -440,12 +562,20 @@ export interface FileRouteTypes {
     | '/admin'
     | '/collections'
     | '/products'
+    | '/admin/categories/new'
     | '/admin/cms/$sectionKey'
     | '/admin/cms/media'
+    | '/admin/collections/new'
     | '/admin/products/$productId'
     | '/admin/products/new'
+    | '/admin/categories'
     | '/admin/cms'
+    | '/admin/collections'
     | '/admin/products'
+    | '/admin/categories/$categoryId/edit'
+    | '/admin/collections/$collectionId/edit'
+    | '/admin/categories/$categoryId'
+    | '/admin/collections/$collectionId'
   id:
     | '__root__'
     | '/'
@@ -465,7 +595,9 @@ export interface FileRouteTypes {
     | '/account/login'
     | '/account/register'
     | '/account/reset-password'
+    | '/admin/categories'
     | '/admin/cms'
+    | '/admin/collections'
     | '/admin/coupons'
     | '/admin/customers'
     | '/admin/inventory'
@@ -481,12 +613,22 @@ export interface FileRouteTypes {
     | '/admin/'
     | '/collections/'
     | '/products/'
+    | '/admin/categories/$categoryId'
+    | '/admin/categories/new'
     | '/admin/cms/$sectionKey'
     | '/admin/cms/media'
+    | '/admin/collections/$collectionId'
+    | '/admin/collections/new'
     | '/admin/products/$productId'
     | '/admin/products/new'
+    | '/admin/categories/'
     | '/admin/cms/'
+    | '/admin/collections/'
     | '/admin/products/'
+    | '/admin/categories/$categoryId/edit'
+    | '/admin/collections/$collectionId/edit'
+    | '/admin/categories/$categoryId/'
+    | '/admin/collections/$collectionId/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -713,11 +855,25 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AdminCouponsRouteImport
       parentRoute: typeof AdminRoute
     }
+    '/admin/collections': {
+      id: '/admin/collections'
+      path: '/collections'
+      fullPath: '/admin/collections'
+      preLoaderRoute: typeof AdminCollectionsRouteImport
+      parentRoute: typeof AdminRoute
+    }
     '/admin/cms': {
       id: '/admin/cms'
       path: '/cms'
       fullPath: '/admin/cms'
       preLoaderRoute: typeof AdminCmsRouteImport
+      parentRoute: typeof AdminRoute
+    }
+    '/admin/categories': {
+      id: '/admin/categories'
+      path: '/categories'
+      fullPath: '/admin/categories'
+      preLoaderRoute: typeof AdminCategoriesRouteImport
       parentRoute: typeof AdminRoute
     }
     '/account/reset-password': {
@@ -755,12 +911,26 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AdminProductsIndexRouteImport
       parentRoute: typeof AdminProductsRoute
     }
+    '/admin/collections/': {
+      id: '/admin/collections/'
+      path: '/'
+      fullPath: '/admin/collections/'
+      preLoaderRoute: typeof AdminCollectionsIndexRouteImport
+      parentRoute: typeof AdminCollectionsRoute
+    }
     '/admin/cms/': {
       id: '/admin/cms/'
       path: '/'
       fullPath: '/admin/cms/'
       preLoaderRoute: typeof AdminCmsIndexRouteImport
       parentRoute: typeof AdminCmsRoute
+    }
+    '/admin/categories/': {
+      id: '/admin/categories/'
+      path: '/'
+      fullPath: '/admin/categories/'
+      preLoaderRoute: typeof AdminCategoriesIndexRouteImport
+      parentRoute: typeof AdminCategoriesRoute
     }
     '/admin/products/new': {
       id: '/admin/products/new'
@@ -776,6 +946,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AdminProductsProductIdRouteImport
       parentRoute: typeof AdminProductsRoute
     }
+    '/admin/collections/new': {
+      id: '/admin/collections/new'
+      path: '/new'
+      fullPath: '/admin/collections/new'
+      preLoaderRoute: typeof AdminCollectionsNewRouteImport
+      parentRoute: typeof AdminCollectionsRoute
+    }
+    '/admin/collections/$collectionId': {
+      id: '/admin/collections/$collectionId'
+      path: '/$collectionId'
+      fullPath: '/admin/collections/$collectionId'
+      preLoaderRoute: typeof AdminCollectionsCollectionIdRouteImport
+      parentRoute: typeof AdminCollectionsRoute
+    }
     '/admin/cms/media': {
       id: '/admin/cms/media'
       path: '/media'
@@ -790,8 +974,82 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AdminCmsSectionKeyRouteImport
       parentRoute: typeof AdminCmsRoute
     }
+    '/admin/categories/new': {
+      id: '/admin/categories/new'
+      path: '/new'
+      fullPath: '/admin/categories/new'
+      preLoaderRoute: typeof AdminCategoriesNewRouteImport
+      parentRoute: typeof AdminCategoriesRoute
+    }
+    '/admin/categories/$categoryId': {
+      id: '/admin/categories/$categoryId'
+      path: '/$categoryId'
+      fullPath: '/admin/categories/$categoryId'
+      preLoaderRoute: typeof AdminCategoriesCategoryIdRouteImport
+      parentRoute: typeof AdminCategoriesRoute
+    }
+    '/admin/collections/$collectionId/': {
+      id: '/admin/collections/$collectionId/'
+      path: '/'
+      fullPath: '/admin/collections/$collectionId/'
+      preLoaderRoute: typeof AdminCollectionsCollectionIdIndexRouteImport
+      parentRoute: typeof AdminCollectionsCollectionIdRoute
+    }
+    '/admin/categories/$categoryId/': {
+      id: '/admin/categories/$categoryId/'
+      path: '/'
+      fullPath: '/admin/categories/$categoryId/'
+      preLoaderRoute: typeof AdminCategoriesCategoryIdIndexRouteImport
+      parentRoute: typeof AdminCategoriesCategoryIdRoute
+    }
+    '/admin/collections/$collectionId/edit': {
+      id: '/admin/collections/$collectionId/edit'
+      path: '/edit'
+      fullPath: '/admin/collections/$collectionId/edit'
+      preLoaderRoute: typeof AdminCollectionsCollectionIdEditRouteImport
+      parentRoute: typeof AdminCollectionsCollectionIdRoute
+    }
+    '/admin/categories/$categoryId/edit': {
+      id: '/admin/categories/$categoryId/edit'
+      path: '/edit'
+      fullPath: '/admin/categories/$categoryId/edit'
+      preLoaderRoute: typeof AdminCategoriesCategoryIdEditRouteImport
+      parentRoute: typeof AdminCategoriesCategoryIdRoute
+    }
   }
 }
+
+interface AdminCategoriesCategoryIdRouteChildren {
+  AdminCategoriesCategoryIdEditRoute: typeof AdminCategoriesCategoryIdEditRoute
+  AdminCategoriesCategoryIdIndexRoute: typeof AdminCategoriesCategoryIdIndexRoute
+}
+
+const AdminCategoriesCategoryIdRouteChildren: AdminCategoriesCategoryIdRouteChildren =
+  {
+    AdminCategoriesCategoryIdEditRoute: AdminCategoriesCategoryIdEditRoute,
+    AdminCategoriesCategoryIdIndexRoute: AdminCategoriesCategoryIdIndexRoute,
+  }
+
+const AdminCategoriesCategoryIdRouteWithChildren =
+  AdminCategoriesCategoryIdRoute._addFileChildren(
+    AdminCategoriesCategoryIdRouteChildren,
+  )
+
+interface AdminCategoriesRouteChildren {
+  AdminCategoriesCategoryIdRoute: typeof AdminCategoriesCategoryIdRouteWithChildren
+  AdminCategoriesNewRoute: typeof AdminCategoriesNewRoute
+  AdminCategoriesIndexRoute: typeof AdminCategoriesIndexRoute
+}
+
+const AdminCategoriesRouteChildren: AdminCategoriesRouteChildren = {
+  AdminCategoriesCategoryIdRoute: AdminCategoriesCategoryIdRouteWithChildren,
+  AdminCategoriesNewRoute: AdminCategoriesNewRoute,
+  AdminCategoriesIndexRoute: AdminCategoriesIndexRoute,
+}
+
+const AdminCategoriesRouteWithChildren = AdminCategoriesRoute._addFileChildren(
+  AdminCategoriesRouteChildren,
+)
 
 interface AdminCmsRouteChildren {
   AdminCmsSectionKeyRoute: typeof AdminCmsSectionKeyRoute
@@ -808,6 +1066,40 @@ const AdminCmsRouteChildren: AdminCmsRouteChildren = {
 const AdminCmsRouteWithChildren = AdminCmsRoute._addFileChildren(
   AdminCmsRouteChildren,
 )
+
+interface AdminCollectionsCollectionIdRouteChildren {
+  AdminCollectionsCollectionIdEditRoute: typeof AdminCollectionsCollectionIdEditRoute
+  AdminCollectionsCollectionIdIndexRoute: typeof AdminCollectionsCollectionIdIndexRoute
+}
+
+const AdminCollectionsCollectionIdRouteChildren: AdminCollectionsCollectionIdRouteChildren =
+  {
+    AdminCollectionsCollectionIdEditRoute:
+      AdminCollectionsCollectionIdEditRoute,
+    AdminCollectionsCollectionIdIndexRoute:
+      AdminCollectionsCollectionIdIndexRoute,
+  }
+
+const AdminCollectionsCollectionIdRouteWithChildren =
+  AdminCollectionsCollectionIdRoute._addFileChildren(
+    AdminCollectionsCollectionIdRouteChildren,
+  )
+
+interface AdminCollectionsRouteChildren {
+  AdminCollectionsCollectionIdRoute: typeof AdminCollectionsCollectionIdRouteWithChildren
+  AdminCollectionsNewRoute: typeof AdminCollectionsNewRoute
+  AdminCollectionsIndexRoute: typeof AdminCollectionsIndexRoute
+}
+
+const AdminCollectionsRouteChildren: AdminCollectionsRouteChildren = {
+  AdminCollectionsCollectionIdRoute:
+    AdminCollectionsCollectionIdRouteWithChildren,
+  AdminCollectionsNewRoute: AdminCollectionsNewRoute,
+  AdminCollectionsIndexRoute: AdminCollectionsIndexRoute,
+}
+
+const AdminCollectionsRouteWithChildren =
+  AdminCollectionsRoute._addFileChildren(AdminCollectionsRouteChildren)
 
 interface AdminProductsRouteChildren {
   AdminProductsProductIdRoute: typeof AdminProductsProductIdRoute
@@ -826,7 +1118,9 @@ const AdminProductsRouteWithChildren = AdminProductsRoute._addFileChildren(
 )
 
 interface AdminRouteChildren {
+  AdminCategoriesRoute: typeof AdminCategoriesRouteWithChildren
   AdminCmsRoute: typeof AdminCmsRouteWithChildren
+  AdminCollectionsRoute: typeof AdminCollectionsRouteWithChildren
   AdminCouponsRoute: typeof AdminCouponsRoute
   AdminCustomersRoute: typeof AdminCustomersRoute
   AdminInventoryRoute: typeof AdminInventoryRoute
@@ -839,7 +1133,9 @@ interface AdminRouteChildren {
 }
 
 const AdminRouteChildren: AdminRouteChildren = {
+  AdminCategoriesRoute: AdminCategoriesRouteWithChildren,
   AdminCmsRoute: AdminCmsRouteWithChildren,
+  AdminCollectionsRoute: AdminCollectionsRouteWithChildren,
   AdminCouponsRoute: AdminCouponsRoute,
   AdminCustomersRoute: AdminCustomersRoute,
   AdminInventoryRoute: AdminInventoryRoute,

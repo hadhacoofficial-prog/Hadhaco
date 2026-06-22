@@ -1,5 +1,7 @@
+import uuid
+
 import redis.asyncio as aioredis
-from fastapi import APIRouter, Depends, status
+from fastapi import APIRouter, Depends, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.common.response_codes import ResponseCode
@@ -13,7 +15,11 @@ from app.core.redis import (
     safe_redis_setex,
 )
 from app.modules.categories.schemas import (
+    BulkCategoryActionRequest,
+    CategoryAdminListResponse,
     CategoryCreateRequest,
+    CategoryDetailResponse,
+    CategoryProductsResponse,
     CategoryResponse,
     CategoryTreeNode,
     CategoryUpdateRequest,
@@ -27,14 +33,12 @@ router = APIRouter(tags=["categories"])
 _svc = CategoryService()
 
 _NAVBAR_CACHE_KEY = "categories:navbar:v1"
-_NAVBAR_TTL = 24 * 60 * 60  # 24 hours
-
-_NAV_CACHE_KEY = "navigation:categories:v1"
-_NAV_TTL = 24 * 60 * 60  # 24 hours
+_NAVBAR_TTL = 24 * 60 * 60
+_NAV_CACHE_KEY = "navigation:categories:v2"
+_NAV_TTL = 24 * 60 * 60
 
 
 async def _bust_all_nav_caches(redis: aioredis.Redis) -> None:
-    """Invalidate both navigation cache keys on any admin category change."""
     await safe_redis_delete(redis, _NAVBAR_CACHE_KEY, _NAV_CACHE_KEY)
 
 
@@ -54,11 +58,6 @@ async def navbar_categories(
     db: AsyncSession = Depends(get_db),
     redis: aioredis.Redis = Depends(get_redis),
 ):
-    """Navbar-optimised endpoint: categories pre-grouped by gender (women/men/unisex/kids).
-
-    Cached in Redis for 24 hours. Invalidated automatically when any admin
-    creates, updates, or deletes a category.
-    """
     cached = await safe_redis_get(redis, _NAVBAR_CACHE_KEY)
     if cached:
         return ok(
@@ -82,12 +81,6 @@ async def navigation_categories(
     db: AsyncSession = Depends(get_db),
     redis: aioredis.Redis = Depends(get_redis),
 ):
-    """Main navigation endpoint: lean categories grouped by gender (women/men/unisex/kids).
-
-    Only active categories with at least one active product are returned.
-    Cached in Redis for 24 hours under key 'navigation:categories:v1'.
-    Invalidated automatically when any admin creates, updates, or deletes a category.
-    """
     cached = await safe_redis_get(redis, _NAV_CACHE_KEY)
     if cached:
         return ok(
@@ -106,6 +99,43 @@ async def navigation_categories(
 
 
 # ── Admin endpoints ───────────────────────────────────────────────────────────
+
+
+@router.get(
+    "/admin/categories",
+    response_model=BaseSuccessResponse[CategoryAdminListResponse],
+)
+async def admin_list_categories(
+    _: Profile = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+    page: int = Query(1, ge=1),
+    page_size: int = Query(50, ge=1, le=200),
+    search: str | None = Query(None, max_length=200),
+    parent_id: uuid.UUID | None = None,
+    is_active: bool | None = None,
+):
+    result = await _svc.list_admin(
+        db,
+        page=page,
+        page_size=page_size,
+        search=search,
+        parent_id=parent_id,
+        is_active=is_active,
+    )
+    return ok(result, ResponseCode.CATEGORY_LISTED, "Categories listed successfully")
+
+
+@router.get(
+    "/admin/categories/{cat_id}",
+    response_model=BaseSuccessResponse[CategoryDetailResponse],
+)
+async def admin_get_category(
+    cat_id: uuid.UUID,
+    _: Profile = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    result = await _svc.get_detail(db, cat_id)
+    return ok(result, ResponseCode.CATEGORY_LISTED, "Category fetched successfully")
 
 
 @router.post(
@@ -134,7 +164,7 @@ async def create_category(
     "/admin/categories/{cat_id}", response_model=BaseSuccessResponse[CategoryResponse]
 )
 async def update_category(
-    cat_id: str,
+    cat_id: uuid.UUID,
     data: CategoryUpdateRequest,
     _: Profile = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
@@ -155,7 +185,7 @@ async def update_category(
     status_code=200,
 )
 async def delete_category(
-    cat_id: str,
+    cat_id: uuid.UUID,
     _: Profile = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
     redis: aioredis.Redis = Depends(get_redis),
@@ -163,3 +193,47 @@ async def delete_category(
     await _svc.delete(db, cat_id)
     await _bust_all_nav_caches(redis)
     return deleted(ResponseCode.CATEGORY_DELETED, "Category deleted successfully")
+
+
+@router.post(
+    "/admin/categories/bulk",
+    response_model=BaseSuccessResponse[None],
+)
+async def bulk_action_categories(
+    payload: BulkCategoryActionRequest,
+    _: Profile = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+    redis: aioredis.Redis = Depends(get_redis),
+):
+    await _svc.bulk_action(db, payload)
+    await _bust_all_nav_caches(redis)
+    return ok(None, ResponseCode.CATEGORY_UPDATED, "Bulk action applied")
+
+
+@router.get(
+    "/admin/categories/{cat_id}/products",
+    response_model=BaseSuccessResponse[CategoryProductsResponse],
+)
+async def admin_get_category_products(
+    cat_id: uuid.UUID,
+    _: Profile = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+    page: int = Query(1, ge=1),
+    page_size: int = Query(20, ge=1, le=100),
+):
+    result = await _svc.get_products(db, cat_id, page=page, page_size=page_size)
+    return ok(result, ResponseCode.PRODUCT_LISTED, "Category products listed")
+
+
+@router.patch(
+    "/admin/categories/{cat_id}/products/{product_id}",
+    response_model=BaseSuccessResponse[None],
+)
+async def move_product_to_category(
+    cat_id: uuid.UUID,
+    product_id: uuid.UUID,
+    _: Profile = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+):
+    await _svc.move_product(db, product_id, cat_id)
+    return ok(None, ResponseCode.PRODUCT_UPDATED, "Product moved to category")

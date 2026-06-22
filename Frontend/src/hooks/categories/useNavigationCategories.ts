@@ -9,6 +9,7 @@ const EMPTY: NavigationCategoriesResponse = {
   men: [],
   unisex: [],
   kids: [],
+  gender_meta: {},
 };
 
 /**

@@ -4,26 +4,28 @@ import { ArrowUpRight } from "lucide-react";
 import { AnimatePresence, motion } from "framer-motion";
 import { useNavigationCategories } from "@/hooks/categories/useNavigationCategories";
 import { Skeleton } from "@/components/ui/skeleton";
-import men from "@/assets/p1.jpg";
-import women from "@/assets/cat-bugadi.jpg";
-import unisex from "@/assets/p3.jpg";
-import kids from "@/assets/cat-bracelets.jpg";
-import fallback from "@/assets/p2.jpg";
+
+const DEFAULT_CATEGORY_IMAGE = "/images/placeholders/category-placeholder.webp";
 
 type Gender = "women" | "men" | "unisex" | "kids";
-
-const TABS: { id: Gender; label: string; image: string }[] = [
-  { id: "women", label: "Women", image: women },
-  { id: "men", label: "Men", image: men },
-  { id: "unisex", label: "Unisex", image: unisex },
-  { id: "kids", label: "Kids", image: kids },
-];
+const GENDER_KEYS: Gender[] = ["women", "men", "unisex", "kids"];
 
 export function ShopByGender() {
   const [active, setActive] = useState<Gender>("women");
   const { data, isLoading } = useNavigationCategories();
+
   const categories = data?.[active] ?? [];
-  const activeLabel = TABS.find((t) => t.id === active)!.label;
+  const activeLabel = data?.gender_meta[active]?.name ?? active;
+
+  // Build sorted tab list from backend gender_meta; fall back to fixed order
+  const tabs = GENDER_KEYS
+    .map((key) => ({
+      id: key,
+      label: data?.gender_meta[key]?.name ?? key.charAt(0).toUpperCase() + key.slice(1),
+      image_url: data?.gender_meta[key]?.image_url ?? null,
+      sort_order: data?.gender_meta[key]?.sort_order ?? GENDER_KEYS.indexOf(key),
+    }))
+    .sort((a, b) => a.sort_order - b.sort_order);
 
   return (
     <section className="relative px-4 md:px-12 py-20 md:py-28 overflow-hidden">
@@ -39,44 +41,57 @@ export function ShopByGender() {
           </p>
         </div>
 
+        {/* Gender selector circles */}
         <div className="flex items-center justify-center gap-6 md:gap-14 mb-14 flex-wrap">
-          {TABS.map((t) => {
-            const isActive = active === t.id;
-            return (
-              <button
-                key={t.id}
-                onMouseEnter={() => setActive(t.id)}
-                onClick={() => setActive(t.id)}
-                className="group flex flex-col items-center gap-3"
-              >
-                <motion.span
-                  whileHover={{ scale: 1.04 }}
-                  transition={{ type: "spring", stiffness: 220, damping: 18 }}
-                  className={`relative size-24 md:size-44 rounded-full overflow-hidden transition-shadow duration-500 ${
-                    isActive
-                      ? "ring-2 ring-primary ring-offset-4 ring-offset-background shadow-[0_24px_60px_-24px_oklch(0.32_0.055_258/0.55)]"
-                      : "ring-1 ring-border ring-offset-2 ring-offset-background opacity-75 hover:opacity-100"
-                  }`}
-                >
-                  <img
-                    src={t.image}
-                    alt={t.label}
-                    className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110"
-                  />
-                  <span
-                    className={`absolute inset-0 transition-colors ${isActive ? "bg-primary/10" : "bg-foreground/10 group-hover:bg-foreground/0"}`}
-                  />
-                </motion.span>
-                <span
-                  className={`font-cinzel text-xs md:text-base tracking-[0.24em] uppercase transition-colors ${isActive ? "text-primary" : "text-foreground/70"}`}
-                >
-                  {t.label}
-                </span>
-              </button>
-            );
-          })}
+          {isLoading
+            ? GENDER_KEYS.map((k) => (
+                <div key={k} className="flex flex-col items-center gap-3">
+                  <Skeleton className="size-24 md:size-44 rounded-full" />
+                  <Skeleton className="h-3 w-16" />
+                </div>
+              ))
+            : tabs.map((t) => {
+                const isActive = active === t.id;
+                return (
+                  <button
+                    key={t.id}
+                    onMouseEnter={() => setActive(t.id)}
+                    onClick={() => setActive(t.id)}
+                    className="group flex flex-col items-center gap-3"
+                  >
+                    <motion.span
+                      whileHover={{ scale: 1.04 }}
+                      transition={{ type: "spring", stiffness: 220, damping: 18 }}
+                      className={`relative size-24 md:size-44 rounded-full overflow-hidden transition-shadow duration-500 ${
+                        isActive
+                          ? "ring-2 ring-primary ring-offset-4 ring-offset-background shadow-[0_24px_60px_-24px_oklch(0.32_0.055_258/0.55)]"
+                          : "ring-1 ring-border ring-offset-2 ring-offset-background opacity-75 hover:opacity-100"
+                      }`}
+                    >
+                      <img
+                        src={t.image_url ?? DEFAULT_CATEGORY_IMAGE}
+                        alt={t.label}
+                        loading="lazy"
+                        className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110"
+                        onError={(e) => {
+                          e.currentTarget.src = DEFAULT_CATEGORY_IMAGE;
+                        }}
+                      />
+                      <span
+                        className={`absolute inset-0 transition-colors ${isActive ? "bg-primary/10" : "bg-foreground/10 group-hover:bg-foreground/0"}`}
+                      />
+                    </motion.span>
+                    <span
+                      className={`font-cinzel text-xs md:text-base tracking-[0.24em] uppercase transition-colors ${isActive ? "text-primary" : "text-foreground/70"}`}
+                    >
+                      {t.label}
+                    </span>
+                  </button>
+                );
+              })}
         </div>
 
+        {/* Sub-category cards */}
         <AnimatePresence mode="wait">
           <motion.div
             key={active}
@@ -104,10 +119,13 @@ export function ShopByGender() {
                     >
                       <div className="relative aspect-[4/5] overflow-hidden">
                         <img
-                          src={cat.image_url ?? fallback}
+                          src={cat.image_url ?? DEFAULT_CATEGORY_IMAGE}
                           alt={cat.name}
                           loading="lazy"
                           className="absolute inset-0 w-full h-full object-cover transition-transform duration-[1400ms] ease-out group-hover:scale-110"
+                          onError={(e) => {
+                            e.currentTarget.src = DEFAULT_CATEGORY_IMAGE;
+                          }}
                         />
                         <div className="absolute inset-0 bg-gradient-to-t from-foreground/85 via-foreground/25 to-transparent" />
                         <div className="absolute inset-x-0 bottom-0 p-6 md:p-7 text-background">
@@ -133,7 +151,7 @@ export function ShopByGender() {
             search={{ gender: active }}
             className="inline-flex items-center gap-2 text-xs tracking-[0.24em] uppercase border-b border-primary text-primary pb-1 hover:gap-3 transition-all"
           >
-            View all {active} jewellery <ArrowUpRight className="size-4" />
+            View all {activeLabel.toLowerCase()} jewellery <ArrowUpRight className="size-4" />
           </Link>
         </div>
       </div>

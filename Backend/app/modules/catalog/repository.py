@@ -42,6 +42,43 @@ class ProductRepository:
         )
         return result.scalar_one_or_none()
 
+    async def get_collections_for_product(
+        self, db: AsyncSession, product_id: uuid.UUID
+    ) -> list:
+        from app.modules.collections.models import Collection, ProductCollection
+
+        result = await db.execute(
+            select(Collection)
+            .join(ProductCollection, ProductCollection.collection_id == Collection.id)
+            .where(
+                ProductCollection.product_id == product_id,
+                Collection.deleted_at.is_(None),
+            )
+            .order_by(ProductCollection.sort_order)
+        )
+        return list(result.scalars().all())
+
+    async def get_collections_for_products(
+        self, db: AsyncSession, product_ids: list[uuid.UUID]
+    ) -> dict[uuid.UUID, list]:
+        if not product_ids:
+            return {}
+        from app.modules.collections.models import Collection, ProductCollection
+
+        result = await db.execute(
+            select(ProductCollection.product_id, Collection)
+            .join(Collection, ProductCollection.collection_id == Collection.id)
+            .where(
+                ProductCollection.product_id.in_(product_ids),
+                Collection.deleted_at.is_(None),
+            )
+            .order_by(ProductCollection.product_id, ProductCollection.sort_order)
+        )
+        mapping: dict[uuid.UUID, list] = {}
+        for pid, col in result.all():
+            mapping.setdefault(pid, []).append(col)
+        return mapping
+
     async def list_paginated(
         self,
         db: AsyncSession,
@@ -50,6 +87,7 @@ class ProductRepository:
         page_size: int = 20,
         status: str | None = None,
         category_id: uuid.UUID | None = None,
+        collection_id: uuid.UUID | None = None,
         metal_type: str | None = None,
         gender: str | None = None,
         is_featured: bool | None = None,
@@ -69,6 +107,16 @@ class ProductRepository:
             filters.append(Product.status == status)
         if category_id:
             filters.append(Product.category_id == category_id)
+        if collection_id:
+            from app.modules.collections.models import ProductCollection
+
+            filters.append(
+                Product.id.in_(
+                    select(ProductCollection.product_id).where(
+                        ProductCollection.collection_id == collection_id
+                    )
+                )
+            )
         if metal_type:
             filters.append(Product.metal_type == metal_type)
         if gender:

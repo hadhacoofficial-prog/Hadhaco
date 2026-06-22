@@ -39,7 +39,7 @@ export function ShopByCategory() {
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3 md:gap-5">
         {collections.map((c) => (
-          <Link key={c.id} to="/search" search={{ cat: c.slug }} className="group block">
+          <Link key={c.id} to="/collections/$slug" params={{ slug: c.slug }} className="group block">
             <div className="relative aspect-square overflow-hidden bg-secondary">
               <img
                 src={c.image}

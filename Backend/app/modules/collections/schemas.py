@@ -51,5 +51,57 @@ class CollectionResponse(BaseModel):
     updated_at: datetime
 
 
+class CollectionDetailResponse(CollectionResponse):
+    product_count: int = 0
+
+
+class CollectionListItem(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    name: str
+    slug: str
+    description: str | None
+    image_url: str | None
+    is_active: bool
+    is_featured: bool
+    sort_order: int
+    product_count: int = 0
+    updated_at: datetime
+
+
+class CollectionListResponse(BaseModel):
+    items: list[CollectionListItem]
+    total: int
+    page: int
+    page_size: int
+    total_pages: int
+
+
 class AddProductsToCollectionRequest(BaseModel):
     product_ids: list[uuid.UUID]
+
+
+class ReorderProductsRequest(BaseModel):
+    product_ids: list[uuid.UUID]
+
+
+class CollectionProductItem(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    sku: str
+    name: str
+    slug: str
+    category_id: uuid.UUID | None
+    base_price: float
+    stock_quantity: int
+    status: str
+    is_featured: bool
+    primary_image: str | None = None
+    sort_order: int = 0
+
+
+class BulkActionRequest(BaseModel):
+    ids: list[uuid.UUID]
+    action: str = Field(pattern="^(delete|activate|deactivate|feature|unfeature)$")

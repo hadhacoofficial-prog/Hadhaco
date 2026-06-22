@@ -1,14 +1,14 @@
 import { useMemo, useState } from "react";
 import { createFileRoute, useNavigate, Link } from "@tanstack/react-router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Search, Plus, Trash2, Pencil } from "lucide-react";
+import { Search, Plus, Trash2, Pencil, FolderOpen, ChevronDown } from "lucide-react";
 import { toast } from "sonner";
 import { api } from "@/lib/api/client";
 import { queryKeys } from "@/lib/api/queryKeys";
 import { toUserMessage } from "@/lib/api/errors";
 import { formatINR } from "@/lib/format";
 import { TableSkeleton } from "@/components/loading/TableSkeleton";
-import type { ProductListResponse } from "@/types/admin";
+import type { CollectionListResponse, ProductListResponse } from "@/types/admin";
 
 export const Route = createFileRoute("/admin/products/")({
   component: AdminProducts,
@@ -16,15 +16,33 @@ export const Route = createFileRoute("/admin/products/")({
 
 function AdminProducts() {
   const [q, setQ] = useState("");
+  const [collectionId, setCollectionId] = useState<string>("");
   const queryClient = useQueryClient();
   const navigate = useNavigate();
 
-  const params = useMemo(() => ({ search: q || undefined, page: 1, page_size: 50 }), [q]);
+  const params = useMemo(
+    () => ({
+      search: q || undefined,
+      collection_id: collectionId || undefined,
+      page: 1,
+      page_size: 50,
+    }),
+    [q, collectionId]
+  );
 
   const { data, isLoading } = useQuery({
     queryKey: queryKeys.admin.products(params),
     queryFn: () => api.get<ProductListResponse>("/admin/products", { params }),
     staleTime: 60_000,
+  });
+
+  const { data: collectionsData } = useQuery({
+    queryKey: queryKeys.admin.collectionsList(),
+    queryFn: () =>
+      api.get<CollectionListResponse>("/admin/collections", {
+        params: { page: 1, page_size: 200 },
+      }),
+    staleTime: 120_000,
   });
 
   const deleteMutation = useMutation({
@@ -37,6 +55,7 @@ function AdminProducts() {
   });
 
   const list = data?.items ?? [];
+  const collections = collectionsData?.items ?? [];
 
   return (
     <div>
@@ -66,12 +85,30 @@ function AdminProducts() {
             className="flex-1 bg-transparent outline-none text-sm"
           />
         </div>
+        {collections.length > 0 && (
+          <div className="relative flex items-center border border-border px-3 py-2 min-w-[180px]">
+            <FolderOpen className="size-4 text-muted-foreground shrink-0 mr-2" />
+            <select
+              value={collectionId}
+              onChange={(e) => setCollectionId(e.target.value)}
+              className="flex-1 bg-transparent outline-none text-sm appearance-none pr-6"
+            >
+              <option value="">All collections</option>
+              {collections.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.name}
+                </option>
+              ))}
+            </select>
+            <ChevronDown className="size-3.5 text-muted-foreground absolute right-3 pointer-events-none" />
+          </div>
+        )}
       </div>
 
       <div className="bg-background border border-border overflow-x-auto">
         {isLoading ? (
           <TableSkeleton
-            headers={["Product", "SKU", "Price", "Stock", "Status", "Actions"]}
+            headers={["Product", "SKU", "Collections", "Price", "Stock", "Status", "Actions"]}
             rows={8}
             firstColWide
           />
@@ -81,6 +118,7 @@ function AdminProducts() {
               <tr>
                 <th className="px-4 py-3">Product</th>
                 <th className="px-4 py-3">SKU</th>
+                <th className="px-4 py-3">Collections</th>
                 <th className="px-4 py-3">Price</th>
                 <th className="px-4 py-3">Stock</th>
                 <th className="px-4 py-3">Status</th>
@@ -101,10 +139,33 @@ function AdminProducts() {
                       ) : (
                         <div className="size-10 bg-secondary shrink-0" />
                       )}
-                      <span className="line-clamp-1 max-w-[280px]">{p.name}</span>
+                      <span className="line-clamp-1 max-w-[240px]">{p.name}</span>
                     </div>
                   </td>
                   <td className="px-4 py-3 font-mono text-xs text-muted-foreground">{p.sku}</td>
+                  <td className="px-4 py-3">
+                    {p.collections.length === 0 ? (
+                      <span className="text-muted-foreground text-xs">—</span>
+                    ) : (
+                      <div className="flex flex-wrap gap-1">
+                        {p.collections.slice(0, 2).map((c) => (
+                          <Link
+                            key={c.id}
+                            to="/admin/collections/$collectionId"
+                            params={{ collectionId: c.id }}
+                            className="text-[10px] uppercase tracking-[0.15em] px-2 py-0.5 bg-secondary text-muted-foreground hover:text-foreground transition"
+                          >
+                            {c.name}
+                          </Link>
+                        ))}
+                        {p.collections.length > 2 && (
+                          <span className="text-[10px] text-muted-foreground px-1 py-0.5">
+                            +{p.collections.length - 2}
+                          </span>
+                        )}
+                      </div>
+                    )}
+                  </td>
                   <td className="px-4 py-3 font-display">{formatINR(p.base_price)}</td>
                   <td className="px-4 py-3">{p.stock_quantity}</td>
                   <td className="px-4 py-3">
@@ -144,7 +205,7 @@ function AdminProducts() {
               ))}
               {list.length === 0 && (
                 <tr>
-                  <td colSpan={6} className="px-4 py-10 text-center text-muted-foreground text-sm">
+                  <td colSpan={7} className="px-4 py-10 text-center text-muted-foreground text-sm">
                     No products match your filters.
                   </td>
                 </tr>

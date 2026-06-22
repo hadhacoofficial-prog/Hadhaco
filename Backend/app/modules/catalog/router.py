@@ -66,6 +66,8 @@ async def list_products(
     page_size: int = Query(20, ge=1, le=100),
     category_id: uuid.UUID | None = None,
     category_slug: str | None = Query(None, max_length=200),
+    collection_id: uuid.UUID | None = None,
+    collection_slug: str | None = Query(None, max_length=200),
     metal_type: str | None = None,
     gender: str | None = None,
     is_featured: bool | None = None,
@@ -81,7 +83,7 @@ async def list_products(
     db: AsyncSession = Depends(get_db),
     redis: aioredis.Redis = Depends(get_redis),
 ):
-    # Resolve category_slug → category_id (avoids exposing UUIDs in nav URLs)
+    # Resolve category_slug → category_id
     resolved_category_id = category_id
     if category_slug and not category_id:
         from app.modules.categories.repository import CategoryRepository
@@ -90,10 +92,20 @@ async def list_products(
         if cat:
             resolved_category_id = cat.id
 
+    # Resolve collection_slug → collection_id
+    resolved_collection_id = collection_id
+    if collection_slug and not collection_id:
+        from app.modules.collections.repository import CollectionRepository
+
+        col = await CollectionRepository().get_by_slug(db, collection_slug)
+        if col:
+            resolved_collection_id = col.id
+
     cache_key = _product_list_cache_key(
         page=page,
         page_size=page_size,
         category_id=resolved_category_id,
+        collection_id=resolved_collection_id,
         metal_type=metal_type,
         gender=gender,
         is_featured=is_featured,
@@ -119,6 +131,7 @@ async def list_products(
         page_size=page_size,
         status="active",
         category_id=resolved_category_id,
+        collection_id=resolved_collection_id,
         metal_type=metal_type,
         gender=gender,
         is_featured=is_featured,
@@ -155,6 +168,7 @@ async def admin_list_products(
     page_size: int = Query(20, ge=1, le=100),
     status: str | None = None,
     category_id: uuid.UUID | None = None,
+    collection_id: uuid.UUID | None = None,
     metal_type: str | None = None,
     gender: str | None = None,
     search: str | None = Query(None, max_length=200),
@@ -170,6 +184,7 @@ async def admin_list_products(
         page_size=page_size,
         status=status,
         category_id=category_id,
+        collection_id=collection_id,
         metal_type=metal_type,
         gender=gender,
         search=search,
