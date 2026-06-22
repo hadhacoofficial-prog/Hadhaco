@@ -72,7 +72,9 @@ wait_for() {
 
   log "  Checking: ${name}"
   while (( elapsed < max_wait )); do
-    if eval "${check_fn}" 2>/dev/null; then
+    # H-1 FIX: was eval "${check_fn}" — eval is unnecessary for simple function
+    # names and masks future bugs. Direct call is correct and explicit.
+    if "${check_fn}" 2>/dev/null; then
       pass "${name} (${elapsed}s)"
       return 0
     fi
@@ -145,26 +147,39 @@ check_redis() {
 
 # Nginx: config valid AND actually responding to HTTP.
 check_nginx() {
-  # First validate config is syntactically correct
+  # First validate config is syntactically correct.
   docker exec "${NGINX_CONTAINER}" nginx -t 2>/dev/null || return 1
-  # Then verify nginx is serving HTTP responses (port 80, even if it redirects)
+  # C-2 FIX: --server-response is GNU wget only; nginx:stable-alpine uses
+  # BusyBox wget which does not support it, making the grep always fail.
+  # Use wget -q -O /dev/null --no-check-certificate so the request succeeds
+  # even when port 80 redirects to HTTPS (cert is for hadha.co, not localhost).
   docker exec "${NGINX_CONTAINER}" \
-    wget -qO /dev/null --server-response "http://localhost:80/" 2>&1 \
-    | grep -qE "HTTP/[0-9.]+ [1-5][0-9][0-9]"
+    wget -q -O /dev/null --no-check-certificate "http://127.0.0.1:80/" 2>/dev/null
 }
 
 # Redis Commander: web UI responding on port 8081.
 check_redis_commander() {
+  # C-2 / M-4 FIX: redis-commander runs on Node.js (node:alpine). BusyBox wget
+  # --server-response is unsupported. Use node (always present) for an HTTP
+  # check that also validates the status code is not a 5xx server error.
   docker exec "${RC_CONTAINER}" \
-    wget -qO /dev/null --server-response "http://localhost:8081/redis-commander/" 2>&1 \
-    | grep -qE "HTTP/[0-9.]+ [1-5][0-9][0-9]"
+    node -e "
+var http=require('http');
+http.get('http://localhost:8081/redis-commander/',function(r){
+  process.exit(r.statusCode<500?0:1);
+}).on('error',function(e){
+  process.stderr.write(e.message+'\n');
+  process.exit(1);
+});
+" 2>/dev/null
 }
 
 # Dozzle: web UI responding on port 8080.
 check_dozzle() {
-  docker exec "${DOZZLE_CONTAINER}" \
-    wget -qO /dev/null --server-response "http://localhost:8080/dozzle/" 2>&1 \
-    | grep -qE "HTTP/[0-9.]+ [1-5][0-9][0-9]"
+  # C-2 FIX: --server-response is BusyBox-unsupported. Dozzle v8 ships its
+  # own /dozzle healthcheck binary (same binary as the main process). Use it
+  # directly — it is the official healthcheck method from dozzle's Dockerfile.
+  docker exec "${DOZZLE_CONTAINER}" /dozzle healthcheck 2>/dev/null
 }
 
 # =============================================================================

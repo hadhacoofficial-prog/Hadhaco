@@ -86,7 +86,13 @@ dc() {
 # ── Logging ───────────────────────────────────────────────────────────────────
 log()         { echo "[$(date +'%Y-%m-%dT%H:%M:%S%z')] $*" | tee -a "${LOG_FILE}"; }
 log_section() { log ""; log "══════════════════════════════════════════"; log "  $*"; log "══════════════════════════════════════════"; }
-die()         { log "[FATAL] $*"; exit 1; }
+# M-2 FIX: When die() is called inside an active step, log the step failure
+# so the log shows a clean start→fail pair instead of a dangling start.
+die() {
+  [[ -n "${STEP_NAME}" ]] && step_fail "$*"
+  log "[FATAL] $*"
+  exit 1
+}
 
 STEP_NAME=""
 STEP_START=0
@@ -317,9 +323,11 @@ if docker network inspect "${NETWORK_NAME}" >/dev/null 2>&1; then
   log "Network ${NETWORK_NAME} already exists — reusing"
 else
   log "Creating Docker network: ${NETWORK_NAME}"
+  # M-3 FIX: Removed --subnet to avoid "subnet already in use" failure when
+  # production and staging networks are created on the same host. Docker
+  # assigns a non-overlapping subnet automatically.
   docker network create \
     --driver bridge \
-    --subnet "172.28.0.0/16" \
     "${NETWORK_NAME}" 2>&1 | tee -a "${LOG_FILE}" \
     || log "[WARN] Explicit network creation failed — compose will create it on startup"
 fi

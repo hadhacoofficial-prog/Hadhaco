@@ -23,13 +23,12 @@ case "$ENVIRONMENT" in
     APP_DIR="/opt/hadha"
     COMPOSE_FILE="${APP_DIR}/docker-compose.production.yml"
     ENV_FILE="${APP_DIR}/.env.production"
-    APP_URL="https://hadha.co"
+    # M-1 FIX: APP_URL was set here but never referenced. Removed dead code.
     ;;
   staging)
     APP_DIR="/opt/hadha-staging"
     COMPOSE_FILE="${APP_DIR}/docker-compose.staging.yml"
     ENV_FILE="${APP_DIR}/.env.staging"
-    APP_URL="https://staging.hadha.co"
     ;;
   *)
     echo "[ERROR] Unknown environment: ${ENVIRONMENT}"
@@ -112,6 +111,15 @@ docker image inspect "${PREV_FRONTEND}" >/dev/null 2>&1 \
 # ── Export for compose interpolation ─────────────────────────────────────────
 export BACKEND_IMAGE="${PREV_BACKEND}"
 export FRONTEND_IMAGE="${PREV_FRONTEND}"
+
+# C-3 FIX: When rollback.sh is invoked manually (not from deploy.sh),
+# REDIS_PASSWORD is not in the shell environment. Without it, healthcheck.sh
+# falls through to unauthenticated redis-cli ping, which fails because Redis
+# requires auth. Extract from the env file so all invocation paths work.
+if [[ -z "${REDIS_PASSWORD:-}" ]] && [[ -f "${ENV_FILE}" ]]; then
+  REDIS_PASSWORD=$(grep -E '^REDIS_PASSWORD=' "${ENV_FILE}" | head -1 | cut -d= -f2-)
+  log "REDIS_PASSWORD loaded from ${ENV_FILE}"
+fi
 export REDIS_PASSWORD="${REDIS_PASSWORD:-}"
 
 # ── Restart with previous images ──────────────────────────────────────────────
@@ -124,9 +132,9 @@ if ! dc up -d --remove-orphans --pull never 2>&1 | tee -a "${LOG_FILE}"; then
 fi
 
 # ── Health check after rollback ───────────────────────────────────────────────
-log "Waiting for services to initialize before health check..."
-sleep 15
-
+# H-2 FIX: Removed unconditional sleep 15. healthcheck.sh uses exponential
+# backoff (2s→4s→8s…→30s cap, 120s total) and will wait for services to
+# become ready. A fixed pre-sleep only wastes time during a stressful failure.
 log "Running health checks on rolled-back deployment..."
 if "${SCRIPTS_DIR}/healthcheck.sh" "${ENVIRONMENT}" 2>&1 | tee -a "${LOG_FILE}"; then
   ROLLBACK_END=$(date +%s)

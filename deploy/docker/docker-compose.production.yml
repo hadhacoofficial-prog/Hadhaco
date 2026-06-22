@@ -161,11 +161,14 @@ services:
     networks:
       - hadha-internal
     healthcheck:
+      # C-2 FIX: --server-response is GNU wget only. redis-commander runs on
+      # Node.js (node:alpine) so node is always present. Use it to make an HTTP
+      # request that validates the status code is not a 5xx server error.
       test:
-        [
-          "CMD-SHELL",
-          "wget -qO /dev/null --server-response http://localhost:8081/redis-commander/ 2>&1 | grep -qE 'HTTP/[0-9.]+ [1-5][0-9][0-9]'"
-        ]
+        - "CMD"
+        - "node"
+        - "-e"
+        - "require('http').get('http://localhost:8081/redis-commander/',function(r){process.exit(r.statusCode<500?0:1)}).on('error',function(){process.exit(1)})"
       interval: 30s
       timeout: 10s
       retries: 3
@@ -198,11 +201,10 @@ services:
     networks:
       - hadha-internal
     healthcheck:
-      test:
-        [
-          "CMD-SHELL",
-          "wget -qO /dev/null --server-response http://localhost:8080/dozzle/ 2>&1 | grep -qE 'HTTP/[0-9.]+ [1-5][0-9][0-9]'"
-        ]
+      # C-2 FIX: --server-response is BusyBox-unsupported. Dozzle v8 ships a
+      # /dozzle healthcheck subcommand in the same binary — this is the official
+      # method used in dozzle's own Dockerfile HEALTHCHECK instruction.
+      test: ["CMD", "/dozzle", "healthcheck"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -243,12 +245,19 @@ services:
     healthcheck:
       # Two-stage check:
       #   1. nginx -t  — config is syntactically valid
-      #   2. wget      — nginx is actually serving HTTP responses
-      # nginx -t alone does NOT verify that nginx is running and listening.
+      #   2. wget      — nginx process is listening and returning HTTP responses
+      # nginx -t alone does NOT verify that the daemon is running and listening.
+      #
+      # C-2 FIX: --server-response is GNU wget only; nginx:stable-alpine uses
+      # BusyBox wget which does not support it (grep would never match → always
+      # fails). Use wget -q -O /dev/null with --no-check-certificate so the
+      # request succeeds even when port 80 redirects to HTTPS (the TLS cert is
+      # for hadha.co, not localhost — without --no-check-certificate BusyBox
+      # wget would fail SSL verification on the redirect target).
       test:
         [
           "CMD-SHELL",
-          "nginx -t 2>/dev/null && wget -qO /dev/null --server-response http://localhost:80/ 2>&1 | grep -qE 'HTTP/[0-9.]+ [1-5][0-9][0-9]'"
+          "nginx -t 2>/dev/null && wget -q -O /dev/null --no-check-certificate http://127.0.0.1:80/ 2>/dev/null"
         ]
       interval: 30s
       timeout: 10s

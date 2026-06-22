@@ -23,6 +23,11 @@ ROLLBACK_STATUS="${8:-}"
 FAIL_LOGS="${9:-}"
 
 RESEND_API_KEY="${RESEND_API_KEY:?RESEND_API_KEY is required}"
+
+# H-3 FIX: was hardcoded /tmp/resend_response.json — concurrent notify.sh
+# invocations would clobber each other's file. mktemp guarantees uniqueness.
+RESPONSE_FILE=$(mktemp /tmp/resend_response.XXXXXX.json)
+trap 'rm -f "${RESPONSE_FILE}"' EXIT
 FROM_EMAIL="${RESEND_FROM_EMAIL:-noreply@hadha.co}"
 TO_EMAIL="${RESEND_TO_EMAIL:-admin@hadha.co}"
 SERVER_IP=$(curl -sf --max-time 5 https://ipinfo.io/ip 2>/dev/null \
@@ -137,7 +142,7 @@ import sys, json
 print(json.dumps(sys.stdin.read()))
 " 2>/dev/null || echo '"<p>Notification body generation failed</p>"')
 
-HTTP_STATUS=$(curl -s -o /tmp/resend_response.json -w "%{http_code}" \
+HTTP_STATUS=$(curl -s -o "${RESPONSE_FILE}" -w "%{http_code}" \
   --max-time 15 \
   -X POST "https://api.resend.com/emails" \
   -H "Authorization: Bearer ${RESEND_API_KEY}" \
@@ -152,6 +157,6 @@ HTTP_STATUS=$(curl -s -o /tmp/resend_response.json -w "%{http_code}" \
 if [[ "${HTTP_STATUS}" =~ ^2 ]]; then
   echo "[notify] Email sent (HTTP ${HTTP_STATUS}): ${SUBJECT}"
 else
-  echo "[notify] Email failed (HTTP ${HTTP_STATUS}): $(cat /tmp/resend_response.json 2>/dev/null)"
+  echo "[notify] Email failed (HTTP ${HTTP_STATUS}): $(cat "${RESPONSE_FILE}" 2>/dev/null)"
   exit 1
 fi

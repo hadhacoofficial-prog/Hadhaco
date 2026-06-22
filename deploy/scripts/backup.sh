@@ -31,11 +31,15 @@ case "$ENVIRONMENT" in
     APP_DIR="/opt/hadha"
     BACKEND_CONTAINER="hadha-backend"
     FRONTEND_CONTAINER="hadha-frontend"
+    # Exact volume name from docker-compose.production.yml so we never
+    # accidentally back up the staging volume on a same-host setup (M-5).
+    REDIS_VOLUME_NAME="hadha_redis_data"
     ;;
   staging)
     APP_DIR="/opt/hadha-staging"
     BACKEND_CONTAINER="hadha-staging-backend"
     FRONTEND_CONTAINER="hadha-staging-frontend"
+    REDIS_VOLUME_NAME="hadha-staging_redis_data"
     ;;
   *)
     echo "[ERROR] Unknown environment: ${ENVIRONMENT}"
@@ -91,7 +95,9 @@ log_done
 # but we still log the warning so it's visible.
 # =============================================================================
 log_step "Step 2: Redis volume backup"
-REDIS_VOLUME=$(docker volume ls -q 2>/dev/null | grep -E "^hadha.*redis" | head -1 || echo "")
+# Use the exact volume name set in the case block above (M-5 fix: avoids
+# accidentally picking the wrong environment's volume on a same-host setup).
+REDIS_VOLUME=$(docker volume ls -q 2>/dev/null | grep -Fx "${REDIS_VOLUME_NAME}" | head -1 || echo "")
 if [[ -n "${REDIS_VOLUME}" ]]; then
   log "  Backing up volume: ${REDIS_VOLUME}"
   if docker run --rm \
@@ -145,7 +151,10 @@ for env_file in "${APP_DIR}"/.env.*; do
   [[ -f "${env_file}" ]] || continue
   sha256sum "${env_file}" >> "${BACKUP_PATH}/env_checksums.txt"
   log "  Checksum: $(basename "${env_file}")"
-  (( ENV_COUNT++ ))
+  # C-1 FIX: (( ENV_COUNT++ )) evaluates the pre-increment value (0 on first
+  # iteration) which is arithmetic-falsy → exit code 1 → set -e kills the
+  # script. Use assignment form which always exits 0.
+  ENV_COUNT=$(( ENV_COUNT + 1 ))
 done
 if (( ENV_COUNT > 0 )); then
   log_done
