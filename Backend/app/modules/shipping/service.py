@@ -225,7 +225,9 @@ class ShippingService:
                 awb_number=awb_number,
                 status=shipment.status,
                 estimated_delivery=shipment.estimated_delivery,
-                events=[ShipmentEventResponse.model_validate(e) for e in shipment.events],
+                events=[
+                    ShipmentEventResponse.model_validate(e) for e in shipment.events
+                ],
             )
 
         # Sync events

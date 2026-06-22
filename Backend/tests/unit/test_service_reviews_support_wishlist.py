@@ -728,12 +728,12 @@ class TestReviewServiceImages:
         mock_upload.filename = "test.jpg"
         mock_upload.content_type = "image/jpeg"
 
-        self.svc._media = AsyncMock()
-        self.svc._media.upload_bytes = AsyncMock(return_value="https://cdn/img.jpg")
+        self.svc._media = MagicMock()
+        self.svc._media.upload_bytes = MagicMock(return_value="https://cdn/img.jpg")
         with patch.object(self.repo_cls, "add_image", AsyncMock()) as mock_add:
             await self.svc._attach_images(db, review_id=review_id, images=[mock_upload])
 
-        self.svc._media.upload_bytes.assert_awaited_once()
+        self.svc._media.upload_bytes.assert_called_once()
         mock_add.assert_awaited_once()
 
     async def test_attach_images_caps_at_five(self):
@@ -748,8 +748,8 @@ class TestReviewServiceImages:
             return u
 
         uploads = [_make_upload(f"{i}.jpg") for i in range(8)]
-        self.svc._media = AsyncMock()
-        self.svc._media.upload_bytes = AsyncMock(return_value="https://cdn/x.jpg")
+        self.svc._media = MagicMock()
+        self.svc._media.upload_bytes = MagicMock(return_value="https://cdn/x.jpg")
 
         with patch.object(self.repo_cls, "add_image", AsyncMock()) as mock_add:
             await self.svc._attach_images(db, review_id=review_id, images=uploads)
@@ -771,8 +771,8 @@ class TestReviewServiceImages:
         mock_upload.filename = "photo.jpg"
         mock_upload.content_type = "image/jpeg"
 
-        self.svc._media = AsyncMock()
-        self.svc._media.upload_bytes = AsyncMock(return_value="https://cdn/img.jpg")
+        self.svc._media = MagicMock()
+        self.svc._media.upload_bytes = MagicMock(return_value="https://cdn/img.jpg")
         with (
             patch.object(
                 self.repo_cls, "get_by_product_user", AsyncMock(return_value=None)

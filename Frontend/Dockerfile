@@ -44,10 +44,9 @@ RUN npm ci --legacy-peer-deps
 
 COPY . .
 
-# NITRO_PRESET=node produces a standalone Node.js server in .output/
-# The vercel preset (default) is incompatible with Docker deployments.
-ENV NITRO_PRESET=node
-RUN npm run build
+# vite.config.ts hardcodes preset: "vercel" so we must use the docker config
+# explicitly — NITRO_PRESET env alone doesn't override the file-level preset.
+RUN npx vite build --config vite.config.docker.ts
 
 # ── Production ────────────────────────────────────────────────────────────────
 FROM node:20-slim AS production
