@@ -122,7 +122,7 @@ services:
 
   # ── Redis Commander ─────────────────────────────────────────────────────────
   redis-commander:
-    image: rediscommander/redis-commander:0.8.0
+    image: rediscommander/redis-commander:latest
     container_name: hadha-redis-commander
     restart: unless-stopped
     environment:
