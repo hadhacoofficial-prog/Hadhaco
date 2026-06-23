@@ -271,9 +271,7 @@ function generateMetaTitle(name: string, metalType: string, purity: string): str
   const metal = metalType.trim();
   const pur = purity.trim();
   const metalStr =
-    metal && pur && !metal.toLowerCase().startsWith(pur.toLowerCase())
-      ? `${pur} ${metal}`
-      : metal;
+    metal && pur && !metal.toLowerCase().startsWith(pur.toLowerCase()) ? `${pur} ${metal}` : metal;
 
   const withMetal = metalStr ? `${n} | ${metalStr} | ${BRAND}` : `${n} | ${BRAND}`;
   if (withMetal.length <= 60) return withMetal;
@@ -2018,11 +2016,7 @@ function SeoSection({
 
       {/* Meta Keywords */}
       <div className="flex flex-col gap-1.5">
-        <SeoFieldHeader
-          label="Meta Keywords"
-          edited={seoEdited.kw}
-          onRegenerate={regenKw}
-        />
+        <SeoFieldHeader label="Meta Keywords" edited={seoEdited.kw} onRegenerate={regenKw} />
         <TextInput
           value={form.meta_keywords}
           onChange={(v) => {
@@ -2032,7 +2026,9 @@ function SeoSection({
           placeholder="Automatically generated from the product details."
         />
         {kwCount > 0 && (
-          <p className="text-[11px] text-muted-foreground">{kwCount} keyword{kwCount !== 1 ? "s" : ""} · comma-separated</p>
+          <p className="text-[11px] text-muted-foreground">
+            {kwCount} keyword{kwCount !== 1 ? "s" : ""} · comma-separated
+          </p>
         )}
       </div>
 

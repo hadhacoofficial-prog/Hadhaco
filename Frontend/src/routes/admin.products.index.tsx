@@ -27,7 +27,7 @@ function AdminProducts() {
       page: 1,
       page_size: 50,
     }),
-    [q, collectionId]
+    [q, collectionId],
   );
 
   const { data, isLoading } = useQuery({

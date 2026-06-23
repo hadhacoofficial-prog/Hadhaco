@@ -489,6 +489,10 @@ class TestCatalogServiceRead:
                 AsyncMock(return_value=mock_product),
             ),
             patch(
+                "app.modules.catalog.service._repo.get_collections_for_product",
+                AsyncMock(return_value=[]),
+            ),
+            patch(
                 "app.modules.catalog.service.ProductResponse.model_validate",
                 return_value=MagicMock(),
             ),
@@ -528,9 +532,15 @@ class TestCatalogServiceRead:
         mock_product.is_new_arrival = False
         mock_product.is_best_seller = False
         mock_product.created_at = datetime.now(UTC)
-        with patch(
-            "app.modules.catalog.service._repo.list_paginated",
-            AsyncMock(return_value=([mock_product], 1)),
+        with (
+            patch(
+                "app.modules.catalog.service._repo.list_paginated",
+                AsyncMock(return_value=([mock_product], 1)),
+            ),
+            patch(
+                "app.modules.catalog.service._repo.get_collections_for_products",
+                AsyncMock(return_value={}),
+            ),
         ):
             result = await self.svc.list_products(db, page=1, page_size=20)
         assert result.total == 1

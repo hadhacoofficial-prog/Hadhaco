@@ -47,7 +47,6 @@ class CollectionRepository:
         sort_dir: str = "asc",
     ) -> tuple[list[dict[str, Any]], int]:
         """Return paginated list with product_count."""
-        from sqlalchemy import case, cast, Integer, literal_column
 
         pc_subq = (
             select(
@@ -174,6 +173,8 @@ class CollectionRepository:
     async def add_products(
         self, db: AsyncSession, col_id: uuid.UUID, product_ids: list[uuid.UUID]
     ) -> None:
+        if not product_ids:
+            return
         from sqlalchemy.dialects.postgresql import insert as pg_insert
 
         # Determine starting sort_order

@@ -336,12 +336,14 @@ class TestCollectionsRepositoryExtra:
         self.repo = CollectionRepository()
 
     async def test_add_products_executes_upsert(self):
+        result_mock = MagicMock()
+        result_mock.scalar_one.return_value = 0
         db = AsyncMock()
-        db.execute = AsyncMock()
+        db.execute = AsyncMock(return_value=result_mock)
         await self.repo.add_products(
             db, col_id=uuid.uuid4(), product_ids=[uuid.uuid4(), uuid.uuid4()]
         )
-        assert db.execute.await_count == 2
+        assert db.execute.await_count == 3  # 1 for max_order_result + 2 upserts
 
     async def test_add_products_empty_list(self):
         db = AsyncMock()
@@ -572,6 +574,10 @@ class TestCatalogServiceExtra:
                 "app.modules.catalog.service._repo.get_by_slug",
                 AsyncMock(return_value=mock_product),
             ),
+            patch(
+                "app.modules.catalog.service._repo.get_collections_for_product",
+                AsyncMock(return_value=[]),
+            ),
             patch.object(ProductResponse, "model_validate", return_value=mock_resp),
         ):
             result = await self.svc.get_by_slug(db, "silver-ring")
@@ -600,9 +606,15 @@ class TestCatalogServiceExtra:
         mock_product.is_new_arrival = True
         mock_product.is_best_seller = False
         mock_product.created_at = datetime.now(UTC)
-        with patch(
-            "app.modules.catalog.service._repo.list_paginated",
-            AsyncMock(return_value=([mock_product], 1)),
+        with (
+            patch(
+                "app.modules.catalog.service._repo.list_paginated",
+                AsyncMock(return_value=([mock_product], 1)),
+            ),
+            patch(
+                "app.modules.catalog.service._repo.get_collections_for_products",
+                AsyncMock(return_value={}),
+            ),
         ):
             result = await self.svc.list_products(db)
         assert result.items[0].primary_image == "https://cdn/first.jpg"
@@ -666,6 +678,10 @@ class TestCatalogServiceExtra:
             patch(
                 "app.modules.catalog.service._repo.update",
                 AsyncMock(return_value=mock_updated),
+            ),
+            patch(
+                "app.modules.catalog.service._repo.get_collections_for_product",
+                AsyncMock(return_value=[]),
             ),
             patch.object(ProductResponse, "model_validate", return_value=mock_resp),
         ):

@@ -56,10 +56,9 @@ function CollectionDetailPage() {
   const { data: productsData, isLoading: productsLoading } = useQuery({
     queryKey: queryKeys.admin.collectionProducts(collectionId, productsParams),
     queryFn: () =>
-      api.get<CollectionProductsResponse>(
-        `/admin/collections/${collectionId}/products`,
-        { params: productsParams }
-      ),
+      api.get<CollectionProductsResponse>(`/admin/collections/${collectionId}/products`, {
+        params: productsParams,
+      }),
     staleTime: 15_000,
     enabled: !!collectionId,
   });
@@ -162,9 +161,7 @@ function CollectionDetailPage() {
           <div>
             <div className="flex items-center gap-2">
               <h1 className="font-display text-3xl">{collection.name}</h1>
-              {collection.is_featured && (
-                <Star className="size-4 fill-amber-400 text-amber-400" />
-              )}
+              {collection.is_featured && <Star className="size-4 fill-amber-400 text-amber-400" />}
             </div>
             <p className="text-sm text-muted-foreground font-mono">{collection.slug}</p>
             <div className="flex items-center gap-3 mt-1">
@@ -298,9 +295,7 @@ function CollectionDetailPage() {
                           </div>
                         </div>
                       </td>
-                      <td className="px-4 py-3 font-mono text-xs text-muted-foreground">
-                        {p.sku}
-                      </td>
+                      <td className="px-4 py-3 font-mono text-xs text-muted-foreground">{p.sku}</td>
                       <td className="px-4 py-3 font-display">{formatINR(p.base_price)}</td>
                       <td className="px-4 py-3">{p.stock_quantity}</td>
                       <td className="px-4 py-3">
@@ -377,10 +372,7 @@ function CollectionDetailPage() {
       />
 
       {/* Remove product confirm */}
-      <AlertDialog
-        open={!!removeProductId}
-        onOpenChange={(v) => !v && setRemoveProductId(null)}
-      >
+      <AlertDialog open={!!removeProductId} onOpenChange={(v) => !v && setRemoveProductId(null)}>
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Remove Product?</AlertDialogTitle>
@@ -391,9 +383,7 @@ function CollectionDetailPage() {
           <AlertDialogFooter>
             <AlertDialogCancel>Cancel</AlertDialogCancel>
             <AlertDialogAction
-              onClick={() =>
-                removeProductId && removeProductMutation.mutate(removeProductId)
-              }
+              onClick={() => removeProductId && removeProductMutation.mutate(removeProductId)}
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
             >
               Remove

@@ -73,7 +73,7 @@ function fromCollection(c: CollectionDetail): FormState {
 
 export function CollectionForm({ mode, collection }: CollectionFormProps) {
   const [form, setForm] = useState<FormState>(
-    mode === "edit" && collection ? fromCollection(collection) : emptyForm()
+    mode === "edit" && collection ? fromCollection(collection) : emptyForm(),
   );
   const [slugManual, setSlugManual] = useState(mode === "edit");
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -175,9 +175,7 @@ export function CollectionForm({ mode, collection }: CollectionFormProps) {
                   className="w-full border border-border px-3 py-2 text-sm bg-background outline-none focus:border-foreground transition"
                   placeholder="e.g. Wedding Collection"
                 />
-                {errors.name && (
-                  <p className="text-xs text-destructive mt-1">{errors.name}</p>
-                )}
+                {errors.name && <p className="text-xs text-destructive mt-1">{errors.name}</p>}
               </div>
 
               <div>
@@ -205,9 +203,7 @@ export function CollectionForm({ mode, collection }: CollectionFormProps) {
                     </button>
                   )}
                 </div>
-                {errors.slug && (
-                  <p className="text-xs text-destructive mt-1">{errors.slug}</p>
-                )}
+                {errors.slug && <p className="text-xs text-destructive mt-1">{errors.slug}</p>}
               </div>
 
               <div>
@@ -224,9 +220,7 @@ export function CollectionForm({ mode, collection }: CollectionFormProps) {
 
             {/* SEO */}
             <section className="bg-background border border-border p-6 space-y-4">
-              <h2 className="text-[11px] uppercase tracking-[0.25em] text-muted-foreground">
-                SEO
-              </h2>
+              <h2 className="text-[11px] uppercase tracking-[0.25em] text-muted-foreground">SEO</h2>
               <div>
                 <label className="block text-xs mb-1.5">SEO Title</label>
                 <input

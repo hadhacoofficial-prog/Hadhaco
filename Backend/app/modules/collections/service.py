@@ -1,5 +1,4 @@
 import uuid
-from typing import Any
 
 from slugify import slugify
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -14,8 +13,8 @@ from app.modules.collections.schemas import (
     CollectionListResponse,
     CollectionProductItem,
     CollectionResponse,
-    ReorderProductsRequest,
     CollectionUpdateRequest,
+    ReorderProductsRequest,
 )
 
 _repo = CollectionRepository()

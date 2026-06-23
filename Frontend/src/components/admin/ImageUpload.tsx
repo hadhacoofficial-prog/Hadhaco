@@ -83,11 +83,7 @@ export function ImageUpload({
 
       {preview ? (
         <div className="relative group w-full aspect-video bg-secondary overflow-hidden border border-border">
-          <img
-            src={preview}
-            alt="Preview"
-            className="w-full h-full object-cover"
-          />
+          <img src={preview} alt="Preview" className="w-full h-full object-cover" />
           {uploading && (
             <div className="absolute inset-0 bg-foreground/60 flex flex-col items-center justify-center gap-2">
               <Loader2 className="size-6 animate-spin text-background" />

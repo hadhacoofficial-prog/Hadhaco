@@ -71,13 +71,12 @@ function AdminCategories() {
       search: debouncedSearch || undefined,
       is_active: isActive,
     }),
-    [page, debouncedSearch, isActive]
+    [page, debouncedSearch, isActive],
   );
 
   const { data, isLoading } = useQuery({
     queryKey: queryKeys.admin.categoriesList(params),
-    queryFn: () =>
-      api.get<CategoryAdminListResponse>("/admin/categories", { params }),
+    queryFn: () => api.get<CategoryAdminListResponse>("/admin/categories", { params }),
     staleTime: 30_000,
     placeholderData: (prev) => prev,
   });
@@ -106,8 +105,7 @@ function AdminCategories() {
   const toggleActiveMutation = useMutation({
     mutationFn: ({ id, is_active }: { id: string; is_active: boolean }) =>
       api.patch<void>(`/admin/categories/${id}`, { body: { is_active } }),
-    onSuccess: () =>
-      queryClient.invalidateQueries({ queryKey: queryKeys.admin.categories }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: queryKeys.admin.categories }),
     onError: (e) => toast.error(toUserMessage(e)),
   });
 
@@ -161,11 +159,7 @@ function AdminCategories() {
           </td>
           <td className="px-4 py-3">
             {cat.image_url ? (
-              <img
-                src={cat.image_url}
-                alt=""
-                className="size-8 object-cover bg-secondary"
-              />
+              <img src={cat.image_url} alt="" className="size-8 object-cover bg-secondary" />
             ) : (
               <div className="size-8 bg-secondary flex items-center justify-center">
                 <ImageIcon className="size-3 text-muted-foreground" />
@@ -173,10 +167,7 @@ function AdminCategories() {
             )}
           </td>
           <td className="px-4 py-3">
-            <div
-              className="flex items-center gap-2"
-              style={{ paddingLeft: `${depth * 20}px` }}
-            >
+            <div className="flex items-center gap-2" style={{ paddingLeft: `${depth * 20}px` }}>
               {hasChildren && !isSearching ? (
                 <button
                   onClick={() => toggleExpand(cat.id)}
@@ -204,21 +195,13 @@ function AdminCategories() {
             </div>
           </td>
           <td className="px-4 py-3 text-xs text-muted-foreground">
-            {cat.parent_id
-              ? items.find((c) => c.id === cat.parent_id)?.name ?? "—"
-              : "—"}
+            {cat.parent_id ? (items.find((c) => c.id === cat.parent_id)?.name ?? "—") : "—"}
           </td>
-          <td className="px-4 py-3 text-muted-foreground text-sm">
-            {cat.product_count}
-          </td>
-          <td className="px-4 py-3 text-muted-foreground text-sm">
-            {cat.sort_order}
-          </td>
+          <td className="px-4 py-3 text-muted-foreground text-sm">{cat.product_count}</td>
+          <td className="px-4 py-3 text-muted-foreground text-sm">{cat.sort_order}</td>
           <td className="px-4 py-3">
             <button
-              onClick={() =>
-                toggleActiveMutation.mutate({ id: cat.id, is_active: !cat.is_active })
-              }
+              onClick={() => toggleActiveMutation.mutate({ id: cat.id, is_active: !cat.is_active })}
               className={`text-[10px] uppercase tracking-[0.2em] px-2 py-0.5 transition ${
                 cat.is_active
                   ? "bg-accent/15 text-accent hover:bg-destructive/15 hover:text-destructive"
@@ -266,15 +249,16 @@ function AdminCategories() {
                   disabled={cat.children_count > 0}
                 >
                   <Trash2 className="size-3.5" />
-                  {cat.children_count > 0
-                    ? "Has subcategories"
-                    : "Delete"}
+                  {cat.children_count > 0 ? "Has subcategories" : "Delete"}
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
           </td>
         </tr>
-        {hasChildren && isExpanded && !isSearching && children.map((child) => renderRow(child, depth + 1))}
+        {hasChildren &&
+          isExpanded &&
+          !isSearching &&
+          children.map((child) => renderRow(child, depth + 1))}
       </>
     );
   }
@@ -283,12 +267,9 @@ function AdminCategories() {
     <div>
       <header className="flex flex-wrap items-end justify-between gap-4 mb-8">
         <div>
-          <p className="text-[11px] uppercase tracking-[0.3em] text-muted-foreground">
-            Catalogue
-          </p>
+          <p className="text-[11px] uppercase tracking-[0.3em] text-muted-foreground">Catalogue</p>
           <h1 className="font-display text-4xl mt-1">
-            Categories{" "}
-            <span className="text-muted-foreground text-2xl">({total})</span>
+            Categories <span className="text-muted-foreground text-2xl">({total})</span>
           </h1>
         </div>
         <button
@@ -324,7 +305,10 @@ function AdminCategories() {
           ).map(([val, label], i) => (
             <button
               key={label}
-              onClick={() => { setIsActive(val); setPage(1); }}
+              onClick={() => {
+                setIsActive(val);
+                setPage(1);
+              }}
               className={`px-3 py-2 transition ${i > 0 ? "border-l border-border" : ""} ${
                 isActive === val ? "bg-foreground text-background" : "hover:bg-secondary"
               }`}
@@ -366,7 +350,17 @@ function AdminCategories() {
       <div className="bg-background border border-border overflow-x-auto">
         {isLoading ? (
           <TableSkeleton
-            headers={["", "Image", "Name", "Parent", "Products", "Order", "Status", "Updated", "Actions"]}
+            headers={[
+              "",
+              "Image",
+              "Name",
+              "Parent",
+              "Products",
+              "Order",
+              "Status",
+              "Updated",
+              "Actions",
+            ]}
             rows={8}
           />
         ) : (
@@ -441,8 +435,8 @@ function AdminCategories() {
           <AlertDialogHeader>
             <AlertDialogTitle>Delete Category?</AlertDialogTitle>
             <AlertDialogDescription>
-              This will soft-delete the category. You cannot delete categories that have subcategories.
-              Products in this category will not be deleted.
+              This will soft-delete the category. You cannot delete categories that have
+              subcategories. Products in this category will not be deleted.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

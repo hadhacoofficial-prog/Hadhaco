@@ -1,7 +1,13 @@
 import { useState, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Search, Check, Loader2, ImageIcon } from "lucide-react";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { api } from "@/lib/api/client";
 import { queryKeys } from "@/lib/api/queryKeys";
@@ -32,7 +38,7 @@ export function ProductPickerModal({
 
   const params = useMemo(
     () => ({ search: debouncedSearch || undefined, page: 1, page_size: 50, status: "active" }),
-    [debouncedSearch]
+    [debouncedSearch],
   );
 
   const { data, isLoading } = useQuery({
@@ -132,9 +138,7 @@ export function ProductPickerModal({
                       <p className="text-sm line-clamp-1">{p.name}</p>
                       <p className="text-xs text-muted-foreground font-mono">{p.sku}</p>
                     </div>
-                    <div className="text-sm font-display shrink-0">
-                      {formatINR(p.base_price)}
-                    </div>
+                    <div className="text-sm font-display shrink-0">{formatINR(p.base_price)}</div>
                   </button>
                 );
               })}

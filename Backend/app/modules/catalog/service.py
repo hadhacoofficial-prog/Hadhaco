@@ -187,9 +187,10 @@ class CatalogService:
         updated = await _repo.update(db, product_id, data)
 
         if new_collection_ids is not None:
-            from app.modules.collections.repository import CollectionRepository
             from sqlalchemy import delete as sa_delete
+
             from app.modules.collections.models import ProductCollection
+            from app.modules.collections.repository import CollectionRepository
 
             col_repo = CollectionRepository()
             # Remove all existing memberships for this product

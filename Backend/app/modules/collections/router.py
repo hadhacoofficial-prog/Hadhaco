@@ -13,10 +13,9 @@ from app.modules.collections.schemas import (
     CollectionCreateRequest,
     CollectionDetailResponse,
     CollectionListResponse,
-    CollectionProductItem,
     CollectionResponse,
-    ReorderProductsRequest,
     CollectionUpdateRequest,
+    ReorderProductsRequest,
 )
 from app.modules.collections.service import CollectionService
 

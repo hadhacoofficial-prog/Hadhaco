@@ -213,7 +213,6 @@ def validate_required_settings(s: Settings) -> None:
         ("SUPABASE_KEY or SUPABASE_ANON_KEY", s.supabase_anon_key),
         ("SUPABASE_SERVICE_ROLE_KEY", s.SUPABASE_SERVICE_ROLE_KEY),
         ("DATABASE_URL", s.DATABASE_URL),
-        ("ALEMBIC_DATABASE_URL", s.ALEMBIC_DATABASE_URL),
         ("REDIS_URL", s.REDIS_URL),
         ("CLOUDFLARE_ACCOUNT_ID", s.CLOUDFLARE_ACCOUNT_ID),
         ("CLOUDFLARE_R2_BUCKET", s.CLOUDFLARE_R2_BUCKET),

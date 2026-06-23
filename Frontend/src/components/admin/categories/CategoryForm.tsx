@@ -67,7 +67,7 @@ function fromCategory(c: CategoryDetail): FormState {
 
 export function CategoryForm({ mode, category }: CategoryFormProps) {
   const [form, setForm] = useState<FormState>(
-    mode === "edit" && category ? fromCategory(category) : emptyForm()
+    mode === "edit" && category ? fromCategory(category) : emptyForm(),
   );
   const [slugManual, setSlugManual] = useState(mode === "edit");
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -85,7 +85,7 @@ export function CategoryForm({ mode, category }: CategoryFormProps) {
   });
 
   const parentOptions = (categoriesData?.items ?? []).filter(
-    (c) => !category || c.id !== category.id
+    (c) => !category || c.id !== category.id,
   );
 
   useEffect(() => {
@@ -154,9 +154,7 @@ export function CategoryForm({ mode, category }: CategoryFormProps) {
           <ArrowLeft className="size-5" />
         </button>
         <div>
-          <p className="text-[11px] uppercase tracking-[0.3em] text-muted-foreground">
-            Categories
-          </p>
+          <p className="text-[11px] uppercase tracking-[0.3em] text-muted-foreground">Categories</p>
           <h1 className="font-display text-3xl mt-0.5">
             {mode === "new" ? "New Category" : "Edit Category"}
           </h1>
@@ -180,9 +178,7 @@ export function CategoryForm({ mode, category }: CategoryFormProps) {
                   className="w-full border border-border px-3 py-2 text-sm bg-background outline-none focus:border-foreground transition"
                   placeholder="e.g. Rings"
                 />
-                {errors.name && (
-                  <p className="text-xs text-destructive mt-1">{errors.name}</p>
-                )}
+                {errors.name && <p className="text-xs text-destructive mt-1">{errors.name}</p>}
               </div>
 
               <div>
@@ -222,7 +218,8 @@ export function CategoryForm({ mode, category }: CategoryFormProps) {
                   <option value="">— Top level —</option>
                   {parentOptions.map((c) => (
                     <option key={c.id} value={c.id}>
-                      {c.parent_id ? `  ↳ ` : ""}{c.name}
+                      {c.parent_id ? `  ↳ ` : ""}
+                      {c.name}
                     </option>
                   ))}
                 </select>
@@ -241,9 +238,7 @@ export function CategoryForm({ mode, category }: CategoryFormProps) {
             </section>
 
             <section className="bg-background border border-border p-6 space-y-4">
-              <h2 className="text-[11px] uppercase tracking-[0.25em] text-muted-foreground">
-                SEO
-              </h2>
+              <h2 className="text-[11px] uppercase tracking-[0.25em] text-muted-foreground">SEO</h2>
               <div>
                 <label className="block text-xs mb-1.5">SEO Title</label>
                 <input

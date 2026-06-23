@@ -450,7 +450,7 @@ class TestCategoryService:
                 CategoryRepository, "get_by_id", AsyncMock(return_value=MagicMock())
             ),
             patch.object(
-                CategoryRepository, "has_active_products", AsyncMock(return_value=True)
+                CategoryRepository, "has_children", AsyncMock(return_value=True)
             ),
         ):
             with pytest.raises(ConflictError):
@@ -463,7 +463,7 @@ class TestCategoryService:
                 CategoryRepository, "get_by_id", AsyncMock(return_value=MagicMock())
             ),
             patch.object(
-                CategoryRepository, "has_active_products", AsyncMock(return_value=False)
+                CategoryRepository, "has_children", AsyncMock(return_value=False)
             ),
             patch.object(CategoryRepository, "soft_delete", AsyncMock()) as mock_del,
         ):

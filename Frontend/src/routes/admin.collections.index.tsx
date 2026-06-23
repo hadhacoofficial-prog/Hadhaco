@@ -76,13 +76,12 @@ function AdminCollections() {
       sort_by: "sort_order",
       sort_dir: "asc",
     }),
-    [page, debouncedSearch, isActive, isFeatured]
+    [page, debouncedSearch, isActive, isFeatured],
   );
 
   const { data, isLoading } = useQuery({
     queryKey: queryKeys.admin.collectionsList(params),
-    queryFn: () =>
-      api.get<CollectionListResponse>("/admin/collections", { params }),
+    queryFn: () => api.get<CollectionListResponse>("/admin/collections", { params }),
     staleTime: 30_000,
     placeholderData: (prev) => prev,
   });
@@ -111,16 +110,14 @@ function AdminCollections() {
   const toggleActiveMutation = useMutation({
     mutationFn: ({ id, is_active }: { id: string; is_active: boolean }) =>
       api.patch<void>(`/admin/collections/${id}`, { body: { is_active } }),
-    onSuccess: () =>
-      queryClient.invalidateQueries({ queryKey: queryKeys.admin.collections }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: queryKeys.admin.collections }),
     onError: (e) => toast.error(toUserMessage(e)),
   });
 
   const toggleFeaturedMutation = useMutation({
     mutationFn: ({ id, is_featured }: { id: string; is_featured: boolean }) =>
       api.patch<void>(`/admin/collections/${id}`, { body: { is_featured } }),
-    onSuccess: () =>
-      queryClient.invalidateQueries({ queryKey: queryKeys.admin.collections }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: queryKeys.admin.collections }),
     onError: (e) => toast.error(toUserMessage(e)),
   });
 
@@ -150,12 +147,9 @@ function AdminCollections() {
       {/* Header */}
       <header className="flex flex-wrap items-end justify-between gap-4 mb-8">
         <div>
-          <p className="text-[11px] uppercase tracking-[0.3em] text-muted-foreground">
-            Catalogue
-          </p>
+          <p className="text-[11px] uppercase tracking-[0.3em] text-muted-foreground">Catalogue</p>
           <h1 className="font-display text-4xl mt-1">
-            Collections{" "}
-            <span className="text-muted-foreground text-2xl">({total})</span>
+            Collections <span className="text-muted-foreground text-2xl">({total})</span>
           </h1>
         </div>
         <button
@@ -184,16 +178,34 @@ function AdminCollections() {
         <FilterButton
           label="Active"
           value={isActive}
-          onAll={() => { setIsActive(undefined); setPage(1); }}
-          onTrue={() => { setIsActive(true); setPage(1); }}
-          onFalse={() => { setIsActive(false); setPage(1); }}
+          onAll={() => {
+            setIsActive(undefined);
+            setPage(1);
+          }}
+          onTrue={() => {
+            setIsActive(true);
+            setPage(1);
+          }}
+          onFalse={() => {
+            setIsActive(false);
+            setPage(1);
+          }}
         />
         <FilterButton
           label="Featured"
           value={isFeatured}
-          onAll={() => { setIsFeatured(undefined); setPage(1); }}
-          onTrue={() => { setIsFeatured(true); setPage(1); }}
-          onFalse={() => { setIsFeatured(false); setPage(1); }}
+          onAll={() => {
+            setIsFeatured(undefined);
+            setPage(1);
+          }}
+          onTrue={() => {
+            setIsFeatured(true);
+            setPage(1);
+          }}
+          onFalse={() => {
+            setIsFeatured(false);
+            setPage(1);
+          }}
         />
       </div>
 
@@ -221,9 +233,7 @@ function AdminCollections() {
                 }
                 disabled={bulkMutation.isPending}
                 className={`text-[10px] uppercase tracking-[0.2em] px-3 py-1.5 border border-border hover:bg-secondary transition ${
-                  action === "delete"
-                    ? "text-destructive hover:bg-destructive/10"
-                    : ""
+                  action === "delete" ? "text-destructive hover:bg-destructive/10" : ""
                 }`}
               >
                 {label}
@@ -237,7 +247,17 @@ function AdminCollections() {
       <div className="bg-background border border-border overflow-x-auto">
         {isLoading ? (
           <TableSkeleton
-            headers={["", "Image", "Name", "Status", "Featured", "Order", "Products", "Updated", "Actions"]}
+            headers={[
+              "",
+              "Image",
+              "Name",
+              "Status",
+              "Featured",
+              "Order",
+              "Products",
+              "Updated",
+              "Actions",
+            ]}
             rows={8}
           />
         ) : (
@@ -385,15 +405,9 @@ function AdminCollections() {
               ))}
               {items.length === 0 && (
                 <tr>
-                  <td
-                    colSpan={9}
-                    className="px-4 py-16 text-center text-muted-foreground text-sm"
-                  >
+                  <td colSpan={9} className="px-4 py-16 text-center text-muted-foreground text-sm">
                     No collections found.{" "}
-                    <Link
-                      to="/admin/collections/new"
-                      className="underline hover:text-foreground"
-                    >
+                    <Link to="/admin/collections/new" className="underline hover:text-foreground">
                       Create your first collection
                     </Link>
                   </td>

@@ -10,8 +10,8 @@ from app.core.database import get_db
 from app.core.dependencies import require_admin
 from app.modules.catalog.repository import ProductRepository
 from app.modules.catalog.schemas import ProductImageResponse
-from app.modules.collections.repository import CollectionRepository
 from app.modules.categories.repository import CategoryRepository
+from app.modules.collections.repository import CollectionRepository
 from app.modules.media.service import MediaService
 
 router = APIRouter()

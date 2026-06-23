@@ -9,13 +9,12 @@ from app.modules.categories.models import Category
 from app.modules.categories.repository import CategoryRepository
 from app.modules.categories.schemas import (
     BulkCategoryActionRequest,
-    CategoryAdminListResponse,
     CategoryAdminListItem,
+    CategoryAdminListResponse,
     CategoryCreateRequest,
     CategoryDetailResponse,
     CategoryProductItem,
     CategoryProductsResponse,
-    CategoryResponse,
     CategoryTreeNode,
     CategoryUpdateRequest,
     GenderMeta,

@@ -1,14 +1,7 @@
 import { useState } from "react";
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import {
-  Pencil,
-  Trash2,
-  ImageIcon,
-  ChevronLeft,
-  ChevronRight,
-  Loader2,
-} from "lucide-react";
+import { Pencil, Trash2, ImageIcon, ChevronLeft, ChevronRight, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import {
   AlertDialog,
@@ -49,10 +42,9 @@ function CategoryDetailPage() {
   const { data: productsData, isLoading: productsLoading } = useQuery({
     queryKey: queryKeys.admin.categoryProducts(categoryId, productsParams),
     queryFn: () =>
-      api.get<CategoryProductsResponse>(
-        `/admin/categories/${categoryId}/products`,
-        { params: productsParams }
-      ),
+      api.get<CategoryProductsResponse>(`/admin/categories/${categoryId}/products`, {
+        params: productsParams,
+      }),
     staleTime: 15_000,
     enabled: !!categoryId,
   });
@@ -247,9 +239,7 @@ function CategoryDetailPage() {
                           </Link>
                         </div>
                       </td>
-                      <td className="px-4 py-3 font-mono text-xs text-muted-foreground">
-                        {p.sku}
-                      </td>
+                      <td className="px-4 py-3 font-mono text-xs text-muted-foreground">{p.sku}</td>
                       <td className="px-4 py-3 font-display">{formatINR(p.base_price)}</td>
                       <td className="px-4 py-3">{p.stock_quantity}</td>
                       <td className="px-4 py-3">
