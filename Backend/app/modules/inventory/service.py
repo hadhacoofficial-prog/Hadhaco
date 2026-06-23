@@ -4,7 +4,6 @@ import uuid
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.events import LowInventoryAlertEvent, event_bus
 from app.core.exceptions import NotFoundError, ValidationError
 from app.modules.inventory.repository import InventoryRepository
 from app.modules.inventory.schemas import (
@@ -76,19 +75,6 @@ class InventoryService:
                 "created_by": created_by,
             },
         )
-
-        threshold: int = snapshot["low_stock_threshold"]
-        if delta < 0 and quantity_after <= threshold:
-            await event_bus.publish(
-                LowInventoryAlertEvent(
-                    product_id=str(product_id),
-                    sku=snapshot.get("sku", ""),
-                    product_name=snapshot.get("product_name", ""),
-                    current_qty=quantity_after,
-                    quantity_after=quantity_after,
-                    threshold=threshold,
-                )
-            )
 
         return InventoryMovementResponse.model_validate(movement)
 

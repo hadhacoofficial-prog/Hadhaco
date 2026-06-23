@@ -19,11 +19,9 @@ class ShipmentResponse(BaseModel):
     order_id: uuid.UUID
     provider: str
     awb_number: str | None
-    label_url: str | None
+    tracking_url: str | None
     status: str
-    weight_grams: int | None
     estimated_delivery: date | None
-    pickup_scheduled_at: datetime | None
     delivered_at: datetime | None
     created_at: datetime
     updated_at: datetime
@@ -33,11 +31,21 @@ class ShipmentResponse(BaseModel):
 
 
 class CreateShipmentRequest(BaseModel):
-    order_id: uuid.UUID
-    weight_grams: int | None = Field(None, gt=0)
-    length_cm: float | None = None
-    width_cm: float | None = None
-    height_cm: float | None = None
+    courier: str = Field(..., min_length=1, max_length=100)
+    tracking_number: str | None = Field(None, max_length=200)
+    tracking_url: str | None = Field(None, max_length=500)
+    estimated_delivery: date | None = None
+
+
+class UpdateShipmentRequest(BaseModel):
+    courier: str | None = Field(None, min_length=1, max_length=100)
+    tracking_number: str | None = Field(None, max_length=200)
+    tracking_url: str | None = Field(None, max_length=500)
+    status: str | None = Field(
+        None,
+        pattern="^(created|picked_up|in_transit|out_for_delivery|delivered|cancelled|failed)$",
+    )
+    estimated_delivery: date | None = None
 
 
 class ShippingRateResponse(BaseModel):
@@ -49,7 +57,9 @@ class ShippingRateResponse(BaseModel):
 
 
 class TrackingResponse(BaseModel):
-    awb_number: str
+    courier: str | None
+    tracking_number: str | None
+    tracking_url: str | None
     status: str
     estimated_delivery: date | None
-    events: list[ShipmentEventResponse]
+    created_at: datetime

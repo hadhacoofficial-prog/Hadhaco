@@ -135,18 +135,6 @@ def verify_razorpay_webhook_signature(body: bytes, signature: str) -> bool:
     return secrets.compare_digest(expected, signature)
 
 
-def verify_delivery_one_webhook_signature(body: bytes, signature: str) -> bool:
-    import hashlib
-    import hmac
-
-    expected = hmac.new(
-        settings.DELIVERY_ONE_WEBHOOK_SECRET.encode(),
-        body,
-        hashlib.sha256,
-    ).hexdigest()
-    return secrets.compare_digest(expected, signature)
-
-
 # ── Secure token generation ────────────────────────────────────────────────────
 
 

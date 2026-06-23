@@ -6,10 +6,7 @@ import structlog
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.security import (
-    verify_delivery_one_webhook_signature,
-    verify_razorpay_webhook_signature,
-)
+from app.core.security import verify_razorpay_webhook_signature
 from app.modules.webhooks.models import WebhookEvent
 
 log = structlog.get_logger()
@@ -295,76 +292,5 @@ class WebhookService:
                     order_id=str(refund.order_id),
                     refund_id=str(refund.id),
                     amount=amount,
-                )
-            )
-
-    # ── Delivery One ──────────────────────────────────────────────────────────
-
-    async def handle_delivery_one(
-        self,
-        db: AsyncSession,
-        body: bytes,
-        signature: str,
-    ) -> dict:
-        if not verify_delivery_one_webhook_signature(body, signature):
-            return {"status": "invalid_signature"}
-
-        try:
-            payload = json.loads(body)
-        except json.JSONDecodeError:
-            return {"status": "invalid_payload"}
-
-        event_type: str = payload.get("event", "unknown")
-        event_id: str | None = payload.get("id")
-
-        event_row = await self._record_event(
-            db, "delivery_one", event_type, event_id, body.decode()
-        )
-        if event_row is None:
-            return {"status": "already_processed"}
-
-        try:
-            await self._on_shipment_event(db, payload, event_type)
-            await self._mark_processed(db, event_row.id)
-        except Exception as exc:
-            log.error(
-                "delivery_one_webhook_error", event_type=event_type, error=str(exc)
-            )
-            await self._mark_failed(db, event_row.id, str(exc))
-
-        return {"status": "ok"}
-
-    async def _on_shipment_event(
-        self, db: AsyncSession, payload: dict, event_type: str
-    ) -> None:
-        data = payload.get("data", {})
-        order_number: str = data.get("order_reference", "")
-        tracking_number: str = data.get("tracking_number", "")
-
-        if not order_number:
-            return
-
-        from app.modules.orders.repository import OrderRepository
-
-        order = await OrderRepository().get_by_order_number(db, order_number)
-        if not order:
-            return
-
-        update_data: dict = {}
-        if event_type == "shipment.dispatched":
-            update_data = {"status": "shipped", "tracking_number": tracking_number}
-        elif event_type == "shipment.delivered":
-            update_data = {"status": "delivered", "delivered_at": datetime.now(UTC)}
-
-        if update_data:
-            await OrderRepository().update(db, order.id, update_data)
-            from app.core.events import OrderStatusChangedEvent, event_bus
-
-            await event_bus.publish(
-                OrderStatusChangedEvent(
-                    order_id=str(order.id),
-                    user_id=str(order.user_id),
-                    old_status=order.status,
-                    new_status=update_data["status"],
                 )
             )

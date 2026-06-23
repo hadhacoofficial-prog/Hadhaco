@@ -17,8 +17,11 @@ export interface CartEntry {
   snapshot?: CartProductSnapshot;
 }
 
-// Internal key that uniquely identifies a cart line (same product, different variants = different lines)
-const lineKey = (productId: string, variantId?: string) => `${productId}::${variantId ?? ""}`;
+/** Uniquely identifies a cart line (same product, different variant = different line). */
+export const cartLineKey = (productId: string, variantId?: string) =>
+  `${productId}::${variantId ?? ""}`;
+
+const lineKey = cartLineKey;
 
 interface CartState {
   lines: CartEntry[];

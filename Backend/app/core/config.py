@@ -89,13 +89,13 @@ class Settings(BaseSettings):
             )
         return v
 
-    # pool_size=5 + max_overflow=2 → at most 7 server connections per process.
-    # The previous defaults (20 + 10 = 30) saturated Supabase's session-mode
-    # client limit, causing EMAXCONNSESSION whenever migrations ran alongside
-    # the running backend. Supabase session pooler has a per-plan client cap;
-    # 7 connections per worker leaves headroom for migrations and health checks.
-    DATABASE_POOL_SIZE: int = 5
-    DATABASE_MAX_OVERFLOW: int = 2
+    # Supabase Session Pooler has a per-plan client cap (15 on the default plan).
+    # Budget: (pool_size + max_overflow) × uvicorn_workers ≤ supabase_limit − overhead
+    # With 2 workers: (3 + 1) × 2 = 8 API connections, leaving 7 for Alembic,
+    # health checks, admin tools, and the NullPool worker engine (see database.py).
+    # Background workers use a separate NullPool engine and are NOT counted here.
+    DATABASE_POOL_SIZE: int = 3
+    DATABASE_MAX_OVERFLOW: int = 1
     DATABASE_POOL_TIMEOUT: int = 30
     # Recycle idle connections after 30 minutes. Prevents stale TCP connections
     # from accumulating when traffic drops and the pool stays open but idle.
@@ -134,12 +134,6 @@ class Settings(BaseSettings):
     RAZORPAY_WEBHOOK_SECRET: str
     RAZORPAY_CURRENCY: str = "INR"
 
-    # ── Delivery One ──────────────────────────────────────────────────────────
-    DELIVERY_ONE_BASE_URL: str
-    DELIVERY_ONE_API_KEY: str
-    DELIVERY_ONE_WEBHOOK_SECRET: str
-    DELIVERY_ONE_PICKUP_PINCODE: str = ""
-
     # ── Frontend ──────────────────────────────────────────────────────────────
     FRONTEND_URL: str
     ADMIN_URL: str
@@ -155,13 +149,8 @@ class Settings(BaseSettings):
     RATE_LIMIT_UPLOAD: int = 20
     RATE_LIMIT_WEBHOOK: int = 500
 
-    # ── Worker intervals ──────────────────────────────────────────────────────
-    SHIPMENT_SYNC_INTERVAL: int = 300
+    # ── Worker / admin trigger settings ─────────────────────────────────────
     REVIEW_REMINDER_DELAY_HOURS: int = 48
-    ABANDONED_CART_THRESHOLD_HOURS: int = 1
-    ABANDONED_CART_INTERVAL: int = 3600
-    INVENTORY_ALERT_INTERVAL: int = 1800
-    NOTIFICATION_RETRY_INTERVAL: int = 30
 
     # ── Business settings ─────────────────────────────────────────────────────
     FREE_SHIPPING_THRESHOLD: int = 999
@@ -246,9 +235,6 @@ def validate_required_settings(s: Settings) -> None:
         ("RAZORPAY_KEY_ID", s.RAZORPAY_KEY_ID),
         ("RAZORPAY_KEY_SECRET", s.RAZORPAY_KEY_SECRET),
         ("RAZORPAY_WEBHOOK_SECRET", s.RAZORPAY_WEBHOOK_SECRET),
-        ("DELIVERY_ONE_BASE_URL", s.DELIVERY_ONE_BASE_URL),
-        ("DELIVERY_ONE_API_KEY", s.DELIVERY_ONE_API_KEY),
-        ("DELIVERY_ONE_WEBHOOK_SECRET", s.DELIVERY_ONE_WEBHOOK_SECRET),
         ("FRONTEND_URL", s.FRONTEND_URL),
         ("ADMIN_URL", s.ADMIN_URL),
     ]

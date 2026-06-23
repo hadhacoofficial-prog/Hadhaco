@@ -4,7 +4,12 @@ from datetime import UTC, datetime
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.exceptions import ConflictError, NotFoundError, ValidationError
+from app.core.exceptions import (
+    ConflictError,
+    InventoryError,
+    NotFoundError,
+    ValidationError,
+)
 from app.modules.catalog.repository import ProductRepository
 from app.modules.catalog.schemas import (
     ProductAttributeCreateRequest,
@@ -18,8 +23,10 @@ from app.modules.catalog.schemas import (
     ProductVariantUpdateRequest,
     StockAdjustRequest,
 )
+from app.modules.inventory.reservation_service import ReservationService
 
 _repo = ProductRepository()
+_reservation_svc = ReservationService()
 
 
 class CatalogService:
@@ -107,6 +114,7 @@ class CatalogService:
                     base_price=p.base_price,
                     compare_at_price=p.compare_at_price,
                     stock_quantity=p.stock_quantity,
+                    available_stock=p.available_stock,
                     status=p.status,
                     is_featured=p.is_featured,
                     is_new_arrival=p.is_new_arrival,
@@ -281,9 +289,13 @@ class CatalogService:
         product = await _repo.get_by_id(db, product_id)
         if not product:
             raise NotFoundError("Product not found")
-        new_qty = await _repo.adjust_stock(db, product_id, payload.delta)
-        if new_qty < 0:
-            # Roll back
-            await _repo.adjust_stock(db, product_id, -payload.delta)
-            raise ValidationError("Insufficient stock")
-        return new_qty
+        try:
+            return await _reservation_svc.record_adjustment(
+                db,
+                product_id=product_id,
+                variant_id=payload.variant_id,
+                delta=payload.delta,
+                reference=payload.reason,
+            )
+        except InventoryError as exc:
+            raise ValidationError(str(exc)) from exc

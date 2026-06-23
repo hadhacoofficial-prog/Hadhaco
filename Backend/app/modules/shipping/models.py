@@ -35,6 +35,7 @@ class Shipment(Base):
     )
     provider_shipment_id: Mapped[str | None] = mapped_column(String(100), nullable=True)
     awb_number: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    tracking_url: Mapped[str | None] = mapped_column(Text, nullable=True)
     label_url: Mapped[str | None] = mapped_column(Text, nullable=True)
     label_r2_key: Mapped[str | None] = mapped_column(String(512), nullable=True)
     status: Mapped[str] = mapped_column(

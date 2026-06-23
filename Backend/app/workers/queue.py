@@ -16,8 +16,6 @@ from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
 from apscheduler.triggers.interval import IntervalTrigger
 
-from app.core.config import settings
-
 log = structlog.get_logger(__name__)
 
 
@@ -62,48 +60,17 @@ class QueueService:
 
 
 def build_queue() -> QueueService:
-    """Register every periodic worker with its configured interval."""
-    from app.workers import (
-        abandoned_cart,
-        cms_publish,
-        inventory_alerts,
-        notification_retry,
-        partition_manager,
-        reservation_expiry,
-        review_reminder,
-        shipment_sync,
-    )
+    """Register periodic workers with their configured intervals."""
+    from app.workers import cms_publish, partition_manager, reservation_expiry
 
     queue = QueueService()
-    # Reservation expiry runs every 60s — must fire before other jobs to free
-    # stock quickly so other customers can purchase.
+    # Reservation expiry runs every 60s — must fire quickly to free stock
+    # so other customers can purchase after a session timeout.
     queue.add_interval_job(
         reservation_expiry.run, seconds=60, job_id="reservation_expiry"
     )
     queue.add_interval_job(cms_publish.run, seconds=60, job_id="cms_publish")
-    queue.add_interval_job(
-        shipment_sync.run,
-        seconds=settings.SHIPMENT_SYNC_INTERVAL,
-        job_id="shipment_sync",
-    )
-    queue.add_interval_job(
-        notification_retry.run,
-        seconds=settings.NOTIFICATION_RETRY_INTERVAL,
-        job_id="notification_retry",
-    )
-    queue.add_interval_job(
-        abandoned_cart.run,
-        seconds=settings.ABANDONED_CART_INTERVAL,
-        job_id="abandoned_cart",
-    )
-    queue.add_interval_job(
-        inventory_alerts.run,
-        seconds=settings.INVENTORY_ALERT_INTERVAL,
-        job_id="inventory_alerts",
-    )
-    # Hourly sweep; the worker itself only emails for orders delivered ≥ REVIEW_REMINDER_DELAY_HOURS ago.
-    queue.add_interval_job(review_reminder.run, seconds=3600, job_id="review_reminder")
-    # First day of each month, 00:10 UTC — create next month's partitions.
+    # First day of each month, 00:10 UTC — create next month's DB partitions.
     queue.add_cron_job(
         partition_manager.run, cron="10 0 1 * *", job_id="partition_manager"
     )

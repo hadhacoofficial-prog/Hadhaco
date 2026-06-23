@@ -32,6 +32,9 @@ class ProductVariantResponse(BaseModel):
     name: str
     price_adjustment: float
     stock_quantity: int
+    reserved_quantity: int
+    sold_quantity: int
+    available_stock: int
     weight_grams: float | None
     is_active: bool
     sort_order: int
@@ -94,6 +97,7 @@ class ProductCreateRequest(BaseModel):
     allow_backorder: bool = False
     low_stock_threshold: int = Field(default=5, ge=0)
     stock_quantity: int = Field(default=0, ge=0)
+    max_order_quantity: int = Field(default=0, ge=0)
 
     status: str = "draft"
     is_featured: bool = False
@@ -155,6 +159,7 @@ class ProductUpdateRequest(BaseModel):
     track_inventory: bool | None = None
     allow_backorder: bool | None = None
     low_stock_threshold: int | None = Field(None, ge=0)
+    max_order_quantity: int | None = Field(None, ge=0)
     status: str | None = None
     is_featured: bool | None = None
     is_new_arrival: bool | None = None
@@ -217,6 +222,10 @@ class ProductResponse(BaseModel):
     allow_backorder: bool
     low_stock_threshold: int
     stock_quantity: int
+    reserved_quantity: int
+    sold_quantity: int
+    available_stock: int
+    max_order_quantity: int
     status: str
     is_featured: bool
     is_new_arrival: bool
@@ -251,6 +260,7 @@ class ProductListItem(BaseModel):
     base_price: float
     compare_at_price: float | None
     stock_quantity: int
+    available_stock: int
     status: str
     is_featured: bool
     is_new_arrival: bool
@@ -275,6 +285,7 @@ class ProductListResponse(BaseModel):
 
 class StockAdjustRequest(BaseModel):
     delta: int = Field(..., description="Positive to add, negative to subtract")
+    variant_id: uuid.UUID | None = None
     reason: str | None = None
 
 

@@ -9,7 +9,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
 from app.core.events import (
-    LowInventoryAlertEvent,
     OrderCreatedEvent,
     OrderDeliveredEvent,
     OrderShippedEvent,
@@ -202,9 +201,9 @@ class NotificationService:
         svc = cls()
 
         async def _handle_user_registered(event: UserRegisteredEvent) -> None:
-            from app.core.database import AsyncSessionLocal
+            from app.core.database import AsyncWorkerSessionLocal
 
-            async with AsyncSessionLocal() as db:
+            async with AsyncWorkerSessionLocal() as db:
                 await svc.send_email(
                     db,
                     user_id=event.user_id,
@@ -215,9 +214,9 @@ class NotificationService:
 
         async def _handle_order_created(event: OrderCreatedEvent) -> None:
             # Order placed: email always, SMS if enabled
-            from app.core.database import AsyncSessionLocal
+            from app.core.database import AsyncWorkerSessionLocal
 
-            async with AsyncSessionLocal() as db:
+            async with AsyncWorkerSessionLocal() as db:
                 ctx = {"order_number": event.order_number, "total": event.total_amount}
                 await svc.send_email(
                     db,
@@ -237,9 +236,9 @@ class NotificationService:
 
         async def _handle_payment_captured(event: PaymentCapturedEvent) -> None:
             # Order confirmed: email only, no SMS per spec
-            from app.core.database import AsyncSessionLocal
+            from app.core.database import AsyncWorkerSessionLocal
 
-            async with AsyncSessionLocal() as db:
+            async with AsyncWorkerSessionLocal() as db:
                 ctx = {"order_number": event.order_number, "amount": event.amount}
                 await svc.send_email(
                     db,
@@ -251,9 +250,9 @@ class NotificationService:
 
         async def _handle_order_shipped(event: OrderShippedEvent) -> None:
             # Order dispatched: email always, SMS if enabled
-            from app.core.database import AsyncSessionLocal
+            from app.core.database import AsyncWorkerSessionLocal
 
-            async with AsyncSessionLocal() as db:
+            async with AsyncWorkerSessionLocal() as db:
                 ctx = {
                     "order_number": event.order_number,
                     "tracking_url": event.tracking_url,
@@ -277,9 +276,9 @@ class NotificationService:
 
         async def _handle_order_delivered(event: OrderDeliveredEvent) -> None:
             # Delivered: email only, no SMS per spec
-            from app.core.database import AsyncSessionLocal
+            from app.core.database import AsyncWorkerSessionLocal
 
-            async with AsyncSessionLocal() as db:
+            async with AsyncWorkerSessionLocal() as db:
                 ctx = {"order_number": event.order_number}
                 await svc.send_email(
                     db,
@@ -290,9 +289,9 @@ class NotificationService:
                 )
 
         async def _handle_refund_created(event: RefundCreatedEvent) -> None:
-            from app.core.database import AsyncSessionLocal
+            from app.core.database import AsyncWorkerSessionLocal
 
-            async with AsyncSessionLocal() as db:
+            async with AsyncWorkerSessionLocal() as db:
                 ctx = {"order_number": event.order_number, "amount": event.amount}
                 await svc.send_email(
                     db,
@@ -303,9 +302,9 @@ class NotificationService:
                 )
 
         async def _handle_refund_processed(event: RefundProcessedEvent) -> None:
-            from app.core.database import AsyncSessionLocal
+            from app.core.database import AsyncWorkerSessionLocal
 
-            async with AsyncSessionLocal() as db:
+            async with AsyncWorkerSessionLocal() as db:
                 ctx = {"order_number": event.order_number, "amount": event.amount}
                 await svc.send_email(
                     db,
@@ -316,32 +315,15 @@ class NotificationService:
                 )
 
         async def _handle_review_request(event: ReviewRequestEvent) -> None:
-            from app.core.database import AsyncSessionLocal
+            from app.core.database import AsyncWorkerSessionLocal
 
-            async with AsyncSessionLocal() as db:
+            async with AsyncWorkerSessionLocal() as db:
                 ctx = {"order_number": event.order_number}
                 await svc.send_email(
                     db,
                     user_id=event.user_id,
                     event_type="review_request",
                     recipient=event.customer_email,
-                    context=ctx,
-                )
-
-        async def _handle_low_inventory(event: LowInventoryAlertEvent) -> None:
-            from app.core.database import AsyncSessionLocal
-
-            async with AsyncSessionLocal() as db:
-                ctx = {
-                    "product_name": event.product_name,
-                    "sku": event.sku,
-                    "qty": event.current_qty,
-                }
-                await svc.send_email(
-                    db,
-                    user_id=None,
-                    event_type="low_inventory_alert",
-                    recipient=settings.ADMIN_ALERT_EMAIL,
                     context=ctx,
                 )
 
@@ -353,7 +335,6 @@ class NotificationService:
         event_bus.on(RefundCreatedEvent, _handle_refund_created)
         event_bus.on(RefundProcessedEvent, _handle_refund_processed)
         event_bus.on(ReviewRequestEvent, _handle_review_request)
-        event_bus.on(LowInventoryAlertEvent, _handle_low_inventory)
 
 
 def register_listeners() -> None:

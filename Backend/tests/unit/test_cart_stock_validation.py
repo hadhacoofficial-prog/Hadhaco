@@ -129,21 +129,24 @@ class TestAddItemStockValidation:
             self.svc, "_fetch_available_stock", AsyncMock(return_value=10)
         ):
             with patch.object(
-                self.svc, "_get_or_create", AsyncMock(return_value=mock_cart)
+                self.svc, "_fetch_max_order_qty", AsyncMock(return_value=0)
             ):
                 with patch.object(
-                    self.svc, "_fetch_product_price", AsyncMock(return_value=500.0)
+                    self.svc, "_get_or_create", AsyncMock(return_value=mock_cart)
                 ):
-                    with patch(
-                        "app.modules.cart.service._repo.upsert_item", AsyncMock()
+                    with patch.object(
+                        self.svc, "_fetch_product_price", AsyncMock(return_value=500.0)
                     ):
                         with patch(
-                            "app.modules.cart.service._repo.get_by_id",
-                            AsyncMock(return_value=mock_cart),
+                            "app.modules.cart.service._repo.upsert_item", AsyncMock()
                         ):
-                            result = await self.svc.add_item(
-                                db, payload, user_id=uuid.uuid4()
-                            )
+                            with patch(
+                                "app.modules.cart.service._repo.get_by_id",
+                                AsyncMock(return_value=mock_cart),
+                            ):
+                                result = await self.svc.add_item(
+                                    db, payload, user_id=uuid.uuid4()
+                                )
 
         assert result is not None
 
@@ -163,20 +166,25 @@ class TestAddItemStockValidation:
             self.svc, "_fetch_available_stock", AsyncMock(return_value=5)
         ):
             with patch.object(
-                self.svc, "_get_or_create", AsyncMock(return_value=mock_cart)
+                self.svc, "_fetch_max_order_qty", AsyncMock(return_value=0)
             ):
                 with patch.object(
-                    self.svc, "_fetch_product_price", AsyncMock(return_value=100.0)
+                    self.svc, "_get_or_create", AsyncMock(return_value=mock_cart)
                 ):
-                    with patch(
-                        "app.modules.cart.service._repo.upsert_item", AsyncMock()
+                    with patch.object(
+                        self.svc, "_fetch_product_price", AsyncMock(return_value=100.0)
                     ):
                         with patch(
-                            "app.modules.cart.service._repo.get_by_id",
-                            AsyncMock(return_value=mock_cart),
+                            "app.modules.cart.service._repo.upsert_item", AsyncMock()
                         ):
-                            # Should not raise
-                            await self.svc.add_item(db, payload, user_id=uuid.uuid4())
+                            with patch(
+                                "app.modules.cart.service._repo.get_by_id",
+                                AsyncMock(return_value=mock_cart),
+                            ):
+                                # Should not raise
+                                await self.svc.add_item(
+                                    db, payload, user_id=uuid.uuid4()
+                                )
 
 
 # ── TestUpdateItemStockValidation ─────────────────────────────────────────────

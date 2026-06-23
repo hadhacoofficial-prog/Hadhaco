@@ -60,12 +60,10 @@ async def lifespan(app: FastAPI):
     from app.modules.notifications.service import (
         register_listeners as register_notification_listeners,
     )
-    from app.modules.shipping.service import register_shipping_listeners
 
-    register_shipping_listeners()
     register_notification_listeners()
 
-    # Start background job scheduler (shipment sync, notification retry, etc.)
+    # Start background job scheduler
     from app.workers.queue import build_queue
 
     queue = build_queue()
@@ -186,9 +184,12 @@ def _mount_routers(app: FastAPI) -> None:
 
     @app.get("/health/ready", tags=["ops"], include_in_schema=False)
     async def readiness():
+        import json
+
+        from fastapi import Response
         from sqlalchemy import text
 
-        from app.core.database import AsyncSessionLocal
+        from app.core.database import AsyncSessionLocal, get_pool_status
 
         checks: dict = {}
         try:
@@ -206,12 +207,14 @@ def _mount_routers(app: FastAPI) -> None:
             checks["redis"] = str(exc)
 
         healthy = all(v == "ok" for v in checks.values())
-        from fastapi import Response
-
         status_code = 200 if healthy else 503
         return Response(
-            content=__import__("json").dumps(
-                {"status": "ready" if healthy else "degraded", "checks": checks}
+            content=json.dumps(
+                {
+                    "status": "ready" if healthy else "degraded",
+                    "checks": checks,
+                    "pool": get_pool_status(),
+                }
             ),
             status_code=status_code,
             media_type="application/json",

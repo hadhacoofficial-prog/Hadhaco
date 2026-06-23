@@ -131,6 +131,11 @@ function CheckoutPage() {
       clear();
       queryClient.invalidateQueries({ queryKey: queryKeys.orders.all });
       queryClient.invalidateQueries({ queryKey: queryKeys.cart.all });
+      queryClient.invalidateQueries({ queryKey: queryKeys.products.all });
+      queryClient.invalidateQueries({ queryKey: queryKeys.inventory.cartStock([]) });
+      queryClient.invalidateQueries({ queryKey: queryKeys.collections.all });
+      queryClient.invalidateQueries({ queryKey: queryKeys.cms.homepage });
+      queryClient.invalidateQueries({ queryKey: queryKeys.search.all });
       setCheckoutState("idle");
       setReservationStartedAt(null);
       navigate({

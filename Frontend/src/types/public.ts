@@ -51,6 +51,7 @@ export interface ProductDetail {
   available_stock?: number;
   reserved_quantity?: number;
   sold_quantity?: number;
+  max_order_quantity?: number;
   status: string;
   is_featured: boolean;
   is_new_arrival: boolean;

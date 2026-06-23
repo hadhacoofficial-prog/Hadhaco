@@ -155,7 +155,7 @@ class ProductRepository:
         order = sort_col.desc() if sort_dir == "desc" else sort_col.asc()
 
         list_q = (
-            base_q.options(selectinload(Product.images))
+            base_q.options(selectinload(Product.images), selectinload(Product.variants))
             .order_by(order)
             .offset((page - 1) * page_size)
             .limit(page_size)

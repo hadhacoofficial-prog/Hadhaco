@@ -43,6 +43,7 @@ export function toProductDetail(p: ProductDetail): Product {
     compareAt: p.compare_at_price ?? undefined,
     inStock: availableStock > 0,
     availableStock,
+    maxOrderQty: p.max_order_quantity ?? 0,
     isNew: p.is_new_arrival,
     isBestseller: p.is_best_seller,
     collectionIds: [],

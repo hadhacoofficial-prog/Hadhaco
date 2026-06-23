@@ -57,14 +57,3 @@ class ShipmentRepository:
         db.add(event)
         await db.flush()
         return event
-
-    async def list_active(self, db: AsyncSession) -> list[Shipment]:
-        """Return shipments in transit for polling."""
-        result = await db.execute(
-            select(Shipment).where(
-                Shipment.status.in_(
-                    ["created", "picked_up", "in_transit", "out_for_delivery"]
-                )
-            )
-        )
-        return list(result.scalars().all())

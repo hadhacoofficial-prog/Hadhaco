@@ -7,7 +7,6 @@ from dataclasses import dataclass
 from app.core.events import (
     BaseEvent,
     EventBus,
-    LowInventoryAlertEvent,
     OrderCreatedEvent,
     OrderDeliveredEvent,
     OrderShippedEvent,
@@ -160,16 +159,6 @@ class TestDomainEvents:
             customer_email="r@test.com",
         )
         assert e.event_type == "ReviewRequestEvent"
-
-    def test_low_inventory_alert_event(self):
-        e = LowInventoryAlertEvent(
-            product_id=str(uuid.uuid4()),
-            product_name="Silver Ring",
-            sku="SR-001",
-            current_qty=2,
-            threshold=5,
-        )
-        assert e.current_qty < e.threshold
 
     def test_refund_created_event(self):
         e = RefundCreatedEvent(

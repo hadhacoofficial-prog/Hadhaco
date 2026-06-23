@@ -119,6 +119,20 @@ async def list_reservations(
     return ok(result, ResponseCode.INVENTORY_RESERVATIONS_LISTED, "Reservations listed")
 
 
+@router.post(
+    "/admin/inventory/check-alerts",
+    response_model=BaseSuccessResponse[list[LowStockItem]],
+    dependencies=[Depends(require_admin)],
+)
+async def check_inventory_alerts(db: AsyncSession = Depends(get_db)):
+    result = await _service.get_low_stock(db)
+    return ok(
+        result,
+        ResponseCode.INVENTORY_ALERTS_CHECKED,
+        f"{len(result)} low-stock product(s) found",
+    )
+
+
 @router.get(
     "/admin/inventory/transactions",
     response_model=BaseSuccessResponse[InventoryTransactionListResponse],

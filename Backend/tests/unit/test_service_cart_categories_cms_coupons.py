@@ -777,6 +777,7 @@ class TestCartServiceSuccessPaths:
             patch.object(
                 self.svc, "_fetch_available_stock", AsyncMock(return_value=10)
             ),
+            patch.object(self.svc, "_fetch_max_order_qty", AsyncMock(return_value=0)),
             patch.object(
                 self.svc, "_fetch_product_price", AsyncMock(return_value=999.0)
             ),

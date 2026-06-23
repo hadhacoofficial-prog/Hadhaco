@@ -83,24 +83,61 @@ class CartService:
         return float(result[0])
 
     async def _fetch_available_stock(
+        self,
+        db: AsyncSession,
+        product_id: uuid.UUID,
+        variant_id: uuid.UUID | None = None,
+    ) -> int:
+        """Returns available = stock_quantity - reserved_quantity - sold_quantity.
+
+        When variant_id is supplied the variant's own counters are used; the
+        allow_backorder / track_inventory settings are always taken from the
+        parent product row.
+        """
+        if variant_id:
+            result = await db.execute(
+                text(
+                    "SELECT GREATEST(pv.stock_quantity - pv.reserved_quantity"
+                    " - pv.sold_quantity, 0) AS available,"
+                    " p.track_inventory, p.allow_backorder"
+                    " FROM product_variants pv"
+                    " JOIN products p ON p.id = pv.product_id"
+                    " WHERE pv.id = :vid AND pv.product_id = :pid"
+                    " AND p.deleted_at IS NULL AND p.status = 'active'"
+                    " AND pv.is_active = true"
+                ),
+                {"vid": str(variant_id), "pid": str(product_id)},
+            )
+        else:
+            result = await db.execute(
+                text(
+                    "SELECT GREATEST(stock_quantity - reserved_quantity - sold_quantity, 0)"
+                    " AS available, track_inventory, allow_backorder"
+                    " FROM products WHERE id = :pid"
+                    " AND deleted_at IS NULL AND status = 'active'"
+                ),
+                {"pid": str(product_id)},
+            )
+        row = result.fetchone()
+        if not row:
+            raise NotFoundError("Product not found or unavailable")
+        if not row[1] or row[2]:
+            return 999_999
+        return int(row[0])
+
+    async def _fetch_max_order_qty(
         self, db: AsyncSession, product_id: uuid.UUID
     ) -> int:
-        """Returns available = stock_quantity - reserved_quantity - sold_quantity."""
+        """Returns max_order_quantity for the product. 0 = no limit."""
         result = await db.execute(
             text(
-                "SELECT GREATEST(stock_quantity - reserved_quantity - sold_quantity, 0) "
-                "AS available, track_inventory, allow_backorder "
-                "FROM products WHERE id = :pid AND deleted_at IS NULL AND status = 'active'"
+                "SELECT max_order_quantity FROM products"
+                " WHERE id = :pid AND deleted_at IS NULL AND status = 'active'"
             ),
             {"pid": str(product_id)},
         )
         row = result.fetchone()
-        if not row:
-            raise NotFoundError("Product not found or unavailable")
-        # If inventory is not tracked or backorders allowed, treat as unlimited
-        if not row[1] or row[2]:
-            return 999_999
-        return int(row[0])
+        return int(row[0]) if row else 0
 
     async def get_cart(
         self,
@@ -120,12 +157,19 @@ class CartService:
     ) -> CartSummary:
         # Validate available stock BEFORE touching the cart.
         # Cart does NOT reserve stock — it just stores intent.
-        available = await self._fetch_available_stock(db, payload.product_id)
+        available = await self._fetch_available_stock(
+            db, payload.product_id, payload.variant_id
+        )
         if payload.quantity > available:
             if available <= 0:
                 raise InventoryError("This product is currently out of stock.")
             raise InventoryError(
                 f"Only {available} item(s) available. Please adjust your quantity."
+            )
+        max_qty = await self._fetch_max_order_qty(db, payload.product_id)
+        if max_qty > 0 and payload.quantity > max_qty:
+            raise ValidationError(
+                f"Maximum {max_qty} item(s) allowed per order for this product."
             )
 
         cart = await self._get_or_create(db, user_id, session_id)
@@ -164,10 +208,17 @@ class CartService:
 
         # Validate if increasing quantity
         if payload.quantity > item.quantity:
-            available = await self._fetch_available_stock(db, item.product_id)
+            available = await self._fetch_available_stock(
+                db, item.product_id, item.variant_id
+            )
             if payload.quantity > available:
                 raise InventoryError(
                     f"Only {available} item(s) available. Please adjust your quantity."
+                )
+            max_qty = await self._fetch_max_order_qty(db, item.product_id)
+            if max_qty > 0 and payload.quantity > max_qty:
+                raise ValidationError(
+                    f"Maximum {max_qty} item(s) allowed per order for this product."
                 )
 
         await _repo.update_item_quantity(db, item_id, payload.quantity)

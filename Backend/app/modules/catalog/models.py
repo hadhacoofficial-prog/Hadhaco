@@ -74,6 +74,15 @@ class Product(Base):
     stock_quantity: Mapped[int] = mapped_column(
         Integer, nullable=False, server_default="0"
     )
+    reserved_quantity: Mapped[int] = mapped_column(
+        Integer, nullable=False, server_default="0"
+    )
+    sold_quantity: Mapped[int] = mapped_column(
+        Integer, nullable=False, server_default="0"
+    )
+    max_order_quantity: Mapped[int] = mapped_column(
+        Integer, nullable=False, server_default="0"
+    )
 
     # Status / flags
     status: Mapped[str] = mapped_column(
@@ -159,6 +168,13 @@ class Product(Base):
         Index("idx_products_search_vector", "search_vector", postgresql_using="gin"),
     )
 
+    @property
+    def available_stock(self) -> int:
+        active_variants = [variant for variant in self.variants if variant.is_active]
+        if active_variants:
+            return sum(variant.available_stock for variant in active_variants)
+        return max(self.stock_quantity - self.reserved_quantity - self.sold_quantity, 0)
+
 
 class ProductVariant(Base):
     __tablename__ = "product_variants"
@@ -177,6 +193,12 @@ class ProductVariant(Base):
         Numeric(12, 2), nullable=False, server_default="0"
     )
     stock_quantity: Mapped[int] = mapped_column(
+        Integer, nullable=False, server_default="0"
+    )
+    reserved_quantity: Mapped[int] = mapped_column(
+        Integer, nullable=False, server_default="0"
+    )
+    sold_quantity: Mapped[int] = mapped_column(
         Integer, nullable=False, server_default="0"
     )
     weight_grams: Mapped[float | None] = mapped_column(Numeric(10, 3), nullable=True)
@@ -201,6 +223,10 @@ class ProductVariant(Base):
         Index("idx_product_variants_product_id", "product_id"),
         Index("idx_product_variants_sku", "sku"),
     )
+
+    @property
+    def available_stock(self) -> int:
+        return max(self.stock_quantity - self.reserved_quantity - self.sold_quantity, 0)
 
 
 class ProductImage(Base):

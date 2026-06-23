@@ -36,6 +36,7 @@ export interface Product {
   gender: Gender;
   inStock: boolean;
   availableStock: number;
+  maxOrderQty?: number;
   isNew?: boolean;
   isBestseller?: boolean;
   shortDescription?: string;

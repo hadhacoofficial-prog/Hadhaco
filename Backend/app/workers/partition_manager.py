@@ -11,7 +11,7 @@ from datetime import date, timedelta
 import structlog
 from sqlalchemy import text
 
-from app.core.database import AsyncSessionLocal
+from app.core.database import AsyncWorkerSessionLocal
 
 log = structlog.get_logger(__name__)
 
@@ -22,7 +22,7 @@ async def run() -> None:
     next_month = next_month.replace(day=1)
     log.info("partition_manager_started", target_month=str(next_month))
     try:
-        async with AsyncSessionLocal() as db:
+        async with AsyncWorkerSessionLocal() as db:
             await db.execute(
                 text("SELECT create_analytics_partition(:d)"), {"d": next_month}
             )

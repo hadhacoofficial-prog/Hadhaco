@@ -182,8 +182,8 @@ class TestCatalogService:
                 AsyncMock(return_value=mock_product),
             ),
             patch(
-                "app.modules.catalog.service._repo.adjust_stock",
-                AsyncMock(side_effect=[-5, 5]),
+                "app.modules.catalog.service._reservation_svc.record_adjustment",
+                AsyncMock(side_effect=ValidationError("Insufficient stock")),
             ),
         ):
             with pytest.raises(ValidationError):

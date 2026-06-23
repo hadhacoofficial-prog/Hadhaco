@@ -129,16 +129,6 @@ class RefundProcessedEvent(BaseEvent):
 
 
 @dataclass
-class LowInventoryAlertEvent(BaseEvent):
-    product_id: str = ""
-    product_name: str = ""
-    sku: str = ""
-    current_qty: int = 0
-    quantity_after: int = 0
-    threshold: int = 0
-
-
-@dataclass
 class ReviewRequestEvent(BaseEvent):
     order_id: str = ""
     user_id: str = ""

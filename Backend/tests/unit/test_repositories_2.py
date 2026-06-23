@@ -555,12 +555,6 @@ class TestShipmentRepository:
         )
         db.add.assert_called_once()
 
-    async def test_list_active_returns_list(self):
-        mock_ship = MagicMock()
-        db = _db(_scalars([mock_ship]))
-        result = await self.repo.list_active(db)
-        assert result == [mock_ship]
-
 
 # ─── SettingsRepository ───────────────────────────────────────────────────────
 

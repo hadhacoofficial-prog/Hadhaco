@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.common.response_codes import ResponseCode
-from app.common.responses import BaseSuccessResponse, ok
+from app.common.responses import BaseSuccessResponse, created, ok
 from app.core.database import get_db
 from app.core.dependencies import get_current_user, require_admin, require_customer
 from app.modules.profiles.models import Profile
@@ -13,6 +13,7 @@ from app.modules.shipping.schemas import (
     ShipmentResponse,
     ShippingRateResponse,
     TrackingResponse,
+    UpdateShipmentRequest,
 )
 from app.modules.shipping.service import ShippingService
 
@@ -38,12 +39,19 @@ async def get_shipment(
 
 
 @router.get(
-    "/tracking/{awb_number}",
+    "/orders/{order_id}/tracking",
     response_model=BaseSuccessResponse[TrackingResponse],
+    dependencies=[Depends(require_customer)],
 )
-async def track_shipment(awb_number: str, db: AsyncSession = Depends(get_db)):
-    result = await _service.track(db, awb_number)
-    return ok(result, ResponseCode.SHIPMENT_TRACKED, "Shipment tracked successfully")
+async def get_tracking(
+    order_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    current_user: Profile = Depends(get_current_user),
+):
+    result = await _service.get_tracking(db, order_id, user_id=current_user.id)
+    return ok(
+        result, ResponseCode.SHIPMENT_TRACKED, "Tracking info fetched successfully"
+    )
 
 
 @router.get(
@@ -76,13 +84,24 @@ async def create_shipment(
     payload: CreateShipmentRequest,
     db: AsyncSession = Depends(get_db),
 ):
-    from app.common.responses import created
-
-    payload.order_id = order_id
     result = await _service.create_shipment(db, order_id, payload)
     return created(
         result, ResponseCode.SHIPMENT_CREATED, "Shipment created successfully"
     )
+
+
+@router.patch(
+    "/admin/orders/{order_id}/shipment",
+    response_model=BaseSuccessResponse[ShipmentResponse],
+    dependencies=[Depends(require_admin)],
+)
+async def update_shipment(
+    order_id: uuid.UUID,
+    payload: UpdateShipmentRequest,
+    db: AsyncSession = Depends(get_db),
+):
+    result = await _service.update_shipment(db, order_id, payload)
+    return ok(result, ResponseCode.SHIPMENT_UPDATED, "Shipment updated successfully")
 
 
 @router.get(

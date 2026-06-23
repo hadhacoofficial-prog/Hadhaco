@@ -48,6 +48,7 @@ export const queryKeys = {
   },
 
   search: {
+    all: ["search"] as const,
     query: (q: string, params?: QueryParams) => ["search", "query", q, params ?? {}] as const,
     autocomplete: (q: string) => ["search", "autocomplete", q] as const,
     trending: ["search", "trending"] as const,

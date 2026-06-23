@@ -145,6 +145,62 @@ async def list_pending_reviews(
     )
 
 
+@router.post("/admin/send-reminders", response_model=BaseSuccessResponse[dict])
+async def send_review_reminders(
+    db: AsyncSession = Depends(get_db),
+    _=Depends(require_admin),
+):
+    from datetime import UTC, datetime, timedelta
+
+    from sqlalchemy import select
+
+    from app.core.config import settings
+    from app.core.events import ReviewRequestEvent, event_bus
+    from app.modules.orders.models import Order
+    from app.modules.profiles.models import Profile
+    from app.modules.reviews.repository import ReviewRepository
+
+    now = datetime.now(UTC)
+    deadline = now - timedelta(hours=settings.REVIEW_REMINDER_DELAY_HOURS)
+    oldest = now - timedelta(days=30)
+
+    result = await db.execute(
+        select(Order, Profile.email)
+        .join(Profile, Profile.id == Order.user_id)
+        .where(
+            Order.status == "delivered",
+            Order.delivered_at <= deadline,
+            Order.delivered_at >= oldest,
+        )
+    )
+    rows = result.all()
+
+    candidate_ids = [order.id for order, email in rows if email]
+    reviewed_ids = await ReviewRepository().get_reviewed_order_ids(db, candidate_ids)
+
+    sent = 0
+    skipped = 0
+    for order, email in rows:
+        if not email or order.id in reviewed_ids:
+            skipped += 1
+            continue
+        await event_bus.publish(
+            ReviewRequestEvent(
+                order_id=str(order.id),
+                user_id=str(order.user_id),
+                customer_email=email,
+                order_number=order.order_number,
+            )
+        )
+        sent += 1
+
+    return ok(
+        {"sent": sent, "skipped": skipped, "candidates": len(rows)},
+        ResponseCode.REVIEW_REMINDERS_SENT,
+        f"Sent {sent} review reminder(s)",
+    )
+
+
 @router.post("/admin/{review_id}/action", response_model=BaseSuccessResponse[ReviewOut])
 async def admin_review_action(
     review_id: uuid.UUID,

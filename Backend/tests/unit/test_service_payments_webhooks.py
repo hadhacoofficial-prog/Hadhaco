@@ -318,25 +318,3 @@ class TestWebhookService:
         ):
             result = await self.svc.handle_razorpay(db, body=payload, signature="sig")
         assert result["status"] == "already_processed"
-
-    async def test_handle_delivery_one_invalid_signature(self):
-        db = AsyncMock()
-        with patch(
-            "app.modules.webhooks.service.verify_delivery_one_webhook_signature",
-            return_value=False,
-        ):
-            result = await self.svc.handle_delivery_one(
-                db, body=b'{"status":"delivered"}', signature="bad"
-            )
-        assert result["status"] == "invalid_signature"
-
-    async def test_handle_delivery_one_invalid_json(self):
-        db = AsyncMock()
-        with patch(
-            "app.modules.webhooks.service.verify_delivery_one_webhook_signature",
-            return_value=True,
-        ):
-            result = await self.svc.handle_delivery_one(
-                db, body=b"invalid", signature="sig"
-            )
-        assert result["status"] == "invalid_payload"

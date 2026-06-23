@@ -96,39 +96,6 @@ class TestInventoryService:
             )
         assert result is mock_resp
 
-    async def test_record_movement_triggers_low_stock_event(self):
-        from app.modules.inventory.schemas import InventoryMovementResponse
-
-        db = AsyncMock()
-        db.execute = AsyncMock()
-        product_id = uuid.uuid4()
-        # after delta=-9, quantity_after=1 <= threshold=5 → triggers event
-        snapshot = {
-            "stock_quantity": 10,
-            "allow_backorder": False,
-            "low_stock_threshold": 5,
-            "sku": "SKU1",
-            "product_name": "Ring",
-        }
-        with (
-            patch(
-                "app.modules.inventory.service._repo.get_stock_snapshot",
-                AsyncMock(return_value=snapshot),
-            ),
-            patch(
-                "app.modules.inventory.service._repo.record",
-                AsyncMock(return_value=MagicMock()),
-            ),
-            patch("app.core.events.event_bus.publish", AsyncMock()) as mock_pub,
-            patch.object(
-                InventoryMovementResponse, "model_validate", return_value=MagicMock()
-            ),
-        ):
-            await self.svc.record_movement(
-                db, product_id=product_id, delta=-9, movement_type="sale"
-            )
-        mock_pub.assert_awaited_once()
-
     async def test_record_movement_raises_not_found(self):
         from app.core.exceptions import NotFoundError
 
@@ -749,10 +716,10 @@ class TestCatalogServiceExtra:
                 AsyncMock(return_value=mock_product),
             ),
             patch(
-                "app.modules.catalog.service._repo.adjust_stock",
-                AsyncMock(side_effect=[-5, 5]),
+                "app.modules.catalog.service._reservation_svc.record_adjustment",
+                AsyncMock(side_effect=ValidationError("Insufficient stock")),
             ),
-        ):  # negative then rollback
+        ):
             with pytest.raises(ValidationError):
                 await self.svc.adjust_stock(
                     db, uuid.uuid4(), StockAdjustRequest(delta=-100)

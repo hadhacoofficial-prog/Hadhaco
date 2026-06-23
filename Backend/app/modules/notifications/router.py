@@ -104,3 +104,23 @@ async def list_logs(
         ResponseCode.NOTIFICATION_LOGS_LISTED,
         "Notification logs listed successfully",
     )
+
+
+@router.post("/admin/retry", response_model=BaseSuccessResponse[dict])
+async def retry_pending_notifications(
+    db: AsyncSession = Depends(get_db),
+    _=Depends(require_admin),
+):
+    from app.modules.notifications.repository import NotificationRepository
+    from app.modules.notifications.service import NotificationService
+
+    repo = NotificationRepository()
+    pending = await repo.get_pending_retries(db)
+    count = len(pending)
+    svc = NotificationService()
+    await svc.retry_pending(db)
+    return ok(
+        {"retried": count},
+        ResponseCode.NOTIFICATIONS_RETRIED,
+        f"Retried {count} pending notification(s)",
+    )

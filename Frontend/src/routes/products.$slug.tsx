@@ -10,13 +10,15 @@ import {
   Star,
   Bell,
   RefreshCw,
+  AlertTriangle,
 } from "lucide-react";
 import { SiteLayout } from "@/components/site/SiteLayout";
 import { Breadcrumbs } from "@/components/site/Breadcrumbs";
 import { QuantityStepper } from "@/components/site/QuantityStepper";
 import { ProductGrid } from "@/components/site/ProductGrid";
 import { InventoryBadge } from "@/components/site/InventoryBadge";
-import { useCart } from "@/stores/cart";
+import { useCart, cartLineKey } from "@/stores/cart";
+import { computeQuantityBounds } from "@/lib/cartQuantity";
 import { useWishlist } from "@/stores/wishlist";
 import { useRecentlyViewed } from "@/stores/recentlyViewed";
 import { formatINR } from "@/lib/format";
@@ -90,15 +92,13 @@ function ProductPage() {
   const [variantError, setVariantError] = useState(false);
 
   const add = useCart((s) => s.add);
+  const cartQty = useCart((s) => {
+    const k = cartLineKey(product.id, selectedVariant?.id);
+    return s.lines.find((l) => cartLineKey(l.productId, l.variantId) === k)?.qty ?? 0;
+  });
   const wishlistItems = useWishlist((s) => s.items);
   const wishToggle = useWishlist((s) => s.toggle);
   const pushRV = useRecentlyViewed((s) => s.push);
-
-  const hasVariants = (product.variants?.length ?? 0) > 0;
-
-  const wished = wishlistItems.some(
-    (i) => i.id === product.id && i.variantId === (selectedVariant?.id ?? undefined),
-  );
 
   // Poll live stock every 60 s so the page stays accurate without a reload
   const { data: liveDetail, dataUpdatedAt } = useQuery({
@@ -109,39 +109,53 @@ function ProductPage() {
     refetchOnWindowFocus: true,
   });
 
-  const liveAvailableStock = liveDetail
-    ? (liveDetail.available_stock ?? liveDetail.stock_quantity)
-    : product.availableStock;
+  const liveProduct = liveDetail ? toProductDetail(liveDetail) : product;
+  const hasVariants = (liveProduct.variants?.length ?? 0) > 0;
+  const currentVariant = selectedVariant
+    ? (liveProduct.variants?.find((v) => v.id === selectedVariant.id) ?? selectedVariant)
+    : null;
+
+  const wished = wishlistItems.some(
+    (i) => i.id === product.id && i.variantId === (currentVariant?.id ?? undefined),
+  );
+
+  const liveAvailableStock = liveProduct.availableStock;
 
   // Resolved variant stock (use live data if we have it)
-  const variantStock = selectedVariant
-    ? (selectedVariant.available_stock ?? selectedVariant.stock_quantity)
+  const variantStock = currentVariant
+    ? (currentVariant.available_stock ?? currentVariant.stock_quantity)
     : 0;
 
   // Effective stock for the current selection
   const effectiveStock = hasVariants
-    ? selectedVariant !== null
+    ? currentVariant !== null
       ? variantStock
       : 0
     : liveAvailableStock;
 
-  // Clamp qty whenever effective stock changes
-  useEffect(() => {
-    if (effectiveStock > 0) {
-      setQty((prev) => Math.max(1, Math.min(prev, effectiveStock)));
-    }
-  }, [effectiveStock]);
+  const bounds = computeQuantityBounds({
+    availableStock: effectiveStock,
+    maxOrderQty: liveProduct.maxOrderQty ?? 0,
+    cartQty,
+  });
 
-  const displayPrice = product.price + (selectedVariant?.price_adjustment ?? 0);
-  const displayCompareAt = selectedVariant
+  // Clamp stepper qty whenever the allowed-remaining changes
+  useEffect(() => {
+    if (bounds.remainingAllowed > 0) {
+      setQty((prev) => Math.max(1, Math.min(prev, bounds.remainingAllowed)));
+    }
+  }, [bounds.remainingAllowed]);
+
+  const displayPrice = product.price + (currentVariant?.price_adjustment ?? 0);
+  const displayCompareAt = currentVariant
     ? product.compareAt != null
-      ? product.compareAt + selectedVariant.price_adjustment
+      ? product.compareAt + currentVariant.price_adjustment
       : undefined
     : product.compareAt;
-  const displaySku = selectedVariant?.sku ?? product.sku;
+  const displaySku = currentVariant?.sku ?? product.sku;
 
   const displayInStock: boolean | null = hasVariants
-    ? selectedVariant !== null
+    ? currentVariant !== null
       ? variantStock > 0
       : null
     : liveAvailableStock > 0;
@@ -174,10 +188,11 @@ function ProductPage() {
   const recentlyViewed: Product[] = [];
 
   const handleAddToCart = () => {
-    if (hasVariants && !selectedVariant) {
+    if (hasVariants && !currentVariant) {
       setVariantError(true);
       return;
     }
+    if (!bounds.canAdd) return;
     add(
       product.id,
       qty,
@@ -187,14 +202,14 @@ function ProductPage() {
         slug: product.slug,
         sku: displaySku,
         price: displayPrice,
-        variantName: selectedVariant?.name,
+        variantName: currentVariant?.name,
       },
-      selectedVariant?.id,
+      currentVariant?.id,
     );
   };
 
   const handleWishlistToggle = () => {
-    if (hasVariants && !selectedVariant) {
+    if (hasVariants && !currentVariant) {
       setVariantError(true);
       return;
     }
@@ -205,16 +220,17 @@ function ProductPage() {
       image: product.image,
       price: displayPrice,
       sku: displaySku,
-      variantId: selectedVariant?.id,
-      variantName: selectedVariant?.name,
+      variantId: currentVariant?.id,
+      variantName: currentVariant?.name,
     });
   };
 
   const handleBuyNow = () => {
-    if (hasVariants && !selectedVariant) {
+    if (hasVariants && !currentVariant) {
       setVariantError(true);
       return;
     }
+    if (!bounds.canAdd) return;
     add(
       product.id,
       qty,
@@ -224,9 +240,9 @@ function ProductPage() {
         slug: product.slug,
         sku: displaySku,
         price: displayPrice,
-        variantName: selectedVariant?.name,
+        variantName: currentVariant?.name,
       },
-      selectedVariant?.id,
+      currentVariant?.id,
     );
     navigate({ to: "/checkout" });
   };
@@ -342,7 +358,7 @@ function ProductPage() {
           <div className="flex items-center gap-3 mt-3">
             {displayInStock !== null && (
               <InventoryBadge
-                availableStock={hasVariants && selectedVariant ? variantStock : liveAvailableStock}
+                availableStock={hasVariants && currentVariant ? variantStock : liveAvailableStock}
               />
             )}
             {hasVariants && displayInStock === null && (
@@ -374,17 +390,17 @@ function ProductPage() {
                 <span className="text-destructive" aria-hidden>
                   *
                 </span>
-                {selectedVariant && (
+                {currentVariant && (
                   <span className="ml-2 normal-case tracking-normal text-foreground font-medium">
-                    — {selectedVariant.name}
+                    — {currentVariant.name}
                   </span>
                 )}
               </p>
               <div className="flex flex-wrap gap-2">
-                {product.variants!.map((v) => {
+                {liveProduct.variants!.map((v) => {
                   const vStock = v.available_stock ?? v.stock_quantity;
                   const outOfStock = vStock === 0;
-                  const isSelected = selectedVariant?.id === v.id;
+                  const isSelected = currentVariant?.id === v.id;
                   return (
                     <button
                       key={v.id}
@@ -463,17 +479,22 @@ function ProductPage() {
                 <QuantityStepper
                   value={qty}
                   onChange={setQty}
-                  max={effectiveStock > 0 ? effectiveStock : 99}
+                  max={bounds.remainingAllowed > 0 ? bounds.remainingAllowed : 1}
+                  disabled={displayInStock !== null && !bounds.canAdd}
                 />
-                {effectiveStock > 0 && effectiveStock <= 10 && (
-                  <span className="text-xs text-amber-600">Max {effectiveStock} available</span>
+                {effectiveStock > 0 && effectiveStock <= 10 && bounds.canAdd && (
+                  <span className="text-xs text-amber-600">Only {effectiveStock} left</span>
                 )}
                 <button
                   onClick={handleAddToCart}
-                  disabled={displayInStock === false}
+                  disabled={displayInStock === false || !bounds.canAdd}
                   className="flex-1 bg-primary text-primary-foreground text-[11px] uppercase tracking-[0.22em] py-3.5 hover:bg-accent hover:text-accent-foreground transition disabled:opacity-50 disabled:cursor-not-allowed"
                 >
-                  {displayInStock === false ? "Out of Stock" : "Add to Cart"}
+                  {displayInStock === false
+                    ? "Out of Stock"
+                    : !bounds.canAdd
+                      ? "Max Qty in Cart"
+                      : "Add to Cart"}
                 </button>
                 <button
                   onClick={handleWishlistToggle}
@@ -483,9 +504,15 @@ function ProductPage() {
                   <Heart className={`size-4 ${wished ? "fill-current" : ""}`} />
                 </button>
               </div>
+              {bounds.limitMessage && (
+                <p className="mt-2 text-xs text-amber-700 flex items-center gap-1" role="status">
+                  <AlertTriangle className="size-3 shrink-0" aria-hidden />
+                  {bounds.limitMessage}
+                </p>
+              )}
               <button
                 onClick={handleBuyNow}
-                disabled={displayInStock === false}
+                disabled={displayInStock === false || !bounds.canAdd}
                 className="mt-3 w-full border border-foreground text-foreground text-[11px] uppercase tracking-[0.22em] py-3.5 hover:bg-foreground hover:text-background transition disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 Buy It Now

@@ -8,7 +8,8 @@ import { Breadcrumbs } from "@/components/site/Breadcrumbs";
 import { EmptyState } from "@/components/site/EmptyState";
 import { QuantityStepper } from "@/components/site/QuantityStepper";
 import { InventoryBadge } from "@/components/site/InventoryBadge";
-import { useCart } from "@/stores/cart";
+import { useCart, cartLineKey } from "@/stores/cart";
+import { computeQuantityBounds } from "@/lib/cartQuantity";
 import { api } from "@/lib/api/client";
 import { toUserMessage } from "@/lib/api/errors";
 import { formatINR } from "@/lib/format";
@@ -38,28 +39,43 @@ function CartPage() {
       staleTime: 30_000,
       refetchInterval: 60_000,
       refetchOnWindowFocus: true,
-      select: (data: ProductDetail) => ({
-        productId: line.productId,
-        availableStock: data.available_stock ?? data.stock_quantity,
-      }),
+      select: (data: ProductDetail) => {
+        const variant = line.variantId ? data.variants.find((v) => v.id === line.variantId) : null;
+        const availableStock = variant
+          ? (variant.available_stock ?? variant.stock_quantity)
+          : (data.available_stock ?? data.stock_quantity);
+        return {
+          lineKey: cartLineKey(line.productId, line.variantId),
+          availableStock,
+          maxOrderQty: data.max_order_quantity ?? 0,
+        };
+      },
     })),
   });
 
-  // Build productId → availableStock map
-  const stockMap: Record<string, number> = {};
+  // Build lineKey → { availableStock, maxOrderQty } map
+  const stockMap: Record<string, { availableStock: number; maxOrderQty: number }> = {};
   stockQueries.forEach((q) => {
-    if (q.data) stockMap[q.data.productId] = q.data.availableStock;
+    if (q.data) stockMap[q.data.lineKey] = q.data;
   });
 
-  // Detect items where cart qty exceeds available stock
-  const stockIssues = lines.filter(
-    (line) =>
-      stockMap[line.productId] !== undefined && line.qty > (stockMap[line.productId] ?? Infinity),
-  );
+  // Detect items where cart qty exceeds the effective cap (stock or order limit)
+  const stockIssues = lines.filter((line) => {
+    const si = stockMap[cartLineKey(line.productId, line.variantId)];
+    if (!si) return false;
+    const bounds = computeQuantityBounds({
+      availableStock: si.availableStock,
+      maxOrderQty: si.maxOrderQty,
+      cartQty: 0,
+    });
+    return line.qty > bounds.effectiveCap;
+  });
   const hasStockIssues = stockIssues.length > 0;
 
   // Any item with zero available stock
-  const soldOutItems = lines.filter((line) => (stockMap[line.productId] ?? 1) === 0);
+  const soldOutItems = lines.filter(
+    (line) => (stockMap[cartLineKey(line.productId, line.variantId)]?.availableStock ?? 1) === 0,
+  );
 
   const subtotalAmt = subtotal();
   const ship = shipping ?? (subtotalAmt > 999 ? 0 : 99);
@@ -140,9 +156,17 @@ function CartPage() {
                   <span />
                 </div>
                 {lines.map((line) => {
-                  const available = stockMap[line.productId];
-                  const isSoldOut = available !== undefined && available === 0;
-                  const isOverQty = available !== undefined && line.qty > available;
+                  const si = stockMap[cartLineKey(line.productId, line.variantId)];
+                  const bounds = si
+                    ? computeQuantityBounds({
+                        availableStock: si.availableStock,
+                        maxOrderQty: si.maxOrderQty,
+                        cartQty: 0,
+                      })
+                    : null;
+                  const isSoldOut = si !== undefined && si.availableStock === 0;
+                  const isOverQty = bounds !== null && line.qty > bounds.effectiveCap && !isSoldOut;
+                  const stepperMax = bounds ? bounds.effectiveCap : 99;
 
                   return (
                     <div
@@ -191,17 +215,19 @@ function CartPage() {
                         )}
 
                         {/* Available stock badge */}
-                        {available !== undefined && (
+                        {si !== undefined && (
                           <div className="mt-2">
-                            <InventoryBadge availableStock={available} />
+                            <InventoryBadge availableStock={si.availableStock} />
                           </div>
                         )}
 
                         {/* Over-qty warning */}
-                        {isOverQty && !isSoldOut && (
+                        {isOverQty && (
                           <p className="mt-1.5 text-[11px] text-amber-700 flex items-center gap-1">
                             <AlertTriangle className="size-3 shrink-0" aria-hidden />
-                            Only {available} available — reduce quantity
+                            {bounds && si && si.maxOrderQty > 0 && line.qty > si.maxOrderQty
+                              ? `Max ${si.maxOrderQty} per order — reduce quantity`
+                              : `Only ${si?.availableStock} available — reduce quantity`}
                           </p>
                         )}
 
@@ -217,7 +243,7 @@ function CartPage() {
                             <QuantityStepper
                               value={line.qty}
                               onChange={(n) => setQty(line.productId, n, line.variantId)}
-                              max={available ?? 99}
+                              max={stepperMax}
                             />
                           )}
                           <button
@@ -239,7 +265,7 @@ function CartPage() {
                           <QuantityStepper
                             value={line.qty}
                             onChange={(n) => setQty(line.productId, n, line.variantId)}
-                            max={available ?? 99}
+                            max={stepperMax}
                           />
                         )}
                       </div>

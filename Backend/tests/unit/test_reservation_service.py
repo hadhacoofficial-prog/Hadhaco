@@ -32,6 +32,32 @@ def _prod_mapping(
     }
 
 
+def _variant_mapping(
+    *,
+    variant_id: uuid.UUID | None = None,
+    product_id: uuid.UUID | None = None,
+    variant_name: str = "Ring Size 20",
+    product_name: str = "Silver Ring",
+    stock: int = 10,
+    reserved: int = 0,
+    sold: int = 0,
+    allow_backorder: bool = False,
+    track_inventory: bool = True,
+) -> dict:
+    """Mapping returned by the JOIN query in _lock_stock_target for variant path."""
+    return {
+        "target_id": str(variant_id or uuid.uuid4()),
+        "product_id": str(product_id or uuid.uuid4()),
+        "variant_name": variant_name,
+        "product_name": product_name,
+        "stock_quantity": stock,
+        "reserved_quantity": reserved,
+        "sold_quantity": sold,
+        "allow_backorder": allow_backorder,
+        "track_inventory": track_inventory,
+    }
+
+
 def _lock_result(mapping: dict | None) -> MagicMock:
     """Simulate a SELECT...FOR UPDATE result whose .fetchone() returns a row with ._mapping."""
     row = MagicMock()
@@ -218,7 +244,9 @@ class TestReserveItems:
     async def test_reserve_with_variant_id(self):
         product_id = uuid.uuid4()
         variant_id = uuid.uuid4()
-        mapping = _prod_mapping(product_id=product_id, stock=10)
+        mapping = _variant_mapping(
+            variant_id=variant_id, product_id=product_id, stock=10
+        )
 
         db = AsyncMock()
         db.execute = AsyncMock(side_effect=[_lock_result(mapping), _noop_result()])
@@ -231,6 +259,7 @@ class TestReserveItems:
         )
 
         assert reservations[0].variant_id == variant_id
+        assert reservations[0].product_id == product_id
 
     async def test_reserve_fails_on_second_item_does_not_rollback_first(self):
         """
@@ -993,3 +1022,294 @@ class TestLogTransaction:
         assert txn.after_sold == 1
         assert txn.quantity == 3
         assert txn.reference == "RES-ABCD1234"
+
+
+# ── TestVariantLevelInventory ─────────────────────────────────────────────────
+
+
+class TestVariantLevelInventory:
+    """Variant purchases must update product_variants, not products."""
+
+    def setup_method(self):
+        from app.modules.inventory.reservation_service import ReservationService
+
+        self.svc = ReservationService()
+
+    # 1. Variant reserve hits product_variants table
+    async def test_reserve_variant_uses_product_variants_table(self):
+        product_id = uuid.uuid4()
+        variant_id = uuid.uuid4()
+        mapping = _variant_mapping(
+            variant_id=variant_id, product_id=product_id, stock=5, reserved=0, sold=0
+        )
+
+        db = AsyncMock()
+        db.execute = AsyncMock(side_effect=[_lock_result(mapping), _noop_result()])
+        db.add = MagicMock()
+        db.flush = AsyncMock()
+
+        items = [{"product_id": product_id, "variant_id": variant_id, "quantity": 2}]
+        reservations = await self.svc.reserve_items(
+            db, user_id=uuid.uuid4(), items=items
+        )
+
+        assert len(reservations) == 1
+        assert reservations[0].variant_id == variant_id
+        assert reservations[0].product_id == product_id
+
+        # The UPDATE must target product_variants, not products
+        update_call = db.execute.call_args_list[1]
+        sql = str(update_call[0][0])
+        assert "product_variants" in sql
+        assert "products" not in sql
+
+    # 2. Parent product row is untouched when variant is bought
+    async def test_reserve_variant_does_not_touch_product_row(self):
+        product_id = uuid.uuid4()
+        variant_id = uuid.uuid4()
+        mapping = _variant_mapping(
+            variant_id=variant_id, product_id=product_id, stock=5
+        )
+
+        db = AsyncMock()
+        db.execute = AsyncMock(side_effect=[_lock_result(mapping), _noop_result()])
+        db.add = MagicMock()
+        db.flush = AsyncMock()
+
+        items = [{"product_id": product_id, "variant_id": variant_id, "quantity": 1}]
+        await self.svc.reserve_items(db, user_id=uuid.uuid4(), items=items)
+
+        all_sqls = [str(c[0][0]) for c in db.execute.call_args_list]
+        update_sqls = [s for s in all_sqls if "UPDATE" in s.upper()]
+        # The only UPDATE is against product_variants
+        for sql in update_sqls:
+            assert "product_variants" in sql
+            assert "UPDATE products" not in sql
+
+    # 3. Non-variant products still update the products table
+    async def test_reserve_no_variant_updates_products_table(self):
+        product_id = uuid.uuid4()
+        mapping = _prod_mapping(product_id=product_id, stock=10)
+
+        db = AsyncMock()
+        db.execute = AsyncMock(side_effect=[_lock_result(mapping), _noop_result()])
+        db.add = MagicMock()
+        db.flush = AsyncMock()
+
+        items = [{"product_id": product_id, "variant_id": None, "quantity": 2}]
+        await self.svc.reserve_items(db, user_id=uuid.uuid4(), items=items)
+
+        update_call = db.execute.call_args_list[1]
+        sql = str(update_call[0][0])
+        assert "UPDATE products" in sql
+
+    # 4. Completing a variant reservation moves stock in product_variants
+    async def test_complete_variant_reservation_updates_product_variants(self):
+        order_id = uuid.uuid4()
+        product_id = uuid.uuid4()
+        variant_id = uuid.uuid4()
+        active_row = (uuid.uuid4(), product_id, variant_id, 3)
+
+        var_row = MagicMock()
+        var_row._mapping = _variant_mapping(
+            variant_id=variant_id, product_id=product_id, stock=10, reserved=3, sold=0
+        )
+
+        db = AsyncMock()
+        db.execute = AsyncMock(
+            side_effect=[
+                _fetchall_result([active_row]),  # SELECT ACTIVE
+                _fetchone_result(var_row),  # SELECT variant FOR UPDATE
+                _noop_result(),  # UPDATE product_variants reserved→sold
+                _noop_result(),  # UPDATE reservations COMPLETED
+            ]
+        )
+        db.add = MagicMock()
+
+        await self.svc.complete_order_reservations(db, order_id)
+
+        db.add.assert_called_once()
+        txn = db.add.call_args[0][0]
+        assert txn.transaction_type == "SALE"
+        assert txn.variant_id == variant_id
+
+        update_sql = str(db.execute.call_args_list[2][0][0])
+        assert "product_variants" in update_sql
+
+    # 5. Releasing a variant reservation updates product_variants
+    async def test_release_variant_reservation_updates_product_variants(self):
+        order_id = uuid.uuid4()
+        product_id = uuid.uuid4()
+        variant_id = uuid.uuid4()
+        active_row = (uuid.uuid4(), product_id, variant_id, 2)
+
+        var_row = MagicMock()
+        var_row._mapping = _variant_mapping(
+            variant_id=variant_id, product_id=product_id, stock=5, reserved=2, sold=0
+        )
+
+        db = AsyncMock()
+        db.execute = AsyncMock(
+            side_effect=[
+                _fetchall_result([active_row]),
+                _fetchone_result(var_row),
+                _noop_result(),  # UPDATE product_variants reserved -= 2
+                _noop_result(),  # UPDATE reservations RELEASED
+            ]
+        )
+        db.add = MagicMock()
+
+        await self.svc.release_order_reservations(db, order_id)
+
+        update_sql = str(db.execute.call_args_list[2][0][0])
+        assert "product_variants" in update_sql
+
+        txn = db.add.call_args[0][0]
+        assert txn.transaction_type == "RELEASE"
+        assert txn.variant_id == variant_id
+
+    # 6. Expiry of a variant reservation updates product_variants
+    async def test_expire_variant_reservation_updates_product_variants(self):
+        res_id = uuid.uuid4()
+        product_id = uuid.uuid4()
+        variant_id = uuid.uuid4()
+        candidate_row = (res_id, product_id, variant_id, None, 1)
+
+        locked_row = MagicMock()
+        locked_row.__getitem__ = lambda self, i: "ACTIVE" if i == 0 else None
+
+        var_row = MagicMock()
+        var_row._mapping = _variant_mapping(
+            variant_id=variant_id, product_id=product_id, stock=5, reserved=1, sold=0
+        )
+
+        db = AsyncMock()
+        db.execute = AsyncMock(
+            side_effect=[
+                _fetchall_result([candidate_row]),
+                _fetchone_result(locked_row),  # SKIP LOCKED
+                _fetchone_result(var_row),  # variant lock
+                _noop_result(),  # UPDATE product_variants
+                _noop_result(),  # UPDATE reservations EXPIRED
+            ]
+        )
+        db.add = MagicMock()
+
+        count = await self.svc.expire_stale_reservations(db)
+
+        assert count == 1
+        update_sql = str(db.execute.call_args_list[3][0][0])
+        assert "product_variants" in update_sql
+
+    # 7. Variant restock updates product_variants
+    async def test_restock_variant_updates_product_variants(self):
+        product_id = uuid.uuid4()
+        variant_id = uuid.uuid4()
+
+        var_row = MagicMock()
+        var_row._mapping = _variant_mapping(
+            variant_id=variant_id, product_id=product_id, stock=5
+        )
+
+        db = AsyncMock()
+        db.execute = AsyncMock(
+            side_effect=[
+                _fetchone_result(var_row),
+                _noop_result(),
+            ]
+        )
+        db.add = MagicMock()
+
+        await self.svc.record_restock(
+            db, product_id=product_id, variant_id=variant_id, quantity=10
+        )
+
+        update_sql = str(db.execute.call_args_list[1][0][0])
+        assert "product_variants" in update_sql
+        txn = db.add.call_args[0][0]
+        assert txn.transaction_type == "RESTOCK"
+        assert txn.variant_id == variant_id
+
+    # 8. Variant return updates product_variants
+    async def test_return_variant_updates_product_variants(self):
+        product_id = uuid.uuid4()
+        variant_id = uuid.uuid4()
+
+        var_row = MagicMock()
+        var_row._mapping = _variant_mapping(
+            variant_id=variant_id, product_id=product_id, stock=10, reserved=0, sold=3
+        )
+
+        db = AsyncMock()
+        db.execute = AsyncMock(
+            side_effect=[
+                _fetchone_result(var_row),
+                _noop_result(),
+            ]
+        )
+        db.add = MagicMock()
+
+        await self.svc.record_return(
+            db, product_id=product_id, variant_id=variant_id, quantity=2
+        )
+
+        update_sql = str(db.execute.call_args_list[1][0][0])
+        assert "product_variants" in update_sql
+        txn = db.add.call_args[0][0]
+        assert txn.transaction_type == "RETURN"
+        assert txn.variant_id == variant_id
+        assert txn.after_sold == 1  # max(3 - 2, 0) = 1
+
+    # 9. Variant with zero stock raises InventoryError
+    async def test_reserve_variant_out_of_stock_raises_inventory_error(self):
+        from app.core.exceptions import InventoryError
+
+        product_id = uuid.uuid4()
+        variant_id = uuid.uuid4()
+        mapping = _variant_mapping(
+            variant_id=variant_id,
+            product_id=product_id,
+            stock=3,
+            reserved=2,
+            sold=1,
+            allow_backorder=False,
+        )  # available = 3 - 2 - 1 = 0
+
+        db = AsyncMock()
+        db.execute = AsyncMock(return_value=_lock_result(mapping))
+
+        items = [{"product_id": product_id, "variant_id": variant_id, "quantity": 1}]
+        with pytest.raises(InventoryError, match="0 item"):
+            await self.svc.reserve_items(db, user_id=uuid.uuid4(), items=items)
+
+        assert db.execute.call_count == 1  # only the lock SELECT
+
+    # 10. Variant adjustment updates product_variants
+    async def test_adjustment_variant_updates_product_variants(self):
+        product_id = uuid.uuid4()
+        variant_id = uuid.uuid4()
+
+        var_row = MagicMock()
+        var_row._mapping = _variant_mapping(
+            variant_id=variant_id, product_id=product_id, stock=10, reserved=0, sold=0
+        )
+
+        db = AsyncMock()
+        db.execute = AsyncMock(
+            side_effect=[
+                _fetchone_result(var_row),
+                _noop_result(),
+            ]
+        )
+        db.add = MagicMock()
+
+        new_stock = await self.svc.record_adjustment(
+            db, product_id=product_id, variant_id=variant_id, delta=5
+        )
+
+        assert new_stock == 15
+        update_sql = str(db.execute.call_args_list[1][0][0])
+        assert "product_variants" in update_sql
+        txn = db.add.call_args[0][0]
+        assert txn.transaction_type == "ADJUSTMENT"
+        assert txn.variant_id == variant_id

@@ -49,6 +49,22 @@ class ReviewRepository:
         )
         return result.scalar_one_or_none() is not None
 
+    async def get_reviewed_order_ids(
+        self, db: AsyncSession, order_ids: list[uuid.UUID]
+    ) -> set[uuid.UUID]:
+        """Return the subset of order_ids that already have at least one review.
+
+        Single bulk query — use this instead of calling has_any_review() in a loop.
+        """
+        if not order_ids:
+            return set()
+        result = await db.execute(
+            select(Review.order_id)
+            .where(Review.order_id.in_(order_ids), Review.deleted_at.is_(None))
+            .distinct()
+        )
+        return {r for r in result.scalars().all() if r is not None}
+
     async def get_by_product_user(
         self, db: AsyncSession, *, product_id: uuid.UUID, user_id: uuid.UUID
     ) -> Review | None:

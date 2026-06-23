@@ -19,9 +19,6 @@ _BASE_SETTINGS = {
     "RAZORPAY_KEY_ID": "rzp_k",
     "RAZORPAY_KEY_SECRET": "rzp_s",
     "RAZORPAY_WEBHOOK_SECRET": "rzp_w",
-    "DELIVERY_ONE_BASE_URL": "https://api.do.test",
-    "DELIVERY_ONE_API_KEY": "do_key",
-    "DELIVERY_ONE_WEBHOOK_SECRET": "do_ws",
     "FRONTEND_URL": "http://localhost:3000",
     "ADMIN_URL": "http://localhost:3001",
 }
