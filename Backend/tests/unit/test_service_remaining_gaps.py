@@ -805,7 +805,6 @@ class TestOrderServiceExtra:
         assert result is mock_resp
 
     async def test_cancel_order_restores_inventory(self):
-        from app.modules.inventory.service import InventoryService
         from app.modules.orders.schemas import CancelOrderRequest, OrderResponse
 
         db = AsyncMock()
@@ -830,7 +829,12 @@ class TestOrderServiceExtra:
                 "app.modules.orders.service._repo.update",
                 AsyncMock(return_value=mock_updated),
             ),
-            patch.object(InventoryService, "record_movement", AsyncMock()) as mock_inv,
+            # Cancellation now releases reservations atomically instead of
+            # calling InventoryService.record_movement for each item
+            patch(
+                "app.modules.orders.service._reservation_svc.release_order_reservations",
+                AsyncMock(),
+            ) as mock_release,
             patch("app.core.events.event_bus.publish", AsyncMock()),
             patch.object(OrderResponse, "model_validate", return_value=mock_resp),
         ):
@@ -840,5 +844,5 @@ class TestOrderServiceExtra:
                 user_id=user_id,
                 payload=CancelOrderRequest(reason="Changed my mind"),
             )
-        mock_inv.assert_awaited_once()
+        mock_release.assert_awaited_once()
         assert result is mock_resp

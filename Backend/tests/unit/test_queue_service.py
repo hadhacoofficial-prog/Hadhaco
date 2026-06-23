@@ -89,7 +89,7 @@ class TestQueueService:
         ):
             build_queue()
 
-        assert len(interval_ids) + len(cron_ids) == 7
+        assert len(interval_ids) + len(cron_ids) == 8  # reservation_expiry added
         assert "partition_manager" in cron_ids
         assert "shipment_sync" in interval_ids
         assert "abandoned_cart" in interval_ids

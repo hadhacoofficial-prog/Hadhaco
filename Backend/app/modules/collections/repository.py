@@ -1,7 +1,7 @@
 import uuid
 from typing import Any
 
-from sqlalchemy import delete, func, select, update
+from sqlalchemy import ColumnElement, delete, func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.modules.collections.models import Collection, ProductCollection
@@ -57,7 +57,7 @@ class CollectionRepository:
             .subquery()
         )
 
-        filters = [Collection.deleted_at.is_(None)]
+        filters: list[ColumnElement[bool]] = [Collection.deleted_at.is_(None)]
         if search:
             term = f"%{search}%"
             filters.append(

@@ -24,9 +24,7 @@ class WebhookService:
         event_id: str | None,
         payload_raw: str,
     ) -> WebhookEvent | None:
-        """
-        Insert event row. Returns None if event_id already exists (idempotency guard).
-        """
+        """Insert event row. Returns None if event_id already exists (idempotency guard)."""
         if event_id:
             existing = await db.execute(
                 select(WebhookEvent).where(
@@ -35,7 +33,7 @@ class WebhookService:
                 )
             )
             if existing.scalar_one_or_none():
-                return None  # Already processed
+                return None
 
         event = WebhookEvent(
             id=uuid.uuid4(),
@@ -53,10 +51,7 @@ class WebhookService:
         await db.execute(
             update(WebhookEvent)
             .where(WebhookEvent.id == event_id)
-            .values(
-                status="processed",
-                processed_at=datetime.now(UTC),
-            )
+            .values(status="processed", processed_at=datetime.now(UTC))
         )
 
     async def _mark_failed(
@@ -65,10 +60,7 @@ class WebhookService:
         await db.execute(
             update(WebhookEvent)
             .where(WebhookEvent.id == event_id)
-            .values(
-                status="failed",
-                error_message=error[:2000],
-            )
+            .values(status="failed", error_message=error[:2000])
         )
 
     # ── Razorpay ──────────────────────────────────────────────────────────────
@@ -121,6 +113,11 @@ class WebhookService:
         return {"status": "ok"}
 
     async def _on_payment_captured(self, db: AsyncSession, payload: dict) -> None:
+        """
+        Webhook fires when Razorpay captures payment (may arrive before or after
+        verify_and_fulfill from the frontend). Both paths are idempotent because
+        complete_order_reservations checks for already-COMPLETED reservations.
+        """
         rzp_payment = payload.get("payload", {}).get("payment", {}).get("entity", {})
         rzp_payment_id: str = rzp_payment.get("id", "")
         rzp_order_id: str = rzp_payment.get("order_id", "")
@@ -130,26 +127,65 @@ class WebhookService:
 
         repo = PaymentRepository()
         payment = await repo.get_by_razorpay_order_id(db, rzp_order_id)
-        if not payment or payment.status == "captured":
-            return
 
-        now = datetime.now(UTC)
-        await repo.update(
-            db,
-            payment.id,
-            {
-                "status": "captured",
-                "razorpay_payment_id": rzp_payment_id,
-                "method": method,
-                "captured_at": now,
-            },
-        )
+        if payment and payment.status == "captured":
+            # Frontend already fulfilled via verify_and_fulfill — nothing to do
+            return
 
         from app.modules.orders.repository import OrderRepository
 
-        await OrderRepository().update(
+        order_repo = OrderRepository()
+
+        if payment:
+            now = datetime.now(UTC)
+            await repo.update(
+                db,
+                payment.id,
+                {
+                    "status": "captured",
+                    "razorpay_payment_id": rzp_payment_id,
+                    "method": method,
+                    "captured_at": now,
+                },
+            )
+            order = await order_repo.get_by_id(db, payment.order_id)
+        else:
+            # Webhook arrived first (before verify_and_fulfill created the payment row)
+            # Find the order by razorpay_order_id stored on the order row
+            from sqlalchemy import text
+
+            result = await db.execute(
+                text(
+                    "SELECT id, user_id, total, status, payment_status "
+                    "FROM orders WHERE razorpay_order_id = :rzp_oid LIMIT 1"
+                ),
+                {"rzp_oid": rzp_order_id},
+            )
+            row = result.fetchone()
+            if not row:
+                log.warning(
+                    "webhook_payment_captured_unknown_order",
+                    razorpay_order_id=rzp_order_id,
+                )
+                return
+            order = await order_repo.get_by_id(db, row[0])
+
+        if not order:
+            return
+
+        if order.payment_status == "paid":
+            # Already processed — idempotent
+            return
+
+        # Complete stock reservation (idempotent)
+        from app.modules.inventory.reservation_service import ReservationService
+
+        await ReservationService().complete_order_reservations(db, order.id)
+
+        # Confirm order
+        await order_repo.update(
             db,
-            payment.order_id,
+            order.id,
             {
                 "payment_status": "paid",
                 "razorpay_payment_id": rzp_payment_id,
@@ -157,51 +193,76 @@ class WebhookService:
             },
         )
 
-        # Generate invoice
+        # Generate invoice if not already generated
         from app.modules.invoices.service import InvoiceService
-        from app.modules.orders.repository import OrderRepository as OR
 
-        order = await OR().get_by_id(db, payment.order_id)
-        if order:
-            await InvoiceService().generate_and_store(db, order)
+        refreshed_order = await order_repo.get_by_id(db, order.id)
+        if refreshed_order:
+            await InvoiceService().generate_and_store(db, refreshed_order)
 
         from app.core.events import PaymentCapturedEvent, event_bus
 
         await event_bus.publish(
             PaymentCapturedEvent(
-                order_id=str(payment.order_id),
-                payment_id=str(payment.id),
-                amount=float(payment.amount),
+                order_id=str(order.id),
+                payment_id=rzp_payment_id,
+                amount=float(order.total),
             )
         )
 
     async def _on_payment_failed(self, db: AsyncSession, payload: dict) -> None:
+        """
+        Release reserved stock and mark the order as payment_failed so the
+        inventory is immediately available for other customers.
+        """
         rzp_payment = payload.get("payload", {}).get("payment", {}).get("entity", {})
         rzp_order_id: str = rzp_payment.get("order_id", "")
         error_desc: str = rzp_payment.get("error_description", "Payment failed")
 
-        from app.modules.payments.repository import PaymentRepository
+        from sqlalchemy import text
 
-        repo = PaymentRepository()
-        payment = await repo.get_by_razorpay_order_id(db, rzp_order_id)
-        if not payment:
-            return
+        # Find the order by razorpay_order_id
+        result = await db.execute(
+            text("SELECT id FROM orders WHERE razorpay_order_id = :rzp_oid LIMIT 1"),
+            {"rzp_oid": rzp_order_id},
+        )
+        row = result.fetchone()
+        if not row:
+            from app.modules.payments.repository import PaymentRepository
 
-        await repo.update(
+            repo = PaymentRepository()
+            payment = await repo.get_by_razorpay_order_id(db, rzp_order_id)
+            if not payment:
+                return
+            order_id = payment.order_id
+            await repo.update(
+                db, payment.id, {"status": "failed", "failure_reason": error_desc}
+            )
+        else:
+            order_id = row[0]
+
+        # Release stock reservation
+        from app.modules.inventory.reservation_service import ReservationService
+
+        await ReservationService().release_order_reservations(
+            db, order_id, reason="RELEASED"
+        )
+
+        # Mark order as payment_failed
+        from app.modules.orders.repository import OrderRepository
+
+        await OrderRepository().update(
             db,
-            payment.id,
-            {
-                "status": "failed",
-                "failure_reason": error_desc,
-            },
+            order_id,
+            {"status": "payment_failed", "payment_status": "failed"},
         )
 
         from app.core.events import PaymentFailedEvent, event_bus
 
         await event_bus.publish(
             PaymentFailedEvent(
-                order_id=str(payment.order_id),
-                payment_id=str(payment.id),
+                order_id=str(order_id),
+                payment_id="",
                 reason=error_desc,
             )
         )
@@ -214,8 +275,6 @@ class WebhookService:
         amount_paise: int = rzp_refund.get("amount", 0)
         amount = amount_paise / 100
 
-        from sqlalchemy import select
-
         from app.modules.payments.models import Refund
         from app.modules.payments.repository import PaymentRepository
 
@@ -224,15 +283,10 @@ class WebhookService:
         )
         refund = result.scalar_one_or_none()
         if refund and event_type == "refund.processed":
-            from app.modules.payments.repository import PaymentRepository
-
             await PaymentRepository().update_refund(
                 db,
                 refund.id,
-                {
-                    "status": "processed",
-                    "processed_at": datetime.now(UTC),
-                },
+                {"status": "processed", "processed_at": datetime.now(UTC)},
             )
             from app.core.events import RefundProcessedEvent, event_bus
 
@@ -300,10 +354,7 @@ class WebhookService:
         if event_type == "shipment.dispatched":
             update_data = {"status": "shipped", "tracking_number": tracking_number}
         elif event_type == "shipment.delivered":
-            update_data = {
-                "status": "delivered",
-                "delivered_at": datetime.now(UTC),
-            }
+            update_data = {"status": "delivered", "delivered_at": datetime.now(UTC)}
 
         if update_data:
             await OrderRepository().update(db, order.id, update_data)

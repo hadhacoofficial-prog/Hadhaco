@@ -66,6 +66,7 @@ jobs:
             set -euo pipefail
             cd /opt/hadha
             docker compose -f docker/docker-compose.yml pull api
+            docker compose -f docker/docker-compose.yml run --rm migrate
             docker compose -f docker/docker-compose.yml up -d api
             # Wait for the new container to report healthy
             for i in $(seq 1 30); do

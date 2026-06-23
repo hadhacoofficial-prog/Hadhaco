@@ -170,6 +170,7 @@ export interface ProductListItem {
   base_price: number;
   compare_at_price: number | null;
   stock_quantity: number;
+  available_stock?: number;
   status: string;
   is_featured: boolean;
   is_new_arrival: boolean;

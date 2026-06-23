@@ -18,6 +18,7 @@ export interface ProductVariant {
   name: string;
   price_adjustment: number;
   stock_quantity: number;
+  available_stock?: number;
   weight_grams: number | null;
   is_active: boolean;
   sort_order: number;
@@ -47,6 +48,9 @@ export interface ProductDetail {
   compare_at_price: number | null;
   tax_rate: number;
   stock_quantity: number;
+  available_stock?: number;
+  reserved_quantity?: number;
+  sold_quantity?: number;
   status: string;
   is_featured: boolean;
   is_new_arrival: boolean;
@@ -159,6 +163,7 @@ export interface SearchProduct {
   base_price: number;
   compare_at_price: number | null;
   stock_quantity: number;
+  available_stock?: number;
   metal_type: string | null;
   is_featured: boolean;
   rank?: number;

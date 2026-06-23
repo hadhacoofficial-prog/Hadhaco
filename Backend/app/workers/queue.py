@@ -69,11 +69,17 @@ def build_queue() -> QueueService:
         inventory_alerts,
         notification_retry,
         partition_manager,
+        reservation_expiry,
         review_reminder,
         shipment_sync,
     )
 
     queue = QueueService()
+    # Reservation expiry runs every 60s — must fire before other jobs to free
+    # stock quickly so other customers can purchase.
+    queue.add_interval_job(
+        reservation_expiry.run, seconds=60, job_id="reservation_expiry"
+    )
     queue.add_interval_job(cms_publish.run, seconds=60, job_id="cms_publish")
     queue.add_interval_job(
         shipment_sync.run,

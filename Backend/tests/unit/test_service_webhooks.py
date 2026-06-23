@@ -202,6 +202,10 @@ class TestWebhookServiceOnPaymentCaptured:
 
     async def test_on_payment_captured_skips_when_no_payment(self):
         db = AsyncMock()
+        # Payment=None → webhook-first path: SQL lookup for order → row=None → early return
+        no_row = MagicMock()
+        no_row.fetchone.return_value = None
+        db.execute = AsyncMock(return_value=no_row)
         payload = {
             "payload": {
                 "payment": {
@@ -269,6 +273,8 @@ class TestWebhookServiceOnPaymentCaptured:
         mock_payment.amount = 999.0
         mock_order = MagicMock()
 
+        from app.modules.inventory.reservation_service import ReservationService
+
         with (
             patch.object(
                 PaymentRepository,
@@ -279,6 +285,9 @@ class TestWebhookServiceOnPaymentCaptured:
             patch.object(OrderRepository, "update", AsyncMock()),
             patch.object(
                 OrderRepository, "get_by_id", AsyncMock(return_value=mock_order)
+            ),
+            patch.object(
+                ReservationService, "complete_order_reservations", AsyncMock()
             ),
             patch.object(InvoiceService, "generate_and_store", AsyncMock()),
             patch.object(event_bus, "publish", AsyncMock()),
@@ -294,6 +303,10 @@ class TestWebhookServiceOnPaymentFailed:
 
     async def test_on_payment_failed_skips_when_no_payment(self):
         db = AsyncMock()
+        # SQL lookup for order returns nothing → fallback to payment repo → also None → early return
+        no_row = MagicMock()
+        no_row.fetchone.return_value = None
+        db.execute = AsyncMock(return_value=no_row)
         payload = {
             "payload": {
                 "payment": {
@@ -313,6 +326,10 @@ class TestWebhookServiceOnPaymentFailed:
 
     async def test_on_payment_failed_updates_and_publishes_event(self):
         db = AsyncMock()
+        # SQL lookup returns nothing → fallback to payment repo → payment found
+        no_row = MagicMock()
+        no_row.fetchone.return_value = None
+        db.execute = AsyncMock(return_value=no_row)
         payload = {
             "payload": {
                 "payment": {
@@ -324,6 +341,8 @@ class TestWebhookServiceOnPaymentFailed:
             }
         }
         from app.core.events import event_bus
+        from app.modules.inventory.reservation_service import ReservationService
+        from app.modules.orders.repository import OrderRepository
         from app.modules.payments.repository import PaymentRepository
 
         mock_payment = MagicMock()
@@ -336,6 +355,8 @@ class TestWebhookServiceOnPaymentFailed:
                 AsyncMock(return_value=mock_payment),
             ),
             patch.object(PaymentRepository, "update", AsyncMock()),
+            patch.object(ReservationService, "release_order_reservations", AsyncMock()),
+            patch.object(OrderRepository, "update", AsyncMock()),
             patch.object(event_bus, "publish", AsyncMock()) as mock_pub,
         ):
             await self.svc._on_payment_failed(db, payload)

@@ -1,16 +1,19 @@
 import { useState } from "react";
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { useMutation } from "@tanstack/react-query";
-import { ShoppingBag, Trash2, Tag } from "lucide-react";
+import { useMutation, useQueries } from "@tanstack/react-query";
+import { ShoppingBag, Trash2, Tag, AlertTriangle, RefreshCw } from "lucide-react";
 import { toast } from "sonner";
 import { SiteLayout } from "@/components/site/SiteLayout";
 import { Breadcrumbs } from "@/components/site/Breadcrumbs";
 import { EmptyState } from "@/components/site/EmptyState";
 import { QuantityStepper } from "@/components/site/QuantityStepper";
+import { InventoryBadge } from "@/components/site/InventoryBadge";
 import { useCart } from "@/stores/cart";
 import { api } from "@/lib/api/client";
 import { toUserMessage } from "@/lib/api/errors";
 import { formatINR } from "@/lib/format";
+import { queryKeys } from "@/lib/api/queryKeys";
+import type { ProductDetail } from "@/types/public";
 import type { CouponValidateResponse } from "@/types/customer";
 
 export const Route = createFileRoute("/cart")({
@@ -25,6 +28,38 @@ function CartPage() {
   const [shipping, setShipping] = useState<number | null>(null);
   const [discount, setDiscount] = useState(0);
   const [appliedCode, setAppliedCode] = useState<string | null>(null);
+
+  // Fetch live stock for every cart line (polls every 60 s)
+  const stockQueries = useQueries({
+    queries: lines.map((line) => ({
+      queryKey: queryKeys.products.stock(line.snapshot?.slug ?? `product-${line.productId}`),
+      queryFn: () => api.get<ProductDetail>(`/products/${line.snapshot!.slug}`),
+      enabled: !!line.snapshot?.slug,
+      staleTime: 30_000,
+      refetchInterval: 60_000,
+      refetchOnWindowFocus: true,
+      select: (data: ProductDetail) => ({
+        productId: line.productId,
+        availableStock: data.available_stock ?? data.stock_quantity,
+      }),
+    })),
+  });
+
+  // Build productId → availableStock map
+  const stockMap: Record<string, number> = {};
+  stockQueries.forEach((q) => {
+    if (q.data) stockMap[q.data.productId] = q.data.availableStock;
+  });
+
+  // Detect items where cart qty exceeds available stock
+  const stockIssues = lines.filter(
+    (line) =>
+      stockMap[line.productId] !== undefined && line.qty > (stockMap[line.productId] ?? Infinity),
+  );
+  const hasStockIssues = stockIssues.length > 0;
+
+  // Any item with zero available stock
+  const soldOutItems = lines.filter((line) => (stockMap[line.productId] ?? 1) === 0);
 
   const subtotalAmt = subtotal();
   const ship = shipping ?? (subtotalAmt > 999 ? 0 : 99);
@@ -77,90 +112,159 @@ function CartPage() {
           />
         ) : (
           <div className="grid lg:grid-cols-[1fr_380px] gap-10">
-            <div className="border-y border-border divide-y divide-border">
-              <div className="hidden md:grid grid-cols-[1fr_140px_140px_40px] gap-4 py-3 text-[11px] uppercase tracking-[0.18em] text-muted-foreground">
-                <span>Product</span>
-                <span>Quantity</span>
-                <span className="text-right">Total</span>
-                <span />
-              </div>
-              {lines.map((line) => (
+            <div>
+              {/* Stock issues banner */}
+              {hasStockIssues && (
                 <div
-                  key={`${line.productId}::${line.variantId ?? ""}`}
-                  className="grid grid-cols-[80px_1fr] md:grid-cols-[100px_1fr_140px_140px_40px] gap-4 py-5 items-center"
+                  className="flex items-start gap-3 p-4 bg-amber-50 border border-amber-200 mb-4"
+                  role="alert"
+                  aria-live="polite"
                 >
-                  {line.snapshot ? (
-                    <Link
-                      to="/products/$slug"
-                      params={{ slug: line.snapshot.slug }}
-                      className="block w-20 md:w-24 aspect-square bg-secondary overflow-hidden"
-                    >
-                      <img
-                        src={line.snapshot.image}
-                        alt={line.snapshot.name}
-                        className="w-full h-full object-cover"
-                      />
-                    </Link>
-                  ) : (
-                    <div className="w-20 md:w-24 aspect-square bg-secondary" />
-                  )}
-                  <div className="min-w-0">
-                    {line.snapshot ? (
-                      <Link
-                        to="/products/$slug"
-                        params={{ slug: line.snapshot.slug }}
-                        className="font-display text-base hover:text-accent line-clamp-2"
-                      >
-                        {line.snapshot.name}
-                      </Link>
-                    ) : (
-                      <span className="font-display text-base text-muted-foreground">Product</span>
-                    )}
-                    {line.snapshot?.variantName && (
-                      <p className="text-xs text-muted-foreground mt-0.5">
-                        {line.snapshot.variantName}
-                      </p>
-                    )}
-                    {line.snapshot && (
-                      <p className="text-xs text-muted-foreground mt-1">
-                        SKU · {line.snapshot.sku}
-                      </p>
-                    )}
-                    <p className="font-display mt-1 md:hidden">
-                      {line.snapshot ? formatINR(line.snapshot.price) : "—"}
+                  <AlertTriangle className="size-4 shrink-0 text-amber-600 mt-0.5" aria-hidden />
+                  <div className="text-sm">
+                    <p className="font-medium text-amber-900">Stock has changed</p>
+                    <p className="text-amber-700 mt-0.5">
+                      {soldOutItems.length > 0
+                        ? "Some items are now sold out. Remove them before checking out."
+                        : "Quantities for some items exceed available stock. Adjust before checking out."}
                     </p>
-                    <div className="mt-3 md:hidden flex items-center justify-between">
-                      <QuantityStepper
-                        value={line.qty}
-                        onChange={(n) => setQty(line.productId, n, line.variantId)}
-                      />
+                  </div>
+                </div>
+              )}
+
+              <div className="border-y border-border divide-y divide-border">
+                <div className="hidden md:grid grid-cols-[1fr_140px_140px_40px] gap-4 py-3 text-[11px] uppercase tracking-[0.18em] text-muted-foreground">
+                  <span>Product</span>
+                  <span>Quantity</span>
+                  <span className="text-right">Total</span>
+                  <span />
+                </div>
+                {lines.map((line) => {
+                  const available = stockMap[line.productId];
+                  const isSoldOut = available !== undefined && available === 0;
+                  const isOverQty = available !== undefined && line.qty > available;
+
+                  return (
+                    <div
+                      key={`${line.productId}::${line.variantId ?? ""}`}
+                      className={`grid grid-cols-[80px_1fr] md:grid-cols-[100px_1fr_140px_140px_40px] gap-4 py-5 items-start ${isSoldOut ? "opacity-60" : ""}`}
+                    >
+                      {line.snapshot ? (
+                        <Link
+                          to="/products/$slug"
+                          params={{ slug: line.snapshot.slug }}
+                          className="block w-20 md:w-24 aspect-square bg-secondary overflow-hidden"
+                        >
+                          <img
+                            src={line.snapshot.image}
+                            alt={line.snapshot.name}
+                            className="w-full h-full object-cover"
+                          />
+                        </Link>
+                      ) : (
+                        <div className="w-20 md:w-24 aspect-square bg-secondary" />
+                      )}
+
+                      <div className="min-w-0">
+                        {line.snapshot ? (
+                          <Link
+                            to="/products/$slug"
+                            params={{ slug: line.snapshot.slug }}
+                            className="font-display text-base hover:text-accent line-clamp-2"
+                          >
+                            {line.snapshot.name}
+                          </Link>
+                        ) : (
+                          <span className="font-display text-base text-muted-foreground">
+                            Product
+                          </span>
+                        )}
+                        {line.snapshot?.variantName && (
+                          <p className="text-xs text-muted-foreground mt-0.5">
+                            {line.snapshot.variantName}
+                          </p>
+                        )}
+                        {line.snapshot && (
+                          <p className="text-xs text-muted-foreground mt-1">
+                            SKU · {line.snapshot.sku}
+                          </p>
+                        )}
+
+                        {/* Available stock badge */}
+                        {available !== undefined && (
+                          <div className="mt-2">
+                            <InventoryBadge availableStock={available} />
+                          </div>
+                        )}
+
+                        {/* Over-qty warning */}
+                        {isOverQty && !isSoldOut && (
+                          <p className="mt-1.5 text-[11px] text-amber-700 flex items-center gap-1">
+                            <AlertTriangle className="size-3 shrink-0" aria-hidden />
+                            Only {available} available — reduce quantity
+                          </p>
+                        )}
+
+                        <p className="font-display mt-1 md:hidden">
+                          {line.snapshot ? formatINR(line.snapshot.price) : "—"}
+                        </p>
+                        <div className="mt-3 md:hidden flex items-center justify-between">
+                          {isSoldOut ? (
+                            <span className="text-xs text-destructive uppercase tracking-[0.18em]">
+                              Sold Out
+                            </span>
+                          ) : (
+                            <QuantityStepper
+                              value={line.qty}
+                              onChange={(n) => setQty(line.productId, n, line.variantId)}
+                              max={available ?? 99}
+                            />
+                          )}
+                          <button
+                            onClick={() => remove(line.productId, line.variantId)}
+                            aria-label={`Remove ${line.snapshot?.name ?? "item"}`}
+                            className="text-muted-foreground hover:text-destructive transition"
+                          >
+                            <Trash2 className="size-4" />
+                          </button>
+                        </div>
+                      </div>
+
+                      <div className="hidden md:block">
+                        {isSoldOut ? (
+                          <span className="text-xs text-destructive uppercase tracking-[0.18em]">
+                            Sold Out
+                          </span>
+                        ) : (
+                          <QuantityStepper
+                            value={line.qty}
+                            onChange={(n) => setQty(line.productId, n, line.variantId)}
+                            max={available ?? 99}
+                          />
+                        )}
+                      </div>
+
+                      <div className="hidden md:block text-right font-display">
+                        {line.snapshot ? formatINR(line.snapshot.price * line.qty) : "—"}
+                      </div>
+
                       <button
                         onClick={() => remove(line.productId, line.variantId)}
-                        aria-label="Remove"
-                        className="text-muted-foreground"
+                        aria-label={`Remove ${line.snapshot?.name ?? "item"}`}
+                        className="hidden md:flex justify-end text-muted-foreground hover:text-destructive transition"
                       >
                         <Trash2 className="size-4" />
                       </button>
                     </div>
-                  </div>
-                  <div className="hidden md:block">
-                    <QuantityStepper
-                      value={line.qty}
-                      onChange={(n) => setQty(line.productId, n, line.variantId)}
-                    />
-                  </div>
-                  <div className="hidden md:block text-right font-display">
-                    {line.snapshot ? formatINR(line.snapshot.price * line.qty) : "—"}
-                  </div>
-                  <button
-                    onClick={() => remove(line.productId, line.variantId)}
-                    aria-label="Remove"
-                    className="hidden md:flex justify-end text-muted-foreground hover:text-destructive"
-                  >
-                    <Trash2 className="size-4" />
-                  </button>
-                </div>
-              ))}
+                  );
+                })}
+              </div>
+
+              {/* Live stock indicator */}
+              <p className="mt-3 text-[10px] text-muted-foreground/60 flex items-center gap-1">
+                <RefreshCw className="size-3" aria-hidden />
+                Stock availability refreshes automatically
+              </p>
             </div>
 
             <aside className="space-y-6">
@@ -186,12 +290,30 @@ function CartPage() {
                   </span>
                   <span className="font-display text-2xl">{formatINR(total)}</span>
                 </div>
-                <Link
-                  to="/checkout"
-                  className="mt-5 w-full inline-flex justify-center bg-primary text-primary-foreground text-[11px] uppercase tracking-[0.22em] py-3.5 hover:bg-accent hover:text-accent-foreground transition"
-                >
-                  Proceed to Checkout
-                </Link>
+
+                {hasStockIssues ? (
+                  <div className="mt-5 space-y-2">
+                    <p className="text-xs text-amber-700 text-center flex items-center justify-center gap-1">
+                      <AlertTriangle className="size-3.5" aria-hidden />
+                      Resolve stock issues to checkout
+                    </p>
+                    <button
+                      disabled
+                      className="w-full bg-primary/40 text-primary-foreground text-[11px] uppercase tracking-[0.22em] py-3.5 cursor-not-allowed"
+                      aria-disabled="true"
+                    >
+                      Proceed to Checkout
+                    </button>
+                  </div>
+                ) : (
+                  <Link
+                    to="/checkout"
+                    className="mt-5 w-full inline-flex justify-center bg-primary text-primary-foreground text-[11px] uppercase tracking-[0.22em] py-3.5 hover:bg-accent hover:text-accent-foreground transition"
+                  >
+                    Proceed to Checkout
+                  </Link>
+                )}
+
                 <Link
                   to="/collections"
                   className="mt-3 w-full inline-flex justify-center text-xs uppercase tracking-[0.18em] underline underline-offset-4 text-muted-foreground hover:text-foreground"

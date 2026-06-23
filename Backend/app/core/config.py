@@ -59,15 +59,35 @@ class Settings(BaseSettings):
         return f"{self.SUPABASE_URL}/auth/v1/.well-known/jwks.json"
 
     # ── Database ───────────────────────────────────────────────────────────────
+    # FastAPI runtime: must use postgresql+asyncpg:// (async, session pooler).
     DATABASE_URL: str
 
-    # Optional — point to the Supabase Transaction Pooler (port 6543).
-    # When set, Alembic uses this URL instead of DATABASE_URL so migrations
-    # go through the transaction-mode PgBouncer and never contend with the
-    # FastAPI session-pooler connections. Falls back to DATABASE_URL when
-    # not provided (safe but risks EMAXCONNSESSION under load).
+    # Alembic migrations: must use postgresql+psycopg:// (sync, direct connection).
+    # Point at db.<project-ref>.supabase.co:5432 to bypass pgBouncer entirely —
+    # this eliminates DuplicatePreparedStatementError and EMAXCONNSESSION issues.
+    # If not set, Alembic falls back to DATABASE_URL with the driver swapped to psycopg.
     # See DEVOPS.md § "Database Connection Architecture".
-    ALEMBIC_DATABASE_URL: str = ""
+    ALEMBIC_DATABASE_URL: str | None = None
+
+    @field_validator("DATABASE_URL")
+    @classmethod
+    def validate_database_url_scheme(cls, v: str) -> str:
+        if not v.startswith("postgresql+asyncpg://"):
+            raise ValueError(
+                "DATABASE_URL must use the asyncpg driver (postgresql+asyncpg://). "
+                "This is required for FastAPI's async SQLAlchemy runtime."
+            )
+        return v
+
+    @field_validator("ALEMBIC_DATABASE_URL")
+    @classmethod
+    def validate_alembic_url_scheme(cls, v: str | None) -> str | None:
+        if v and not v.startswith("postgresql+psycopg://"):
+            raise ValueError(
+                "ALEMBIC_DATABASE_URL must use the psycopg driver (postgresql+psycopg://). "
+                "Set it to the Supabase Direct Connection URL."
+            )
+        return v
 
     # pool_size=5 + max_overflow=2 → at most 7 server connections per process.
     # The previous defaults (20 + 10 = 30) saturated Supabase's session-mode

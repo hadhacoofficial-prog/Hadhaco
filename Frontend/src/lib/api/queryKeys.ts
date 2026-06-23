@@ -27,6 +27,11 @@ export const queryKeys = {
     detail: (slug: string) => ["products", "detail", slug] as const,
     byId: (id: string) => ["products", "id", id] as const,
     related: (id: string) => ["products", "related", id] as const,
+    stock: (slug: string) => ["products", "stock", slug] as const,
+  },
+
+  inventory: {
+    cartStock: (slugs: string[]) => ["inventory", "cart-stock", ...slugs.sort()] as const,
   },
 
   categories: {

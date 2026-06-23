@@ -3,7 +3,7 @@ import uuid
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.exceptions import NotFoundError, ValidationError
+from app.core.exceptions import InventoryError, NotFoundError, ValidationError
 from app.modules.cart.models import Cart
 from app.modules.cart.repository import CartRepository
 from app.modules.cart.schemas import (
@@ -82,6 +82,26 @@ class CartService:
             raise NotFoundError("Product not found or unavailable")
         return float(result[0])
 
+    async def _fetch_available_stock(
+        self, db: AsyncSession, product_id: uuid.UUID
+    ) -> int:
+        """Returns available = stock_quantity - reserved_quantity - sold_quantity."""
+        result = await db.execute(
+            text(
+                "SELECT GREATEST(stock_quantity - reserved_quantity - sold_quantity, 0) "
+                "AS available, track_inventory, allow_backorder "
+                "FROM products WHERE id = :pid AND deleted_at IS NULL AND status = 'active'"
+            ),
+            {"pid": str(product_id)},
+        )
+        row = result.fetchone()
+        if not row:
+            raise NotFoundError("Product not found or unavailable")
+        # If inventory is not tracked or backorders allowed, treat as unlimited
+        if not row[1] or row[2]:
+            return 999_999
+        return int(row[0])
+
     async def get_cart(
         self,
         db: AsyncSession,
@@ -98,6 +118,16 @@ class CartService:
         user_id: uuid.UUID | None = None,
         session_id: str | None = None,
     ) -> CartSummary:
+        # Validate available stock BEFORE touching the cart.
+        # Cart does NOT reserve stock — it just stores intent.
+        available = await self._fetch_available_stock(db, payload.product_id)
+        if payload.quantity > available:
+            if available <= 0:
+                raise InventoryError("This product is currently out of stock.")
+            raise InventoryError(
+                f"Only {available} item(s) available. Please adjust your quantity."
+            )
+
         cart = await self._get_or_create(db, user_id, session_id)
         unit_price = await self._fetch_product_price(
             db, payload.product_id, payload.variant_id
@@ -110,7 +140,6 @@ class CartService:
             payload.quantity,
             unit_price,
         )
-        # Reload with fresh items
         cart = await _repo.get_by_id(db, cart.id)  # type: ignore[assignment]
         assert cart is not None
         return _build_summary(cart)
@@ -132,6 +161,14 @@ class CartService:
         item = next((i for i in cart.items if i.id == item_id), None)
         if not item:
             raise NotFoundError("Cart item not found")
+
+        # Validate if increasing quantity
+        if payload.quantity > item.quantity:
+            available = await self._fetch_available_stock(db, item.product_id)
+            if payload.quantity > available:
+                raise InventoryError(
+                    f"Only {available} item(s) available. Please adjust your quantity."
+                )
 
         await _repo.update_item_quantity(db, item_id, payload.quantity)
         cart = await _repo.get_by_id(db, cart_id)
@@ -183,7 +220,6 @@ class CartService:
         user_cart = await _repo.get_for_user(db, user_id)
         if not user_cart:
             user_cart = await _repo.create(db, user_id, None)
-            # reload with items
             user_cart = await _repo.get_by_id(db, user_cart.id)
             assert user_cart is not None
 

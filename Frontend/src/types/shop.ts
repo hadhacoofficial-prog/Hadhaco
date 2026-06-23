@@ -35,6 +35,7 @@ export interface Product {
   collectionIds: string[];
   gender: Gender;
   inStock: boolean;
+  availableStock: number;
   isNew?: boolean;
   isBestseller?: boolean;
   shortDescription?: string;

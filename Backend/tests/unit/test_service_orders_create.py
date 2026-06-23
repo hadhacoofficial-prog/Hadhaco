@@ -111,11 +111,26 @@ class TestOrderServiceCreateFromCart:
         mock_final_order = MagicMock()
         mock_response = MagicMock()
 
+        mock_reservation = MagicMock()
+        mock_reservation.id = uuid.uuid4()
+
         with (
             patch.object(
                 CartRepository, "get_for_user", AsyncMock(return_value=mock_cart)
             ),
             patch.object(AddressRepository, "get", AsyncMock(return_value=mock_addr)),
+            patch(
+                "app.modules.orders.service._reservation_svc.reserve_items",
+                AsyncMock(return_value=[mock_reservation]),
+            ),
+            patch(
+                "app.modules.orders.service._reservation_svc.link_reservations_to_order",
+                AsyncMock(),
+            ),
+            patch(
+                "app.modules.orders.service._reservation_svc.complete_order_reservations",
+                AsyncMock(),
+            ),
             patch(
                 "app.modules.orders.service._repo.generate_order_number",
                 AsyncMock(return_value="ORD-2026-0001"),
@@ -187,7 +202,7 @@ class TestOrderServiceCreateFromCart:
                 )
 
     async def test_create_from_cart_insufficient_stock_raises(self):
-        from app.core.exceptions import ValidationError
+        from app.core.exceptions import InventoryError
         from app.modules.addresses.repository import AddressRepository
         from app.modules.cart.repository import CartRepository
         from app.modules.orders.schemas import CreateOrderRequest
@@ -212,12 +227,13 @@ class TestOrderServiceCreateFromCart:
                 CartRepository, "get_for_user", AsyncMock(return_value=mock_cart)
             ),
             patch.object(AddressRepository, "get", AsyncMock(return_value=mock_addr)),
+            # Stock check now happens atomically in reserve_items (SELECT FOR UPDATE)
             patch(
-                "app.modules.orders.service._repo.generate_order_number",
-                AsyncMock(return_value="ORD-2026-0001"),
+                "app.modules.orders.service._reservation_svc.reserve_items",
+                AsyncMock(side_effect=InventoryError("Only 3 item(s) available")),
             ),
         ):
-            with pytest.raises(ValidationError, match="Insufficient stock"):
+            with pytest.raises(InventoryError, match="3 item"):
                 await self.svc.create_from_cart(
                     db,
                     user_id=user_id,
@@ -256,11 +272,26 @@ class TestOrderServiceCreateFromCart:
         mock_profile.email = "test@example.com"
         mock_profile.phone = None
 
+        mock_reservation = MagicMock()
+        mock_reservation.id = uuid.uuid4()
+
         with (
             patch.object(
                 CartRepository, "get_for_user", AsyncMock(return_value=mock_cart)
             ),
             patch.object(AddressRepository, "get", AsyncMock(return_value=mock_addr)),
+            patch(
+                "app.modules.orders.service._reservation_svc.reserve_items",
+                AsyncMock(return_value=[mock_reservation]),
+            ),
+            patch(
+                "app.modules.orders.service._reservation_svc.link_reservations_to_order",
+                AsyncMock(),
+            ),
+            patch(
+                "app.modules.orders.service._reservation_svc.complete_order_reservations",
+                AsyncMock(),
+            ),
             patch(
                 "app.modules.orders.service._repo.generate_order_number",
                 AsyncMock(return_value="ORD-2026-0002"),
@@ -327,11 +358,26 @@ class TestOrderServiceCreateFromCart:
         mock_profile.email = "test@example.com"
         mock_profile.phone = "9999999999"
 
+        mock_reservation = MagicMock()
+        mock_reservation.id = uuid.uuid4()
+
         with (
             patch.object(
                 CartRepository, "get_for_user", AsyncMock(return_value=mock_cart)
             ),
             patch.object(AddressRepository, "get", AsyncMock(return_value=mock_addr)),
+            patch(
+                "app.modules.orders.service._reservation_svc.reserve_items",
+                AsyncMock(return_value=[mock_reservation]),
+            ),
+            patch(
+                "app.modules.orders.service._reservation_svc.link_reservations_to_order",
+                AsyncMock(),
+            ),
+            patch(
+                "app.modules.orders.service._reservation_svc.complete_order_reservations",
+                AsyncMock(),
+            ),
             patch(
                 "app.modules.orders.service._repo.generate_order_number",
                 AsyncMock(return_value="ORD-2026-0003"),
@@ -409,11 +455,26 @@ class TestOrderServiceCreateFromCart:
         mock_profile.email = "t@t.com"
         mock_profile.phone = None
 
+        mock_reservation = MagicMock()
+        mock_reservation.id = uuid.uuid4()
+
         with (
             patch.object(
                 CartRepository, "get_for_user", AsyncMock(return_value=mock_cart)
             ),
             patch.object(AddressRepository, "get", AsyncMock(return_value=mock_addr)),
+            patch(
+                "app.modules.orders.service._reservation_svc.reserve_items",
+                AsyncMock(return_value=[mock_reservation]),
+            ),
+            patch(
+                "app.modules.orders.service._reservation_svc.link_reservations_to_order",
+                AsyncMock(),
+            ),
+            patch(
+                "app.modules.orders.service._reservation_svc.complete_order_reservations",
+                AsyncMock(),
+            ),
             patch(
                 "app.modules.orders.service._repo.generate_order_number",
                 AsyncMock(return_value="ORD-2026-0004"),
@@ -485,11 +546,26 @@ class TestOrderServiceCreateFromCart:
         mock_profile.email = "a@b.com"
         mock_profile.phone = None
 
+        mock_reservation = MagicMock()
+        mock_reservation.id = uuid.uuid4()
+
         with (
             patch.object(
                 CartRepository, "get_for_user", AsyncMock(return_value=mock_cart)
             ),
             patch.object(AddressRepository, "get", AsyncMock(return_value=mock_addr)),
+            patch(
+                "app.modules.orders.service._reservation_svc.reserve_items",
+                AsyncMock(return_value=[mock_reservation]),
+            ),
+            patch(
+                "app.modules.orders.service._reservation_svc.link_reservations_to_order",
+                AsyncMock(),
+            ),
+            patch(
+                "app.modules.orders.service._reservation_svc.complete_order_reservations",
+                AsyncMock(),
+            ),
             patch(
                 "app.modules.orders.service._repo.generate_order_number",
                 AsyncMock(return_value="ORD-2026-0005"),

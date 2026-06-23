@@ -254,6 +254,10 @@ class TestOrderServiceCancel:
                 "app.modules.orders.service._repo.update",
                 AsyncMock(return_value=mock_updated),
             ),
+            patch(
+                "app.modules.orders.service._reservation_svc.release_order_reservations",
+                AsyncMock(),
+            ),
             patch.object(event_bus, "publish", AsyncMock()),
             patch(
                 "app.modules.orders.service.OrderResponse.model_validate",

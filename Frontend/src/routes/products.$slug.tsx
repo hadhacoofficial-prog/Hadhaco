@@ -1,11 +1,21 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { createFileRoute, Link, notFound, useNavigate } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
-import { Heart, Truck, ShieldCheck, RotateCcw, BadgeCheck, Star } from "lucide-react";
+import {
+  Heart,
+  Truck,
+  ShieldCheck,
+  RotateCcw,
+  BadgeCheck,
+  Star,
+  Bell,
+  RefreshCw,
+} from "lucide-react";
 import { SiteLayout } from "@/components/site/SiteLayout";
 import { Breadcrumbs } from "@/components/site/Breadcrumbs";
 import { QuantityStepper } from "@/components/site/QuantityStepper";
 import { ProductGrid } from "@/components/site/ProductGrid";
+import { InventoryBadge } from "@/components/site/InventoryBadge";
 import { useCart } from "@/stores/cart";
 import { useWishlist } from "@/stores/wishlist";
 import { useRecentlyViewed } from "@/stores/recentlyViewed";
@@ -36,6 +46,7 @@ export const Route = createFileRoute("/products/$slug")({
         .filter((p) => p.id !== productDetail.id)
         .slice(0, 4)
         .map(toProduct),
+      slug: params.slug,
     };
   },
   head: ({ loaderData }) => ({
@@ -70,7 +81,7 @@ export const Route = createFileRoute("/products/$slug")({
 });
 
 function ProductPage() {
-  const { product, related } = Route.useLoaderData();
+  const { product, related, slug } = Route.useLoaderData();
   const navigate = useNavigate();
   const [active, setActive] = useState(0);
   const [qty, setQty] = useState(1);
@@ -85,12 +96,42 @@ function ProductPage() {
 
   const hasVariants = (product.variants?.length ?? 0) > 0;
 
-  // Variant-specific wished check: true only when the same product+variant combo is in the wishlist
   const wished = wishlistItems.some(
     (i) => i.id === product.id && i.variantId === (selectedVariant?.id ?? undefined),
   );
 
-  // Derived display values — update instantly when variant changes, no page refresh
+  // Poll live stock every 60 s so the page stays accurate without a reload
+  const { data: liveDetail, dataUpdatedAt } = useQuery({
+    queryKey: queryKeys.products.stock(slug),
+    queryFn: () => api.get<ProductDetail>(`/products/${slug}`),
+    refetchInterval: 60_000,
+    staleTime: 30_000,
+    refetchOnWindowFocus: true,
+  });
+
+  const liveAvailableStock = liveDetail
+    ? (liveDetail.available_stock ?? liveDetail.stock_quantity)
+    : product.availableStock;
+
+  // Resolved variant stock (use live data if we have it)
+  const variantStock = selectedVariant
+    ? (selectedVariant.available_stock ?? selectedVariant.stock_quantity)
+    : 0;
+
+  // Effective stock for the current selection
+  const effectiveStock = hasVariants
+    ? selectedVariant !== null
+      ? variantStock
+      : 0
+    : liveAvailableStock;
+
+  // Clamp qty whenever effective stock changes
+  useEffect(() => {
+    if (effectiveStock > 0) {
+      setQty((prev) => Math.max(1, Math.min(prev, effectiveStock)));
+    }
+  }, [effectiveStock]);
+
   const displayPrice = product.price + (selectedVariant?.price_adjustment ?? 0);
   const displayCompareAt = selectedVariant
     ? product.compareAt != null
@@ -98,11 +139,12 @@ function ProductPage() {
       : undefined
     : product.compareAt;
   const displaySku = selectedVariant?.sku ?? product.sku;
-  const displayInStock = hasVariants
+
+  const displayInStock: boolean | null = hasVariants
     ? selectedVariant !== null
-      ? selectedVariant.stock_quantity > 0
-      : null // no variant selected yet — unknown
-    : product.inStock;
+      ? variantStock > 0
+      : null
+    : liveAvailableStock > 0;
 
   useEffect(() => {
     pushRV(product.id);
@@ -192,7 +234,20 @@ function ProductPage() {
   const selectVariant = (v: ProductVariant) => {
     setSelectedVariant(v);
     setVariantError(false);
+    setQty(1);
   };
+
+  const reviewsRef = useRef<HTMLDivElement>(null);
+
+  const scrollToReviews = useCallback(() => {
+    setTab("reviews");
+    setTimeout(() => {
+      reviewsRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    }, 0);
+  }, []);
+
+  // Show Notify Me / sold-out state when product has no variants and is out of stock
+  const globalSoldOut = !hasVariants && liveAvailableStock === 0;
 
   return (
     <SiteLayout>
@@ -224,9 +279,16 @@ function ProductPage() {
             <img
               src={gallery[active]}
               alt={product.name}
-              className="absolute inset-0 w-full h-full object-cover transition-transform duration-500 group-hover:scale-110"
+              className={`absolute inset-0 w-full h-full object-cover transition-transform duration-500 group-hover:scale-110 ${globalSoldOut ? "opacity-60" : ""}`}
             />
-            {product.badge && (
+            {globalSoldOut && (
+              <div className="absolute inset-0 flex items-center justify-center" aria-hidden>
+                <span className="bg-foreground/80 text-background text-sm tracking-[0.24em] uppercase px-6 py-2">
+                  Sold Out
+                </span>
+              </div>
+            )}
+            {product.badge && !globalSoldOut && (
               <span className="absolute top-4 left-4 bg-primary text-primary-foreground text-[11px] tracking-[0.2em] uppercase px-3 py-1.5">
                 {product.badge}
               </span>
@@ -241,7 +303,12 @@ function ProductPage() {
           </p>
           <h1 className="font-display text-3xl md:text-4xl mt-2 leading-tight">{product.name}</h1>
 
-          <div className="flex items-center gap-3 mt-3">
+          <button
+            type="button"
+            onClick={scrollToReviews}
+            aria-label="Jump to customer reviews"
+            className="flex items-center gap-3 mt-3 cursor-pointer group focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-foreground rounded-sm"
+          >
             <div className="flex">
               {Array.from({ length: 5 }).map((_, i) => (
                 <Star
@@ -250,8 +317,10 @@ function ProductPage() {
                 />
               ))}
             </div>
-            <span className="text-xs text-muted-foreground">{reviewCount} reviews</span>
-          </div>
+            <span className="text-xs text-muted-foreground group-hover:text-foreground group-hover:underline transition-colors">
+              {reviewCount} reviews
+            </span>
+          </button>
 
           <div className="flex items-baseline gap-3 mt-5">
             <span className="font-display text-3xl">{formatINR(displayPrice)}</span>
@@ -269,20 +338,29 @@ function ProductPage() {
 
           <p className="text-sm text-muted-foreground mt-3">Inclusive of all taxes</p>
 
-          {/* Stock indicator — only show when we know stock status */}
-          {displayInStock !== null && (
-            <p className="text-sm mt-2">
-              <span
-                className={`inline-block size-2 rounded-full mr-2 ${displayInStock ? "bg-emerald-600" : "bg-destructive"}`}
+          {/* Live stock badge */}
+          <div className="flex items-center gap-3 mt-3">
+            {displayInStock !== null && (
+              <InventoryBadge
+                availableStock={hasVariants && selectedVariant ? variantStock : liveAvailableStock}
               />
-              {displayInStock ? "In stock — ships in 2-3 days" : "Out of stock"}
-            </p>
-          )}
-          {hasVariants && displayInStock === null && (
-            <p className="text-sm mt-2 text-muted-foreground">
-              Select a variant to check availability
-            </p>
-          )}
+            )}
+            {hasVariants && displayInStock === null && (
+              <span className="text-xs text-muted-foreground tracking-wide">
+                Select a variant to check availability
+              </span>
+            )}
+            {/* Last refreshed indicator */}
+            {dataUpdatedAt > 0 && (
+              <span
+                className="text-[10px] text-muted-foreground/60 flex items-center gap-1"
+                title={`Stock last refreshed at ${new Date(dataUpdatedAt).toLocaleTimeString()}`}
+              >
+                <RefreshCw className="size-3" aria-hidden />
+                Live
+              </span>
+            )}
+          </div>
 
           <p className="mt-6 text-sm text-foreground/80 leading-relaxed">
             {product.shortDescription}
@@ -304,15 +382,17 @@ function ProductPage() {
               </p>
               <div className="flex flex-wrap gap-2">
                 {product.variants!.map((v) => {
-                  const outOfStock = v.stock_quantity === 0;
+                  const vStock = v.available_stock ?? v.stock_quantity;
+                  const outOfStock = vStock === 0;
                   const isSelected = selectedVariant?.id === v.id;
                   return (
                     <button
                       key={v.id}
                       type="button"
-                      onClick={() => selectVariant(v)}
+                      onClick={() => !outOfStock && selectVariant(v)}
                       disabled={outOfStock}
                       aria-pressed={isSelected}
+                      aria-label={`${v.name}${outOfStock ? " — sold out" : vStock <= 5 ? ` — only ${vStock} left` : ""}`}
                       className={`relative px-3.5 py-2 text-xs border transition-all ${
                         isSelected
                           ? "bg-foreground text-background border-foreground"
@@ -336,6 +416,11 @@ function ProductPage() {
                           sold out
                         </span>
                       )}
+                      {!outOfStock && vStock <= 5 && (
+                        <span className="absolute -top-2 left-1/2 -translate-x-1/2 text-[9px] uppercase tracking-wide text-amber-600">
+                          {vStock} left
+                        </span>
+                      )}
                     </button>
                   );
                 })}
@@ -348,30 +433,65 @@ function ProductPage() {
             </div>
           )}
 
-          <div className="flex items-center gap-4 mt-8">
-            <QuantityStepper value={qty} onChange={setQty} />
-            <button
-              onClick={handleAddToCart}
-              disabled={displayInStock === false}
-              className="flex-1 bg-primary text-primary-foreground text-[11px] uppercase tracking-[0.22em] py-3.5 hover:bg-accent hover:text-accent-foreground transition disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              {displayInStock === false ? "Out of Stock" : "Add to Cart"}
-            </button>
-            <button
-              onClick={handleWishlistToggle}
-              aria-label={wished ? "Remove from wishlist" : "Add to wishlist"}
-              className={`size-12 border border-foreground flex items-center justify-center transition ${wished ? "bg-foreground text-background" : "hover:bg-secondary"}`}
-            >
-              <Heart className={`size-4 ${wished ? "fill-current" : ""}`} />
-            </button>
-          </div>
-          <button
-            onClick={handleBuyNow}
-            disabled={displayInStock === false}
-            className="mt-3 w-full border border-foreground text-foreground text-[11px] uppercase tracking-[0.22em] py-3.5 hover:bg-foreground hover:text-background transition disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            Buy It Now
-          </button>
+          {/* ── Add to cart / Sold-out actions ── */}
+          {globalSoldOut ? (
+            <div className="mt-8 space-y-3">
+              <div className="flex items-center gap-2 p-4 bg-muted/50 border border-border">
+                <InventoryBadge availableStock={0} />
+                <p className="text-sm text-muted-foreground">
+                  This product is currently unavailable.
+                </p>
+              </div>
+              <button
+                onClick={handleWishlistToggle}
+                className="w-full flex items-center justify-center gap-2 border border-foreground text-foreground text-[11px] uppercase tracking-[0.22em] py-3.5 hover:bg-foreground hover:text-background transition"
+                aria-label="Add to wishlist to get notified when back in stock"
+              >
+                <Bell className="size-4" />
+                {wished ? "Added to Wishlist" : "Notify Me When Available"}
+              </button>
+              <Link
+                to="/collections"
+                className="flex items-center justify-center gap-2 border border-border text-[11px] uppercase tracking-[0.22em] py-3.5 hover:bg-secondary transition"
+              >
+                Browse Similar Items
+              </Link>
+            </div>
+          ) : (
+            <>
+              <div className="flex items-center gap-4 mt-8">
+                <QuantityStepper
+                  value={qty}
+                  onChange={setQty}
+                  max={effectiveStock > 0 ? effectiveStock : 99}
+                />
+                {effectiveStock > 0 && effectiveStock <= 10 && (
+                  <span className="text-xs text-amber-600">Max {effectiveStock} available</span>
+                )}
+                <button
+                  onClick={handleAddToCart}
+                  disabled={displayInStock === false}
+                  className="flex-1 bg-primary text-primary-foreground text-[11px] uppercase tracking-[0.22em] py-3.5 hover:bg-accent hover:text-accent-foreground transition disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {displayInStock === false ? "Out of Stock" : "Add to Cart"}
+                </button>
+                <button
+                  onClick={handleWishlistToggle}
+                  aria-label={wished ? "Remove from wishlist" : "Add to wishlist"}
+                  className={`size-12 border border-foreground flex items-center justify-center transition ${wished ? "bg-foreground text-background" : "hover:bg-secondary"}`}
+                >
+                  <Heart className={`size-4 ${wished ? "fill-current" : ""}`} />
+                </button>
+              </div>
+              <button
+                onClick={handleBuyNow}
+                disabled={displayInStock === false}
+                className="mt-3 w-full border border-foreground text-foreground text-[11px] uppercase tracking-[0.22em] py-3.5 hover:bg-foreground hover:text-background transition disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                Buy It Now
+              </button>
+            </>
+          )}
 
           {/* Trust */}
           <div className="mt-8 grid grid-cols-2 gap-3 border-t border-border pt-6">
@@ -391,7 +511,12 @@ function ProductPage() {
       </div>
 
       {/* Tabs */}
-      <div className="px-4 md:px-8 py-10 border-t border-border">
+      <div
+        id="product-reviews"
+        ref={reviewsRef}
+        className="px-4 md:px-8 py-10 border-t border-border"
+        style={{ scrollMarginTop: "140px" }}
+      >
         <div className="flex gap-8 text-xs uppercase tracking-[0.22em] border-b border-border">
           {(["details", "specs", "reviews"] as const).map((t) => (
             <button

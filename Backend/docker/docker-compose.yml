@@ -1,6 +1,16 @@
 version: "3.9"
 
 services:
+  migrate:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    env_file: ../.env
+    command: ["python", "-m", "alembic", "-c", "alembic/alembic.ini", "upgrade", "head"]
+    restart: "no"
+    networks:
+      - hadha-net
+
   api:
     build:
       context: ..

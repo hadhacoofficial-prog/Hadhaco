@@ -11,7 +11,9 @@ CREATE TABLE IF NOT EXISTS orders (
 
     -- Status
     status              VARCHAR(20) NOT NULL DEFAULT 'pending',
-    -- pending | confirmed | processing | shipped | delivered | cancelled | refunded
+    -- pending | stock_reserved | payment_pending | confirmed | processing | packed
+    -- | shipped | delivered | cancelled | payment_failed | payment_expired
+    -- | return_requested | returned | refunded
     payment_status      VARCHAR(20) NOT NULL DEFAULT 'pending',
     -- pending | paid | failed | refunded | partially_refunded
 
@@ -65,7 +67,11 @@ CREATE TABLE IF NOT EXISTS orders (
     updated_at          TIMESTAMPTZ NOT NULL DEFAULT now(),
 
     CONSTRAINT orders_status_check CHECK (
-        status IN ('pending','confirmed','processing','shipped','delivered','cancelled','refunded')
+        status IN (
+            'pending','stock_reserved','payment_pending','confirmed',
+            'processing','packed','shipped','delivered','cancelled',
+            'payment_failed','payment_expired','return_requested','returned','refunded'
+        )
     ),
     CONSTRAINT orders_payment_status_check CHECK (
         payment_status IN ('pending','paid','failed','refunded','partially_refunded')

@@ -3,6 +3,7 @@ import type { ProductDetail, CollectionDto, PublicReview } from "@/types/public"
 import type { Product, Collection, Review, Gender } from "@/types/shop";
 
 export function toProduct(p: ProductListItem): Product {
+  const availableStock = p.available_stock ?? p.stock_quantity;
   return {
     id: p.id,
     slug: p.slug,
@@ -11,7 +12,8 @@ export function toProduct(p: ProductListItem): Product {
     image: p.primary_image ?? "",
     price: p.base_price,
     compareAt: p.compare_at_price ?? undefined,
-    inStock: p.stock_quantity > 0,
+    inStock: availableStock > 0,
+    availableStock,
     isNew: p.is_new_arrival,
     isBestseller: p.is_best_seller,
     collectionIds: [],
@@ -28,6 +30,7 @@ function parseGender(raw: string | null): Gender {
 
 export function toProductDetail(p: ProductDetail): Product {
   const primary = p.images.find((i) => i.is_primary) ?? p.images[0];
+  const availableStock = p.available_stock ?? p.stock_quantity;
   return {
     id: p.id,
     slug: p.slug,
@@ -38,7 +41,8 @@ export function toProductDetail(p: ProductDetail): Product {
     gallery: p.images.length > 0 ? p.images.map((i) => i.url) : undefined,
     price: p.base_price,
     compareAt: p.compare_at_price ?? undefined,
-    inStock: p.stock_quantity > 0,
+    inStock: availableStock > 0,
+    availableStock,
     isNew: p.is_new_arrival,
     isBestseller: p.is_best_seller,
     collectionIds: [],

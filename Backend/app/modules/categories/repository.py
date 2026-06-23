@@ -94,7 +94,7 @@ class CategoryRepository:
             params,
         )
         rows = rows_result.mappings().all()
-        return list(rows), total
+        return [dict(r) for r in rows], total
 
     async def get_product_count(self, db: AsyncSession, cat_id: str | uuid.UUID) -> int:
         from sqlalchemy import text

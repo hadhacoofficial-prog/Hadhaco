@@ -29,6 +29,9 @@ import { Route as AccountIndexRouteImport } from './routes/account.index'
 import { Route as ProductsSlugRouteImport } from './routes/products.$slug'
 import { Route as CollectionsSlugRouteImport } from './routes/collections.$slug'
 import { Route as CheckoutSuccessRouteImport } from './routes/checkout_.success'
+import { Route as CheckoutStockChangedRouteImport } from './routes/checkout_.stock-changed'
+import { Route as CheckoutReservationExpiredRouteImport } from './routes/checkout_.reservation-expired'
+import { Route as CheckoutPaymentFailedRouteImport } from './routes/checkout_.payment-failed'
 import { Route as AdminReviewsRouteImport } from './routes/admin.reviews'
 import { Route as AdminReportsRouteImport } from './routes/admin.reports'
 import { Route as AdminProductsRouteImport } from './routes/admin.products'
@@ -159,6 +162,22 @@ const CollectionsSlugRoute = CollectionsSlugRouteImport.update({
 const CheckoutSuccessRoute = CheckoutSuccessRouteImport.update({
   id: '/checkout_/success',
   path: '/checkout/success',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const CheckoutStockChangedRoute = CheckoutStockChangedRouteImport.update({
+  id: '/checkout_/stock-changed',
+  path: '/checkout/stock-changed',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const CheckoutReservationExpiredRoute =
+  CheckoutReservationExpiredRouteImport.update({
+    id: '/checkout_/reservation-expired',
+    path: '/checkout/reservation-expired',
+    getParentRoute: () => rootRouteImport,
+  } as any)
+const CheckoutPaymentFailedRoute = CheckoutPaymentFailedRouteImport.update({
+  id: '/checkout_/payment-failed',
+  path: '/checkout/payment-failed',
   getParentRoute: () => rootRouteImport,
 } as any)
 const AdminReviewsRoute = AdminReviewsRouteImport.update({
@@ -352,6 +371,9 @@ export interface FileRoutesByFullPath {
   '/admin/products': typeof AdminProductsRouteWithChildren
   '/admin/reports': typeof AdminReportsRoute
   '/admin/reviews': typeof AdminReviewsRoute
+  '/checkout/payment-failed': typeof CheckoutPaymentFailedRoute
+  '/checkout/reservation-expired': typeof CheckoutReservationExpiredRoute
+  '/checkout/stock-changed': typeof CheckoutStockChangedRoute
   '/checkout/success': typeof CheckoutSuccessRoute
   '/collections/$slug': typeof CollectionsSlugRoute
   '/products/$slug': typeof ProductsSlugRoute
@@ -400,6 +422,9 @@ export interface FileRoutesByTo {
   '/admin/orders': typeof AdminOrdersRoute
   '/admin/reports': typeof AdminReportsRoute
   '/admin/reviews': typeof AdminReviewsRoute
+  '/checkout/payment-failed': typeof CheckoutPaymentFailedRoute
+  '/checkout/reservation-expired': typeof CheckoutReservationExpiredRoute
+  '/checkout/stock-changed': typeof CheckoutStockChangedRoute
   '/checkout/success': typeof CheckoutSuccessRoute
   '/collections/$slug': typeof CollectionsSlugRoute
   '/products/$slug': typeof ProductsSlugRoute
@@ -452,6 +477,9 @@ export interface FileRoutesById {
   '/admin/products': typeof AdminProductsRouteWithChildren
   '/admin/reports': typeof AdminReportsRoute
   '/admin/reviews': typeof AdminReviewsRoute
+  '/checkout_/payment-failed': typeof CheckoutPaymentFailedRoute
+  '/checkout_/reservation-expired': typeof CheckoutReservationExpiredRoute
+  '/checkout_/stock-changed': typeof CheckoutStockChangedRoute
   '/checkout_/success': typeof CheckoutSuccessRoute
   '/collections/$slug': typeof CollectionsSlugRoute
   '/products/$slug': typeof ProductsSlugRoute
@@ -507,6 +535,9 @@ export interface FileRouteTypes {
     | '/admin/products'
     | '/admin/reports'
     | '/admin/reviews'
+    | '/checkout/payment-failed'
+    | '/checkout/reservation-expired'
+    | '/checkout/stock-changed'
     | '/checkout/success'
     | '/collections/$slug'
     | '/products/$slug'
@@ -555,6 +586,9 @@ export interface FileRouteTypes {
     | '/admin/orders'
     | '/admin/reports'
     | '/admin/reviews'
+    | '/checkout/payment-failed'
+    | '/checkout/reservation-expired'
+    | '/checkout/stock-changed'
     | '/checkout/success'
     | '/collections/$slug'
     | '/products/$slug'
@@ -606,6 +640,9 @@ export interface FileRouteTypes {
     | '/admin/products'
     | '/admin/reports'
     | '/admin/reviews'
+    | '/checkout_/payment-failed'
+    | '/checkout_/reservation-expired'
+    | '/checkout_/stock-changed'
     | '/checkout_/success'
     | '/collections/$slug'
     | '/products/$slug'
@@ -649,6 +686,9 @@ export interface RootRouteChildren {
   AccountLoginRoute: typeof AccountLoginRoute
   AccountRegisterRoute: typeof AccountRegisterRoute
   AccountResetPasswordRoute: typeof AccountResetPasswordRoute
+  CheckoutPaymentFailedRoute: typeof CheckoutPaymentFailedRoute
+  CheckoutReservationExpiredRoute: typeof CheckoutReservationExpiredRoute
+  CheckoutStockChangedRoute: typeof CheckoutStockChangedRoute
   CheckoutSuccessRoute: typeof CheckoutSuccessRoute
   CollectionsSlugRoute: typeof CollectionsSlugRoute
   ProductsSlugRoute: typeof ProductsSlugRoute
@@ -797,6 +837,27 @@ declare module '@tanstack/react-router' {
       path: '/checkout/success'
       fullPath: '/checkout/success'
       preLoaderRoute: typeof CheckoutSuccessRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/checkout_/stock-changed': {
+      id: '/checkout_/stock-changed'
+      path: '/checkout/stock-changed'
+      fullPath: '/checkout/stock-changed'
+      preLoaderRoute: typeof CheckoutStockChangedRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/checkout_/reservation-expired': {
+      id: '/checkout_/reservation-expired'
+      path: '/checkout/reservation-expired'
+      fullPath: '/checkout/reservation-expired'
+      preLoaderRoute: typeof CheckoutReservationExpiredRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/checkout_/payment-failed': {
+      id: '/checkout_/payment-failed'
+      path: '/checkout/payment-failed'
+      fullPath: '/checkout/payment-failed'
+      preLoaderRoute: typeof CheckoutPaymentFailedRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/admin/reviews': {
@@ -1167,6 +1228,9 @@ const rootRouteChildren: RootRouteChildren = {
   AccountLoginRoute: AccountLoginRoute,
   AccountRegisterRoute: AccountRegisterRoute,
   AccountResetPasswordRoute: AccountResetPasswordRoute,
+  CheckoutPaymentFailedRoute: CheckoutPaymentFailedRoute,
+  CheckoutReservationExpiredRoute: CheckoutReservationExpiredRoute,
+  CheckoutStockChangedRoute: CheckoutStockChangedRoute,
   CheckoutSuccessRoute: CheckoutSuccessRoute,
   CollectionsSlugRoute: CollectionsSlugRoute,
   ProductsSlugRoute: ProductsSlugRoute,

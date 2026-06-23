@@ -10,8 +10,13 @@ from app.modules.inventory.repository import InventoryRepository
 from app.modules.inventory.schemas import (
     InventoryMovementListResponse,
     InventoryMovementResponse,
+    InventoryTransactionListResponse,
+    InventoryTransactionResponse,
     LowStockItem,
     ManualAdjustmentRequest,
+    ProductStockSummary,
+    ReservationListResponse,
+    ReservationResponse,
 )
 
 _repo = InventoryRepository()
@@ -32,9 +37,8 @@ class InventoryService:
         created_by: uuid.UUID | None = None,
     ) -> InventoryMovementResponse:
         """
-        Core method called by order, return, and admin flows.
-        Atomically updates product stock and records the ledger entry.
-        Publishes LowInventoryAlertEvent when stock drops to or below threshold.
+        Legacy movement recorder — updates stock_quantity for restock/adjustment ops.
+        New flows (checkout, payment) use ReservationService instead.
         """
         snapshot = await _repo.get_stock_snapshot(db, product_id)
         if not snapshot:
@@ -48,7 +52,6 @@ class InventoryService:
                 f"Insufficient stock: available {quantity_before}, requested {abs(delta)}"
             )
 
-        # Atomic stock update
         await db.execute(
             text(
                 "UPDATE products SET stock_quantity = stock_quantity + :delta "
@@ -57,7 +60,6 @@ class InventoryService:
             {"delta": delta, "id": str(product_id)},
         )
 
-        # Ledger entry
         movement = await _repo.record(
             db,
             {
@@ -75,7 +77,6 @@ class InventoryService:
             },
         )
 
-        # Low-stock alert — fire after flush so DB state is consistent
         threshold: int = snapshot["low_stock_threshold"]
         if delta < 0 and quantity_after <= threshold:
             await event_bus.publish(
@@ -119,7 +120,6 @@ class InventoryService:
         page_size: int = 20,
         movement_type: str | None = None,
     ) -> InventoryMovementListResponse:
-        # Verify product exists
         snapshot = await _repo.get_stock_snapshot(db, product_id)
         if not snapshot:
             raise NotFoundError("Product not found")
@@ -142,3 +142,57 @@ class InventoryService:
     async def get_low_stock(self, db: AsyncSession) -> list[LowStockItem]:
         rows = await _repo.get_low_stock(db)
         return [LowStockItem(**r) for r in rows]
+
+    # ── New reservation-aware queries ─────────────────────────────────────────
+
+    async def get_stock_summary(
+        self, db: AsyncSession, product_id: uuid.UUID
+    ) -> ProductStockSummary:
+        data = await _repo.get_stock_summary(db, product_id)
+        if not data:
+            raise NotFoundError("Product not found")
+        return ProductStockSummary(**data)
+
+    async def list_reservations(
+        self,
+        db: AsyncSession,
+        *,
+        product_id: uuid.UUID | None = None,
+        status: str | None = None,
+        page: int = 1,
+        page_size: int = 20,
+    ) -> ReservationListResponse:
+        items, total = await _repo.list_reservations(
+            db, product_id=product_id, status=status, page=page, page_size=page_size
+        )
+        return ReservationListResponse(
+            items=[ReservationResponse.model_validate(r) for r in items],
+            total=total,
+            page=page,
+            page_size=page_size,
+            total_pages=math.ceil(total / page_size) if total else 0,
+        )
+
+    async def list_transactions(
+        self,
+        db: AsyncSession,
+        *,
+        product_id: uuid.UUID | None = None,
+        transaction_type: str | None = None,
+        page: int = 1,
+        page_size: int = 20,
+    ) -> InventoryTransactionListResponse:
+        items, total = await _repo.list_transactions(
+            db,
+            product_id=product_id,
+            transaction_type=transaction_type,
+            page=page,
+            page_size=page_size,
+        )
+        return InventoryTransactionListResponse(
+            items=[InventoryTransactionResponse.model_validate(t) for t in items],
+            total=total,
+            page=page,
+            page_size=page_size,
+            total_pages=math.ceil(total / page_size) if total else 0,
+        )

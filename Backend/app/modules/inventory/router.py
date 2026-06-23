@@ -10,8 +10,11 @@ from app.core.dependencies import get_current_user, require_admin
 from app.modules.inventory.schemas import (
     InventoryMovementListResponse,
     InventoryMovementResponse,
+    InventoryTransactionListResponse,
     LowStockItem,
     ManualAdjustmentRequest,
+    ProductStockSummary,
+    ReservationListResponse,
 )
 from app.modules.inventory.service import InventoryService
 from app.modules.profiles.models import Profile
@@ -78,3 +81,65 @@ async def manual_adjustment(
     return ok(
         result, ResponseCode.INVENTORY_ADJUSTED, "Inventory adjusted successfully"
     )
+
+
+# ── New reservation-aware endpoints ──────────────────────────────────────────
+
+
+@router.get(
+    "/admin/products/{product_id}/inventory/summary",
+    response_model=BaseSuccessResponse[ProductStockSummary],
+    dependencies=[Depends(require_admin)],
+)
+async def get_stock_summary(
+    product_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+):
+    """Returns total / reserved / sold / available stock counts for a product."""
+    result = await _service.get_stock_summary(db, product_id)
+    return ok(result, ResponseCode.INVENTORY_SUMMARY_FETCHED, "Stock summary fetched")
+
+
+@router.get(
+    "/admin/inventory/reservations",
+    response_model=BaseSuccessResponse[ReservationListResponse],
+    dependencies=[Depends(require_admin)],
+)
+async def list_reservations(
+    product_id: uuid.UUID | None = Query(None),
+    status: str | None = Query(None, pattern="^(ACTIVE|COMPLETED|RELEASED|EXPIRED)$"),
+    page: int = Query(1, ge=1),
+    page_size: int = Query(20, ge=1, le=100),
+    db: AsyncSession = Depends(get_db),
+):
+    """List inventory reservations with optional filtering by product or status."""
+    result = await _service.list_reservations(
+        db, product_id=product_id, status=status, page=page, page_size=page_size
+    )
+    return ok(result, ResponseCode.INVENTORY_RESERVATIONS_LISTED, "Reservations listed")
+
+
+@router.get(
+    "/admin/inventory/transactions",
+    response_model=BaseSuccessResponse[InventoryTransactionListResponse],
+    dependencies=[Depends(require_admin)],
+)
+async def list_transactions(
+    product_id: uuid.UUID | None = Query(None),
+    transaction_type: str | None = Query(
+        None,
+        pattern="^(RESERVE|RELEASE|SALE|RETURN|RESTOCK|ADJUSTMENT)$",
+    ),
+    page: int = Query(1, ge=1),
+    page_size: int = Query(20, ge=1, le=100),
+    db: AsyncSession = Depends(get_db),
+):
+    """Full audit log of all inventory state changes."""
+    result = await _service.list_transactions(
+        db,
+        product_id=product_id,
+        transaction_type=transaction_type,
+        page=page,
+        page_size=page_size,
+    )
+    return ok(result, ResponseCode.INVENTORY_TRANSACTIONS_LISTED, "Transactions listed")

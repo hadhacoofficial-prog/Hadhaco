@@ -5,7 +5,7 @@ import { AnimatePresence, motion } from "framer-motion";
 import { useNavigationCategories } from "@/hooks/categories/useNavigationCategories";
 import { Skeleton } from "@/components/ui/skeleton";
 
-const DEFAULT_CATEGORY_IMAGE = "/images/placeholders/category-placeholder.webp";
+const DEFAULT_CATEGORY_IMAGE = "./assets/p3.jpg";
 
 type Gender = "women" | "men" | "unisex" | "kids";
 const GENDER_KEYS: Gender[] = ["women", "men", "unisex", "kids"];
