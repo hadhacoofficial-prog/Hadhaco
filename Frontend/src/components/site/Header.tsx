@@ -24,7 +24,7 @@ import { NavJewelleryBg } from "./NavJewelleryBg";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-type NavGender = keyof NavigationCategoriesResponse;
+type NavGender = "women" | "men" | "unisex" | "kids";
 
 interface GenderTab {
   key: NavGender;

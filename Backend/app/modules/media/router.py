@@ -41,6 +41,7 @@ def _validate_image(file: UploadFile, file_bytes: bytes) -> None:
 # Product images
 # ─────────────────────────────────────────────────────────────
 
+
 @router.post(
     "/admin/products/{product_id}/images",
     response_model=BaseSuccessResponse[ProductImageResponse],
@@ -133,6 +134,7 @@ async def set_primary_image(
 # Collection images
 # ─────────────────────────────────────────────────────────────
 
+
 @router.post(
     "/admin/collections/{col_id}/image",
     response_model=BaseSuccessResponse[ImageUploadResponse],
@@ -208,6 +210,7 @@ async def delete_collection_image(
 # ─────────────────────────────────────────────────────────────
 # Category images
 # ─────────────────────────────────────────────────────────────
+
 
 @router.post(
     "/admin/categories/{cat_id}/image",

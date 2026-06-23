@@ -188,9 +188,7 @@ class CollectionRepository:
         for i, pid in enumerate(product_ids):
             stmt = (
                 pg_insert(ProductCollection)
-                .values(
-                    product_id=pid, collection_id=col_id, sort_order=base_order + i
-                )
+                .values(product_id=pid, collection_id=col_id, sort_order=base_order + i)
                 .on_conflict_do_nothing()
             )
             await db.execute(stmt)

@@ -121,9 +121,7 @@ class CollectionService:
             raise NotFoundError("Collection not found")
         await _repo.soft_delete(db, col_id)
 
-    async def bulk_action(
-        self, db: AsyncSession, payload: BulkActionRequest
-    ) -> None:
+    async def bulk_action(self, db: AsyncSession, payload: BulkActionRequest) -> None:
         if payload.action == "delete":
             await _repo.bulk_soft_delete(db, payload.ids)
         elif payload.action == "activate":

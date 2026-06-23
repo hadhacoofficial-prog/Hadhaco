@@ -92,7 +92,9 @@ class CatalogService:
             primary_img = next((img.url for img in p.images if img.is_primary), None)
             if primary_img is None and p.images:
                 primary_img = p.images[0].url
-            cols = [ProductCollectionRef.model_validate(c) for c in col_map.get(p.id, [])]
+            cols = [
+                ProductCollectionRef.model_validate(c) for c in col_map.get(p.id, [])
+            ]
             list_items.append(
                 ProductListItem(
                     id=p.id,
@@ -164,7 +166,9 @@ class CatalogService:
         response = ProductResponse.model_validate(product)
         if collection_ids:
             cols = await _repo.get_collections_for_product(db, product.id)
-            response.collections = [ProductCollectionRef.model_validate(c) for c in cols]
+            response.collections = [
+                ProductCollectionRef.model_validate(c) for c in cols
+            ]
         return response
 
     async def update(

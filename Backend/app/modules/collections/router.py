@@ -59,7 +59,9 @@ async def admin_list_collections(
     search: str | None = Query(None, max_length=200),
     is_active: bool | None = None,
     is_featured: bool | None = None,
-    sort_by: str = Query("sort_order", pattern="^(sort_order|name|updated_at|created_at)$"),
+    sort_by: str = Query(
+        "sort_order", pattern="^(sort_order|name|updated_at|created_at)$"
+    ),
     sort_dir: str = Query("asc", pattern="^(asc|desc)$"),
 ):
     result = await _service.list_admin(
@@ -80,11 +82,11 @@ async def admin_list_collections(
     response_model=BaseSuccessResponse[CollectionDetailResponse],
     dependencies=[Depends(require_admin)],
 )
-async def admin_get_collection(
-    col_id: uuid.UUID, db: AsyncSession = Depends(get_db)
-):
+async def admin_get_collection(col_id: uuid.UUID, db: AsyncSession = Depends(get_db)):
     result = await _service.get_detail(db, col_id)
-    return ok(result, ResponseCode.COLLECTION_FETCHED, "Collection fetched successfully")
+    return ok(
+        result, ResponseCode.COLLECTION_FETCHED, "Collection fetched successfully"
+    )
 
 
 @router.post(
@@ -159,7 +161,9 @@ async def admin_get_collection_products(
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=100),
 ):
-    items, total = await _service.get_products(db, col_id, page=page, page_size=page_size)
+    items, total = await _service.get_products(
+        db, col_id, page=page, page_size=page_size
+    )
     return ok(
         {
             "items": [i.model_dump() for i in items],

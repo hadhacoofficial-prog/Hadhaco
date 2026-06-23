@@ -259,6 +259,6 @@ class MediaService:
         base = settings.R2_PUBLIC_URL.rstrip("/") + "/"
         if not image_url.startswith(base):
             return None
-        key = image_url[len(base):]           # "collections/abc/uuid/large.webp"
+        key = image_url[len(base) :]  # "collections/abc/uuid/large.webp"
         folder = key.rsplit("/", 1)[0] + "/"  # "collections/abc/uuid/"
         return folder

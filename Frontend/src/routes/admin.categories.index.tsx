@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import React, { useState, useMemo } from "react";
 import { createFileRoute, useNavigate, Link } from "@tanstack/react-router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
@@ -136,7 +136,7 @@ function AdminCategories() {
     });
   }
 
-  function renderRow(cat: CategoryAdminListItem, depth = 0) {
+  function renderRow(cat: CategoryAdminListItem, depth = 0): React.ReactNode {
     const children = childrenOf(cat.id);
     const hasChildren = children.length > 0 || cat.children_count > 0;
     const isExpanded = expandedIds.has(cat.id);

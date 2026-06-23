@@ -96,9 +96,7 @@ class CategoryRepository:
         rows = rows_result.mappings().all()
         return list(rows), total
 
-    async def get_product_count(
-        self, db: AsyncSession, cat_id: str | uuid.UUID
-    ) -> int:
+    async def get_product_count(self, db: AsyncSession, cat_id: str | uuid.UUID) -> int:
         from sqlalchemy import text
 
         result = await db.execute(
@@ -245,5 +243,8 @@ class CategoryRepository:
             text(
                 "UPDATE products SET category_id = :cat_id WHERE id = :pid AND deleted_at IS NULL"
             ),
-            {"cat_id": str(category_id) if category_id else None, "pid": str(product_id)},
+            {
+                "cat_id": str(category_id) if category_id else None,
+                "pid": str(product_id),
+            },
         )
