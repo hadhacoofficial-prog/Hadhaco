@@ -600,6 +600,8 @@ else
   # production and staging networks are created on the same host.
   docker network create \
     --driver bridge \
+    --ipv6 \
+    --subnet fd00:dead:beef:100::/64 \
     "${NETWORK_NAME}" 2>&1 | tee -a "${LOG_FILE}" \
     || log "[WARN] Explicit network creation failed — compose will create it on startup"
 fi
