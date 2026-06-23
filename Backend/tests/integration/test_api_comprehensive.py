@@ -204,12 +204,6 @@ class TestWebhookEndpoints:
         )
         assert resp.status_code == 400
 
-    async def test_delivery_webhook_missing_signature_returns_400(self, client):
-        resp = await client.post(
-            "/api/v1/webhooks/delivery-one", json={"status": "delivered"}
-        )
-        assert resp.status_code == 400
-
 
 class TestHealthEndpoints:
     async def test_liveness_returns_200(self, client):

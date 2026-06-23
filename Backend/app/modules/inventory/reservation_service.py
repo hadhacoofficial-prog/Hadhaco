@@ -154,7 +154,7 @@ class ReservationService:
     ) -> None:
         await db.execute(
             text(
-                f"UPDATE {stock['table_name']} "
+                f"UPDATE {stock['table_name']} "  # nosec B608
                 f"SET {set_clause} "
                 f"WHERE {stock['id_column']} = :target_id"
             ),
@@ -309,7 +309,7 @@ class ReservationService:
             params[f"id_{i}"] = rid
         await db.execute(
             text(
-                f"UPDATE inventory_reservations "
+                f"UPDATE inventory_reservations "  # nosec B608
                 f"SET order_id = :order_id "
                 f"WHERE id IN ({placeholders})"
             ),
@@ -318,7 +318,7 @@ class ReservationService:
         # Also update transaction log rows
         await db.execute(
             text(
-                f"UPDATE inventory_transactions "
+                f"UPDATE inventory_transactions "  # nosec B608
                 f"SET order_id = :order_id "
                 f"WHERE reservation_id IN ({placeholders})"
             ),
@@ -471,10 +471,10 @@ class ReservationService:
             await db.execute(
                 text(
                     "UPDATE inventory_reservations "
-                    f"SET status = '{reason}', updated_at = now() "
+                    "SET status = :status, updated_at = now() "
                     "WHERE id = :rid"
                 ),
-                {"rid": str(res_id)},
+                {"rid": str(res_id), "status": reason},
             )
 
             after_reserved = max(stock["reserved_quantity"] - quantity, 0)

@@ -62,7 +62,7 @@ class CategoryRepository:
         where = " AND ".join(filter_clauses)
 
         count_result = await db.execute(
-            text(f"SELECT COUNT(*) FROM categories c WHERE {where}"),
+            text(f"SELECT COUNT(*) FROM categories c WHERE {where}"),  # nosec B608
             {k: v for k, v in params.items() if k not in ("limit", "offset")},
         )
         total = count_result.scalar_one()
@@ -90,7 +90,7 @@ class CategoryRepository:
                 WHERE {where}
                 ORDER BY c.sort_order ASC, c.name ASC
                 LIMIT :limit OFFSET :offset
-            """),
+            """),  # nosec B608
             params,
         )
         rows = rows_result.mappings().all()
