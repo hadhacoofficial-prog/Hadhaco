@@ -1,0 +1,31 @@
+{
+  "include": ["src/**/*.ts", "src/**/*.tsx", "vite.config.ts", "eslint.config.js"],
+  "compilerOptions": {
+    "target": "ES2022",
+    "jsx": "react-jsx",
+    "module": "ESNext",
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "types": ["vite/client", "vitest/globals"],
+    "moduleResolution": "Bundler",
+    "allowImportingTsExtensions": true,
+    "verbatimModuleSyntax": false,
+    "noEmit": true,
+    "skipLibCheck": true,
+    "strict": true,
+    "noUnusedLocals": false,
+    "noUnusedParameters": false,
+    "noFallthroughCasesInSwitch": true,
+    "noUncheckedSideEffectImports": true,
+    "paths": {
+      "@/*": ["./src/*"],
+      "@hadha/shared-types": ["../packages/shared-types/src"],
+      "@hadha/shared-utils": ["../packages/shared-utils/src"],
+      "@hadha/shared-api": ["../packages/shared-api/src"],
+      "@hadha/shared-ui": ["../packages/shared-ui/src"],
+      "@hadha/shared-ui/ui/*": ["../packages/shared-ui/src/ui/*"],
+      "@hadha/shared-ui/loading/*": ["../packages/shared-ui/src/loading/*"],
+      "@hadha/shared-ui/common/*": ["../packages/shared-ui/src/common/*"],
+      "@hadha/shared-ui/globals.css": ["../packages/shared-ui/src/globals.css"]
+    }
+  }
+}

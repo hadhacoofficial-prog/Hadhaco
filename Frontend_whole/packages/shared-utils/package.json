@@ -1,0 +1,16 @@
+{
+  "name": "@hadha/shared-utils",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./constants/*": "./src/constants/*.ts",
+    "./config/*": "./src/config/*.ts"
+  },
+  "peerDependencies": {
+    "clsx": "^2.1.1",
+    "tailwind-merge": "^3.5.0",
+    "date-fns": "^4.1.0"
+  }
+}

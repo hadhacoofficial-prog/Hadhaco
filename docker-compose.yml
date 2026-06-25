@@ -1,8 +1,25 @@
 name: hadha
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Services
+# Local development stack — all services on a single bridge network.
+#
+# Port map (host → container):
+#   8000 → backend         FastAPI / uvicorn --reload
+#   8080 → storefront      Vite dev server
+#   8081 → admin           Vite dev server
+#   6379 → redis           direct access for local debugging
+#   8082 → redis-commander
+#   8083 → dozzle
+#
+# Key design notes:
+#   • storefront/admin both bind-mount ./Frontend_whole:/app so source edits
+#     trigger hot-reload in both containers simultaneously.
+#   • Named volumes shadow /app/node_modules so Linux-built native binaries
+#     (esbuild, etc.) are never overwritten by the Windows host copy.
+#   • SERVER_API_BASE_URL is injected here (not in .env) so the Nitro SSR
+#     server calls the backend over the Docker-internal network, not localhost.
 # ─────────────────────────────────────────────────────────────────────────────
+
 services:
 
   # ── FastAPI backend ──────────────────────────────────────────────────────────
@@ -15,16 +32,10 @@ services:
     restart: unless-stopped
     env_file: ./Backend/.env
     environment:
-      # Docker service-name overrides — take precedence over values in .env.
-      # If REDIS_PASSWORD is set in the root .env / shell, the URL includes it.
-      # Empty password → redis://:@host:6379/0 → redis-py skips AUTH (falsy).
-      REDIS_URL: redis://:${REDIS_PASSWORD:-}@hadha-redis:6379/0
-      # localhost:8080 = browser→frontend dev server (host-mapped port).
-      # frontend:8080  = inter-container name, used by SSR/Nitro server calls.
-      ALLOWED_ORIGINS: "http://localhost:8080,http://admin.localhost:8080,http://www.admin.localhost:8080,http://localhost:5173,http://frontend:8080"
-      ALLOWED_HOSTS: "localhost,127.0.0.1,backend"
+      REDIS_URL: "redis://:${REDIS_PASSWORD:-}@hadha-redis:6379/0"
+      ALLOWED_ORIGINS: "http://localhost:8080,http://localhost:8081,http://localhost:5173,http://www.localhost:8080,http://www.localhost:8081,http://www.localhost:5173"
+      ALLOWED_HOSTS: "localhost,127.0.0.1,hadha-backend"
     volumes:
-      # Hot-reload: mount source so Uvicorn's --reload picks up file changes.
       - ./Backend:/app
     ports:
       - "8000:8000"
@@ -33,11 +44,6 @@ services:
         condition: service_healthy
     networks:
       - hadha-network
-    # Fix for OSError: [Errno 101] Network is unreachable.
-    # asyncpg resolves Supabase hostnames and may select an IPv6 (AAAA) address
-    # first. Docker's bridge network has no IPv6 routing on WSL2/Windows, so the
-    # kernel returns ENETUNREACH before the TCP handshake. Disabling IPv6 in this
-    # container's network namespace forces IPv4-only DNS and connection attempts.
     sysctls:
       net.ipv6.conf.all.disable_ipv6: "1"
     healthcheck:
@@ -47,33 +53,58 @@ services:
       retries: 3
       start_period: 20s
 
-  # ── React / TanStack Start frontend ─────────────────────────────────────────
-  frontend:
+  # ── Storefront — customer-facing (localhost:8080) ────────────────────────────
+  storefront:
     build:
-      context: ./Frontend
-      dockerfile: Dockerfile
+      context: ./Frontend_whole
+      dockerfile: storefront/Dockerfile
       target: development
-    container_name: hadha-frontend
+    container_name: hadha-storefront
     restart: unless-stopped
-    env_file: ./Frontend/.env
+    env_file: ./Frontend_whole/storefront/.env
     environment:
-      # VITE_API_BASE_URL must resolve from the user's *browser*, which reaches
-      # the backend through the host-mapped port 8000 — not through the Docker
-      # service name (which is unreachable from outside the container network).
-      VITE_API_BASE_URL: http://localhost:8000/api/v1
+      # Browser-side: resolved by the user's browser on the host
+      VITE_API_BASE_URL: "http://localhost:8000/api/v1"
+      # SSR-side: resolved inside the Docker network (overrides .env default)
+      SERVER_API_BASE_URL: "http://hadha-backend:8000/api/v1"
     volumes:
-      # Bind-mount source for Vite HMR hot reload.
-      - ./Frontend:/app
-      # Named volume keeps Docker-installed node_modules isolated from the host
-      # filesystem, avoiding Windows↔Linux native binary mismatches.
-      - frontend_node_modules:/app/node_modules
+      - ./Frontend_whole:/app
+      # Named volume keeps Linux-built node_modules separate from Windows host copy
+      - storefront_node_modules:/app/node_modules
     ports:
-      # @lovable.dev/vite-tanstack-config runs the Nitro dev server on port 8080.
-      # Confirmed by "Local: http://localhost:8080/" in Vite startup logs and by
-      # ALLOWED_ORIGINS=http://localhost:8080 already set in Backend/.env.
       - "8080:8080"
     depends_on:
-      - backend
+      backend:
+        condition: service_healthy
+    networks:
+      - hadha-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+
+  # ── Admin portal (localhost:8081) ─────────────────────────────────────────────
+  admin:
+    build:
+      context: ./Frontend_whole
+      dockerfile: admin/Dockerfile
+      target: development
+    container_name: hadha-admin
+    restart: unless-stopped
+    env_file: ./Frontend_whole/admin/.env
+    environment:
+      VITE_API_BASE_URL: "http://localhost:8000/api/v1"
+      SERVER_API_BASE_URL: "http://hadha-backend:8000/api/v1"
+    volumes:
+      - ./Frontend_whole:/app
+      - admin_node_modules:/app/node_modules
+    ports:
+      - "8081:8080"
+    depends_on:
+      backend:
+        condition: service_healthy
     networks:
       - hadha-network
     healthcheck:
@@ -88,9 +119,6 @@ services:
     image: redis:7-alpine
     container_name: hadha-redis
     restart: unless-stopped
-    # Optional auth: set REDIS_PASSWORD in .env or environment to enable.
-    # $$ → $ after Docker Compose variable substitution, so ${REDIS_PASSWORD:+...}
-    # is evaluated at container startup by the shell — not at compose parse time.
     environment:
       REDIS_PASSWORD: ${REDIS_PASSWORD:-}
     command:
@@ -115,13 +143,12 @@ services:
       retries: 5
       start_period: 5s
 
-  # ── Redis Commander — browser-based Redis GUI ────────────────────────────────
+  # ── Redis Commander (localhost:8082) ──────────────────────────────────────────
   redis-commander:
     image: rediscommander/redis-commander:latest
     container_name: hadha-redis-commander
     restart: unless-stopped
     environment:
-      # Format: label:host:port[:db[:password]] — empty password = no auth.
       REDIS_HOSTS: "hadha:hadha-redis:6379:0:${REDIS_PASSWORD:-}"
     ports:
       - "8082:8081"
@@ -131,30 +158,45 @@ services:
     networks:
       - hadha-network
     healthcheck:
-      test: ["CMD", "wget", "--spider", "-q", "http://localhost:8081"]
+      test:
+        - "CMD"
+        - "node"
+        - "-e"
+        - "require('http').get('http://localhost:8081/',function(r){process.exit(r.statusCode<500?0:1)}).on('error',function(){process.exit(1)})"
       interval: 30s
       timeout: 10s
       retries: 3
-      start_period: 10s
+      start_period: 15s
 
-  # ── Dozzle — real-time container log viewer ──────────────────────────────────
+  # ── Dozzle — container log viewer (localhost:8083) ────────────────────────────
   dozzle:
-    image: amir20/dozzle:latest
-    container_name: dozzle
+    image: amir20/dozzle:v8
+    container_name: hadha-dozzle
     restart: unless-stopped
+    environment:
+      DOZZLE_NO_ANALYTICS: "true"
     ports:
-      - "8081:8080"
+      - "8083:8080"
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
     networks:
       - hadha-network
+    healthcheck:
+      test: ["CMD", "/dozzle", "healthcheck"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Volumes
 # ─────────────────────────────────────────────────────────────────────────────
 volumes:
   redis_data:
-  frontend_node_modules:
+  # One volume per frontend service — shadows /app/node_modules so Linux-built
+  # binaries are never merged with the Windows host copy on the bind-mount.
+  storefront_node_modules:
+  admin_node_modules:
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Networks

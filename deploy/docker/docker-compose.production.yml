@@ -4,15 +4,18 @@ name: hadha-production
 # All image tags are injected at deploy time via environment variables passed
 # through `docker compose --env-file /opt/hadha/.env.production`:
 #
-#   BACKEND_IMAGE  — ghcr.io/hadhacoofficial-prog/hadha-backend:<tag>
-#   FRONTEND_IMAGE — ghcr.io/hadhacoofficial-prog/hadha-frontend:<tag>
-#   REDIS_PASSWORD — Redis authentication password
+#   BACKEND_IMAGE    — ghcr.io/hadhacoofficial-prog/hadha-backend:<tag>
+#   STOREFRONT_IMAGE — ghcr.io/hadhacoofficial-prog/hadha-storefront:<tag>
+#   ADMIN_IMAGE      — ghcr.io/hadhacoofficial-prog/hadha-admin:<tag>
+#   REDIS_PASSWORD   — Redis authentication password
 #
 # The network (hadha-internal) is declared external so deploy.sh owns its
 # lifecycle. This prevents `docker compose down` from ever deleting it, which
 # would disconnect the migration container from Redis between deployments.
 #
-# Traffic flow: internet → nginx:80/443 → backend:8000 / frontend:3000
+# Traffic flow: internet → nginx:80/443 → backend:8000
+#               hadha.co  → storefront:3000
+#               admin.hadha.co → admin:3000
 # Monitoring:   nginx → redis.hadha.co → redis-commander:8081
 #               nginx → dozzle.hadha.co → dozzle:8080
 # =============================================================================
@@ -67,18 +70,15 @@ services:
     security_opt:
       - no-new-privileges:true
 
-  # ── React / TanStack Start frontend ─────────────────────────────────────────
-  frontend:
-    image: ${FRONTEND_IMAGE:?FRONTEND_IMAGE is required — pass via --env-file}
-    container_name: hadha-frontend
+  # ── Storefront — customer-facing (hadha.co) ─────────────────────────────────
+  storefront:
+    image: ${STOREFRONT_IMAGE:?STOREFRONT_IMAGE is required — pass via --env-file}
+    container_name: hadha-storefront
     restart: unless-stopped
-    env_file: /opt/hadha/.env.frontend.production
+    env_file: /opt/hadha/.env.storefront.production
     environment:
       NODE_ENV: production
       PORT: "3000"
-      # SSR loaders call this URL directly over the Docker-internal network.
-      # Must NOT be exposed to the browser — browser uses VITE_API_BASE_URL
-      # (baked at build time via Dockerfile ARG) which goes through nginx.
       SERVER_API_BASE_URL: "http://hadha-backend:8000/api/v1"
     expose:
       - "3000"
@@ -101,8 +101,49 @@ services:
     deploy:
       resources:
         limits:
-          memory: 512M
+          memory: 384M
           cpus: "0.75"
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "50m"
+        max-file: "5"
+    security_opt:
+      - no-new-privileges:true
+
+  # ── Admin portal (admin.hadha.co) ────────────────────────────────────────────
+  admin:
+    image: ${ADMIN_IMAGE:?ADMIN_IMAGE is required — pass via --env-file}
+    container_name: hadha-admin
+    restart: unless-stopped
+    env_file: /opt/hadha/.env.admin.production
+    environment:
+      NODE_ENV: production
+      PORT: "3000"
+      SERVER_API_BASE_URL: "http://hadha-backend:8000/api/v1"
+    expose:
+      - "3000"
+    depends_on:
+      backend:
+        condition: service_healthy
+    networks:
+      - hadha-internal
+    healthcheck:
+      test:
+        [
+          "CMD", "curl", "-sf",
+          "--max-time", "5",
+          "http://localhost:3000"
+        ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+          cpus: "0.5"
     logging:
       driver: "json-file"
       options:
@@ -250,7 +291,8 @@ services:
       - nginx_logs:/var/log/nginx
     depends_on:
       - backend
-      - frontend
+      - storefront
+      - admin
     networks:
       - hadha-internal
     healthcheck:

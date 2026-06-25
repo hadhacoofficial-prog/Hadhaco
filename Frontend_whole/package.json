@@ -1,0 +1,29 @@
+{
+  "name": "hadha-monorepo",
+  "private": true,
+  "workspaces": [
+    "storefront",
+    "admin",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev:storefront": "npm -w storefront run dev",
+    "dev:admin": "npm -w admin run dev",
+    "build:storefront": "npm -w storefront run build",
+    "build:admin": "npm -w admin run build",
+    "build:storefront:docker": "npm -w storefront run build:docker",
+    "build:admin:docker": "npm -w admin run build:docker",
+    "typecheck": "npm -w storefront run typecheck && npm -w admin run typecheck",
+    "lint": "npm -w storefront run lint && npm -w admin run lint",
+    "test": "npm -w storefront run test && npm -w admin run test"
+  },
+  "dependencies": {
+    "sonner": "^2.0.7",
+    "@radix-ui/react-hover-card": "^1.1.15",
+    "@radix-ui/react-menubar": "^1.1.16"
+  },
+  "devDependencies": {
+    "nitro": "3.0.260429-beta",
+    "vite-tsconfig-paths": "^6.0.2"
+  }
+}

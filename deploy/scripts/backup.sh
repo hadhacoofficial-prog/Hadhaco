@@ -22,7 +22,8 @@ BACKUP_RETENTION="${BACKUP_RETENTION:-30}"
 
 APP_DIR="/opt/hadha"
 BACKEND_CONTAINER="hadha-backend"
-FRONTEND_CONTAINER="hadha-frontend"
+STOREFRONT_CONTAINER="hadha-storefront"
+ADMIN_CONTAINER="hadha-admin"
 REDIS_VOLUME_NAME="hadha_redis_data"
 
 BACKUP_DIR="${APP_DIR}/backups"
@@ -46,22 +47,26 @@ log "Database    : Supabase (managed) — no local pg_dump"
 # Step 1: Capture current running image tags
 # =============================================================================
 log_step "Step 1: Image metadata"
-CURRENT_BACKEND=$(docker inspect "${BACKEND_CONTAINER}"   \
+CURRENT_BACKEND=$(docker inspect "${BACKEND_CONTAINER}"      \
   --format='{{.Config.Image}}' 2>/dev/null || echo "")
-CURRENT_FRONTEND=$(docker inspect "${FRONTEND_CONTAINER}" \
+CURRENT_STOREFRONT=$(docker inspect "${STOREFRONT_CONTAINER}" \
+  --format='{{.Config.Image}}' 2>/dev/null || echo "")
+CURRENT_ADMIN=$(docker inspect "${ADMIN_CONTAINER}"           \
   --format='{{.Config.Image}}' 2>/dev/null || echo "")
 
 cat > "${BACKUP_DIR}/metadata_${TIMESTAMP}.json" <<EOF
 {
-  "timestamp":      "${TIMESTAMP}",
-  "backend_image":  "${CURRENT_BACKEND}",
-  "frontend_image": "${CURRENT_FRONTEND}",
-  "git_sha":        "${GIT_COMMIT_SHA:-unknown}",
-  "git_author":     "${GIT_COMMIT_AUTHOR:-unknown}"
+  "timestamp":        "${TIMESTAMP}",
+  "backend_image":    "${CURRENT_BACKEND}",
+  "storefront_image": "${CURRENT_STOREFRONT}",
+  "admin_image":      "${CURRENT_ADMIN}",
+  "git_sha":          "${GIT_COMMIT_SHA:-unknown}",
+  "git_author":       "${GIT_COMMIT_AUTHOR:-unknown}"
 }
 EOF
-log "  Backend  : ${CURRENT_BACKEND:-not running}"
-log "  Frontend : ${CURRENT_FRONTEND:-not running}"
+log "  Backend    : ${CURRENT_BACKEND:-not running}"
+log "  Storefront : ${CURRENT_STOREFRONT:-not running}"
+log "  Admin      : ${CURRENT_ADMIN:-not running}"
 log_done
 
 # =============================================================================

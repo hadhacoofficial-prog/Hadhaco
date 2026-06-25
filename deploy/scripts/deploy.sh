@@ -35,14 +35,16 @@ APP_DIR="/opt/hadha"
 COMPOSE_FILE="${APP_DIR}/docker-compose.production.yml"
 ENV_FILE="${APP_DIR}/.env.production"
 BACKEND_CONTAINER="hadha-backend"
-FRONTEND_CONTAINER="hadha-frontend"
+STOREFRONT_CONTAINER="hadha-storefront"
+ADMIN_CONTAINER="hadha-admin"
 APP_URL="https://hadha.co"
 NETWORK_NAME="hadha-internal"
 MIGRATION_CONTAINER="hadha-migration"
 
 GHCR_ORG="hadhacoofficial-prog"
 BACKEND_IMAGE="ghcr.io/${GHCR_ORG}/hadha-backend:${IMAGE_TAG}"
-FRONTEND_IMAGE="ghcr.io/${GHCR_ORG}/hadha-frontend:${IMAGE_TAG}"
+STOREFRONT_IMAGE="ghcr.io/${GHCR_ORG}/hadha-storefront:${IMAGE_TAG}"
+ADMIN_IMAGE="ghcr.io/${GHCR_ORG}/hadha-admin:${IMAGE_TAG}"
 BACKUP_DIR="${APP_DIR}/backups"
 SCRIPTS_DIR="${APP_DIR}/scripts"
 LOG_FILE="${APP_DIR}/deploy.log"
@@ -281,10 +283,13 @@ rollback_and_exit() {
   else
     log "[INFO] Containers were modified (COMPOSE_UPDATED=true) — initiating automatic rollback..."
 
-    if [[ -n "${PREVIOUS_BACKEND_IMAGE:-}" ]] && [[ -n "${PREVIOUS_FRONTEND_IMAGE:-}" ]]; then
+    if [[ -n "${PREVIOUS_BACKEND_IMAGE:-}" ]] && \
+       [[ -n "${PREVIOUS_STOREFRONT_IMAGE:-}" ]] && \
+       [[ -n "${PREVIOUS_ADMIN_IMAGE:-}" ]]; then
       if "${SCRIPTS_DIR}/rollback.sh" \
           "${PREVIOUS_BACKEND_IMAGE}" \
-          "${PREVIOUS_FRONTEND_IMAGE}" 2>&1 | tee -a "${LOG_FILE}"; then
+          "${PREVIOUS_STOREFRONT_IMAGE}" \
+          "${PREVIOUS_ADMIN_IMAGE}" 2>&1 | tee -a "${LOG_FILE}"; then
         rollback_status="succeeded"
         log "[INFO] Rollback succeeded"
       else
@@ -336,7 +341,8 @@ command -v jq     >/dev/null 2>&1 || die "jq is not installed (install: apt-get 
 
 log "Image tag    : ${IMAGE_TAG}"
 log "Backend      : ${BACKEND_IMAGE}"
-log "Frontend     : ${FRONTEND_IMAGE}"
+log "Storefront   : ${STOREFRONT_IMAGE}"
+log "Admin        : ${ADMIN_IMAGE}"
 log "App dir      : ${APP_DIR}"
 log "Compose file : ${COMPOSE_FILE}"
 log "Env file     : ${ENV_FILE}"
@@ -346,7 +352,7 @@ log "Env file     : ${ENV_FILE}"
 # =============================================================================
 step_start "Validate compose configuration"
 
-export BACKEND_IMAGE FRONTEND_IMAGE REDIS_PASSWORD \
+export BACKEND_IMAGE STOREFRONT_IMAGE ADMIN_IMAGE REDIS_PASSWORD \
        REDIS_UI_USERNAME REDIS_UI_PASSWORD \
        DOZZLE_USERNAME DOZZLE_PASSWORD
 
@@ -361,7 +367,7 @@ COMPOSE_VALIDATE_OUTPUT=$(dc config 2>&1) || {
     "${ENVIRONMENT}" "${IMAGE_TAG}" \
     "${GIT_COMMIT_SHA:-unknown}" "${GIT_COMMIT_AUTHOR:-unknown}" \
     "${DEPLOY_DURATION}" \
-    "Compose config validation failed — check BACKEND_IMAGE, FRONTEND_IMAGE, REDIS_PASSWORD, and compose syntax" \
+    "Compose config validation failed — check BACKEND_IMAGE, STOREFRONT_IMAGE, ADMIN_IMAGE, REDIS_PASSWORD, and compose syntax" \
     "not attempted" \
     "${COMPOSE_VALIDATE_OUTPUT}" \
     2>/dev/null || true
@@ -377,18 +383,22 @@ step_start "Record current state"
 
 PREVIOUS_BACKEND_IMAGE=$(docker inspect "${BACKEND_CONTAINER}" \
   --format='{{.Config.Image}}' 2>/dev/null || echo "")
-PREVIOUS_FRONTEND_IMAGE=$(docker inspect "${FRONTEND_CONTAINER}" \
+PREVIOUS_STOREFRONT_IMAGE=$(docker inspect "${STOREFRONT_CONTAINER}" \
+  --format='{{.Config.Image}}' 2>/dev/null || echo "")
+PREVIOUS_ADMIN_IMAGE=$(docker inspect "${ADMIN_CONTAINER}" \
   --format='{{.Config.Image}}' 2>/dev/null || echo "")
 
 if [[ -z "${PREVIOUS_BACKEND_IMAGE}" ]] && [[ -f "${PREVIOUS_IMAGES_FILE}" ]]; then
   PREVIOUS_BACKEND_IMAGE=$(jq -r '.backend_image // empty' "${PREVIOUS_IMAGES_FILE}" 2>/dev/null || echo "")
-  PREVIOUS_FRONTEND_IMAGE=$(jq -r '.frontend_image // empty' "${PREVIOUS_IMAGES_FILE}" 2>/dev/null || echo "")
+  PREVIOUS_STOREFRONT_IMAGE=$(jq -r '.storefront_image // empty' "${PREVIOUS_IMAGES_FILE}" 2>/dev/null || echo "")
+  PREVIOUS_ADMIN_IMAGE=$(jq -r '.admin_image // empty' "${PREVIOUS_IMAGES_FILE}" 2>/dev/null || echo "")
   [[ -n "${PREVIOUS_BACKEND_IMAGE}" ]] && log "Previous images loaded from disk (containers not running)"
 fi
 
-export PREVIOUS_BACKEND_IMAGE PREVIOUS_FRONTEND_IMAGE
-log "Previous backend  : ${PREVIOUS_BACKEND_IMAGE:-none (first deployment)}"
-log "Previous frontend : ${PREVIOUS_FRONTEND_IMAGE:-none (first deployment)}"
+export PREVIOUS_BACKEND_IMAGE PREVIOUS_STOREFRONT_IMAGE PREVIOUS_ADMIN_IMAGE
+log "Previous backend    : ${PREVIOUS_BACKEND_IMAGE:-none (first deployment)}"
+log "Previous storefront : ${PREVIOUS_STOREFRONT_IMAGE:-none (first deployment)}"
+log "Previous admin      : ${PREVIOUS_ADMIN_IMAGE:-none (first deployment)}"
 step_end
 
 # =============================================================================
@@ -411,38 +421,35 @@ fi
 step_end
 
 # =============================================================================
-# STEP 4: Verify BOTH app image manifests are available before pulling anything
+# STEP 4: Verify ALL app image manifests before pulling anything
 # =============================================================================
 step_start "Verify app image manifests (pre-pull, atomic)"
-log "Backend  : ${BACKEND_IMAGE}"
-log "Frontend : ${FRONTEND_IMAGE}"
-log "Verifying BOTH manifests before starting any pull..."
+log "Backend    : ${BACKEND_IMAGE}"
+log "Storefront : ${STOREFRONT_IMAGE}"
+log "Admin      : ${ADMIN_IMAGE}"
+log "Verifying ALL manifests before starting any pull..."
 
 BACKEND_MANIFEST_OK=false
-FRONTEND_MANIFEST_OK=false
+STOREFRONT_MANIFEST_OK=false
+ADMIN_MANIFEST_OK=false
 
-if check_image_manifest "${BACKEND_IMAGE}"; then
-  BACKEND_MANIFEST_OK=true
-else
-  log "[ERROR] Backend manifest not available: ${BACKEND_IMAGE}"
-fi
+check_image_manifest "${BACKEND_IMAGE}"    && BACKEND_MANIFEST_OK=true    || log "[ERROR] Backend manifest not available"
+check_image_manifest "${STOREFRONT_IMAGE}" && STOREFRONT_MANIFEST_OK=true || log "[ERROR] Storefront manifest not available"
+check_image_manifest "${ADMIN_IMAGE}"      && ADMIN_MANIFEST_OK=true      || log "[ERROR] Admin manifest not available"
 
-if check_image_manifest "${FRONTEND_IMAGE}"; then
-  FRONTEND_MANIFEST_OK=true
-else
-  log "[ERROR] Frontend manifest not available: ${FRONTEND_IMAGE}"
-fi
-
-if [[ "${BACKEND_MANIFEST_OK}" != "true" ]] || [[ "${FRONTEND_MANIFEST_OK}" != "true" ]]; then
-  log "[ERROR] One or both app image manifests are unavailable."
-  log "[ERROR] Backend  manifest : ${BACKEND_MANIFEST_OK}"
-  log "[ERROR] Frontend manifest : ${FRONTEND_MANIFEST_OK}"
+if [[ "${BACKEND_MANIFEST_OK}" != "true" ]] || \
+   [[ "${STOREFRONT_MANIFEST_OK}" != "true" ]] || \
+   [[ "${ADMIN_MANIFEST_OK}" != "true" ]]; then
+  log "[ERROR] One or more app image manifests are unavailable."
+  log "[ERROR] Backend    manifest : ${BACKEND_MANIFEST_OK}"
+  log "[ERROR] Storefront manifest : ${STOREFRONT_MANIFEST_OK}"
+  log "[ERROR] Admin      manifest : ${ADMIN_MANIFEST_OK}"
   log "[INFO]  This is typically a GHCR propagation delay. Re-run the workflow."
   log "[INFO]  No containers were modified — rollback is not required."
   rollback_and_exit "App image manifest(s) unavailable after retries — GHCR propagation failure"
 fi
 
-log "✓ Both app manifests confirmed — safe to begin pulling"
+log "✓ All app manifests confirmed — safe to begin pulling"
 step_end
 
 # =============================================================================
@@ -463,8 +470,12 @@ if ! pull_image_with_retry "${BACKEND_IMAGE}"; then
   rollback_and_exit "Failed to pull backend image after ${_MAX_RETRIES} attempts: ${BACKEND_IMAGE}"
 fi
 
-if ! pull_image_with_retry "${FRONTEND_IMAGE}"; then
-  rollback_and_exit "Failed to pull frontend image after ${_MAX_RETRIES} attempts: ${FRONTEND_IMAGE}"
+if ! pull_image_with_retry "${STOREFRONT_IMAGE}"; then
+  rollback_and_exit "Failed to pull storefront image after ${_MAX_RETRIES} attempts: ${STOREFRONT_IMAGE}"
+fi
+
+if ! pull_image_with_retry "${ADMIN_IMAGE}"; then
+  rollback_and_exit "Failed to pull admin image after ${_MAX_RETRIES} attempts: ${ADMIN_IMAGE}"
 fi
 
 PULLED_IMAGES=true
@@ -477,7 +488,8 @@ step_start "Verify image digests"
 
 ALL_REQUIRED_IMAGES=(
   "${BACKEND_IMAGE}"
-  "${FRONTEND_IMAGE}"
+  "${STOREFRONT_IMAGE}"
+  "${ADMIN_IMAGE}"
   "${INFRA_IMAGES[@]}"
 )
 DIGEST_FAILURES=()
@@ -521,17 +533,11 @@ step_end
 # =============================================================================
 # STEP 7.5: Generate Dozzle authentication file
 # =============================================================================
-# Dozzle v8 uses DOZZLE_AUTH_PROVIDER=simple and reads /data/users.yml for
-# credentials. The file must contain bcrypt-hashed passwords — we generate it
-# here from GitHub Secrets so no plaintext password ever touches the repo or
-# the server's .env files.
-# =============================================================================
 step_start "Generate Dozzle authentication file"
 
 DOZZLE_DIR="${APP_DIR}/dozzle"
 mkdir -p "${DOZZLE_DIR}"
 
-# htpasswd -nbB generates a bcrypt hash; apache2-utils is installed by bootstrap.sh
 if ! command -v htpasswd >/dev/null 2>&1; then
   die "htpasswd not found — run: apt-get install -y apache2-utils"
 fi
@@ -611,12 +617,13 @@ step_end
 step_start "Record deployed images"
 cat > "${PREVIOUS_IMAGES_FILE}" <<EOF
 {
-  "backend_image":  "${BACKEND_IMAGE}",
-  "frontend_image": "${FRONTEND_IMAGE}",
-  "deployed_at":    "$(date -u +'%Y-%m-%dT%H:%M:%SZ')",
-  "image_tag":      "${IMAGE_TAG}",
-  "git_sha":        "${GIT_COMMIT_SHA:-unknown}",
-  "git_author":     "${GIT_COMMIT_AUTHOR:-unknown}"
+  "backend_image":    "${BACKEND_IMAGE}",
+  "storefront_image": "${STOREFRONT_IMAGE}",
+  "admin_image":      "${ADMIN_IMAGE}",
+  "deployed_at":      "$(date -u +'%Y-%m-%dT%H:%M:%SZ')",
+  "image_tag":        "${IMAGE_TAG}",
+  "git_sha":          "${GIT_COMMIT_SHA:-unknown}",
+  "git_author":       "${GIT_COMMIT_AUTHOR:-unknown}"
 }
 EOF
 log "Deployed image state written to ${PREVIOUS_IMAGES_FILE}"
@@ -632,9 +639,11 @@ log "Pruning unused ${GHCR_PREFIX}* images (keeping current and previous)"
 
 KEEP_IMAGES=(
   "${BACKEND_IMAGE}"
-  "${FRONTEND_IMAGE}"
+  "${STOREFRONT_IMAGE}"
+  "${ADMIN_IMAGE}"
   "${PREVIOUS_BACKEND_IMAGE:-}"
-  "${PREVIOUS_FRONTEND_IMAGE:-}"
+  "${PREVIOUS_STOREFRONT_IMAGE:-}"
+  "${PREVIOUS_ADMIN_IMAGE:-}"
 )
 
 docker images --format "{{.Repository}}:{{.Tag}}\t{{.ID}}" \

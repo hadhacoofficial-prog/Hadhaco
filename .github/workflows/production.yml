@@ -25,7 +25,8 @@ env:
   REGISTRY: ghcr.io
   # Hardcoded org — never use github.repository_owner which can shift if the repo is forked
   BACKEND_IMAGE_NAME: hadhacoofficial-prog/hadha-backend
-  FRONTEND_IMAGE_NAME: hadhacoofficial-prog/hadha-frontend
+  STOREFRONT_IMAGE_NAME: hadhacoofficial-prog/hadha-storefront
+  ADMIN_IMAGE_NAME: hadhacoofficial-prog/hadha-admin
 
 jobs:
   # ── Run all CI checks first ───────────────────────────────────────────────
@@ -76,7 +77,8 @@ jobs:
 
     outputs:
       backend_image: ${{ steps.tags.outputs.backend_image }}
-      frontend_image: ${{ steps.tags.outputs.frontend_image }}
+      storefront_image: ${{ steps.tags.outputs.storefront_image }}
+      admin_image: ${{ steps.tags.outputs.admin_image }}
       image_tag: ${{ needs.version.outputs.image_tag }}
 
     steps:
@@ -100,22 +102,28 @@ jobs:
           TAG="${{ needs.version.outputs.image_tag }}"
           SEMVER="${{ needs.version.outputs.semver }}"
           BACKEND_BASE="${{ env.REGISTRY }}/${{ env.BACKEND_IMAGE_NAME }}"
-          FRONTEND_BASE="${{ env.REGISTRY }}/${{ env.FRONTEND_IMAGE_NAME }}"
+          STOREFRONT_BASE="${{ env.REGISTRY }}/${{ env.STOREFRONT_IMAGE_NAME }}"
+          ADMIN_BASE="${{ env.REGISTRY }}/${{ env.ADMIN_IMAGE_NAME }}"
 
           BACKEND_TAGS="${BACKEND_BASE}:${TAG},${BACKEND_BASE}:latest"
-          FRONTEND_TAGS="${FRONTEND_BASE}:${TAG},${FRONTEND_BASE}:latest"
+          STOREFRONT_TAGS="${STOREFRONT_BASE}:${TAG},${STOREFRONT_BASE}:latest"
+          ADMIN_TAGS="${ADMIN_BASE}:${TAG},${ADMIN_BASE}:latest"
 
           if [[ -n "${SEMVER}" ]]; then
             BACKEND_TAGS="${BACKEND_TAGS},${BACKEND_BASE}:${SEMVER}"
-            FRONTEND_TAGS="${FRONTEND_TAGS},${FRONTEND_BASE}:${SEMVER}"
+            STOREFRONT_TAGS="${STOREFRONT_TAGS},${STOREFRONT_BASE}:${SEMVER}"
+            ADMIN_TAGS="${ADMIN_TAGS},${ADMIN_BASE}:${SEMVER}"
           fi
 
-          echo "backend_tags=${BACKEND_TAGS}"              >> "$GITHUB_OUTPUT"
-          echo "frontend_tags=${FRONTEND_TAGS}"            >> "$GITHUB_OUTPUT"
-          echo "backend_image=${BACKEND_BASE}:${TAG}"      >> "$GITHUB_OUTPUT"
-          echo "frontend_image=${FRONTEND_BASE}:${TAG}"    >> "$GITHUB_OUTPUT"
-          echo "Primary backend image:  ${BACKEND_BASE}:${TAG}"
-          echo "Primary frontend image: ${FRONTEND_BASE}:${TAG}"
+          echo "backend_tags=${BACKEND_TAGS}"                >> "$GITHUB_OUTPUT"
+          echo "storefront_tags=${STOREFRONT_TAGS}"          >> "$GITHUB_OUTPUT"
+          echo "admin_tags=${ADMIN_TAGS}"                    >> "$GITHUB_OUTPUT"
+          echo "backend_image=${BACKEND_BASE}:${TAG}"        >> "$GITHUB_OUTPUT"
+          echo "storefront_image=${STOREFRONT_BASE}:${TAG}"  >> "$GITHUB_OUTPUT"
+          echo "admin_image=${ADMIN_BASE}:${TAG}"            >> "$GITHUB_OUTPUT"
+          echo "Primary backend image:    ${BACKEND_BASE}:${TAG}"
+          echo "Primary storefront image: ${STOREFRONT_BASE}:${TAG}"
+          echo "Primary admin image:      ${ADMIN_BASE}:${TAG}"
 
       - name: Build and push backend
         uses: docker/build-push-action@v6
@@ -133,25 +141,49 @@ jobs:
             org.opencontainers.image.created=${{ github.event.head_commit.timestamp }}
             org.opencontainers.image.version=${{ needs.version.outputs.semver || needs.version.outputs.image_tag }}
 
-      - name: Build and push frontend
+      - name: Build and push storefront
         uses: docker/build-push-action@v6
         with:
-          context: ./Frontend
-          file: ./Frontend/Dockerfile
+          context: ./Frontend_whole
+          file: ./Frontend_whole/storefront/Dockerfile
           target: production
           push: true
-          cache-from: type=gha,scope=frontend-prod
-          cache-to: type=gha,mode=max,scope=frontend-prod
+          cache-from: type=gha,scope=storefront-prod
+          cache-to: type=gha,mode=max,scope=storefront-prod
           build-args: |
             NITRO_PRESET=node
             NODE_ENV=production
             VITE_API_BASE_URL=https://api.hadha.co/api/v1
             VITE_SUPABASE_URL=${{ secrets.SUPABASE_URL }}
             VITE_SUPABASE_PUBLISHABLE_KEY=${{ secrets.SUPABASE_ANON_KEY }}
-          tags: ${{ steps.tags.outputs.frontend_tags }}
+          tags: ${{ steps.tags.outputs.storefront_tags }}
           labels: |
             org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
             org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.created=${{ github.event.head_commit.timestamp }}
+            org.opencontainers.image.version=${{ needs.version.outputs.semver || needs.version.outputs.image_tag }}
+
+      - name: Build and push admin
+        uses: docker/build-push-action@v6
+        with:
+          context: ./Frontend_whole
+          file: ./Frontend_whole/admin/Dockerfile
+          target: production
+          push: true
+          cache-from: type=gha,scope=admin-prod
+          cache-to: type=gha,mode=max,scope=admin-prod
+          build-args: |
+            NITRO_PRESET=node
+            NODE_ENV=production
+            VITE_API_BASE_URL=https://api.hadha.co/api/v1
+            VITE_SUPABASE_URL=${{ secrets.SUPABASE_URL }}
+            VITE_SUPABASE_PUBLISHABLE_KEY=${{ secrets.SUPABASE_ANON_KEY }}
+          tags: ${{ steps.tags.outputs.admin_tags }}
+          labels: |
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.created=${{ github.event.head_commit.timestamp }}
+            org.opencontainers.image.version=${{ needs.version.outputs.semver || needs.version.outputs.image_tag }}
 
   # ── Verify GHCR image propagation ────────────────────────────────────────
   # WHY THIS JOB EXISTS:
@@ -163,7 +195,7 @@ jobs:
   #
   #   This job logs in to GHCR fresh (simulating the VPS registry view) and
   #   calls docker buildx imagetools inspect with exponential backoff until
-  #   BOTH manifests are confirmed readable. Deployment is blocked until then.
+  #   ALL manifests are confirmed readable. Deployment is blocked until then.
   verify-images:
     name: Verify GHCR Image Propagation
     runs-on: ubuntu-24.04
@@ -180,10 +212,11 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Verify both image manifests are retrievable
+      - name: Verify all image manifests are retrievable
         env:
           BACKEND_IMAGE: ${{ needs.build-push.outputs.backend_image }}
-          FRONTEND_IMAGE: ${{ needs.build-push.outputs.frontend_image }}
+          STOREFRONT_IMAGE: ${{ needs.build-push.outputs.storefront_image }}
+          ADMIN_IMAGE: ${{ needs.build-push.outputs.admin_image }}
         run: |
           MAX_RETRIES=10
           # Backoff delays in seconds: 5 10 20 30 60 60 60 60 60 (9 delays for 10 attempts)
@@ -229,25 +262,27 @@ jobs:
             return 1
           }
 
-          # Verify BOTH manifests atomically.
-          # If backend is available but frontend is not we still refuse to proceed —
-          # a partial deployment would deploy old frontend against new backend.
+          # Verify ALL manifests before allowing deployment.
+          # Partial deployment (e.g. new backend + old storefront) is worse than no-op.
           BACKEND_OK=true
-          FRONTEND_OK=true
+          STOREFRONT_OK=true
+          ADMIN_OK=true
 
-          verify_manifest "${BACKEND_IMAGE}"  "backend"  || BACKEND_OK=false
-          verify_manifest "${FRONTEND_IMAGE}" "frontend" || FRONTEND_OK=false
+          verify_manifest "${BACKEND_IMAGE}"    "backend"    || BACKEND_OK=false
+          verify_manifest "${STOREFRONT_IMAGE}" "storefront" || STOREFRONT_OK=false
+          verify_manifest "${ADMIN_IMAGE}"      "admin"      || ADMIN_OK=false
 
           echo ""
-          echo "  Backend  manifest : ${BACKEND_OK}"
-          echo "  Frontend manifest : ${FRONTEND_OK}"
+          echo "  Backend    manifest : ${BACKEND_OK}"
+          echo "  Storefront manifest : ${STOREFRONT_OK}"
+          echo "  Admin      manifest : ${ADMIN_OK}"
 
-          if [[ "${BACKEND_OK}" != "true" ]] || [[ "${FRONTEND_OK}" != "true" ]]; then
-            echo "✗ One or both manifests unavailable — deployment blocked."
+          if [[ "${BACKEND_OK}" != "true" ]] || [[ "${STOREFRONT_OK}" != "true" ]] || [[ "${ADMIN_OK}" != "true" ]]; then
+            echo "✗ One or more manifests unavailable — deployment blocked."
             exit 1
           fi
 
-          echo "✓ Both manifests confirmed. Deployment may now begin."
+          echo "✓ All manifests confirmed. Deployment may now begin."
 
   # ── Deploy to production VPS ──────────────────────────────────────────────
   deploy-production:
@@ -280,7 +315,8 @@ jobs:
         uses: appleboy/ssh-action@v1.2.0
         env:
           BACKEND_IMAGE: ${{ needs.build-push.outputs.backend_image }}
-          FRONTEND_IMAGE: ${{ needs.build-push.outputs.frontend_image }}
+          STOREFRONT_IMAGE: ${{ needs.build-push.outputs.storefront_image }}
+          ADMIN_IMAGE: ${{ needs.build-push.outputs.admin_image }}
           IMAGE_TAG: ${{ needs.version.outputs.image_tag }}
           GHCR_USERNAME: hadhacoofficial-prog
           # GHCR_TOKEN must be a GitHub PAT with read:packages scope.
@@ -301,7 +337,7 @@ jobs:
           port: ${{ secrets.SSH_PORT || 22 }}
           username: ${{ secrets.SSH_USER }}
           key: ${{ secrets.SSH_PRIVATE_KEY }}
-          envs: BACKEND_IMAGE,FRONTEND_IMAGE,IMAGE_TAG,GHCR_USERNAME,GHCR_TOKEN,GIT_COMMIT_SHA,GIT_COMMIT_AUTHOR,REDIS_PASSWORD,REDIS_UI_USERNAME,REDIS_UI_PASSWORD,DOZZLE_USERNAME,DOZZLE_PASSWORD,RESEND_API_KEY,RESEND_FROM_EMAIL,RESEND_TO_EMAIL
+          envs: BACKEND_IMAGE,STOREFRONT_IMAGE,ADMIN_IMAGE,IMAGE_TAG,GHCR_USERNAME,GHCR_TOKEN,GIT_COMMIT_SHA,GIT_COMMIT_AUTHOR,REDIS_PASSWORD,REDIS_UI_USERNAME,REDIS_UI_PASSWORD,DOZZLE_USERNAME,DOZZLE_PASSWORD,RESEND_API_KEY,RESEND_FROM_EMAIL,RESEND_TO_EMAIL
           timeout: 600s
           command_timeout: 10m
           script: |
@@ -320,9 +356,10 @@ jobs:
             rm -rf /tmp/hadha-deploy
 
             # Execute deployment
-            export BACKEND_IMAGE FRONTEND_IMAGE IMAGE_TAG
+            export BACKEND_IMAGE STOREFRONT_IMAGE ADMIN_IMAGE IMAGE_TAG
             export GHCR_USERNAME GHCR_TOKEN GIT_COMMIT_SHA GIT_COMMIT_AUTHOR
             export REDIS_PASSWORD RESEND_API_KEY RESEND_FROM_EMAIL RESEND_TO_EMAIL
+            export REDIS_UI_USERNAME REDIS_UI_PASSWORD DOZZLE_USERNAME DOZZLE_PASSWORD
 
             /opt/hadha/scripts/deploy.sh "${IMAGE_TAG}"
 

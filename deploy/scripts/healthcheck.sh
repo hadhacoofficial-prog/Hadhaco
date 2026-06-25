@@ -16,7 +16,8 @@ APP_URL="https://hadha.co"
 API_URL="https://api.hadha.co"
 BACKEND_HOST="api.hadha.co"
 BACKEND_CONTAINER="hadha-backend"
-FRONTEND_CONTAINER="hadha-frontend"
+STOREFRONT_CONTAINER="hadha-storefront"
+ADMIN_CONTAINER="hadha-admin"
 REDIS_CONTAINER="hadha-redis"
 NGINX_CONTAINER="hadha-nginx"
 RC_CONTAINER="hadha-redis-commander"
@@ -87,8 +88,13 @@ except Exception as e:
 " 2>/dev/null
 }
 
-check_frontend() {
-  docker exec "${FRONTEND_CONTAINER}" \
+check_storefront() {
+  docker exec "${STOREFRONT_CONTAINER}" \
+    curl -sf --max-time 5 "http://localhost:3000" -o /dev/null 2>/dev/null
+}
+
+check_admin() {
+  docker exec "${ADMIN_CONTAINER}" \
     curl -sf --max-time 5 "http://localhost:3000" -o /dev/null 2>/dev/null
 }
 
@@ -138,7 +144,8 @@ log ""
 wait_for "Redis"                              "check_redis"             || true
 wait_for "Backend liveness  (/health/live)"   "check_backend_live"      || true
 wait_for "Backend readiness (/health/ready)"  "check_backend_ready"     || true
-wait_for "Frontend"                           "check_frontend"          || true
+wait_for "Storefront"                         "check_storefront"        || true
+wait_for "Admin"                              "check_admin"             || true
 wait_for "Nginx"                              "check_nginx"             || true
 
 log "  Checking: Redis Commander (non-blocking)"

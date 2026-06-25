@@ -1,0 +1,3 @@
+﻿@import "@hadha/shared-ui/globals.css";
+@source "../src";
+@source "../../packages/shared-ui/src";

@@ -1,1 +1,52 @@
+# Internal AI assistant context
 claude.md
+
+# Frontend build artifacts and dependencies (applies to Frontend/ and Frontend_whole/)
+Frontend/node_modules/
+Frontend/dist/
+Frontend/dist-ssr/
+Frontend/.output/
+Frontend/.vinxi/
+Frontend/.tanstack/
+Frontend/.nitro/
+Frontend/.vercel/
+Frontend/coverage/
+Frontend/.env
+Frontend/.env.local
+Frontend/.env.*.local
+
+Frontend_whole/node_modules/
+Frontend_whole/storefront/node_modules/
+Frontend_whole/admin/node_modules/
+Frontend_whole/storefront/dist/
+Frontend_whole/storefront/dist-ssr/
+Frontend_whole/storefront/.output/
+Frontend_whole/storefront/.vinxi/
+Frontend_whole/storefront/.tanstack/
+Frontend_whole/storefront/.nitro/
+Frontend_whole/storefront/.vercel/
+Frontend_whole/admin/dist/
+Frontend_whole/admin/dist-ssr/
+Frontend_whole/admin/.output/
+Frontend_whole/admin/.vinxi/
+Frontend_whole/admin/.tanstack/
+Frontend_whole/admin/.nitro/
+Frontend_whole/admin/.vercel/
+Frontend_whole/.vercel/
+
+# Python / Backend
+Backend/__pycache__/
+Backend/*.py[cod]
+Backend/.mypy_cache/
+Backend/.pytest_cache/
+Backend/.hypothesis/
+Backend/.ruff_cache/
+Backend/.env
+Backend/.env.local
+
+# Ruff cache (repo-level)
+.ruff_cache/
+
+# OS
+.DS_Store
+Thumbs.db
