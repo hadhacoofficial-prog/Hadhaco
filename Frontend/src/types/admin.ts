@@ -269,6 +269,7 @@ export interface OrderListItem {
   order_number: string;
   status: string;
   payment_status: string;
+  fulfillment_status: string;
   total: number;
   item_count: number;
   created_at: string;
@@ -280,6 +281,70 @@ export interface OrderListResponse {
   page: number;
   page_size: number;
   total_pages: number;
+}
+
+export interface OrderItem {
+  id: string;
+  product_id: string | null;
+  product_name: string;
+  product_sku: string;
+  variant_id: string | null;
+  variant_name: string | null;
+  quantity: number;
+  unit_price: number;
+  tax_rate: number;
+  tax_amount: number;
+  line_total: number;
+}
+
+export interface OrderResponse {
+  id: string;
+  order_number: string;
+  user_id: string;
+  status: string;
+  payment_status: string;
+  fulfillment_status: string;
+  shipping_full_name: string;
+  shipping_phone: string | null;
+  shipping_line1: string;
+  shipping_line2: string | null;
+  shipping_city: string;
+  shipping_state: string;
+  shipping_postal: string;
+  shipping_country: string;
+  billing_full_name: string | null;
+  billing_phone: string | null;
+  billing_line1: string | null;
+  billing_line2: string | null;
+  billing_city: string | null;
+  billing_state: string | null;
+  billing_postal: string | null;
+  billing_country: string | null;
+  subtotal: number;
+  tax_amount: number;
+  shipping_charge: number;
+  discount: number;
+  total: number;
+  coupon_code: string | null;
+  payment_method: string | null;
+  razorpay_order_id: string | null;
+  razorpay_payment_id: string | null;
+  shipping_provider: string | null;
+  tracking_number: string | null;
+  estimated_delivery: string | null;
+  dispatched_at: string | null;
+  packed_at: string | null;
+  shipping_label_generated_at: string | null;
+  shipment_notes: string | null;
+  fulfilled_by: string | null;
+  last_fulfillment_action: string | null;
+  notes: string | null;
+  cancellation_reason: string | null;
+  cancelled_at: string | null;
+  delivered_at: string | null;
+  items: OrderItem[];
+  created_at: string;
+  updated_at: string;
 }
 
 // ── Coupons (admin) ──────────────────────────────────────────────────────────

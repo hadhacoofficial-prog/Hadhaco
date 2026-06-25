@@ -10,12 +10,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import settings
 from app.core.events import (
     OrderCreatedEvent,
-    OrderDeliveredEvent,
-    OrderShippedEvent,
-    PaymentCapturedEvent,
-    RefundCreatedEvent,
-    RefundProcessedEvent,
-    ReviewRequestEvent,
     UserRegisteredEvent,
     event_bus,
 )
@@ -234,107 +228,8 @@ class NotificationService:
                         context=ctx,
                     )
 
-        async def _handle_payment_captured(event: PaymentCapturedEvent) -> None:
-            # Order confirmed: email only, no SMS per spec
-            from app.core.database import AsyncWorkerSessionLocal
-
-            async with AsyncWorkerSessionLocal() as db:
-                ctx = {"order_number": event.order_number, "amount": event.amount}
-                await svc.send_email(
-                    db,
-                    user_id=event.user_id,
-                    event_type="payment_captured",
-                    recipient=event.customer_email,
-                    context=ctx,
-                )
-
-        async def _handle_order_shipped(event: OrderShippedEvent) -> None:
-            # Order dispatched: email always, SMS if enabled
-            from app.core.database import AsyncWorkerSessionLocal
-
-            async with AsyncWorkerSessionLocal() as db:
-                ctx = {
-                    "order_number": event.order_number,
-                    "tracking_url": event.tracking_url,
-                    "awb": event.awb,
-                }
-                await svc.send_email(
-                    db,
-                    user_id=event.user_id,
-                    event_type="order_shipped",
-                    recipient=event.customer_email,
-                    context=ctx,
-                )
-                if event.customer_phone:
-                    await svc.send_sms(
-                        db,
-                        user_id=event.user_id,
-                        event_type="order_shipped",
-                        recipient=event.customer_phone,
-                        context=ctx,
-                    )
-
-        async def _handle_order_delivered(event: OrderDeliveredEvent) -> None:
-            # Delivered: email only, no SMS per spec
-            from app.core.database import AsyncWorkerSessionLocal
-
-            async with AsyncWorkerSessionLocal() as db:
-                ctx = {"order_number": event.order_number}
-                await svc.send_email(
-                    db,
-                    user_id=event.user_id,
-                    event_type="order_delivered",
-                    recipient=event.customer_email,
-                    context=ctx,
-                )
-
-        async def _handle_refund_created(event: RefundCreatedEvent) -> None:
-            from app.core.database import AsyncWorkerSessionLocal
-
-            async with AsyncWorkerSessionLocal() as db:
-                ctx = {"order_number": event.order_number, "amount": event.amount}
-                await svc.send_email(
-                    db,
-                    user_id=event.user_id,
-                    event_type="refund_created",
-                    recipient=event.customer_email,
-                    context=ctx,
-                )
-
-        async def _handle_refund_processed(event: RefundProcessedEvent) -> None:
-            from app.core.database import AsyncWorkerSessionLocal
-
-            async with AsyncWorkerSessionLocal() as db:
-                ctx = {"order_number": event.order_number, "amount": event.amount}
-                await svc.send_email(
-                    db,
-                    user_id=event.user_id,
-                    event_type="refund_processed",
-                    recipient=event.customer_email,
-                    context=ctx,
-                )
-
-        async def _handle_review_request(event: ReviewRequestEvent) -> None:
-            from app.core.database import AsyncWorkerSessionLocal
-
-            async with AsyncWorkerSessionLocal() as db:
-                ctx = {"order_number": event.order_number}
-                await svc.send_email(
-                    db,
-                    user_id=event.user_id,
-                    event_type="review_request",
-                    recipient=event.customer_email,
-                    context=ctx,
-                )
-
         event_bus.on(UserRegisteredEvent, _handle_user_registered)
         event_bus.on(OrderCreatedEvent, _handle_order_created)
-        event_bus.on(PaymentCapturedEvent, _handle_payment_captured)
-        event_bus.on(OrderShippedEvent, _handle_order_shipped)
-        event_bus.on(OrderDeliveredEvent, _handle_order_delivered)
-        event_bus.on(RefundCreatedEvent, _handle_refund_created)
-        event_bus.on(RefundProcessedEvent, _handle_refund_processed)
-        event_bus.on(ReviewRequestEvent, _handle_review_request)
 
 
 def register_listeners() -> None:

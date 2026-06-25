@@ -37,6 +37,9 @@ class Order(Base):
     payment_status: Mapped[str] = mapped_column(
         String(20), nullable=False, server_default="pending"
     )
+    fulfillment_status: Mapped[str] = mapped_column(
+        String(30), nullable=False, server_default="pending"
+    )
 
     # Shipping address snapshot
     shipping_full_name: Mapped[str] = mapped_column(String(255), nullable=False)
@@ -98,6 +101,24 @@ class Order(Base):
         DateTime(timezone=True), nullable=True
     )
 
+    # Fulfillment workflow
+    packed_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    shipping_label_generated_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    dispatched_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    shipment_notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    fulfilled_by: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), nullable=True
+    )
+    last_fulfillment_action: Mapped[str | None] = mapped_column(
+        String(50), nullable=True
+    )
+
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )
@@ -117,6 +138,7 @@ class Order(Base):
         Index("idx_orders_order_number", "order_number"),
         Index("idx_orders_status", "status"),
         Index("idx_orders_payment_status", "payment_status"),
+        Index("idx_orders_fulfillment_status", "fulfillment_status"),
         Index("idx_orders_created_at", "created_at"),
     )
 
@@ -145,6 +167,7 @@ class OrderItem(Base):
     product_name: Mapped[str] = mapped_column(String(255), nullable=False)
     product_sku: Mapped[str] = mapped_column(String(100), nullable=False)
     variant_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    image_url: Mapped[str | None] = mapped_column(String(1024), nullable=True)
     unit_price: Mapped[float] = mapped_column(Numeric(12, 2), nullable=False)
     quantity: Mapped[int] = mapped_column(Integer, nullable=False)
     tax_rate: Mapped[float] = mapped_column(

@@ -11,6 +11,7 @@ class OrderItemResponse(BaseModel):
     product_name: str
     product_sku: str
     variant_name: str | None
+    image_url: str | None
     unit_price: float
     quantity: int
     tax_rate: float
@@ -26,6 +27,7 @@ class OrderResponse(BaseModel):
     user_id: uuid.UUID
     status: str
     payment_status: str
+    fulfillment_status: str
     shipping_full_name: str
     shipping_phone: str | None
     shipping_line1: str
@@ -35,10 +37,13 @@ class OrderResponse(BaseModel):
     shipping_postal: str
     shipping_country: str
     billing_full_name: str | None
+    billing_phone: str | None
     billing_line1: str | None
+    billing_line2: str | None
     billing_city: str | None
     billing_state: str | None
     billing_postal: str | None
+    billing_country: str | None
     subtotal: float
     tax_amount: float
     shipping_charge: float
@@ -47,12 +52,20 @@ class OrderResponse(BaseModel):
     coupon_code: str | None
     payment_method: str | None
     razorpay_order_id: str | None
+    razorpay_payment_id: str | None
+    shipping_provider: str | None
     tracking_number: str | None
     estimated_delivery: date | None
     notes: str | None
     cancellation_reason: str | None
     cancelled_at: datetime | None
     delivered_at: datetime | None
+    packed_at: datetime | None
+    shipping_label_generated_at: datetime | None
+    dispatched_at: datetime | None
+    shipment_notes: str | None
+    fulfilled_by: uuid.UUID | None
+    last_fulfillment_action: str | None
     created_at: datetime
     updated_at: datetime
     items: list[OrderItemResponse] = []
@@ -65,6 +78,7 @@ class OrderListItem(BaseModel):
     order_number: str
     status: str
     payment_status: str
+    fulfillment_status: str
     total: float
     item_count: int
     created_at: datetime

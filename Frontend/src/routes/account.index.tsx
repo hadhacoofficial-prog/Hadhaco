@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { createFileRoute, Link, redirect, useNavigate } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { z } from "zod";
@@ -16,21 +16,36 @@ import {
   CreditCard,
   ChevronDown,
   ChevronUp,
+  Shield,
+  Menu,
+  ArrowRight,
+  Eye,
+  EyeOff,
+  Camera,
+  Loader2,
 } from "lucide-react";
 import { toast } from "sonner";
 
 import { SiteLayout } from "@/components/site/SiteLayout";
 import { PageLoader } from "@/components/common/PageLoader";
+import { OrderTrackingSection } from "@/components/customer/OrderTrackingSection";
 import { Breadcrumbs } from "@/components/site/Breadcrumbs";
+import {
+  Sheet,
+  SheetContent,
+  SheetTitle,
+  SheetTrigger,
+} from "@/components/ui/sheet";
+import { Skeleton } from "@/components/ui/skeleton";
 import { api } from "@/lib/api/client";
 import { toUserMessage } from "@/lib/api/errors";
 import { queryKeys } from "@/lib/api/queryKeys";
 import { getSession } from "@/lib/supabase/session";
+import { supabase } from "@/lib/supabase/client";
 import { useAuthContext } from "@/providers/auth-context";
 import { useWishlist } from "@/stores/wishlist";
 import { formatINR } from "@/lib/format";
 import { useProfile } from "@/hooks/auth/useProfile";
-import { Skeleton } from "@/components/ui/skeleton";
 import type { ProfileDto, ProfileUpdateDto } from "@/types/profile";
 import type {
   AddressResponse,
@@ -39,21 +54,14 @@ import type {
   OrderResponse,
 } from "@/types/customer";
 
-const TAB_VALUES = ["overview", "orders", "addresses", "wishlist", "profile"] as const;
+const TAB_VALUES = ["overview", "orders", "addresses", "wishlist", "profile", "security"] as const;
+type Tab = (typeof TAB_VALUES)[number];
 
 export const Route = createFileRoute("/account/")({
   validateSearch: z.object({
     tab: z.enum(TAB_VALUES).optional(),
   }),
   beforeLoad: async () => {
-    // During SSR (typeof window === "undefined"), localStorage is unavailable and
-    // getSession() always returns null.  Redirecting server-side would send an HTTP 302
-    // to /account/login even for authenticated users, because the session lives in the
-    // browser's localStorage and cannot be read on the server.
-    //
-    // Skip the guard on the server.  The AppContent auth gate in __root.tsx shows a
-    // loading screen until the Supabase session is restored on the client, then the
-    // component-level guard below handles any truly-unauthenticated case.
     if (typeof window === "undefined") return;
     const session = await getSession();
     if (!session) throw redirect({ to: "/account/login", search: { redirect: "/account" } });
@@ -62,7 +70,58 @@ export const Route = createFileRoute("/account/")({
   component: AccountPage,
 });
 
-type Tab = (typeof TAB_VALUES)[number];
+// ── Sidebar nav items ─────────────────────────────────────────────────────────
+
+const NAV_ITEMS: { id: Tab; label: string; icon: React.ReactNode }[] = [
+  { id: "overview", label: "Overview", icon: <User className="size-4" /> },
+  { id: "orders", label: "Orders", icon: <Package className="size-4" /> },
+  { id: "addresses", label: "Addresses", icon: <MapPin className="size-4" /> },
+  { id: "wishlist", label: "Wishlist", icon: <Heart className="size-4" /> },
+  { id: "profile", label: "Profile", icon: <User className="size-4" /> },
+  { id: "security", label: "Security", icon: <Shield className="size-4" /> },
+];
+
+// ── Sidebar ───────────────────────────────────────────────────────────────────
+
+function Sidebar({
+  tab,
+  setTab,
+  onSignOut,
+}: {
+  tab: Tab;
+  setTab: (t: Tab) => void;
+  onSignOut: () => void;
+}) {
+  return (
+    <nav className="space-y-1">
+      {NAV_ITEMS.map((item) => (
+        <button
+          key={item.id}
+          onClick={() => setTab(item.id)}
+          className={`w-full flex items-center gap-3 px-4 py-2.5 text-sm rounded-xl text-left transition-all duration-150 ${
+            tab === item.id
+              ? "bg-[#1a2744] text-white font-medium shadow-sm"
+              : "text-muted-foreground hover:bg-secondary/70 hover:text-foreground"
+          }`}
+        >
+          {item.icon}
+          {item.label}
+        </button>
+      ))}
+      <div className="pt-3 mt-3 border-t border-border">
+        <button
+          onClick={onSignOut}
+          className="w-full flex items-center gap-3 px-4 py-2.5 text-sm rounded-xl text-left text-muted-foreground hover:bg-destructive/10 hover:text-destructive transition-all duration-150"
+        >
+          <LogOut className="size-4" />
+          Sign Out
+        </button>
+      </div>
+    </nav>
+  );
+}
+
+// ── Root page ─────────────────────────────────────────────────────────────────
 
 function AccountPage() {
   const navigate = useNavigate();
@@ -70,8 +129,6 @@ function AccountPage() {
   const { user, status, logout } = useAuthContext();
   const [tab, setTab] = useState<Tab>(initialTab ?? "overview");
 
-  // status="loading" is prevented from reaching here by the global AppContent
-  // auth gate in __root.tsx, but guard defensively in case of direct mount.
   if (status === "loading") return <PageLoader />;
 
   if (status === "unauthenticated" || !user) {
@@ -105,67 +162,104 @@ function AccountPage() {
   }
 
   const displayName = user.user_metadata?.full_name ?? user.email ?? "";
+  const firstName = displayName.split(" ")[0];
 
-  const tabs: { id: Tab; label: string; icon: React.ReactNode }[] = [
-    { id: "overview", label: "Overview", icon: <User className="size-4" /> },
-    { id: "orders", label: "Orders", icon: <Package className="size-4" /> },
-    { id: "addresses", label: "Addresses", icon: <MapPin className="size-4" /> },
-    { id: "wishlist", label: "Wishlist", icon: <Heart className="size-4" /> },
-    { id: "profile", label: "Profile", icon: <User className="size-4" /> },
-  ];
+  const handleSignOut = async () => {
+    await logout();
+    navigate({ to: "/" });
+  };
 
   return (
     <SiteLayout>
       <div className="px-4 md:px-8 py-10 max-w-6xl mx-auto">
         <Breadcrumbs items={[{ label: "Home", to: "/" }, { label: "Account" }]} />
-        <div className="mt-6 mb-10">
-          <p className="text-[11px] uppercase tracking-[0.3em] text-muted-foreground">
-            Hello, {displayName.split(" ")[0]}
-          </p>
-          <h1 className="font-display text-4xl md:text-5xl mt-1">My Account</h1>
+
+        {/* Header */}
+        <div className="mt-6 mb-8 flex items-end justify-between">
+          <div>
+            <p className="text-[11px] uppercase tracking-[0.3em] text-muted-foreground">
+              Welcome back
+            </p>
+            <h1 className="font-display text-4xl md:text-5xl mt-1">Hello, {firstName}</h1>
+          </div>
+          {/* Mobile menu trigger */}
+          <Sheet>
+            <SheetTrigger asChild>
+              <button className="lg:hidden flex items-center gap-2 border border-border rounded-xl px-4 py-2 text-sm text-muted-foreground hover:border-foreground transition">
+                <Menu className="size-4" />
+                Menu
+              </button>
+            </SheetTrigger>
+            <SheetContent side="left" className="w-72 pt-12">
+              <SheetTitle className="sr-only">My Account Navigation</SheetTitle>
+              <p className="text-[11px] uppercase tracking-[0.3em] text-muted-foreground mb-1 px-4">
+                My Account
+              </p>
+              <p className="font-display text-xl px-4 mb-6">{firstName}</p>
+              <Sidebar tab={tab} setTab={setTab} onSignOut={handleSignOut} />
+            </SheetContent>
+          </Sheet>
         </div>
 
-        <div className="grid lg:grid-cols-[240px_1fr] gap-10">
-          <aside className="lg:border-r lg:border-border lg:pr-6 space-y-1">
-            {tabs.map((t) => (
-              <button
-                key={t.id}
-                onClick={() => setTab(t.id)}
-                className={`w-full flex items-center gap-3 px-4 py-3 text-sm tracking-wide text-left transition ${tab === t.id ? "bg-secondary text-foreground" : "text-muted-foreground hover:bg-secondary/60"}`}
-              >
-                {t.icon}
-                {t.label}
-              </button>
-            ))}
-            <button
-              onClick={async () => {
-                await logout();
-                navigate({ to: "/" });
-              }}
-              className="w-full flex items-center gap-3 px-4 py-3 text-sm tracking-wide text-left text-muted-foreground hover:bg-secondary/60 transition mt-6 border-t border-border pt-4"
-            >
-              <LogOut className="size-4" />
-              Sign Out
-            </button>
+        <div className="grid lg:grid-cols-[220px_1fr] gap-8">
+          {/* Desktop sidebar */}
+          <aside className="hidden lg:block">
+            <div className="sticky top-24 bg-card border border-border rounded-2xl p-4 shadow-sm">
+              <Sidebar tab={tab} setTab={setTab} onSignOut={handleSignOut} />
+            </div>
           </aside>
 
-          <div>
-            {tab === "overview" && <Overview onNavigate={setTab} />}
+          {/* Main content */}
+          <main className="min-w-0">
+            {tab === "overview" && <OverviewTab onNavigate={setTab} user={user} />}
             {tab === "orders" && <OrdersTab />}
             {tab === "addresses" && <AddressesTab />}
             {tab === "wishlist" && <WishlistTab />}
             {tab === "profile" && <ProfileTab />}
-          </div>
+            {tab === "security" && <SecurityTab />}
+          </main>
         </div>
       </div>
     </SiteLayout>
   );
 }
 
-function Overview({ onNavigate }: { onNavigate: (t: Tab) => void }) {
-  const { data: ordersData } = useQuery({
+// ── Stat card ─────────────────────────────────────────────────────────────────
+
+function StatCard({
+  label,
+  value,
+  onClick,
+}: {
+  label: string;
+  value: string | number;
+  onClick?: () => void;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      className="bg-card border border-border rounded-2xl p-5 text-left hover:border-foreground hover:shadow-sm transition-all duration-150 group"
+    >
+      <p className="text-[10px] uppercase tracking-[0.25em] text-muted-foreground">{label}</p>
+      <p className="font-display text-3xl mt-2 group-hover:text-accent transition-colors">
+        {value}
+      </p>
+    </button>
+  );
+}
+
+// ── Overview tab ──────────────────────────────────────────────────────────────
+
+function OverviewTab({
+  onNavigate,
+  user,
+}: {
+  onNavigate: (t: Tab) => void;
+  user: { created_at?: string; user_metadata?: Record<string, unknown> };
+}) {
+  const { data: ordersData, isLoading: ordersLoading } = useQuery({
     queryKey: queryKeys.orders.list({}),
-    queryFn: () => api.get<OrderListResponse>("/orders", { params: { page: 1, page_size: 1 } }),
+    queryFn: () => api.get<OrderListResponse>("/orders", { params: { page: 1, page_size: 3 } }),
     staleTime: 60_000,
   });
   const { data: addresses = [] } = useQuery({
@@ -175,94 +269,219 @@ function Overview({ onNavigate }: { onNavigate: (t: Tab) => void }) {
   });
   const wishlistItems = useWishlist((s) => s.items);
 
-  const cards = [
-    { label: "Orders", value: ordersData?.total ?? 0, tab: "orders" as Tab },
-    { label: "Saved Addresses", value: addresses.length, tab: "addresses" as Tab },
-    { label: "Wishlist Items", value: wishlistItems.length, tab: "wishlist" as Tab },
-  ];
+  const memberSince = user.created_at
+    ? new Date(user.created_at).toLocaleDateString("en-IN", { month: "long", year: "numeric" })
+    : "—";
+
+  const recentOrders = ordersData?.items ?? [];
+  const latestOrder = recentOrders[0];
+  const defaultAddress = addresses.find((a) => a.is_default) ?? addresses[0];
 
   return (
-    <div className="grid sm:grid-cols-3 gap-4">
-      {cards.map((c) => (
-        <button
-          key={c.label}
-          onClick={() => onNavigate(c.tab)}
-          className="border border-border bg-card p-6 text-left hover:border-foreground transition"
-        >
-          <p className="text-[11px] uppercase tracking-[0.22em] text-muted-foreground">{c.label}</p>
-          <p className="font-display text-4xl mt-2">{c.value}</p>
-        </button>
-      ))}
-    </div>
-  );
-}
-
-function OrdersTab() {
-  const [expandedId, setExpandedId] = useState<string | null>(null);
-
-  const { data, isLoading } = useQuery({
-    queryKey: queryKeys.orders.list({}),
-    queryFn: () => api.get<OrderListResponse>("/orders", { params: { page: 1, page_size: 20 } }),
-  });
-
-  if (isLoading) {
-    return (
-      <div className="space-y-4">
-        {[1, 2, 3].map((i) => (
-          <div key={i} className="border border-border bg-card p-5 animate-pulse h-24" />
-        ))}
-      </div>
-    );
-  }
-
-  const orders = data?.items ?? [];
-
-  if (orders.length === 0) {
-    return (
-      <div className="border border-border bg-card p-10 text-center">
-        <Package className="size-10 mx-auto text-muted-foreground mb-3" />
-        <p className="font-display text-xl">No orders yet</p>
-        <p className="text-sm text-muted-foreground mt-1 mb-5">
-          Once you place an order it will show up here.
-        </p>
-        <Link
-          to="/collections"
-          className="inline-block bg-primary text-primary-foreground text-[11px] uppercase tracking-[0.22em] px-6 py-3"
-        >
-          Start Shopping
-        </Link>
-      </div>
-    );
-  }
-
-  return (
-    <div className="space-y-4">
-      {orders.map((o) => (
-        <OrderCard
-          key={o.id}
-          order={o}
-          expanded={expandedId === o.id}
-          onToggle={() => setExpandedId(expandedId === o.id ? null : o.id)}
+    <div className="space-y-8">
+      {/* Stats row */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+        <StatCard label="Member Since" value={memberSince} />
+        <StatCard
+          label="Orders"
+          value={ordersLoading ? "—" : (ordersData?.total ?? 0)}
+          onClick={() => onNavigate("orders")}
         />
-      ))}
+        <StatCard
+          label="Wishlist"
+          value={wishlistItems.length}
+          onClick={() => onNavigate("wishlist")}
+        />
+        <StatCard
+          label="Addresses"
+          value={addresses.length}
+          onClick={() => onNavigate("addresses")}
+        />
+      </div>
+
+      {/* Latest order status */}
+      {latestOrder && (
+        <div className="bg-card border border-border rounded-2xl p-5 shadow-sm">
+          <div className="flex items-center justify-between mb-4">
+            <p className="text-[11px] uppercase tracking-[0.25em] text-muted-foreground">
+              Latest Order
+            </p>
+            <button
+              onClick={() => onNavigate("orders")}
+              className="text-[11px] uppercase tracking-[0.22em] text-accent flex items-center gap-1 hover:gap-2 transition-all"
+            >
+              View all <ArrowRight className="size-3" />
+            </button>
+          </div>
+          <div className="flex items-center justify-between gap-4">
+            <div>
+              <p className="font-medium text-sm">{latestOrder.order_number}</p>
+              <p className="text-xs text-muted-foreground mt-0.5">
+                {new Date(latestOrder.created_at).toLocaleDateString("en-IN", {
+                  day: "numeric",
+                  month: "short",
+                  year: "numeric",
+                })}
+              </p>
+            </div>
+            <div className="flex items-center gap-3">
+              <FulfillmentStatusBadge status={latestOrder.fulfillment_status} />
+              <span className="font-display text-lg">{formatINR(latestOrder.total)}</span>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Recent orders */}
+      {recentOrders.length > 0 && (
+        <section>
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="font-display text-xl">Recent Orders</h2>
+            <button
+              onClick={() => onNavigate("orders")}
+              className="text-[11px] uppercase tracking-[0.22em] text-accent flex items-center gap-1 hover:gap-2 transition-all"
+            >
+              View all <ArrowRight className="size-3" />
+            </button>
+          </div>
+          <div className="space-y-3">
+            {recentOrders.slice(0, 3).map((o) => (
+              <MiniOrderCard key={o.id} order={o} />
+            ))}
+          </div>
+        </section>
+      )}
+
+      {/* Default address preview */}
+      {defaultAddress && (
+        <section>
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="font-display text-xl">Default Address</h2>
+            <button
+              onClick={() => onNavigate("addresses")}
+              className="text-[11px] uppercase tracking-[0.22em] text-accent flex items-center gap-1 hover:gap-2 transition-all"
+            >
+              Manage <ArrowRight className="size-3" />
+            </button>
+          </div>
+          <div className="bg-card border border-border rounded-2xl p-5 shadow-sm text-sm space-y-0.5">
+            <p className="font-medium">{defaultAddress.full_name}</p>
+            <p className="text-muted-foreground">{defaultAddress.line1}</p>
+            {defaultAddress.line2 && (
+              <p className="text-muted-foreground">{defaultAddress.line2}</p>
+            )}
+            <p className="text-muted-foreground">
+              {defaultAddress.city}, {defaultAddress.state} {defaultAddress.postal_code}
+            </p>
+          </div>
+        </section>
+      )}
+
+      {/* Wishlist preview */}
+      {wishlistItems.length > 0 && (
+        <section>
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="font-display text-xl">Wishlist</h2>
+            <button
+              onClick={() => onNavigate("wishlist")}
+              className="text-[11px] uppercase tracking-[0.22em] text-accent flex items-center gap-1 hover:gap-2 transition-all"
+            >
+              View all <ArrowRight className="size-3" />
+            </button>
+          </div>
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            {wishlistItems.slice(0, 4).map((item) => (
+              <Link
+                key={`${item.id}::${item.variantId ?? ""}`}
+                to="/products/$slug"
+                params={{ slug: item.slug }}
+                className="group"
+              >
+                <div className="aspect-square bg-secondary rounded-xl overflow-hidden">
+                  <img
+                    src={item.image}
+                    alt={item.name}
+                    className="w-full h-full object-cover group-hover:scale-105 transition duration-500"
+                  />
+                </div>
+                <p className="text-xs mt-2 line-clamp-1">{item.name}</p>
+                <p className="font-display text-sm mt-0.5">{formatINR(item.price)}</p>
+              </Link>
+            ))}
+          </div>
+        </section>
+      )}
     </div>
   );
 }
 
-// ── Order detail helpers ──────────────────────────────────────────────────────
+// ── Mini order card (used in overview) ────────────────────────────────────────
+
+function MiniOrderCard({ order }: { order: OrderListResponse["items"][number] }) {
+  return (
+    <div className="bg-card border border-border rounded-2xl p-4 flex items-center justify-between gap-4 hover:border-foreground/30 transition shadow-sm">
+      <div className="flex items-center gap-3 min-w-0">
+        <div className="size-10 rounded-xl bg-secondary flex items-center justify-center shrink-0">
+          <Package className="size-4 text-muted-foreground" />
+        </div>
+        <div className="min-w-0">
+          <p className="text-sm font-medium truncate">{order.order_number}</p>
+          <p className="text-xs text-muted-foreground">
+            {new Date(order.created_at).toLocaleDateString("en-IN", {
+              day: "numeric",
+              month: "short",
+              year: "numeric",
+            })}
+          </p>
+        </div>
+      </div>
+      <div className="flex items-center gap-3 shrink-0">
+        <FulfillmentStatusBadge status={order.fulfillment_status} />
+        <span className="font-display text-base">{formatINR(order.total)}</span>
+      </div>
+    </div>
+  );
+}
+
+// ── Status badges ─────────────────────────────────────────────────────────────
+
+function FulfillmentStatusBadge({ status }: { status: string }) {
+  const cfg: Record<string, string> = {
+    pending: "bg-secondary text-muted-foreground",
+    packing: "bg-blue-100 text-blue-700",
+    label_generated: "bg-indigo-100 text-indigo-700",
+    dispatched: "bg-amber-100 text-amber-700",
+    in_transit: "bg-orange-100 text-orange-700",
+    delivered: "bg-emerald-100 text-emerald-700",
+    cancelled: "bg-red-100 text-red-700",
+  };
+  const cls = cfg[status.toLowerCase()] ?? "bg-secondary text-muted-foreground";
+  const label = status.replace(/_/g, " ");
+  return (
+    <span
+      className={`text-[10px] uppercase tracking-[0.2em] px-2.5 py-1 rounded-full font-medium ${cls}`}
+    >
+      {label}
+    </span>
+  );
+}
 
 function OrderStatusBadge({ status }: { status: string }) {
   const s = status.toLowerCase();
   const cls =
     s === "delivered"
-      ? "bg-accent/15 text-accent"
+      ? "bg-emerald-100 text-emerald-700"
       : s === "shipped"
-        ? "bg-blue-100 text-blue-800"
+        ? "bg-blue-100 text-blue-700"
         : s === "cancelled"
-          ? "bg-destructive/15 text-destructive"
-          : "bg-secondary text-foreground";
+          ? "bg-red-100 text-red-700"
+          : "bg-secondary text-muted-foreground";
   return (
-    <span className={`text-[10px] uppercase tracking-[0.22em] px-3 py-1 ${cls}`}>{status}</span>
+    <span
+      className={`text-[10px] uppercase tracking-[0.2em] px-2.5 py-1 rounded-full font-medium ${cls}`}
+    >
+      {status}
+    </span>
   );
 }
 
@@ -270,40 +489,53 @@ function PaymentBadge({ status }: { status: string }) {
   const s = status.toLowerCase();
   const cls =
     s === "paid"
-      ? "bg-emerald-100 text-emerald-800"
+      ? "bg-emerald-100 text-emerald-700"
       : s === "failed"
-        ? "bg-red-100 text-red-800"
-        : "bg-secondary text-foreground";
+        ? "bg-red-100 text-red-700"
+        : "bg-secondary text-muted-foreground";
   return (
-    <span className={`text-[10px] uppercase tracking-[0.22em] px-3 py-1 ${cls}`}>{status}</span>
+    <span
+      className={`text-[10px] uppercase tracking-[0.2em] px-2.5 py-1 rounded-full font-medium ${cls}`}
+    >
+      {status}
+    </span>
   );
 }
 
-const STATUS_ORDER = ["pending", "processing", "confirmed", "shipped", "delivered"];
-function statusIndex(s: string) {
-  const i = STATUS_ORDER.indexOf(s.toLowerCase());
-  return i === -1 ? 0 : i;
-}
+// ── Order timeline ─────────────────────────────────────────────────────────────
 
-function OrderTimeline({ status }: { status: string }) {
-  const current = statusIndex(status);
+const FULFILLMENT_STEP: Record<string, number> = {
+  pending: 0,
+  packing: 1,
+  label_generated: 1,
+  dispatched: 2,
+  in_transit: 2,
+  delivered: 3,
+};
+
+function OrderTimeline({ fulfillmentStatus }: { fulfillmentStatus: string }) {
+  const current = FULFILLMENT_STEP[fulfillmentStatus.toLowerCase()] ?? 0;
   const steps = [
-    { label: "Order placed", sub: "Payment received", threshold: 0 },
-    { label: "Processing", sub: "Handcrafted & quality-checked", threshold: 1 },
-    { label: "Shipped", sub: "On the way to you", threshold: 3 },
-    { label: "Delivered", sub: "Enjoy your piece", threshold: 4 },
+    { label: "Order placed", sub: "Payment received" },
+    { label: "Processing", sub: "Handcrafted & quality-checked" },
+    { label: "Shipped", sub: "On the way to you" },
+    { label: "Delivered", sub: "Enjoy your piece" },
   ];
   return (
     <div className="relative">
       <div className="absolute left-[13px] top-6 bottom-6 w-px bg-border" />
       <div className="space-y-5">
         {steps.map((step, i) => {
-          const done = current >= step.threshold;
-          const active = done && (i === steps.length - 1 || current < steps[i + 1].threshold);
+          const done = current >= i;
+          const active = done && (i === steps.length - 1 || current < i + 1);
           return (
             <div key={step.label} className="flex items-start gap-4 relative">
               <div
-                className={`relative z-10 size-7 rounded-full flex items-center justify-center border-2 shrink-0 ${done ? "bg-accent border-accent text-accent-foreground" : "bg-background border-border text-muted-foreground"} ${active ? "ring-4 ring-accent/20" : ""}`}
+                className={`relative z-10 size-7 rounded-full flex items-center justify-center border-2 shrink-0 transition-colors ${
+                  done
+                    ? "bg-accent border-accent text-accent-foreground"
+                    : "bg-background border-border text-muted-foreground"
+                } ${active ? "ring-4 ring-accent/20" : ""}`}
               >
                 {done ? (
                   <CheckCircle2 className="size-3.5" />
@@ -327,6 +559,8 @@ function OrderTimeline({ status }: { status: string }) {
   );
 }
 
+// ── TotalRow ──────────────────────────────────────────────────────────────────
+
 function TotalRow({
   label,
   value,
@@ -339,38 +573,18 @@ function TotalRow({
   accent?: boolean;
 }) {
   return (
-    <div className={`flex justify-between text-sm ${bold ? "font-display text-base" : ""}`}>
+    <div className="flex justify-between text-sm">
       <span className={accent ? "text-accent" : "text-muted-foreground"}>{label}</span>
-      <span className={accent ? "text-accent" : ""}>{value}</span>
+      <span
+        className={`${accent ? "text-accent" : ""} ${bold ? "font-semibold text-foreground" : ""}`.trim()}
+      >
+        {value}
+      </span>
     </div>
   );
 }
 
-function OrderDetailSkeleton({ itemCount }: { itemCount: number }) {
-  return (
-    <div className="mt-5 space-y-5">
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 py-4">
-        {[1, 2, 3, 4].map((i) => (
-          <div key={i} className="space-y-1.5">
-            <Skeleton className="h-3 w-16" />
-            <Skeleton className="h-4 w-24" />
-          </div>
-        ))}
-      </div>
-      <div className="space-y-3 py-2 border-t border-border pt-4">
-        {Array.from({ length: itemCount }).map((_, i) => (
-          <div key={i} className="flex justify-between gap-4">
-            <div className="flex-1 space-y-1.5">
-              <Skeleton className="h-4 w-3/4" />
-              <Skeleton className="h-3 w-1/3" />
-            </div>
-            <Skeleton className="h-4 w-16 shrink-0" />
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
+// ── Order detail (expanded) ────────────────────────────────────────────────────
 
 function OrderDetailExpanded({ order }: { order: OrderResponse }) {
   const date = new Date(order.created_at).toLocaleDateString("en-IN", {
@@ -391,17 +605,12 @@ function OrderDetailExpanded({ order }: { order: OrderResponse }) {
 
   return (
     <div className="mt-5 space-y-5 border-t border-border pt-5">
-      {/* Badges */}
       <div className="flex flex-wrap gap-2">
         <PaymentBadge status={order.payment_status} />
-        {order.tracking_number && (
-          <span className="text-[10px] uppercase tracking-[0.22em] px-3 py-1 bg-secondary text-foreground">
-            Tracking: {order.tracking_number}
-          </span>
-        )}
       </div>
 
-      {/* Meta grid */}
+      {order.tracking_number && order.shipping_provider && <OrderTrackingSection order={order} />}
+
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
         <div>
           <p className="text-[11px] uppercase tracking-[0.16em] text-muted-foreground mb-1">Date</p>
@@ -438,11 +647,21 @@ function OrderDetailExpanded({ order }: { order: OrderResponse }) {
         )}
       </div>
 
-      {/* Items */}
-      <div className="border-t border-border pt-4 space-y-4">
+      <div className="border-t border-border pt-4 space-y-3">
         <p className="text-[11px] uppercase tracking-[0.22em] text-muted-foreground">Items</p>
         {order.items.map((item) => (
-          <div key={item.id} className="flex items-start justify-between gap-4 text-sm">
+          <div key={item.id} className="flex items-start gap-3 text-sm">
+            {item.image_url ? (
+              <img
+                src={item.image_url}
+                alt={item.product_name}
+                className="w-12 h-12 object-cover rounded-xl shrink-0 border border-border"
+              />
+            ) : (
+              <div className="w-12 h-12 bg-secondary rounded-xl shrink-0 flex items-center justify-center border border-border">
+                <Package className="w-5 h-5 text-muted-foreground" />
+              </div>
+            )}
             <div className="flex-1 min-w-0">
               <p className="leading-snug">{item.product_name}</p>
               {item.variant_name && (
@@ -455,12 +674,11 @@ function OrderDetailExpanded({ order }: { order: OrderResponse }) {
                 )}
               </p>
             </div>
-            <p className="font-display shrink-0">{formatINR(item.line_total)}</p>
+            <p className="text-sm shrink-0">{formatINR(item.unit_price * item.quantity)}</p>
           </div>
         ))}
       </div>
 
-      {/* Totals */}
       <div className="border-t border-border pt-4 space-y-2">
         <TotalRow label="Subtotal" value={formatINR(order.subtotal)} />
         {order.discount > 0 && (
@@ -480,17 +698,15 @@ function OrderDetailExpanded({ order }: { order: OrderResponse }) {
         </div>
       </div>
 
-      {/* Timeline */}
       {order.status !== "cancelled" && (
         <div className="border-t border-border pt-4">
           <p className="text-[11px] uppercase tracking-[0.22em] text-muted-foreground mb-4">
             Order status
           </p>
-          <OrderTimeline status={order.status} />
+          <OrderTimeline fulfillmentStatus={order.fulfillment_status} />
         </div>
       )}
 
-      {/* What's next — only for active orders */}
       {!["delivered", "cancelled"].includes(order.status) && (
         <div className="border-t border-border pt-4 space-y-3">
           <p className="text-[11px] uppercase tracking-[0.22em] text-muted-foreground">
@@ -544,52 +760,138 @@ function OrderCard({
   });
 
   return (
-    <div className="border border-border bg-card p-5">
-      {/* Header */}
+    <div className="bg-card border border-border rounded-2xl p-5 shadow-sm hover:shadow-md transition-shadow">
       <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <p className="font-display text-lg">{order.order_number}</p>
-          <p className="text-xs text-muted-foreground mt-0.5">
-            Placed{" "}
-            {new Date(order.created_at).toLocaleDateString("en-IN", {
-              year: "numeric",
-              month: "short",
-              day: "numeric",
-            })}
-          </p>
+        <div className="flex items-center gap-3">
+          <div className="size-11 rounded-xl bg-secondary flex items-center justify-center shrink-0">
+            <Package className="size-5 text-muted-foreground" />
+          </div>
+          <div>
+            <p className="font-medium text-base">{order.order_number}</p>
+            <p className="text-xs text-muted-foreground mt-0.5">
+              {new Date(order.created_at).toLocaleDateString("en-IN", {
+                year: "numeric",
+                month: "short",
+                day: "numeric",
+              })}
+              {" · "}
+              {order.item_count} {order.item_count === 1 ? "item" : "items"}
+            </p>
+          </div>
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <OrderStatusBadge status={order.status} />
-          <span className="font-display text-xl">{formatINR(order.total)}</span>
+          <FulfillmentStatusBadge status={order.fulfillment_status} />
+          <span className="font-display text-xl ml-1">{formatINR(order.total)}</span>
         </div>
       </div>
 
-      {/* Toggle */}
-      <button
-        onClick={onToggle}
-        className="mt-4 inline-flex items-center gap-1.5 text-xs uppercase tracking-[0.18em] text-accent border-b border-accent/40 pb-0.5 hover:border-accent transition"
-      >
-        {expanded ? (
-          <>
-            Hide details <ChevronUp className="size-3.5" />
-          </>
-        ) : (
-          <>
-            View Order Details <ChevronDown className="size-3.5" />
-          </>
-        )}
-      </button>
+      <div className="mt-4 flex items-center justify-between">
+        <button
+          onClick={onToggle}
+          className="inline-flex items-center gap-1.5 text-xs uppercase tracking-[0.18em] text-accent hover:text-accent/80 transition"
+        >
+          {expanded ? (
+            <>
+              Hide details <ChevronUp className="size-3.5" />
+            </>
+          ) : (
+            <>
+              View order details <ChevronDown className="size-3.5" />
+            </>
+          )}
+        </button>
+      </div>
 
-      {/* Expanded detail */}
       {expanded &&
         (isLoading ? (
-          <OrderDetailSkeleton itemCount={order.item_count} />
+          <div className="mt-5 space-y-3 border-t border-border pt-5">
+            {Array.from({ length: order.item_count }).map((_, i) => (
+              <div key={i} className="flex gap-3">
+                <Skeleton className="w-12 h-12 rounded-xl shrink-0" />
+                <div className="flex-1 space-y-1.5">
+                  <Skeleton className="h-4 w-3/4" />
+                  <Skeleton className="h-3 w-1/3" />
+                </div>
+              </div>
+            ))}
+          </div>
         ) : (
           detail && <OrderDetailExpanded order={detail} />
         ))}
     </div>
   );
 }
+
+// ── Orders tab ─────────────────────────────────────────────────────────────────
+
+function OrdersTab() {
+  const [expandedId, setExpandedId] = useState<string | null>(null);
+
+  const { data, isLoading } = useQuery({
+    queryKey: queryKeys.orders.list({}),
+    queryFn: () => api.get<OrderListResponse>("/orders", { params: { page: 1, page_size: 20 } }),
+  });
+
+  if (isLoading) {
+    return (
+      <div className="space-y-4">
+        {[1, 2, 3].map((i) => (
+          <div key={i} className="bg-card border border-border rounded-2xl p-5 shadow-sm">
+            <div className="flex items-center gap-3">
+              <Skeleton className="size-11 rounded-xl" />
+              <div className="space-y-1.5">
+                <Skeleton className="h-4 w-32" />
+                <Skeleton className="h-3 w-24" />
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
+    );
+  }
+
+  const orders = data?.items ?? [];
+
+  if (orders.length === 0) {
+    return (
+      <div className="bg-card border border-border rounded-2xl p-12 text-center shadow-sm">
+        <div className="size-16 rounded-2xl bg-secondary flex items-center justify-center mx-auto mb-4">
+          <Package className="size-7 text-muted-foreground" />
+        </div>
+        <p className="font-display text-xl">No orders yet</p>
+        <p className="text-sm text-muted-foreground mt-1 mb-6">
+          Once you place an order it will show up here.
+        </p>
+        <Link
+          to="/collections"
+          className="inline-block bg-primary text-primary-foreground text-[11px] uppercase tracking-[0.22em] px-6 py-3 rounded-xl"
+        >
+          Start Shopping
+        </Link>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between mb-2">
+        <h2 className="font-display text-2xl">Your Orders</h2>
+        <span className="text-sm text-muted-foreground">{data?.total ?? 0} orders</span>
+      </div>
+      {orders.map((o) => (
+        <OrderCard
+          key={o.id}
+          order={o}
+          expanded={expandedId === o.id}
+          onToggle={() => setExpandedId(expandedId === o.id ? null : o.id)}
+        />
+      ))}
+    </div>
+  );
+}
+
+// ── Addresses tab ──────────────────────────────────────────────────────────────
 
 function AddressesTab() {
   const queryClient = useQueryClient();
@@ -606,6 +908,7 @@ function AddressesTab() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.addresses.all });
       setAdding(false);
+      toast.success("Address saved");
     },
     onError: (e) => toast.error(toUserMessage(e)),
   });
@@ -645,11 +948,11 @@ function AddressesTab() {
 
   return (
     <div>
-      <div className="flex justify-between items-center mb-5">
-        <h2 className="font-display text-2xl">Saved addresses</h2>
+      <div className="flex items-center justify-between mb-6">
+        <h2 className="font-display text-2xl">Saved Addresses</h2>
         <button
           onClick={() => setAdding((v) => !v)}
-          className="flex items-center gap-2 text-[11px] uppercase tracking-[0.22em] border border-foreground px-4 py-2 hover:bg-foreground hover:text-background transition"
+          className="flex items-center gap-2 text-[11px] uppercase tracking-[0.22em] border border-foreground rounded-xl px-4 py-2.5 hover:bg-foreground hover:text-background transition"
         >
           <Plus className="size-3.5" />
           {adding ? "Cancel" : "Add Address"}
@@ -659,21 +962,22 @@ function AddressesTab() {
       {adding && (
         <form
           onSubmit={submit}
-          className="border border-border bg-card p-6 grid sm:grid-cols-2 gap-4 mb-6"
+          className="bg-card border border-border rounded-2xl p-6 grid sm:grid-cols-2 gap-4 mb-6 shadow-sm"
         >
-          <Inp name="name" placeholder="Full name" required className="sm:col-span-2" />
-          <Inp name="line1" placeholder="Address line 1" required className="sm:col-span-2" />
-          <Inp name="line2" placeholder="Address line 2 (optional)" className="sm:col-span-2" />
-          <Inp name="city" placeholder="City" required />
-          <Inp name="state" placeholder="State" required />
-          <Inp name="pincode" placeholder="Pincode" required />
-          <Inp name="phone" placeholder="Phone" required />
+          <Field name="name" placeholder="Full name" required className="sm:col-span-2" />
+          <Field name="line1" placeholder="Address line 1" required className="sm:col-span-2" />
+          <Field name="line2" placeholder="Address line 2 (optional)" className="sm:col-span-2" />
+          <Field name="city" placeholder="City" required />
+          <Field name="state" placeholder="State" required />
+          <Field name="pincode" placeholder="Pincode" required />
+          <Field name="phone" placeholder="Phone" required />
           <label className="sm:col-span-2 inline-flex items-center gap-2 text-sm">
-            <input type="checkbox" name="isDefault" /> Set as default address
+            <input type="checkbox" name="isDefault" className="rounded" />
+            Set as default address
           </label>
           <button
             disabled={addMutation.isPending}
-            className="sm:col-span-2 bg-primary text-primary-foreground text-[11px] uppercase tracking-[0.22em] py-3 disabled:opacity-50"
+            className="sm:col-span-2 bg-primary text-primary-foreground text-[11px] uppercase tracking-[0.22em] py-3 rounded-xl disabled:opacity-50 hover:bg-accent hover:text-accent-foreground transition"
           >
             {addMutation.isPending ? "Saving…" : "Save Address"}
           </button>
@@ -683,14 +987,19 @@ function AddressesTab() {
       {isLoading && (
         <div className="grid sm:grid-cols-2 gap-4">
           {[1, 2].map((i) => (
-            <div key={i} className="border border-border bg-card p-5 h-32 animate-pulse" />
+            <div
+              key={i}
+              className="bg-card border border-border rounded-2xl p-5 h-36 animate-pulse"
+            />
           ))}
         </div>
       )}
 
       {!isLoading && addresses.length === 0 && !adding && (
-        <div className="border border-border bg-card p-10 text-center">
-          <MapPin className="size-10 mx-auto text-muted-foreground mb-3" />
+        <div className="bg-card border border-border rounded-2xl p-12 text-center shadow-sm">
+          <div className="size-16 rounded-2xl bg-secondary flex items-center justify-center mx-auto mb-4">
+            <MapPin className="size-7 text-muted-foreground" />
+          </div>
           <p className="font-display text-xl">No saved addresses</p>
           <p className="text-sm text-muted-foreground mt-1">
             Add one to checkout faster next time.
@@ -702,15 +1011,18 @@ function AddressesTab() {
         {addresses.map((a) => (
           <div
             key={a.id}
-            className={`relative border p-5 bg-card ${a.is_default ? "border-foreground" : "border-border"}`}
+            className={`relative bg-card border rounded-2xl p-5 shadow-sm transition ${
+              a.is_default ? "border-foreground ring-1 ring-foreground/10" : "border-border"
+            }`}
           >
             <div className="flex justify-between items-start gap-3">
               <div>
-                <p className="text-[11px] uppercase tracking-[0.22em] text-muted-foreground">
-                  {a.type}
-                  {a.is_default && " · Default"}
-                </p>
-                <p className="font-display text-lg mt-1">{a.full_name}</p>
+                {a.is_default && (
+                  <span className="text-[10px] uppercase tracking-[0.22em] bg-foreground text-background px-2 py-0.5 rounded-full inline-block mb-2">
+                    Default
+                  </span>
+                )}
+                <p className="font-medium">{a.full_name}</p>
                 <p className="text-sm text-muted-foreground mt-1">
                   {a.line1}
                   {a.line2 ? `, ${a.line2}` : ""}
@@ -718,12 +1030,12 @@ function AddressesTab() {
                 <p className="text-sm text-muted-foreground">
                   {a.city}, {a.state} {a.postal_code}
                 </p>
-                {a.phone && <p className="text-sm text-muted-foreground">{a.phone}</p>}
+                {a.phone && <p className="text-sm text-muted-foreground mt-0.5">{a.phone}</p>}
               </div>
               <button
                 onClick={() => removeMutation.mutate(a.id)}
                 disabled={removeMutation.isPending}
-                className="text-muted-foreground hover:text-destructive"
+                className="text-muted-foreground hover:text-destructive transition p-1 rounded-lg hover:bg-destructive/10"
               >
                 <Trash2 className="size-4" />
               </button>
@@ -744,18 +1056,23 @@ function AddressesTab() {
   );
 }
 
+// ── Wishlist tab ───────────────────────────────────────────────────────────────
+
 function WishlistTab() {
   const items = useWishlist((s) => s.items);
   const remove = useWishlist((s) => s.remove);
 
   if (items.length === 0) {
     return (
-      <div className="border border-border bg-card p-10 text-center">
-        <Heart className="size-10 mx-auto text-muted-foreground mb-3" />
+      <div className="bg-card border border-border rounded-2xl p-12 text-center shadow-sm">
+        <div className="size-16 rounded-2xl bg-secondary flex items-center justify-center mx-auto mb-4">
+          <Heart className="size-7 text-muted-foreground" />
+        </div>
         <p className="font-display text-xl">Your wishlist is empty</p>
+        <p className="text-sm text-muted-foreground mt-1 mb-6">Save pieces you love for later.</p>
         <Link
           to="/collections"
-          className="inline-block mt-5 bg-primary text-primary-foreground text-[11px] uppercase tracking-[0.22em] px-6 py-3"
+          className="inline-block bg-primary text-primary-foreground text-[11px] uppercase tracking-[0.22em] px-6 py-3 rounded-xl"
         >
           Discover Pieces
         </Link>
@@ -764,35 +1081,43 @@ function WishlistTab() {
   }
 
   return (
-    <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
-      {items.map((item) => (
-        <div key={`${item.id}::${item.variantId ?? ""}`} className="group relative">
-          <Link to="/products/$slug" params={{ slug: item.slug }} className="block">
-            <div className="aspect-square bg-secondary overflow-hidden">
-              <img
-                src={item.image}
-                alt={item.name}
-                className="w-full h-full object-cover group-hover:scale-105 transition duration-500"
-              />
-            </div>
-            <p className="text-xs mt-3 line-clamp-2">{item.name}</p>
-            {item.variantName && (
-              <p className="text-[11px] text-muted-foreground mt-0.5">{item.variantName}</p>
-            )}
-            <p className="font-display mt-1">{formatINR(item.price)}</p>
-          </Link>
-          <button
-            onClick={() => remove(item.id, item.variantId)}
-            className="absolute top-2 right-2 size-8 rounded-full bg-background/90 flex items-center justify-center text-destructive hover:bg-background transition"
-            aria-label="Remove from wishlist"
-          >
-            <Trash2 className="size-3.5" />
-          </button>
-        </div>
-      ))}
+    <div>
+      <div className="flex items-center justify-between mb-6">
+        <h2 className="font-display text-2xl">Wishlist</h2>
+        <span className="text-sm text-muted-foreground">{items.length} items</span>
+      </div>
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
+        {items.map((item) => (
+          <div key={`${item.id}::${item.variantId ?? ""}`} className="group relative">
+            <Link to="/products/$slug" params={{ slug: item.slug }} className="block">
+              <div className="aspect-square bg-secondary rounded-2xl overflow-hidden">
+                <img
+                  src={item.image}
+                  alt={item.name}
+                  className="w-full h-full object-cover group-hover:scale-105 transition duration-500"
+                />
+              </div>
+              <p className="text-xs mt-3 line-clamp-2">{item.name}</p>
+              {item.variantName && (
+                <p className="text-[11px] text-muted-foreground mt-0.5">{item.variantName}</p>
+              )}
+              <p className="font-display mt-1">{formatINR(item.price)}</p>
+            </Link>
+            <button
+              onClick={() => remove(item.id, item.variantId)}
+              className="absolute top-2 right-2 size-8 rounded-full bg-background/90 flex items-center justify-center text-destructive hover:bg-background transition shadow-sm"
+              aria-label="Remove from wishlist"
+            >
+              <Trash2 className="size-3.5" />
+            </button>
+          </div>
+        ))}
+      </div>
     </div>
   );
 }
+
+// ── Profile tab ────────────────────────────────────────────────────────────────
 
 function ProfileTab() {
   const { user } = useAuthContext();
@@ -802,6 +1127,7 @@ function ProfileTab() {
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("");
   const [saved, setSaved] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (profile) {
@@ -817,10 +1143,35 @@ function ProfileTab() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.profile.me });
       setSaved(true);
+      toast.success("Profile updated");
       setTimeout(() => setSaved(false), 2000);
     },
     onError: (e) => toast.error(toUserMessage(e)),
   });
+
+  const avatarMutation = useMutation({
+    mutationFn: (file: File) => {
+      const form = new FormData();
+      form.append("file", file);
+      return api.patch<ProfileDto>("/me/avatar", { body: form });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.profile.me });
+      toast.success("Avatar updated");
+    },
+    onError: (e) => toast.error(toUserMessage(e)),
+  });
+
+  const handleAvatarChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (file.size > 5 * 1024 * 1024) {
+      toast.error("Image must be under 5 MB");
+      return;
+    }
+    avatarMutation.mutate(file);
+    e.target.value = "";
+  };
 
   const submit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -832,48 +1183,357 @@ function ProfileTab() {
     updateMutation.mutate({ full_name: name, phone: normalizedPhone });
   };
 
+  const fmtDate = (iso: string) =>
+    new Date(iso).toLocaleDateString("en-IN", {
+      day: "numeric",
+      month: "long",
+      year: "numeric",
+    });
+
+  const initials = (profile?.full_name ?? user?.email ?? "?")
+    .split(" ")
+    .map((w) => w[0])
+    .slice(0, 2)
+    .join("")
+    .toUpperCase();
+
   return (
-    <form onSubmit={submit} className="border border-border bg-card p-6 space-y-5 max-w-lg">
-      <h2 className="font-display text-2xl">Profile information</h2>
-      {isLoading && <p className="text-sm text-muted-foreground">Loading profile…</p>}
-      <Inp
-        value={name}
-        onChange={(e) => setName(e.target.value)}
-        placeholder="Full name"
-        disabled={isLoading}
-      />
-      <Inp
-        value={user?.email ?? ""}
-        placeholder="Email"
-        type="email"
-        disabled
-        className="opacity-60 cursor-not-allowed"
-      />
-      <Inp
-        value={phone}
-        onChange={(e) => setPhone(e.target.value)}
-        placeholder="Phone (+919876543210)"
-        type="tel"
-        disabled={isLoading}
-      />
-      <div className="flex items-center gap-4">
+    <div className="max-w-lg space-y-6">
+      <h2 className="font-display text-2xl">Profile Information</h2>
+
+      {/* Avatar + identity card */}
+      <div className="bg-card border border-border rounded-2xl p-6 shadow-sm flex items-center gap-5">
+        {/* Hidden file input */}
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept="image/jpeg,image/png,image/webp"
+          className="hidden"
+          onChange={handleAvatarChange}
+        />
+
+        {/* Clickable avatar */}
         <button
-          disabled={updateMutation.isPending || isLoading}
-          className="bg-primary text-primary-foreground text-[11px] uppercase tracking-[0.22em] px-6 py-3 hover:bg-accent hover:text-accent-foreground transition disabled:opacity-60"
+          type="button"
+          onClick={() => fileInputRef.current?.click()}
+          disabled={avatarMutation.isPending || isLoading}
+          className="relative size-20 rounded-full shrink-0 group focus:outline-none"
+          title="Change avatar"
         >
-          {updateMutation.isPending ? "Saving…" : "Save changes"}
+          {isLoading ? (
+            <Skeleton className="size-20 rounded-full" />
+          ) : profile?.avatar_url ? (
+            <img
+              src={profile.avatar_url}
+              alt={profile.full_name ?? "Avatar"}
+              className="size-20 rounded-full object-cover border-2 border-border"
+            />
+          ) : (
+            <div className="size-20 rounded-full bg-[#1a2744] flex items-center justify-center text-white font-display text-xl select-none">
+              {initials}
+            </div>
+          )}
+
+          {/* Uploading spinner overlay */}
+          {avatarMutation.isPending ? (
+            <div className="absolute inset-0 rounded-full bg-black/50 flex items-center justify-center">
+              <Loader2 className="size-5 text-white animate-spin" />
+            </div>
+          ) : (
+            /* Camera overlay on hover */
+            <div className="absolute inset-0 rounded-full bg-black/40 flex flex-col items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+              <Camera className="size-5 text-white" />
+              <span className="text-white text-[10px] mt-1">Change</span>
+            </div>
+          )}
         </button>
-        {saved && <span className="text-xs text-accent">Saved ✓</span>}
+        <div className="min-w-0">
+          <p className="font-medium text-base truncate">
+            {isLoading ? (
+              <Skeleton className="h-4 w-32" />
+            ) : (
+              (profile?.full_name ?? user?.email ?? "—")
+            )}
+          </p>
+          <p className="text-sm text-muted-foreground mt-0.5 truncate">
+            {isLoading ? <Skeleton className="h-3 w-40 mt-1" /> : (profile?.email ?? user?.email)}
+          </p>
+          {!isLoading && (
+            <div className="flex flex-wrap gap-2 mt-2">
+              <span
+                className={`text-[10px] uppercase tracking-[0.2em] px-2.5 py-0.5 rounded-full font-medium ${
+                  profile?.is_active ? "bg-emerald-100 text-emerald-700" : "bg-red-100 text-red-700"
+                }`}
+              >
+                {profile?.is_active ? "Active" : "Inactive"}
+              </span>
+              <span
+                className={`text-[10px] uppercase tracking-[0.2em] px-2.5 py-0.5 rounded-full font-medium ${
+                  profile?.is_verified ? "bg-blue-100 text-blue-700" : "bg-amber-100 text-amber-700"
+                }`}
+              >
+                {profile?.is_verified ? "Verified" : "Not Verified"}
+              </span>
+            </div>
+          )}
+        </div>
       </div>
-    </form>
+
+      {/* Editable fields */}
+      <form
+        onSubmit={submit}
+        className="bg-card border border-border rounded-2xl p-6 shadow-sm space-y-5"
+      >
+        <p className="text-[11px] uppercase tracking-[0.25em] text-muted-foreground">
+          Edit Profile
+        </p>
+        {isLoading ? (
+          <div className="space-y-4">
+            <Skeleton className="h-11 w-full rounded-xl" />
+            <Skeleton className="h-11 w-full rounded-xl" />
+            <Skeleton className="h-11 w-full rounded-xl" />
+          </div>
+        ) : (
+          <>
+            <div className="space-y-1.5">
+              <label className="text-[11px] uppercase tracking-[0.18em] text-muted-foreground">
+                Full Name
+              </label>
+              <Field
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                placeholder="Full name"
+              />
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-[11px] uppercase tracking-[0.18em] text-muted-foreground">
+                Email
+                <span className="ml-2 normal-case tracking-normal text-muted-foreground/60">
+                  (read-only)
+                </span>
+              </label>
+              <Field
+                value={profile?.email ?? user?.email ?? ""}
+                type="email"
+                disabled
+                className="opacity-60 cursor-not-allowed"
+              />
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-[11px] uppercase tracking-[0.18em] text-muted-foreground">
+                Phone
+              </label>
+              <Field
+                value={phone}
+                onChange={(e) => setPhone(e.target.value)}
+                placeholder="+91 98765 43210"
+                type="tel"
+              />
+            </div>
+          </>
+        )}
+        <div className="flex items-center gap-4 pt-1">
+          <button
+            disabled={updateMutation.isPending || isLoading}
+            className="bg-primary text-primary-foreground text-[11px] uppercase tracking-[0.22em] px-6 py-3 rounded-xl hover:bg-accent hover:text-accent-foreground transition disabled:opacity-60"
+          >
+            {updateMutation.isPending ? "Saving…" : "Save Changes"}
+          </button>
+          {saved && <span className="text-xs text-accent font-medium">Saved ✓</span>}
+        </div>
+      </form>
+
+      {/* Read-only account details */}
+      <div className="bg-card border border-border rounded-2xl p-6 shadow-sm">
+        <p className="text-[11px] uppercase tracking-[0.25em] text-muted-foreground mb-4">
+          Account Details
+        </p>
+        {isLoading ? (
+          <div className="space-y-3">
+            {[1, 2, 3, 4].map((i) => (
+              <div key={i} className="flex justify-between">
+                <Skeleton className="h-3 w-24" />
+                <Skeleton className="h-3 w-32" />
+              </div>
+            ))}
+          </div>
+        ) : (
+          <dl className="space-y-3 text-sm">
+            <div className="flex items-center justify-between gap-4">
+              <dt className="text-muted-foreground">Account Status</dt>
+              <dd>
+                <span
+                  className={`text-[10px] uppercase tracking-[0.2em] px-2.5 py-1 rounded-full font-medium ${
+                    profile?.is_active
+                      ? "bg-emerald-100 text-emerald-700"
+                      : "bg-red-100 text-red-700"
+                  }`}
+                >
+                  {profile?.is_active ? "Active" : "Inactive"}
+                </span>
+              </dd>
+            </div>
+            <div className="flex items-center justify-between gap-4">
+              <dt className="text-muted-foreground">Verification</dt>
+              <dd>
+                <span
+                  className={`text-[10px] uppercase tracking-[0.2em] px-2.5 py-1 rounded-full font-medium ${
+                    profile?.is_verified
+                      ? "bg-blue-100 text-blue-700"
+                      : "bg-amber-100 text-amber-700"
+                  }`}
+                >
+                  {profile?.is_verified ? "Verified" : "Not Verified"}
+                </span>
+              </dd>
+            </div>
+            <div className="h-px bg-border" />
+            <div className="flex items-center justify-between gap-4">
+              <dt className="text-muted-foreground">Member Since</dt>
+              <dd>{profile?.created_at ? fmtDate(profile.created_at) : "—"}</dd>
+            </div>
+            <div className="flex items-center justify-between gap-4">
+              <dt className="text-muted-foreground">Last Updated</dt>
+              <dd>{profile?.updated_at ? fmtDate(profile.updated_at) : "—"}</dd>
+            </div>
+          </dl>
+        )}
+      </div>
+    </div>
   );
 }
 
-function Inp({ className = "", ...rest }: React.InputHTMLAttributes<HTMLInputElement>) {
+// ── Security tab ───────────────────────────────────────────────────────────────
+
+function SecurityTab() {
+  const [currentPw, setCurrentPw] = useState("");
+  const [newPw, setNewPw] = useState("");
+  const [confirmPw, setConfirmPw] = useState("");
+  const [showCurrent, setShowCurrent] = useState(false);
+  const [showNew, setShowNew] = useState(false);
+  const [showConfirm, setShowConfirm] = useState(false);
+  const [loading, setLoading] = useState(false);
+
+  const submit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (newPw !== confirmPw) {
+      toast.error("New passwords do not match");
+      return;
+    }
+    if (newPw.length < 8) {
+      toast.error("Password must be at least 8 characters");
+      return;
+    }
+    setLoading(true);
+    try {
+      const { error } = await supabase.auth.updateUser({ password: newPw });
+      if (error) throw error;
+      toast.success("Password updated successfully");
+      setCurrentPw("");
+      setNewPw("");
+      setConfirmPw("");
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Failed to update password";
+      toast.error(msg);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="max-w-lg">
+      <h2 className="font-display text-2xl mb-6">Security</h2>
+      <form
+        onSubmit={submit}
+        className="bg-card border border-border rounded-2xl p-6 shadow-sm space-y-5"
+      >
+        <div className="space-y-1.5">
+          <label className="text-[11px] uppercase tracking-[0.18em] text-muted-foreground">
+            Current Password
+          </label>
+          <div className="relative">
+            <Field
+              type={showCurrent ? "text" : "password"}
+              value={currentPw}
+              onChange={(e) => setCurrentPw(e.target.value)}
+              placeholder="Current password"
+              required
+            />
+            <button
+              type="button"
+              onClick={() => setShowCurrent((v) => !v)}
+              className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition"
+            >
+              {showCurrent ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
+            </button>
+          </div>
+        </div>
+
+        <div className="space-y-1.5">
+          <label className="text-[11px] uppercase tracking-[0.18em] text-muted-foreground">
+            New Password
+          </label>
+          <div className="relative">
+            <Field
+              type={showNew ? "text" : "password"}
+              value={newPw}
+              onChange={(e) => setNewPw(e.target.value)}
+              placeholder="New password (min 8 characters)"
+              required
+            />
+            <button
+              type="button"
+              onClick={() => setShowNew((v) => !v)}
+              className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition"
+            >
+              {showNew ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
+            </button>
+          </div>
+        </div>
+
+        <div className="space-y-1.5">
+          <label className="text-[11px] uppercase tracking-[0.18em] text-muted-foreground">
+            Confirm New Password
+          </label>
+          <div className="relative">
+            <Field
+              type={showConfirm ? "text" : "password"}
+              value={confirmPw}
+              onChange={(e) => setConfirmPw(e.target.value)}
+              placeholder="Confirm new password"
+              required
+            />
+            <button
+              type="button"
+              onClick={() => setShowConfirm((v) => !v)}
+              className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition"
+            >
+              {showConfirm ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
+            </button>
+          </div>
+          {newPw && confirmPw && newPw !== confirmPw && (
+            <p className="text-xs text-destructive mt-1">Passwords do not match</p>
+          )}
+        </div>
+
+        <button
+          disabled={loading}
+          className="w-full bg-primary text-primary-foreground text-[11px] uppercase tracking-[0.22em] py-3 rounded-xl hover:bg-accent hover:text-accent-foreground transition disabled:opacity-60"
+        >
+          {loading ? "Updating…" : "Update Password"}
+        </button>
+      </form>
+    </div>
+  );
+}
+
+// ── Shared input ───────────────────────────────────────────────────────────────
+
+function Field({ className = "", ...rest }: React.InputHTMLAttributes<HTMLInputElement>) {
   return (
     <input
       {...rest}
-      className={`w-full bg-background border border-border px-3 py-2.5 text-sm outline-none focus:border-foreground transition ${className}`}
+      className={`w-full bg-background border border-border rounded-xl px-4 py-3 text-sm outline-none focus:border-foreground focus:ring-2 focus:ring-foreground/10 transition ${className}`}
     />
   );
 }

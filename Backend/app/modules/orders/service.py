@@ -59,7 +59,11 @@ class OrderService:
                     "p.stock_quantity, p.reserved_quantity, p.sold_quantity, "
                     "p.allow_backorder, p.track_inventory, "
                     "v.name AS variant_name, "
-                    "COALESCE(v.price_adjustment, 0) AS price_adj "
+                    "COALESCE(v.price_adjustment, 0) AS price_adj, "
+                    "(SELECT pi.thumbnail_url FROM product_images pi "
+                    " WHERE pi.product_id = p.id "
+                    " ORDER BY pi.is_primary DESC, pi.sort_order ASC LIMIT 1"
+                    ") AS image_url "
                     "FROM products p "
                     "LEFT JOIN product_variants v ON v.id = :vid "
                     "WHERE p.id = :pid AND p.deleted_at IS NULL AND p.status = 'active'"
@@ -87,6 +91,7 @@ class OrderService:
                     "product_name": prod.name,
                     "product_sku": prod.sku,
                     "variant_name": prod.variant_name,
+                    "image_url": prod.image_url,
                     "unit_price": unit_price,
                     "quantity": ci.quantity,
                     "tax_rate": tax_rate,
@@ -599,6 +604,7 @@ class OrderService:
                 order_number=o.order_number,
                 status=o.status,
                 payment_status=o.payment_status,
+                fulfillment_status=o.fulfillment_status,
                 total=float(o.total),
                 item_count=getattr(o, "_item_count", 0),
                 created_at=o.created_at,
@@ -639,6 +645,7 @@ class OrderService:
                 order_number=o.order_number,
                 status=o.status,
                 payment_status=o.payment_status,
+                fulfillment_status=o.fulfillment_status,
                 total=float(o.total),
                 item_count=getattr(o, "_item_count", 0),
                 created_at=o.created_at,

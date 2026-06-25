@@ -56,6 +56,16 @@ class Shipment(Base):
         DateTime(timezone=True), nullable=True
     )
     cancel_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    # Dispatch workflow
+    dispatch_date: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    expected_delivery_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    dispatch_notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    fulfilled_by: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), nullable=True
+    )
     raw_response: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()

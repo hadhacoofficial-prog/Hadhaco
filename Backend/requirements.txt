@@ -65,6 +65,7 @@ structlog==24.4.0
 python-slugify==8.0.4
 phonenumbers==8.13.50
 qrcode==8.0
+python-barcode==0.16.1
 # CVE-2026-28684 — fix: 1.2.2
 python-dotenv==1.2.2
 

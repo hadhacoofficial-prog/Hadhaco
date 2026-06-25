@@ -143,6 +143,13 @@ export const queryKeys = {
       ["admin", "collection", id, "products", filters ?? {}] as const,
     orders: (filters?: Filters) => ["admin", "orders", filters ?? {}] as const,
     order: (id: string) => ["admin", "order", id] as const,
+    fulfillment: {
+      timeline: (orderId: string) => ["admin", "fulfillment", "timeline", orderId] as const,
+      shippingLabel: (orderId: string) =>
+        ["admin", "fulfillment", "shipping-label", orderId] as const,
+      packingSlip: (orderId: string) =>
+        ["admin", "fulfillment", "packing-slip", orderId] as const,
+    },
     inventory: (filters?: Filters) => ["admin", "inventory", filters ?? {}] as const,
     lowStock: ["admin", "inventory", "low-stock"] as const,
     coupons: (filters?: Filters) => ["admin", "coupons", filters ?? {}] as const,

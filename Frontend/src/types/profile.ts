@@ -8,6 +8,7 @@ export interface ProfileDto {
   is_active: boolean;
   is_verified: boolean;
   created_at: string;
+  updated_at: string;
 }
 
 export interface ProfileUpdateDto {

@@ -73,6 +73,7 @@ export interface OrderListItem {
   order_number: string;
   status: string;
   payment_status: string;
+  fulfillment_status: string;
   total: number;
   item_count: number;
   created_at: string;
@@ -92,6 +93,7 @@ export interface OrderItemResponse {
   product_name: string;
   product_sku: string;
   variant_name: string | null;
+  image_url: string | null;
   unit_price: number;
   quantity: number;
   line_total: number;
@@ -103,6 +105,7 @@ export interface OrderResponse {
   user_id: string;
   status: string;
   payment_status: string;
+  fulfillment_status: string;
   subtotal: number;
   tax_amount: number;
   shipping_charge: number;
@@ -112,6 +115,9 @@ export interface OrderResponse {
   payment_method: string;
   razorpay_order_id: string | null;
   tracking_number: string | null;
+  shipping_provider: string | null;
+  dispatched_at: string | null;
+  estimated_delivery: string | null;
   cancellation_reason: string | null;
   created_at: string;
   items: OrderItemResponse[];

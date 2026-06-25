@@ -1,7 +1,14 @@
 {
   "permissions": {
     "allow": [
-      "Bash(xargs wc -l)"
+      "Bash(xargs wc -l)",
+      "Bash(Get-ChildItem -Path \"F:\\\\Work\\\\Hadha.co\\\\Project\\\\Backend\\\\app\\\\modules\" -Directory)",
+      "Bash(Get-ChildItem -Path \"F:\\\\Work\\\\Hadha.co\\\\Project\\\\Backend\\\\alembic\\\\versions\" -Filter \"*.py\")",
+      "Bash(Select-Object -Last 10 Name)",
+      "PowerShell(head -20)",
+      "PowerShell(grep -i \"order\")",
+      "Bash(python -m py_compile app/modules/fulfillment/models.py app/modules/fulfillment/schemas.py app/modules/fulfillment/repository.py app/modules/fulfillment/service.py app/modules/fulfillment/router.py)",
+      "Bash(node node_modules/typescript/bin/tsc --noEmit)"
     ]
   }
 }
