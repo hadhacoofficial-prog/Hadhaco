@@ -63,6 +63,7 @@ class TestOrderServiceGetAndList:
         mock_order.order_number = "ORD-202406-000001"
         mock_order.status = "pending"
         mock_order.payment_status = "pending"
+        mock_order.fulfillment_status = "pending"
         mock_order.total = 999.0
         mock_order.created_at = datetime.now(UTC)
         mock_order.items = []
@@ -84,6 +85,7 @@ class TestOrderServiceGetAndList:
         mock_order.order_number = "ORD-202406-000001"
         mock_order.status = "confirmed"
         mock_order.payment_status = "captured"
+        mock_order.fulfillment_status = "pending"
         mock_order.total = 1500.0
         mock_order.created_at = datetime.now(UTC)
         with patch(

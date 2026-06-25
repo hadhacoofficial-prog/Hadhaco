@@ -81,6 +81,7 @@ class TestOrderServiceList:
         mock_order.order_number = "ORD-001"
         mock_order.status = "pending"
         mock_order.payment_status = "pending"
+        mock_order.fulfillment_status = "pending"
         mock_order.total = Decimal("1500.00")
         mock_order.created_at = datetime.now(UTC)
         mock_order.items = []
@@ -124,6 +125,7 @@ class TestOrderServiceList:
         mock_order.order_number = "ORD-002"
         mock_order.status = "confirmed"
         mock_order.payment_status = "paid"
+        mock_order.fulfillment_status = "pending"
         mock_order.total = Decimal("500.00")
         mock_order.created_at = datetime.now(UTC)
         with patch(
