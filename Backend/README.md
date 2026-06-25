@@ -33,7 +33,7 @@ Production-grade FastAPI backend for **Hadha.co**, an Indian silver jewellery e-
 | **Version** | 1.0.0 |
 | **Business Purpose** | Multi-vendor ready silver jewellery e-commerce platform targeting the Indian market. Supports customer-facing shopping, admin operations, logistics, payments, and CMS. |
 | **API Prefix** | `/api/v1` |
-| **Docs URL** | `/docs` (dev/staging only — disabled in production) |
+| **Docs URL** | `/docs` (development only — disabled in production) |
 
 ### Technology Stack
 
@@ -396,9 +396,9 @@ Not wired. Only Twilio SMS is connected. No WhatsApp Business API integration ex
 
 ### CI/CD
 
-**Status:** Not Implemented (0%)
+**Status:** Complete (100%)
 
-No `.github/workflows/` or equivalent pipeline files exist. Docker and staging compose files are present for manual deployment.
+GitHub Actions pipeline: CI (`ci.yml`) runs lint/tests/type-check on every PR; production deploy (`production.yml`) triggers on push to `main` — builds Docker images, pushes to GHCR, and deploys to the VPS via SSH. See `DEVOPS.md` for the full runbook.
 
 ---
 
@@ -852,7 +852,7 @@ collections ──── collection_products ──── products
 | Variable | Default | Description |
 |---|---|---|
 | `APP_NAME` | `Hadha.co` | Application name |
-| `APP_ENV` | `development` | `development` \| `staging` \| `production` |
+| `APP_ENV` | `development` | `development` \| `production` |
 | `APP_DEBUG` | `false` | Enable debug mode |
 | `APP_VERSION` | `1.0.0` | Version string |
 | `API_HOST` | `0.0.0.0` | Bind host |
@@ -898,7 +898,6 @@ collections ──── collection_products ──── products
 | File | Purpose |
 |---|---|
 | `.env.example` | Canonical template with all variables and comments |
-| `.env.staging.example` | Staging-specific overrides template |
 | `.env.production.example` | Production-specific overrides template |
 | `.env.test` | Test environment (loaded by `conftest.py`) |
 | `.env` | Local development (gitignored) |
@@ -1032,7 +1031,7 @@ Tests use an in-process ASGI client (no live server). Database calls are mocked 
 
 7. **`catalog/router.py` imports `created` inside function bodies** — Avoids circular import but is inconsistent with other routers that import at the top level. Should be refactored to a top-level import.
 
-8. **No CI/CD pipeline** — Docker files exist for local and staging deployment, but there are no automated build/test/deploy workflows (no `.github/workflows/`).
+8. **CI/CD pipeline** — GitHub Actions workflows are in place (`.github/workflows/ci.yml` and `production.yml`). Deploy automation is handled by `deploy/scripts/deploy.sh`.
 
 9. **Alembic migrations are a stub** — The baseline migration is an empty placeholder. Any future schema changes must be managed manually in Supabase SQL or a proper Alembic migration must be set up.
 
@@ -1150,8 +1149,7 @@ Backend/
 │       └── 0001_baseline.py            # Empty baseline — schema managed via setup.sql
 ├── docker/
 │   ├── Dockerfile                      # Multi-stage, non-root, 4 uvicorn workers
-│   ├── docker-compose.yml              # API + Redis + Nginx
-│   ├── docker-compose.staging.yml      # Staging overrides
+│   ├── docker-compose.yml              # API + Redis + Nginx (development)
 │   └── nginx/
 │       ├── nginx.conf
 │       └── proxy_params.conf
@@ -1163,7 +1161,6 @@ Backend/
 │   ├── unit/                           # 21 unit test files (~872 tests)
 │   └── integration/                    # 2 integration test files (66 tests)
 ├── .env.example                        # All environment variables with comments
-├── .env.staging.example
 ├── .env.production.example
 ├── .env.test
 ├── pyproject.toml                      # Project metadata, pytest config, ruff, mypy
@@ -1310,13 +1307,6 @@ Services started:
 - **Redis**: `localhost:6379`
 - **Nginx**: `http://localhost:80`
 
-### Staging
-
-```bash
-cd docker
-docker compose -f docker-compose.yml -f docker-compose.staging.yml up --build -d
-```
-
 ### Production
 
 1. Copy and configure production env:
@@ -1410,7 +1400,7 @@ curl http://localhost/health/ready
 
 ### Recommended Next Tasks
 
-1. **Set up CI/CD** — GitHub Actions workflow: `pytest` → Docker build → push to registry → deploy to staging → production gate
+1. **Extend CI/CD** — Add end-to-end test gate to production workflow before container restart
 2. **Implement Google OAuth login** — Add `/auth/google/callback` route, provision Supabase user from Google profile, return JWT
 3. **Add WhatsApp notifications** — Wire Twilio WhatsApp Business API in `notifications/service.py` alongside existing SMS channel
 4. **Add Alembic migration workflow** — Auto-generate migrations from ORM models for future schema changes without manual SQL

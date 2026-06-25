@@ -203,7 +203,10 @@ class NotificationService:
                     user_id=event.user_id,
                     event_type="user_registered",
                     recipient=event.email,
-                    context={"full_name": event.full_name},
+                    context={
+                        "full_name": event.full_name,
+                        "frontend_url": settings.FRONTEND_URL,
+                    },
                 )
 
         async def _handle_order_created(event: OrderCreatedEvent) -> None:
@@ -211,7 +214,11 @@ class NotificationService:
             from app.core.database import AsyncWorkerSessionLocal
 
             async with AsyncWorkerSessionLocal() as db:
-                ctx = {"order_number": event.order_number, "total": event.total_amount}
+                ctx = {
+                    "order_number": event.order_number,
+                    "total": event.total_amount,
+                    "frontend_url": settings.FRONTEND_URL,
+                }
                 await svc.send_email(
                     db,
                     user_id=event.user_id,

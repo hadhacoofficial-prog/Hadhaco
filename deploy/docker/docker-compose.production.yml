@@ -13,8 +13,8 @@ name: hadha-production
 # would disconnect the migration container from Redis between deployments.
 #
 # Traffic flow: internet → nginx:80/443 → backend:8000 / frontend:3000
-# Monitoring:   nginx → /redis-commander → redis-commander:8081
-#               nginx → /dozzle         → dozzle:8080
+# Monitoring:   nginx → redis.hadha.co → redis-commander:8081
+#               nginx → dozzle.hadha.co → dozzle:8080
 # =============================================================================
 
 services:
@@ -28,11 +28,11 @@ services:
     environment:
       APP_ENV: production
       REDIS_URL: "redis://:${REDIS_PASSWORD}@hadha-redis:6379/0"
-      ALLOWED_ORIGINS: "https://hadha.co,https://www.hadha.co"
+      ALLOWED_ORIGINS: "https://hadha.co,https://www.hadha.co,https://admin.hadha.co"
       # hadha-backend allows the SSR frontend container to call the backend
       # directly over the Docker-internal network without being rejected by
       # TrustedHostMiddleware (Node.js fetch sets Host to the URL hostname).
-      ALLOWED_HOSTS: "hadha.co,www.hadha.co,hadha-backend"
+      ALLOWED_HOSTS: "api.hadha.co,hadha-backend"
     expose:
       - "8000"
     depends_on:
@@ -48,7 +48,7 @@ services:
       test:
         [
           "CMD", "python", "-c",
-          "import httpx,sys; r=httpx.get('http://localhost:8000/health/live',headers={'Host':'hadha.co'},timeout=5); sys.exit(0 if r.status_code<400 else 1)"
+          "import httpx,sys; r=httpx.get('http://localhost:8000/health/live',headers={'Host':'api.hadha.co'},timeout=5); sys.exit(0 if r.status_code<400 else 1)"
         ]
       interval: 30s
       timeout: 10s
@@ -159,7 +159,9 @@ services:
     restart: unless-stopped
     environment:
       REDIS_HOSTS: "hadha:hadha-redis:6379:0:${REDIS_PASSWORD}"
-      URL_PREFIX: /redis-commander
+      # Credentials injected from GitHub Secrets via deploy.sh — never stored in repo
+      HTTP_USER: ${REDIS_UI_USERNAME}
+      HTTP_PASSWORD: ${REDIS_UI_PASSWORD}
     expose:
       - "8081"
     depends_on:
@@ -175,7 +177,7 @@ services:
         - "CMD"
         - "node"
         - "-e"
-        - "require('http').get('http://localhost:8081/redis-commander/',function(r){process.exit(r.statusCode<500?0:1)}).on('error',function(){process.exit(1)})"
+        - "require('http').get('http://localhost:8081/',function(r){process.exit(r.statusCode<500?0:1)}).on('error',function(){process.exit(1)})"
       interval: 30s
       timeout: 10s
       retries: 3
@@ -199,12 +201,15 @@ services:
     container_name: hadha-dozzle
     restart: unless-stopped
     environment:
-      DOZZLE_BASE: /dozzle
       DOZZLE_NO_ANALYTICS: "true"
+      # deploy.sh generates /opt/hadha/dozzle/users.yml (bcrypt-hashed) from
+      # GitHub Secrets before compose up. Dozzle reads it as the user store.
+      DOZZLE_AUTH_PROVIDER: simple
     expose:
       - "8080"
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
+      - /opt/hadha/dozzle:/data:ro
     networks:
       - hadha-internal
     healthcheck:
@@ -240,7 +245,6 @@ services:
     volumes:
       - /opt/hadha/nginx/nginx.conf:/etc/nginx/nginx.conf:ro
       - /opt/hadha/nginx/conf.d:/etc/nginx/conf.d:ro
-      - /opt/hadha/nginx/htpasswd:/etc/nginx/htpasswd:ro
       - /etc/letsencrypt:/etc/letsencrypt:ro
       - /var/www/certbot:/var/www/certbot:ro
       - nginx_logs:/var/log/nginx

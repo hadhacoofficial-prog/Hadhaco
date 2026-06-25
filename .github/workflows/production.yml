@@ -145,7 +145,7 @@ jobs:
           build-args: |
             NITRO_PRESET=node
             NODE_ENV=production
-            VITE_API_BASE_URL=https://hadha.co/api/v1
+            VITE_API_BASE_URL=https://api.hadha.co/api/v1
             VITE_SUPABASE_URL=${{ secrets.SUPABASE_URL }}
             VITE_SUPABASE_PUBLISHABLE_KEY=${{ secrets.SUPABASE_ANON_KEY }}
           tags: ${{ steps.tags.outputs.frontend_tags }}
@@ -289,6 +289,10 @@ jobs:
           GIT_COMMIT_SHA: ${{ github.sha }}
           GIT_COMMIT_AUTHOR: ${{ github.event.head_commit.author.name || 'workflow_dispatch' }}
           REDIS_PASSWORD: ${{ secrets.REDIS_PASSWORD }}
+          REDIS_UI_USERNAME: ${{ secrets.REDIS_UI_USERNAME }}
+          REDIS_UI_PASSWORD: ${{ secrets.REDIS_UI_PASSWORD }}
+          DOZZLE_USERNAME: ${{ secrets.DOZZLE_USERNAME }}
+          DOZZLE_PASSWORD: ${{ secrets.DOZZLE_PASSWORD }}
           RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
           RESEND_FROM_EMAIL: ${{ secrets.RESEND_FROM_EMAIL }}
           RESEND_TO_EMAIL: ${{ secrets.RESEND_TO_EMAIL }}
@@ -297,7 +301,7 @@ jobs:
           port: ${{ secrets.SSH_PORT || 22 }}
           username: ${{ secrets.SSH_USER }}
           key: ${{ secrets.SSH_PRIVATE_KEY }}
-          envs: BACKEND_IMAGE,FRONTEND_IMAGE,IMAGE_TAG,GHCR_USERNAME,GHCR_TOKEN,GIT_COMMIT_SHA,GIT_COMMIT_AUTHOR,REDIS_PASSWORD,RESEND_API_KEY,RESEND_FROM_EMAIL,RESEND_TO_EMAIL
+          envs: BACKEND_IMAGE,FRONTEND_IMAGE,IMAGE_TAG,GHCR_USERNAME,GHCR_TOKEN,GIT_COMMIT_SHA,GIT_COMMIT_AUTHOR,REDIS_PASSWORD,REDIS_UI_USERNAME,REDIS_UI_PASSWORD,DOZZLE_USERNAME,DOZZLE_PASSWORD,RESEND_API_KEY,RESEND_FROM_EMAIL,RESEND_TO_EMAIL
           timeout: 600s
           command_timeout: 10m
           script: |
@@ -308,10 +312,10 @@ jobs:
             cp -f /tmp/hadha-deploy/deploy/scripts/*.sh                           /opt/hadha/scripts/
             cp -f /tmp/hadha-deploy/deploy/docker/docker-compose.production.yml   /opt/hadha/
 
-            # Install nginx configs — nginx.conf to root, conf.d/ for server blocks
+            # Install nginx configs — nginx.conf to root, conf.d/ for all server blocks
             cp -f /tmp/hadha-deploy/deploy/nginx/nginx.conf                       /opt/hadha/nginx/
             mkdir -p /opt/hadha/nginx/conf.d
-            cp -f /tmp/hadha-deploy/deploy/nginx/conf.d/hadha.conf                /opt/hadha/nginx/conf.d/
+            cp -f /tmp/hadha-deploy/deploy/nginx/conf.d/*.conf                    /opt/hadha/nginx/conf.d/
 
             rm -rf /tmp/hadha-deploy
 
@@ -320,7 +324,7 @@ jobs:
             export GHCR_USERNAME GHCR_TOKEN GIT_COMMIT_SHA GIT_COMMIT_AUTHOR
             export REDIS_PASSWORD RESEND_API_KEY RESEND_FROM_EMAIL RESEND_TO_EMAIL
 
-            /opt/hadha/scripts/deploy.sh production "${IMAGE_TAG}"
+            /opt/hadha/scripts/deploy.sh "${IMAGE_TAG}"
 
       - name: Notify deployment failure (if SSH step failed)
         if: failure()

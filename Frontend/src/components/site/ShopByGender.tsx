@@ -4,8 +4,9 @@ import { ArrowUpRight } from "lucide-react";
 import { AnimatePresence, motion } from "framer-motion";
 import { useNavigationCategories } from "@/hooks/categories/useNavigationCategories";
 import { Skeleton } from "@/components/ui/skeleton";
+import defaultCategoryImage from "@/assets/p3.jpg";
 
-const DEFAULT_CATEGORY_IMAGE = "./assets/p3.jpg";
+const DEFAULT_CATEGORY_IMAGE = defaultCategoryImage;
 
 type Gender = "women" | "men" | "unisex" | "kids";
 const GENDER_KEYS: Gender[] = ["women", "men", "unisex", "kids"];

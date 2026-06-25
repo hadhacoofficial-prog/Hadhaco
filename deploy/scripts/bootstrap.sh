@@ -9,8 +9,8 @@
 #   1. System hardening (SSH, firewall, fail2ban)
 #   2. Docker + Docker Compose installation
 #   3. Directory structure creation
-#   4. Nginx htpasswd generation (monitoring auth)
-#   5. Let's Encrypt SSL certificate setup
+#   4. Monitoring auth directory setup
+#   5. Let's Encrypt SSL certificate setup (all subdomains)
 #   6. Deploy scripts installation
 #   7. Systemd service for auto-start
 # =============================================================================
@@ -18,17 +18,13 @@
 set -euo pipefail
 
 DOMAIN="${DOMAIN:-hadha.co}"
-STAGING_DOMAIN="${STAGING_DOMAIN:-staging.hadha.co}"
 ADMIN_EMAIL="${ADMIN_EMAIL:-admin@hadha.co}"
-MONITORING_USER="${MONITORING_USER:-hadha-admin}"
-MONITORING_PASSWORD="${MONITORING_PASSWORD:?Set MONITORING_PASSWORD before running}"
 DEPLOY_USER="${DEPLOY_USER:-deploy}"
 
 log()     { echo "[$(date +'%H:%M:%S')] $*"; }
 success() { echo "[$(date +'%H:%M:%S')] ✓ $*"; }
 section() { echo ""; echo "══════════════════════════════"; echo "  $*"; echo "══════════════════════════════"; }
 
-# ── Must run as root ──────────────────────────────────────────────────────────
 [[ "$(id -u)" -eq 0 ]] || { echo "Run as root (sudo bash bootstrap.sh)"; exit 1; }
 
 section "1. System update and hardening"
@@ -43,7 +39,6 @@ apt-get install -y -qq \
   htop ncdu \
   logrotate
 
-# Configure fail2ban for SSH and nginx
 cat > /etc/fail2ban/jail.local <<'EOF'
 [DEFAULT]
 bantime  = 3600
@@ -54,12 +49,6 @@ maxretry = 5
 enabled = true
 port    = ssh
 logpath = %(sshd_log)s
-
-[nginx-http-auth]
-enabled  = true
-filter   = nginx-http-auth
-port     = http,https
-logpath  = /var/log/nginx/error.log
 
 [nginx-limit-req]
 enabled  = true
@@ -72,7 +61,6 @@ systemctl enable fail2ban
 systemctl restart fail2ban
 success "Fail2ban configured"
 
-# ── Firewall ──────────────────────────────────────────────────────────────────
 section "2. Firewall setup (UFW)"
 ufw --force reset
 ufw default deny incoming
@@ -83,7 +71,6 @@ ufw allow 443/tcp
 ufw --force enable
 success "UFW firewall configured"
 
-# ── Create deploy user ────────────────────────────────────────────────────────
 section "3. Deploy user"
 if ! id "${DEPLOY_USER}" &>/dev/null; then
   useradd -m -s /bin/bash "${DEPLOY_USER}"
@@ -93,7 +80,6 @@ else
   success "Deploy user already exists: ${DEPLOY_USER}"
 fi
 
-# ── Docker installation ───────────────────────────────────────────────────────
 section "4. Docker installation"
 if ! command -v docker &>/dev/null; then
   curl -fsSL https://get.docker.com | sh
@@ -105,45 +91,37 @@ else
   success "Docker already installed: $(docker --version)"
 fi
 
-# ── Directory structure ───────────────────────────────────────────────────────
 section "5. Directory structure"
 for dir in \
   /opt/hadha \
   /opt/hadha/nginx/conf.d \
   /opt/hadha/scripts \
   /opt/hadha/backups \
-  /opt/hadha-staging \
-  /opt/hadha-staging/nginx/conf.d \
-  /opt/hadha-staging/scripts \
-  /opt/hadha-staging/backups \
+  /opt/hadha/dozzle \
   /var/www/certbot; do
   mkdir -p "${dir}"
 done
 
-chown -R "${DEPLOY_USER}:${DEPLOY_USER}" /opt/hadha /opt/hadha-staging
+chown -R "${DEPLOY_USER}:${DEPLOY_USER}" /opt/hadha
 success "Directories created"
 
-# ── Nginx htpasswd for monitoring tools ───────────────────────────────────────
-section "6. Monitoring auth (htpasswd)"
-htpasswd -bc /opt/hadha/nginx/htpasswd "${MONITORING_USER}" "${MONITORING_PASSWORD}"
-cp /opt/hadha/nginx/htpasswd /opt/hadha-staging/nginx/htpasswd
-success "htpasswd created for user: ${MONITORING_USER}"
+section "6. Monitoring auth"
+# Authentication for Redis Commander and Dozzle is injected at deploy time
+# from GitHub Secrets (REDIS_UI_USERNAME/REDIS_UI_PASSWORD, DOZZLE_USERNAME/DOZZLE_PASSWORD).
+# deploy.sh generates /opt/hadha/dozzle/users.yml (bcrypt-hashed) automatically.
+# Nothing needs to be created here — no plaintext passwords on the server at bootstrap.
+success "Monitoring auth: credentials injected from GitHub Secrets at each deploy"
 
-# ── Nginx config files ────────────────────────────────────────────────────────
 section "7. Nginx configuration"
-# These will be overwritten by deploy — create placeholders
 cat > /opt/hadha/nginx/nginx.conf <<'NGINXEOF'
 # Placeholder — will be replaced by deploy pipeline
 events { worker_connections 1024; }
 http { server { listen 80; return 200 "ok\n"; } }
 NGINXEOF
+success "Nginx placeholder config created"
 
-cp /opt/hadha/nginx/nginx.conf /opt/hadha-staging/nginx/nginx.conf
-success "Nginx placeholder configs created"
-
-# ── Let's Encrypt certificates ────────────────────────────────────────────────
 section "8. SSL certificates (Let's Encrypt)"
-log "Requesting certificate for ${DOMAIN} and ${STAGING_DOMAIN}..."
+log "Requesting certificate for ${DOMAIN} and all subdomains..."
 
 # Temporarily start a plain HTTP server for ACME challenge
 docker run -d --name certbot-temp \
@@ -153,6 +131,7 @@ docker run -d --name certbot-temp \
 
 sleep 2
 
+# Single certificate covering all subdomains via Subject Alternative Names
 certbot certonly \
   --webroot \
   --webroot-path=/var/www/certbot \
@@ -161,27 +140,20 @@ certbot certonly \
   --no-eff-email \
   -d "${DOMAIN}" \
   -d "www.${DOMAIN}" \
-  2>/dev/null && success "Production certificate obtained" || \
+  -d "api.${DOMAIN}" \
+  -d "admin.${DOMAIN}" \
+  -d "redis.${DOMAIN}" \
+  -d "dozzle.${DOMAIN}" \
+  2>/dev/null && success "Certificate obtained for all subdomains" || \
     log "[WARN] Certificate request failed — run certbot manually after DNS propagates"
-
-certbot certonly \
-  --webroot \
-  --webroot-path=/var/www/certbot \
-  --email "${ADMIN_EMAIL}" \
-  --agree-tos \
-  --no-eff-email \
-  -d "${STAGING_DOMAIN}" \
-  2>/dev/null && success "Staging certificate obtained" || \
-    log "[WARN] Staging certificate request failed"
 
 docker stop certbot-temp 2>/dev/null && docker rm certbot-temp 2>/dev/null || true
 
-# ── Auto-renew via cron ───────────────────────────────────────────────────────
+# Auto-renew via cron
 echo "0 3 * * * root certbot renew --quiet --post-hook 'docker exec hadha-nginx nginx -s reload'" \
   > /etc/cron.d/certbot-renew
 success "Certbot auto-renewal configured"
 
-# ── SSH key for GitHub Actions ────────────────────────────────────────────────
 section "9. GitHub Actions deploy key"
 SSH_DIR="/home/${DEPLOY_USER}/.ssh"
 mkdir -p "${SSH_DIR}"
@@ -202,30 +174,41 @@ cat "${SSH_DIR}/id_ed25519_github"
 echo "═══════════════════════════════════════════════════════"
 echo ""
 
-# ── Generate Redis password ───────────────────────────────────────────────────
-section "10. Redis password"
+section "10. Generate secret values"
 REDIS_PW=$(python3 -c "import secrets; print(secrets.token_hex(32))" 2>/dev/null || \
            openssl rand -hex 32)
+REDIS_UI_PW=$(python3 -c "import secrets; print(secrets.token_hex(16))" 2>/dev/null || \
+              openssl rand -hex 16)
+DOZZLE_PW=$(python3 -c "import secrets; print(secrets.token_hex(16))" 2>/dev/null || \
+            openssl rand -hex 16)
 echo ""
 echo "═══════════════════════════════════════════════════════"
-echo "  Generated Redis password (save this securely):"
-echo "  ${REDIS_PW}"
+echo "  Generated secrets (save all of these securely):"
 echo ""
-echo "  Add to GitHub Secret:  REDIS_PASSWORD"
-echo "  Add to server .env:    REDIS_PASSWORD=${REDIS_PW}"
+echo "  GitHub Secret    REDIS_PASSWORD     = ${REDIS_PW}"
+echo "  GitHub Secret    REDIS_UI_USERNAME  = hadha-admin"
+echo "  GitHub Secret    REDIS_UI_PASSWORD  = ${REDIS_UI_PW}"
+echo "  GitHub Secret    DOZZLE_USERNAME    = hadha-admin"
+echo "  GitHub Secret    DOZZLE_PASSWORD    = ${DOZZLE_PW}"
+echo ""
+echo "  Server .env:     REDIS_PASSWORD=${REDIS_PW}"
+echo ""
+echo "  See DEVOPS.md for the full list of required GitHub Secrets."
 echo "═══════════════════════════════════════════════════════"
 echo ""
 
-# ── Summary ───────────────────────────────────────────────────────────────────
 section "Bootstrap complete"
 echo ""
 echo "Next steps:"
-echo "  1. Copy the SSH private key above to GitHub Secret: SSH_PRIVATE_KEY"
-echo "  2. Set remaining GitHub Secrets (see DEVOPS.md), including:"
-echo "       REDIS_PASSWORD  ← use the generated value printed above"
-echo "  3. Copy .env files to /opt/hadha/.env.production and /opt/hadha/.env.frontend.production"
-echo "       Both files must contain: REDIS_PASSWORD=<value above>"
-echo "  4. Copy docker-compose files to /opt/hadha/"
+echo "  1. Point DNS A records to this server for all subdomains:"
+echo "       ${DOMAIN}        api.${DOMAIN}"
+echo "       www.${DOMAIN}    admin.${DOMAIN}"
+echo "       redis.${DOMAIN}  dozzle.${DOMAIN}"
+echo "  2. Copy the SSH private key above to GitHub Secret: SSH_PRIVATE_KEY"
+echo "  3. Set remaining GitHub Secrets (see DEVOPS.md)"
+echo "  4. Copy .env files:"
+echo "       /opt/hadha/.env.production         (backend config)"
+echo "       /opt/hadha/.env.frontend.production (frontend config)"
 echo "  5. Push to main branch to trigger first deployment"
 echo ""
 echo "Server IP: $(curl -sf https://ipinfo.io/ip 2>/dev/null || hostname -I | awk '{print $1}')"

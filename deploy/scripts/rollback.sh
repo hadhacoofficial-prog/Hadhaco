@@ -1,41 +1,24 @@
 #!/usr/bin/env bash
 # =============================================================================
-# rollback.sh — Restore the previous deployment
+# rollback.sh — Restore the previous production deployment
 #
 # Called automatically by deploy.sh on failure, or manually for emergencies.
 #
 # Usage (from deploy.sh — images passed as args):
-#   ./rollback.sh <environment> <prev_backend_image> <prev_frontend_image>
+#   ./rollback.sh <prev_backend_image> <prev_frontend_image>
 #
 # Usage (manual emergency — reads images from disk):
-#   ./rollback.sh <environment>
+#   ./rollback.sh
 # =============================================================================
 
 set -uo pipefail
 
-ENVIRONMENT="${1:?Usage: $0 <environment> [prev_backend_image] [prev_frontend_image]}"
-PREV_BACKEND="${2:-}"
-PREV_FRONTEND="${3:-}"
+PREV_BACKEND="${1:-}"
+PREV_FRONTEND="${2:-}"
 
-# ── Config ────────────────────────────────────────────────────────────────────
-case "$ENVIRONMENT" in
-  production)
-    APP_DIR="/opt/hadha"
-    COMPOSE_FILE="${APP_DIR}/docker-compose.production.yml"
-    ENV_FILE="${APP_DIR}/.env.production"
-    # M-1 FIX: APP_URL was set here but never referenced. Removed dead code.
-    ;;
-  staging)
-    APP_DIR="/opt/hadha-staging"
-    COMPOSE_FILE="${APP_DIR}/docker-compose.staging.yml"
-    ENV_FILE="${APP_DIR}/.env.staging"
-    ;;
-  *)
-    echo "[ERROR] Unknown environment: ${ENVIRONMENT}"
-    exit 1
-    ;;
-esac
-
+APP_DIR="/opt/hadha"
+COMPOSE_FILE="${APP_DIR}/docker-compose.production.yml"
+ENV_FILE="${APP_DIR}/.env.production"
 BACKUP_DIR="${APP_DIR}/backups"
 LOG_FILE="${APP_DIR}/rollback.log"
 SCRIPTS_DIR="${APP_DIR}/scripts"
@@ -45,8 +28,6 @@ ROLLBACK_START=$(date +%s)
 log() { echo "[$(date +'%Y-%m-%dT%H:%M:%S%z')] $*" | tee -a "${LOG_FILE}"; }
 die() { log "[FATAL] $*"; exit 1; }
 
-# ── Compose wrapper ───────────────────────────────────────────────────────────
-# Every docker compose call must include --env-file and -f.
 dc() {
   docker compose \
     --env-file "${ENV_FILE}" \
@@ -56,14 +37,9 @@ dc() {
 
 log ""
 log "════ ROLLBACK INITIATED ════"
-log "Environment : ${ENVIRONMENT}"
 log "Started at  : $(date +'%Y-%m-%dT%H:%M:%S%z')"
 
 # ── Resolve previous images ───────────────────────────────────────────────────
-# Priority order:
-#   1. Arguments passed by deploy.sh (most reliable — live state at failure time)
-#   2. Disk file (.previous_images) — persists across reboots and container restarts
-#   3. Most recent backup metadata JSON — last resort
 if [[ -z "${PREV_BACKEND}" ]] || [[ -z "${PREV_FRONTEND}" ]]; then
   log "No image arguments provided — reading previous images from disk"
 
@@ -73,7 +49,6 @@ if [[ -z "${PREV_BACKEND}" ]] || [[ -z "${PREV_FRONTEND}" ]]; then
     [[ -n "${PREV_BACKEND}" ]] && log "Previous images loaded from ${PREVIOUS_IMAGES_FILE}"
   fi
 
-  # Fallback to backup metadata
   if [[ -z "${PREV_BACKEND}" ]]; then
     log "Disk file not available — trying backup metadata"
     LATEST_META=$(ls -t "${BACKUP_DIR}"/metadata_*.json 2>/dev/null | head -1 || echo "")
@@ -92,30 +67,21 @@ log "Rolling back to:"
 log "  Backend  → ${PREV_BACKEND}"
 log "  Frontend → ${PREV_FRONTEND}"
 
-# ── Validate env file exists ──────────────────────────────────────────────────
 [[ -f "${ENV_FILE}" ]] || die "Env file not found: ${ENV_FILE}"
 
 # ── Pull previous images ──────────────────────────────────────────────────────
-# Images should already be cached locally from the previous deployment,
-# but we attempt a pull in case this is running on a new node or after prune.
 log "Pulling previous images (will use local cache if pull fails)..."
 docker pull "${PREV_BACKEND}"  2>&1 || log "[WARN] Pull failed for ${PREV_BACKEND} — using local cache"
 docker pull "${PREV_FRONTEND}" 2>&1 || log "[WARN] Pull failed for ${PREV_FRONTEND} — using local cache"
 
-# Verify images are available locally
 docker image inspect "${PREV_BACKEND}"  >/dev/null 2>&1 \
   || die "Previous backend image not available locally: ${PREV_BACKEND}"
 docker image inspect "${PREV_FRONTEND}" >/dev/null 2>&1 \
   || die "Previous frontend image not available locally: ${PREV_FRONTEND}"
 
-# ── Export for compose interpolation ─────────────────────────────────────────
 export BACKEND_IMAGE="${PREV_BACKEND}"
 export FRONTEND_IMAGE="${PREV_FRONTEND}"
 
-# C-3 FIX: When rollback.sh is invoked manually (not from deploy.sh),
-# REDIS_PASSWORD is not in the shell environment. Without it, healthcheck.sh
-# falls through to unauthenticated redis-cli ping, which fails because Redis
-# requires auth. Extract from the env file so all invocation paths work.
 if [[ -z "${REDIS_PASSWORD:-}" ]] && [[ -f "${ENV_FILE}" ]]; then
   REDIS_PASSWORD=$(grep -E '^REDIS_PASSWORD=' "${ENV_FILE}" | head -1 | cut -d= -f2-)
   log "REDIS_PASSWORD loaded from ${ENV_FILE}"
@@ -123,20 +89,14 @@ fi
 export REDIS_PASSWORD="${REDIS_PASSWORD:-}"
 
 # ── Restart with previous images ──────────────────────────────────────────────
-# --pull never: images were verified above; skip redundant pull inside compose.
-# --remove-orphans: remove containers from the failed new deployment.
-# NOTE: Redis volume, nginx config, and Docker network are NOT touched.
 log "Restarting containers with previous images..."
 if ! dc up -d --remove-orphans --pull never 2>&1 | tee -a "${LOG_FILE}"; then
   die "Failed to restart containers during rollback — manual intervention required"
 fi
 
 # ── Health check after rollback ───────────────────────────────────────────────
-# H-2 FIX: Removed unconditional sleep 15. healthcheck.sh uses exponential
-# backoff (2s→4s→8s…→30s cap, 120s total) and will wait for services to
-# become ready. A fixed pre-sleep only wastes time during a stressful failure.
 log "Running health checks on rolled-back deployment..."
-if "${SCRIPTS_DIR}/healthcheck.sh" "${ENVIRONMENT}" 2>&1 | tee -a "${LOG_FILE}"; then
+if "${SCRIPTS_DIR}/healthcheck.sh" 2>&1 | tee -a "${LOG_FILE}"; then
   ROLLBACK_END=$(date +%s)
   log "Rollback succeeded in $(( ROLLBACK_END - ROLLBACK_START ))s — deployment is healthy"
   exit 0

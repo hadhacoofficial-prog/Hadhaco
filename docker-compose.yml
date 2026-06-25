@@ -21,7 +21,7 @@ services:
       REDIS_URL: redis://:${REDIS_PASSWORD:-}@hadha-redis:6379/0
       # localhost:8080 = browser→frontend dev server (host-mapped port).
       # frontend:8080  = inter-container name, used by SSR/Nitro server calls.
-      ALLOWED_ORIGINS: "http://localhost:8080,http://localhost:5173,http://frontend:8080"
+      ALLOWED_ORIGINS: "http://localhost:8080,http://admin.localhost:8080,http://www.admin.localhost:8080,http://localhost:5173,http://frontend:8080"
       ALLOWED_HOSTS: "localhost,127.0.0.1,backend"
     volumes:
       # Hot-reload: mount source so Uvicorn's --reload picks up file changes.

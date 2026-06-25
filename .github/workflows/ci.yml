@@ -7,15 +7,15 @@ on:
   pull_request:
     branches: ["*"]
   push:
-    # Exclude main and develop — those branches run CI via staging.yml / production.yml
-    # which call this workflow as a reusable workflow. Running it directly here too
-    # would double the CI cost on every push to main or develop.
-    branches-ignore: [main, develop]
+    # Exclude main — that branch runs CI via production.yml which calls this
+    # workflow as a reusable workflow. Running it directly here too would
+    # double the CI cost on every push to main.
+    branches-ignore: [main]
     paths-ignore:
       - "*.md"
       - "Docs/**"
       - ".github/ISSUE_TEMPLATE/**"
-  # staging.yml and production.yml call this as a reusable workflow
+  # production.yml calls this as a reusable workflow
   workflow_call:
 
 concurrency:
@@ -230,7 +230,7 @@ jobs:
         env:
           NITRO_PRESET: node
           NODE_ENV: production
-          VITE_API_BASE_URL: https://hadha.co/api/v1
+          VITE_API_BASE_URL: https://api.hadha.co/api/v1
           VITE_SUPABASE_URL: https://placeholder.supabase.co
           VITE_SUPABASE_ANON_KEY: placeholder_anon_key
         run: npm run build
@@ -277,10 +277,10 @@ jobs:
   e2e-tests:
     name: Frontend — E2E Tests (Playwright)
     runs-on: ubuntu-24.04
-    # Only run E2E on PRs targeting main or develop to save CI minutes
+    # Only run E2E on PRs targeting main to save CI minutes
     if: |
       github.event_name == 'pull_request' &&
-      (github.base_ref == 'main' || github.base_ref == 'develop')
+      github.base_ref == 'main'
     needs: [frontend-build, docker-build-validate]
     defaults:
       run:
@@ -305,7 +305,7 @@ jobs:
         env:
           NITRO_PRESET: node
           NODE_ENV: production
-          VITE_API_BASE_URL: http://localhost:8000/api/v1
+          VITE_API_BASE_URL: https://api.hadha.co/api/v1
           VITE_SUPABASE_URL: ${{ secrets.SUPABASE_URL || 'https://placeholder.supabase.co' }}
           VITE_SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY || 'placeholder' }}
         run: npm run build

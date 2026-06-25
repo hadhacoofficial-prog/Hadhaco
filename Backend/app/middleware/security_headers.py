@@ -34,7 +34,7 @@ class SecurityHeadersMiddleware(BaseHTTPMiddleware):
         if settings.is_production:
             csp = "default-src 'self'; frame-ancestors 'none';"
         else:
-            # Allow Swagger UI CDN assets in dev/staging
+            # Allow Swagger UI CDN assets in development
             csp = (
                 "default-src 'self'; "
                 "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net; "

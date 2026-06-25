@@ -203,7 +203,7 @@ class Settings(BaseSettings):
     @field_validator("APP_ENV")
     @classmethod
     def validate_app_env(cls, v: str) -> str:
-        allowed = {"development", "staging", "production"}
+        allowed = {"development", "production"}
         if v not in allowed:
             raise ValueError(f"APP_ENV must be one of {allowed}")
         return v

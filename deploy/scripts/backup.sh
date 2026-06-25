@@ -3,49 +3,27 @@
 # backup.sh — Pre-deployment backup of Docker state and volumes
 #
 # Usage:
-#   ./backup.sh <environment>
+#   ./backup.sh
 #
-# Creates a timestamped backup in $APP_DIR/backups/ containing:
+# Creates a timestamped backup in /opt/hadha/backups/ containing:
 #   - Current image tag metadata (JSON)
 #   - Redis volume data (tar.gz)
-#   - docker-compose.*.yml snapshot
+#   - docker-compose.production.yml snapshot
 #   - nginx configuration
 #   - .env file checksums (no secret values)
 #
 # Database: Supabase (managed PostgreSQL) — no local pg_dump performed.
 #   Use the Supabase dashboard for point-in-time recovery.
-#   See DEVOPS.md § "Disaster Recovery".
-#
-# Retains the last BACKUP_RETENTION backups (default: 30).
-# Exit code non-zero on critical failure — deploy.sh treats this as abort.
 # =============================================================================
 
 set -euo pipefail
 
-ENVIRONMENT="${1:?Usage: $0 <environment>}"
 BACKUP_RETENTION="${BACKUP_RETENTION:-30}"
 
-# ── Config ────────────────────────────────────────────────────────────────────
-case "$ENVIRONMENT" in
-  production)
-    APP_DIR="/opt/hadha"
-    BACKEND_CONTAINER="hadha-backend"
-    FRONTEND_CONTAINER="hadha-frontend"
-    # Exact volume name from docker-compose.production.yml so we never
-    # accidentally back up the staging volume on a same-host setup (M-5).
-    REDIS_VOLUME_NAME="hadha_redis_data"
-    ;;
-  staging)
-    APP_DIR="/opt/hadha-staging"
-    BACKEND_CONTAINER="hadha-staging-backend"
-    FRONTEND_CONTAINER="hadha-staging-frontend"
-    REDIS_VOLUME_NAME="hadha-staging_redis_data"
-    ;;
-  *)
-    echo "[ERROR] Unknown environment: ${ENVIRONMENT}"
-    exit 1
-    ;;
-esac
+APP_DIR="/opt/hadha"
+BACKEND_CONTAINER="hadha-backend"
+FRONTEND_CONTAINER="hadha-frontend"
+REDIS_VOLUME_NAME="hadha_redis_data"
 
 BACKUP_DIR="${APP_DIR}/backups"
 TIMESTAMP=$(date +'%Y%m%dT%H%M%S')
@@ -61,7 +39,6 @@ log_warn()   { log "   [WARN] $*"; }
 
 mkdir -p "${BACKUP_PATH}"
 log "════ BACKUP STARTED ════"
-log "Environment : ${ENVIRONMENT}"
 log "Destination : ${BACKUP_PATH}"
 log "Database    : Supabase (managed) — no local pg_dump"
 
@@ -77,7 +54,6 @@ CURRENT_FRONTEND=$(docker inspect "${FRONTEND_CONTAINER}" \
 cat > "${BACKUP_DIR}/metadata_${TIMESTAMP}.json" <<EOF
 {
   "timestamp":      "${TIMESTAMP}",
-  "environment":    "${ENVIRONMENT}",
   "backend_image":  "${CURRENT_BACKEND}",
   "frontend_image": "${CURRENT_FRONTEND}",
   "git_sha":        "${GIT_COMMIT_SHA:-unknown}",
@@ -90,13 +66,8 @@ log_done
 
 # =============================================================================
 # Step 2: Backup Redis volume
-# Redis holds session/cache data. Use alpine to tar the named volume directly.
-# We suppress failure here because Redis data is recoverable (it's a cache),
-# but we still log the warning so it's visible.
 # =============================================================================
 log_step "Step 2: Redis volume backup"
-# Use the exact volume name set in the case block above (M-5 fix: avoids
-# accidentally picking the wrong environment's volume on a same-host setup).
 REDIS_VOLUME=$(docker volume ls -q 2>/dev/null | grep -Fx "${REDIS_VOLUME_NAME}" | head -1 || echo "")
 if [[ -n "${REDIS_VOLUME}" ]]; then
   log "  Backing up volume: ${REDIS_VOLUME}"
@@ -112,7 +83,7 @@ if [[ -n "${REDIS_VOLUME}" ]]; then
     log_warn "Redis volume backup failed — continuing (Redis data is cache; service is not interrupted)"
   fi
 else
-  log_skip "No Redis volume found matching 'hadha.*redis'"
+  log_skip "No Redis volume found matching '${REDIS_VOLUME_NAME}'"
 fi
 
 # =============================================================================
@@ -143,7 +114,6 @@ fi
 
 # =============================================================================
 # Step 5: .env file checksums
-# Records checksums for integrity verification — never stores secret values.
 # =============================================================================
 log_step "Step 5: .env checksums"
 ENV_COUNT=0
@@ -151,9 +121,6 @@ for env_file in "${APP_DIR}"/.env.*; do
   [[ -f "${env_file}" ]] || continue
   sha256sum "${env_file}" >> "${BACKUP_PATH}/env_checksums.txt"
   log "  Checksum: $(basename "${env_file}")"
-  # C-1 FIX: (( ENV_COUNT++ )) evaluates the pre-increment value (0 on first
-  # iteration) which is arithmetic-falsy → exit code 1 → set -e kills the
-  # script. Use assignment form which always exits 0.
   ENV_COUNT=$(( ENV_COUNT + 1 ))
 done
 if (( ENV_COUNT > 0 )); then
@@ -163,8 +130,7 @@ else
 fi
 
 # =============================================================================
-# Step 6: Backup rotation — keep last BACKUP_RETENTION backups
-# Removes both the timestamped backup directories and their metadata JSON files.
+# Step 6: Backup rotation
 # =============================================================================
 log_step "Step 6: Backup rotation (keeping last ${BACKUP_RETENTION})"
 BACKUP_COUNT=$(find "${BACKUP_DIR}" -maxdepth 1 -name "[0-9]*" -type d 2>/dev/null | wc -l)
@@ -174,7 +140,6 @@ if (( BACKUP_COUNT > BACKUP_RETENTION )); then
   EXCESS=$(( BACKUP_COUNT - BACKUP_RETENTION ))
   log "  Removing ${EXCESS} old backup(s)..."
 
-  # Sort by name (ISO timestamp dirs sort chronologically), delete oldest
   ls -dt "${BACKUP_DIR}"/[0-9]*/ 2>/dev/null \
     | tail -n "+$(( BACKUP_RETENTION + 1 ))" \
     | while read -r old_dir; do

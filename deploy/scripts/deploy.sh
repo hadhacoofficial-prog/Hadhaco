@@ -1,16 +1,19 @@
 #!/usr/bin/env bash
 # =============================================================================
-# deploy.sh — Hadha.co Production / Staging Deployment Script
+# deploy.sh — Hadha.co Production Deployment Script
 #
 # Usage:
-#   ./deploy.sh <environment> <image_tag>
-#   ./deploy.sh production sha-abc1234
-#   ./deploy.sh staging    develop-abc1234
+#   ./deploy.sh <image_tag>
+#   ./deploy.sh sha-abc1234
 #
 # Required environment variables (exported by caller / CI):
 #   GHCR_TOKEN          — GitHub PAT with read:packages scope
 #   GHCR_USERNAME       — GitHub org: hadhacoofficial-prog
 #   REDIS_PASSWORD      — Redis authentication password
+#   REDIS_UI_USERNAME   — Redis Commander HTTP Basic Auth username
+#   REDIS_UI_PASSWORD   — Redis Commander HTTP Basic Auth password
+#   DOZZLE_USERNAME     — Dozzle monitoring dashboard username
+#   DOZZLE_PASSWORD     — Dozzle monitoring dashboard password (plain; hashed here)
 #   RESEND_API_KEY      — Resend email API key
 #   RESEND_FROM_EMAIL   — Notification sender address
 #   RESEND_TO_EMAIL     — Notification recipient address
@@ -23,37 +26,19 @@ set -uo pipefail
 # causing an immediate uncontrolled exit.
 
 # ── Arguments ─────────────────────────────────────────────────────────────────
-ENVIRONMENT="${1:?Usage: $0 <environment> <image_tag>}"
-IMAGE_TAG="${2:?Usage: $0 <environment> <image_tag>}"
+IMAGE_TAG="${1:?Usage: $0 <image_tag>}"
 DEPLOY_START=$(date +%s)
 
-# ── Environment-specific config ───────────────────────────────────────────────
-case "$ENVIRONMENT" in
-  production)
-    APP_DIR="/opt/hadha"
-    COMPOSE_FILE="${APP_DIR}/docker-compose.production.yml"
-    ENV_FILE="${APP_DIR}/.env.production"
-    BACKEND_CONTAINER="hadha-backend"
-    FRONTEND_CONTAINER="hadha-frontend"
-    APP_URL="https://hadha.co"
-    NETWORK_NAME="hadha-internal"
-    MIGRATION_CONTAINER="hadha-migration"
-    ;;
-  staging)
-    APP_DIR="/opt/hadha-staging"
-    COMPOSE_FILE="${APP_DIR}/docker-compose.staging.yml"
-    ENV_FILE="${APP_DIR}/.env.staging"
-    BACKEND_CONTAINER="hadha-staging-backend"
-    FRONTEND_CONTAINER="hadha-staging-frontend"
-    APP_URL="https://staging.hadha.co"
-    NETWORK_NAME="hadha-staging-internal"
-    MIGRATION_CONTAINER="hadha-staging-migration"
-    ;;
-  *)
-    echo "[ERROR] Unknown environment: ${ENVIRONMENT}. Use 'production' or 'staging'."
-    exit 1
-    ;;
-esac
+# ── Production config ─────────────────────────────────────────────────────────
+ENVIRONMENT="production"
+APP_DIR="/opt/hadha"
+COMPOSE_FILE="${APP_DIR}/docker-compose.production.yml"
+ENV_FILE="${APP_DIR}/.env.production"
+BACKEND_CONTAINER="hadha-backend"
+FRONTEND_CONTAINER="hadha-frontend"
+APP_URL="https://hadha.co"
+NETWORK_NAME="hadha-internal"
+MIGRATION_CONTAINER="hadha-migration"
 
 GHCR_ORG="hadhacoofficial-prog"
 BACKEND_IMAGE="ghcr.io/${GHCR_ORG}/hadha-backend:${IMAGE_TAG}"
@@ -65,7 +50,6 @@ PREVIOUS_IMAGES_FILE="${APP_DIR}/.previous_images"
 IMAGE_RETENTION="${IMAGE_RETENTION:-168h}"  # 7 days; override via env
 
 # Infrastructure images that must be present before compose up.
-# These are pulled explicitly so no service ever fails with "No such image".
 INFRA_IMAGES=(
   "redis:7-alpine"
   "rediscommander/redis-commander:latest"
@@ -74,8 +58,6 @@ INFRA_IMAGES=(
 )
 
 # ── Compose wrapper ───────────────────────────────────────────────────────────
-# Every docker compose invocation goes through dc() to guarantee --env-file
-# and -f are always present. Never call docker compose directly in this script.
 dc() {
   docker compose \
     --env-file "${ENV_FILE}" \
@@ -109,8 +91,6 @@ step_fail() {
   log "└─ ✗ FAILED: ${STEP_NAME} — ${elapsed}s — ${reason}"
 }
 
-# M-2 FIX: When die() is called inside an active step, log the step failure
-# so the log shows a clean start→fail pair instead of a dangling start.
 die() {
   [[ -n "${STEP_NAME}" ]] && step_fail "$*"
   log "[FATAL] $*"
@@ -118,14 +98,6 @@ die() {
 }
 
 # ── Deployment state machine ──────────────────────────────────────────────────
-# These flags control whether rollback is warranted.
-# Rollback must ONLY execute after containers have been modified (COMPOSE_UPDATED).
-# Pull failures, manifest failures, and migration failures do NOT modify running
-# containers — aborting in those states leaves the running system untouched.
-#
-# State progression:
-#   PREFLIGHT → PULLING → MIGRATING → COMPOSING → COMPLETED
-#
 DEPLOYMENT_STATE="PREFLIGHT"
 PULLED_IMAGES=false
 MIGRATIONS_COMPLETED=false
@@ -133,17 +105,6 @@ COMPOSE_UPDATED=false
 CONTAINERS_RESTARTED=false
 
 # ── Failure classification ────────────────────────────────────────────────────
-# Returns a short class string. Used in log output to guide operator recovery.
-# Classes and suggested recovery:
-#   AUTHENTICATION       — Check GHCR_TOKEN scope (needs read:packages)
-#   MANIFEST_MISSING     — GHCR propagation delay; retry will resolve
-#   NETWORK_EOF          — TCP drop mid-stream; transient, retry
-#   TIMEOUT              — Registry slow; transient, retry
-#   TLS_ERROR            — Certificate/TLS issue; check VPS time sync
-#   REGISTRY_500         — GHCR backend error; transient, retry
-#   REGISTRY_5XX         — GHCR overloaded; transient, retry
-#   DOCKER_DAEMON        — Docker engine issue; check `systemctl status docker`
-#   UNKNOWN              — Inspect raw log output
 classify_failure() {
   local output="$1"
   if   echo "${output}" | grep -qi "unauthorized\|403\|authentication required"; then
@@ -168,15 +129,10 @@ classify_failure() {
 }
 
 # ── Retry parameters ──────────────────────────────────────────────────────────
-# 10 attempts maximum. Backoff: 5→10→20→30→60→60→60→60→60 (9 delays).
 _MAX_RETRIES=10
 _BACKOFFS=(5 10 20 30 60 60 60 60 60)
 
 # ── pull_image_with_retry ─────────────────────────────────────────────────────
-# Pull a Docker image with exponential backoff retry.
-# Retries on: EOF, timeout, TLS errors, manifest unknown, HTTP 5xx.
-# Classifies every failure in the log so operators can diagnose quickly.
-# Returns 0 on success, 1 after all retries are exhausted.
 pull_image_with_retry() {
   local image="$1"
   local attempt=0
@@ -197,7 +153,6 @@ pull_image_with_retry() {
       return 0
     fi
 
-    # Log the raw registry response (last 5 lines to avoid flooding the log)
     log "  Registry response: $(echo "${output}" | tail -5 | tr '\n' '|')"
 
     local failure_class
@@ -232,9 +187,6 @@ pull_image_with_retry() {
 }
 
 # ── check_image_manifest ──────────────────────────────────────────────────────
-# Verify a manifest is readable in GHCR without pulling the image.
-# Uses docker manifest inspect which contacts the registry API directly.
-# Returns 0 when the manifest is confirmed, 1 after all retries.
 check_image_manifest() {
   local image="$1"
   local attempt=0
@@ -274,9 +226,6 @@ check_image_manifest() {
 }
 
 # ── verify_image_digest ───────────────────────────────────────────────────────
-# After a successful pull, verify the local image has a registry digest and
-# that the expected tag exists in image metadata.
-# This catches silent pull truncations or tag resolution mismatches.
 verify_image_digest() {
   local image="$1"
   log "  Verifying digest: ${image}"
@@ -288,19 +237,14 @@ verify_image_digest() {
     return 1
   fi
 
-  # Verify a registry digest exists (proves the image came from a registry,
-  # not just a local build that was never pushed and never will match)
   local digest
   digest=$(echo "${inspect_output}" | jq -r '.[0].RepoDigests[0] // empty' 2>/dev/null || echo "")
   if [[ -z "${digest}" ]]; then
     log "  ✗ No RepoDigest found in image metadata"
-    log "  This usually means the image was built locally and never pushed."
     return 1
   fi
   log "  Digest: ${digest}"
 
-  # Verify the exact tag we requested appears in the image's RepoTags list.
-  # A mismatch here means Docker resolved the tag to a different image than expected.
   local tags
   tags=$(echo "${inspect_output}" | jq -r '.[0].RepoTags // [] | .[]' 2>/dev/null || echo "")
   if ! echo "${tags}" | grep -qF "${image}"; then
@@ -315,10 +259,6 @@ verify_image_digest() {
 }
 
 # ── Rollback + exit helper ────────────────────────────────────────────────────
-# IMPORTANT: Rollback is only initiated if COMPOSE_UPDATED=true.
-# Failures during PREFLIGHT or PULLING leave the running system completely
-# unchanged — triggering a rollback in those states would restart already-
-# healthy containers and create a misleading "rollback" notification.
 FAILED_STEP=""
 rollback_and_exit() {
   local reason="${1:-Unknown failure}"
@@ -335,7 +275,6 @@ rollback_and_exit() {
   local rollback_status="not attempted"
 
   if [[ "${COMPOSE_UPDATED}" != "true" ]]; then
-    # Nothing was changed — do not touch the running system.
     rollback_status="skipped (no containers were modified — running system is unchanged)"
     log "[INFO] ${rollback_status}"
     log "[INFO] The running deployment is healthy and was not disturbed."
@@ -344,7 +283,6 @@ rollback_and_exit() {
 
     if [[ -n "${PREVIOUS_BACKEND_IMAGE:-}" ]] && [[ -n "${PREVIOUS_FRONTEND_IMAGE:-}" ]]; then
       if "${SCRIPTS_DIR}/rollback.sh" \
-          "${ENVIRONMENT}" \
           "${PREVIOUS_BACKEND_IMAGE}" \
           "${PREVIOUS_FRONTEND_IMAGE}" 2>&1 | tee -a "${LOG_FILE}"; then
         rollback_status="succeeded"
@@ -389,10 +327,13 @@ command -v docker >/dev/null 2>&1 || die "docker is not installed"
 command -v curl   >/dev/null 2>&1 || die "curl is not installed"
 command -v jq     >/dev/null 2>&1 || die "jq is not installed (install: apt-get install jq)"
 
-[[ -n "${GHCR_TOKEN:-}"     ]] || die "GHCR_TOKEN is required (GitHub PAT with read:packages scope)"
-[[ -n "${REDIS_PASSWORD:-}" ]] || die "REDIS_PASSWORD is required"
+[[ -n "${GHCR_TOKEN:-}"         ]] || die "GHCR_TOKEN is required (GitHub PAT with read:packages scope)"
+[[ -n "${REDIS_PASSWORD:-}"     ]] || die "REDIS_PASSWORD is required"
+[[ -n "${REDIS_UI_USERNAME:-}"  ]] || die "REDIS_UI_USERNAME is required (Redis Commander auth)"
+[[ -n "${REDIS_UI_PASSWORD:-}"  ]] || die "REDIS_UI_PASSWORD is required (Redis Commander auth)"
+[[ -n "${DOZZLE_USERNAME:-}"    ]] || die "DOZZLE_USERNAME is required (Dozzle auth)"
+[[ -n "${DOZZLE_PASSWORD:-}"    ]] || die "DOZZLE_PASSWORD is required (Dozzle auth)"
 
-log "Environment  : ${ENVIRONMENT}"
 log "Image tag    : ${IMAGE_TAG}"
 log "Backend      : ${BACKEND_IMAGE}"
 log "Frontend     : ${FRONTEND_IMAGE}"
@@ -402,11 +343,12 @@ log "Env file     : ${ENV_FILE}"
 
 # =============================================================================
 # STEP 0: Validate compose config
-# Must run before anything else — catches missing variables and syntax errors.
 # =============================================================================
 step_start "Validate compose configuration"
 
-export BACKEND_IMAGE FRONTEND_IMAGE REDIS_PASSWORD
+export BACKEND_IMAGE FRONTEND_IMAGE REDIS_PASSWORD \
+       REDIS_UI_USERNAME REDIS_UI_PASSWORD \
+       DOZZLE_USERNAME DOZZLE_PASSWORD
 
 COMPOSE_VALIDATE_OUTPUT=$(dc config 2>&1) || {
   step_fail "docker compose config returned non-zero"
@@ -453,7 +395,7 @@ step_end
 # STEP 2: Backup current state
 # =============================================================================
 step_start "Backup"
-if ! "${SCRIPTS_DIR}/backup.sh" "${ENVIRONMENT}" 2>&1 | tee -a "${LOG_FILE}"; then
+if ! "${SCRIPTS_DIR}/backup.sh" 2>&1 | tee -a "${LOG_FILE}"; then
   die "Backup failed — aborting deployment to preserve rollback capability. Fix backup and retry."
 fi
 step_end
@@ -470,21 +412,6 @@ step_end
 
 # =============================================================================
 # STEP 4: Verify BOTH app image manifests are available before pulling anything
-#
-# WHY THIS STEP EXISTS:
-#   GHCR uses an eventually consistent CDN. docker push returns 200 when the
-#   origin accepts the manifest, but edge nodes serving the VPS region may not
-#   have replicated it yet. Without this check, we could:
-#     • Pull backend successfully (edge A has it)
-#     • Fail to pull frontend (edge B hasn't replicated yet)
-#     • Hit rollback_and_exit — but nothing was changed, wasting a rollback
-#   This step verifies BOTH manifests are readable before touching anything.
-#   If either manifest is missing, we abort with DEPLOYMENT_STATE=PREFLIGHT
-#   so rollback_and_exit correctly skips the rollback.
-#
-# ATOMICITY:
-#   We check both images before starting either pull. A partial deployment
-#   (backend available, frontend not) is rejected before any image is pulled.
 # =============================================================================
 step_start "Verify app image manifests (pre-pull, atomic)"
 log "Backend  : ${BACKEND_IMAGE}"
@@ -506,16 +433,12 @@ else
   log "[ERROR] Frontend manifest not available: ${FRONTEND_IMAGE}"
 fi
 
-# Require BOTH — refuse partial deployments
 if [[ "${BACKEND_MANIFEST_OK}" != "true" ]] || [[ "${FRONTEND_MANIFEST_OK}" != "true" ]]; then
   log "[ERROR] One or both app image manifests are unavailable."
   log "[ERROR] Backend  manifest : ${BACKEND_MANIFEST_OK}"
   log "[ERROR] Frontend manifest : ${FRONTEND_MANIFEST_OK}"
-  log "[INFO]  This is typically a GHCR propagation delay. The images were pushed"
-  log "[INFO]  moments ago and the CDN edge serving this VPS has not replicated them."
-  log "[INFO]  The verify-images job in GitHub Actions should have caught this."
+  log "[INFO]  This is typically a GHCR propagation delay. Re-run the workflow."
   log "[INFO]  No containers were modified — rollback is not required."
-  # DEPLOYMENT_STATE is still PREFLIGHT → rollback_and_exit will skip rollback
   rollback_and_exit "App image manifest(s) unavailable after retries — GHCR propagation failure"
 fi
 
@@ -524,10 +447,6 @@ step_end
 
 # =============================================================================
 # STEP 5: Pull ALL images with retry
-#
-# Infrastructure images are pulled first. App images are pulled only after
-# both manifests were confirmed in Step 4.
-# DEPLOYMENT_STATE advances to PULLING — rollback still skipped on failure.
 # =============================================================================
 step_start "Pull all images"
 DEPLOYMENT_STATE="PULLING"
@@ -553,10 +472,6 @@ step_end
 
 # =============================================================================
 # STEP 6: Verify image digests
-#
-# Confirm every pulled image has a registry digest and the expected tag.
-# This catches rare silent-truncation scenarios where docker pull returns 0
-# but the local image is incomplete, and tag resolution mismatches.
 # =============================================================================
 step_start "Verify image digests"
 
@@ -570,7 +485,6 @@ DIGEST_FAILURES=()
 for img in "${ALL_REQUIRED_IMAGES[@]}"; do
   if docker image inspect "${img}" >/dev/null 2>&1; then
     log "  ✓ present: ${img}"
-    # Verify digest for app images (infra images may be local builds)
     if [[ "${img}" == ghcr.io/* ]]; then
       if ! verify_image_digest "${img}"; then
         DIGEST_FAILURES+=("${img}")
@@ -596,8 +510,6 @@ if docker network inspect "${NETWORK_NAME}" >/dev/null 2>&1; then
   log "Network ${NETWORK_NAME} already exists — reusing"
 else
   log "Creating Docker network: ${NETWORK_NAME}"
-  # M-3 FIX: Removed --subnet to avoid "subnet already in use" failure when
-  # production and staging networks are created on the same host.
   docker network create \
     --driver bridge \
     --ipv6 \
@@ -607,11 +519,40 @@ fi
 step_end
 
 # =============================================================================
+# STEP 7.5: Generate Dozzle authentication file
+# =============================================================================
+# Dozzle v8 uses DOZZLE_AUTH_PROVIDER=simple and reads /data/users.yml for
+# credentials. The file must contain bcrypt-hashed passwords — we generate it
+# here from GitHub Secrets so no plaintext password ever touches the repo or
+# the server's .env files.
+# =============================================================================
+step_start "Generate Dozzle authentication file"
+
+DOZZLE_DIR="${APP_DIR}/dozzle"
+mkdir -p "${DOZZLE_DIR}"
+
+# htpasswd -nbB generates a bcrypt hash; apache2-utils is installed by bootstrap.sh
+if ! command -v htpasswd >/dev/null 2>&1; then
+  die "htpasswd not found — run: apt-get install -y apache2-utils"
+fi
+
+DOZZLE_HASH=$(htpasswd -nbB "${DOZZLE_USERNAME}" "${DOZZLE_PASSWORD}" 2>/dev/null | cut -d: -f2) \
+  || die "Failed to generate bcrypt hash for Dozzle password"
+
+cat > "${DOZZLE_DIR}/users.yml" <<DOZZLE_USERS_EOF
+users:
+  ${DOZZLE_USERNAME}:
+    name: ${DOZZLE_USERNAME}
+    email: admin@hadha.co
+    password: "${DOZZLE_HASH}"
+DOZZLE_USERS_EOF
+
+chmod 600 "${DOZZLE_DIR}/users.yml"
+log "Dozzle auth file written to ${DOZZLE_DIR}/users.yml (password bcrypt-hashed)"
+step_end
+
+# =============================================================================
 # STEP 8: Database migrations
-#
-# DEPLOYMENT_STATE advances to MIGRATING.
-# A migration failure does NOT trigger rollback — containers are unchanged.
-# The old backend continues running against the unchanged DB schema.
 # =============================================================================
 step_start "Database migrations (Supabase)"
 DEPLOYMENT_STATE="MIGRATING"
@@ -622,7 +563,6 @@ if grep -q '^ALEMBIC_DATABASE_URL=' "${ENV_FILE}" 2>/dev/null; then
   log "Pool routing : ALEMBIC_DATABASE_URL → Transaction Pooler (port 6543) ✓"
 else
   log "[WARN] ALEMBIC_DATABASE_URL not set — falling back to DATABASE_URL (Session Pooler)"
-  log "[WARN] Add ALEMBIC_DATABASE_URL pointing to port 6543 to prevent EMAXCONNSESSION."
 fi
 
 if docker inspect "${MIGRATION_CONTAINER}" >/dev/null 2>&1; then
@@ -637,7 +577,6 @@ if ! docker run \
     --network "${NETWORK_NAME}" \
     "${BACKEND_IMAGE}" \
     alembic -c alembic/alembic.ini upgrade head 2>&1 | tee -a "${LOG_FILE}"; then
-  # Containers were NOT modified yet — rollback_and_exit will skip rollback.
   rollback_and_exit "Database migration failed — alembic upgrade head returned non-zero. Check logs above."
 fi
 MIGRATIONS_COMPLETED=true
@@ -645,14 +584,10 @@ step_end
 
 # =============================================================================
 # STEP 9: Start containers
-#
-# DEPLOYMENT_STATE advances to COMPOSING immediately before compose up.
-# Any failure from this point onward triggers a real rollback.
-# --pull never: images were explicitly pulled and verified in steps 5-6.
 # =============================================================================
 step_start "Start containers"
 DEPLOYMENT_STATE="COMPOSING"
-COMPOSE_UPDATED=true   # Mark BEFORE compose up — any failure now warrants rollback
+COMPOSE_UPDATED=true
 
 if ! dc up -d --remove-orphans --pull never 2>&1 | tee -a "${LOG_FILE}"; then
   rollback_and_exit "docker compose up failed"
@@ -665,7 +600,7 @@ step_end
 # STEP 10: Health checks
 # =============================================================================
 step_start "Health checks"
-if ! "${SCRIPTS_DIR}/healthcheck.sh" "${ENVIRONMENT}" 2>&1 | tee -a "${LOG_FILE}"; then
+if ! "${SCRIPTS_DIR}/healthcheck.sh" 2>&1 | tee -a "${LOG_FILE}"; then
   rollback_and_exit "Health checks failed after deployment"
 fi
 step_end
@@ -690,7 +625,6 @@ step_end
 
 # =============================================================================
 # STEP 12: Cleanup old application images
-# Only removes images from our GHCR org. Never touches infra images.
 # =============================================================================
 step_start "Cleanup old application images"
 GHCR_PREFIX="ghcr.io/${GHCR_ORG}/"

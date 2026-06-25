@@ -200,7 +200,12 @@ After `docker compose up --build`:
 
 ## Production
 
-Production deployment uses the existing `Backend/docker/docker-compose.yml`
-(with nginx reverse proxy) and a Vercel deployment for the frontend.
-The `Dockerfile` and `docker-compose.yml` at the project root are for
-**development only**.
+Production deployment uses `deploy/docker/docker-compose.production.yml` with
+Nginx as the reverse proxy (five subdomain virtual hosts: `hadha.co`,
+`api.hadha.co`, `admin.hadha.co`, `redis.hadha.co`, `dozzle.hadha.co`).
+Images are built by GitHub Actions and pushed to GHCR; `deploy.sh` pulls and
+restarts them on the VPS.
+
+The `docker-compose.yml` at the project root and the Dockerfiles are for
+**development only**. See [DEVOPS.md](../DEVOPS.md) for the full production
+runbook.
