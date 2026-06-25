@@ -18,7 +18,7 @@ import { useCart } from "@/stores/cart";
 import { api } from "@/lib/api/client";
 import { queryKeys } from "@/lib/api/queryKeys";
 import { formatINR } from "@/lib/format";
-import type { CustomerCustomerOrderResponse, OrderListResponse } from "@/types/customer";
+import type { CustomerOrderResponse, OrderListResponse } from "@/types/customer";
 
 export const Route = createFileRoute("/checkout_/success")({
   validateSearch: z.object({

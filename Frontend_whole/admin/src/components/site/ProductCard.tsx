@@ -129,10 +129,7 @@ export function ProductCard({ p }: { p: Product }) {
           ))}
         </div>
         <h3 className="text-sm leading-snug line-clamp-2 min-h-[2.5rem] font-medium">
-          <a
-            href={`/products/${p.slug}`}
-            className="hover:text-primary transition-colors"
-          >
+          <a href={`/products/${p.slug}`} className="hover:text-primary transition-colors">
             {p.name}
           </a>
         </h3>

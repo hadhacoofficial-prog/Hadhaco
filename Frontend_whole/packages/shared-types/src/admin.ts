@@ -1,3 +1,5 @@
+import type { ProductImage, ProductVariant, ProductAttribute } from "./public";
+
 // ── Admin dashboard ──────────────────────────────────────────────────────────
 export interface KPIStats {
   today_orders: number;
