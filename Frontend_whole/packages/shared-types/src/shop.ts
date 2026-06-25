@@ -81,11 +81,11 @@ export interface Review {
   createdAt?: string;
 }
 
-export type CouponType = "percent" | "flat";
+export type CartCouponType = "percent" | "flat";
 
 export interface Coupon {
   code: string;
-  type: CouponType;
+  type: CartCouponType;
   value: number;
   description?: string;
   minSubtotal?: number;

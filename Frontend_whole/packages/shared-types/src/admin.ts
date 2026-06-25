@@ -10,17 +10,6 @@ export interface KPIStats {
 }
 
 // ── Categories ───────────────────────────────────────────────────────────────
-export interface CategoryTreeNode {
-  id: string;
-  parent_id: string | null;
-  name: string;
-  slug: string;
-  image_url: string | null;
-  sort_order: number;
-  product_count: number;
-  children: CategoryTreeNode[];
-}
-
 export interface CategoryAdminListItem {
   id: string;
   parent_id: string | null;
@@ -80,17 +69,6 @@ export interface CategoryProductsResponse {
 }
 
 // ── Collections ───────────────────────────────────────────────────────────────
-export interface CollectionDto {
-  id: string;
-  name: string;
-  slug: string;
-  description: string | null;
-  image_url: string | null;
-  is_active: boolean;
-  is_featured: boolean;
-  sort_order: number;
-}
-
 export interface CollectionListItem {
   id: string;
   name: string;
@@ -190,34 +168,6 @@ export interface ProductListResponse {
 
 export type ProductStatus = "draft" | "active" | "archived";
 
-export interface ProductImage {
-  id: string;
-  url: string;
-  thumbnail_url: string | null;
-  medium_url: string | null;
-  alt_text: string | null;
-  is_primary: boolean;
-  sort_order: number;
-}
-
-export interface ProductVariant {
-  id: string;
-  sku: string;
-  name: string;
-  price_adjustment: number;
-  stock_quantity: number;
-  weight_grams: number | null;
-  is_active: boolean;
-  sort_order: number;
-}
-
-export interface ProductAttribute {
-  id: string;
-  name: string;
-  value: string;
-  sort_order: number;
-}
-
 export interface ProductDetail {
   id: string;
   sku: string;
@@ -242,6 +192,10 @@ export interface ProductDetail {
   allow_backorder: boolean;
   low_stock_threshold: number;
   stock_quantity: number;
+  available_stock?: number;
+  reserved_quantity?: number;
+  sold_quantity?: number;
+  max_order_quantity?: number;
   status: ProductStatus;
   is_featured: boolean;
   is_new_arrival: boolean;

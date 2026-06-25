@@ -18,7 +18,7 @@ import { useCart } from "@/stores/cart";
 import { api } from "@/lib/api/client";
 import { queryKeys } from "@/lib/api/queryKeys";
 import { formatINR } from "@/lib/format";
-import type { OrderResponse, OrderListResponse } from "@/types/customer";
+import type { CustomerCustomerOrderResponse, OrderListResponse } from "@/types/customer";
 
 export const Route = createFileRoute("/checkout_/success")({
   validateSearch: z.object({
@@ -258,7 +258,7 @@ function NoIdentifierState() {
 
 // ── Success content ────────────────────────────────────────────────────────────
 
-function SuccessContent({ order }: { order: OrderResponse }) {
+function SuccessContent({ order }: { order: CustomerOrderResponse }) {
   const date = new Date(order.created_at).toLocaleDateString("en-IN", {
     year: "numeric",
     month: "long",
@@ -496,10 +496,10 @@ function SuccessPage() {
     refetch,
   } = useQuery({
     queryKey: queryKeys.orders.detail(fetchKey),
-    queryFn: async (): Promise<OrderResponse> => {
+    queryFn: async (): Promise<CustomerOrderResponse> => {
       // Fast path: UUID is in the URL (set by checkout verify-payment flow)
       if (orderId) {
-        return api.get<OrderResponse>(`/orders/${orderId}`);
+        return api.get<CustomerOrderResponse>(`/orders/${orderId}`);
       }
       // Fallback: scan recent orders by order_number (handles hard-refresh / deep-link)
       const list = await api.get<OrderListResponse>("/orders", {
@@ -507,7 +507,7 @@ function SuccessPage() {
       });
       const match = list.items.find((o) => o.order_number === orderNumber);
       if (!match) throw new Error("Order not found");
-      return api.get<OrderResponse>(`/orders/${match.id}`);
+      return api.get<CustomerOrderResponse>(`/orders/${match.id}`);
     },
     enabled: !!(orderId || orderNumber),
     staleTime: 2 * 60_000,

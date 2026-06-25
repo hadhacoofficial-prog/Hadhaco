@@ -31,39 +31,6 @@ export interface ProductAttribute {
   sort_order: number;
 }
 
-export interface ProductDetail {
-  id: string;
-  sku: string;
-  name: string;
-  slug: string;
-  description: string | null;
-  short_description: string | null;
-  category_id: string | null;
-  metal_type: string | null;
-  purity: string | null;
-  hallmark_number: string | null;
-  weight_grams: number | null;
-  gender: string | null;
-  base_price: number;
-  compare_at_price: number | null;
-  tax_rate: number;
-  stock_quantity: number;
-  available_stock?: number;
-  reserved_quantity?: number;
-  sold_quantity?: number;
-  max_order_quantity?: number;
-  status: string;
-  is_featured: boolean;
-  is_new_arrival: boolean;
-  is_best_seller: boolean;
-  is_customizable: boolean;
-  created_at: string;
-  updated_at: string;
-  images: ProductImage[];
-  variants: ProductVariant[];
-  attributes: ProductAttribute[];
-}
-
 // ── Collections ───────────────────────────────────────────────────────────────
 export interface CollectionDto {
   id: string;

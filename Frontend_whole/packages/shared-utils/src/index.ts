@@ -5,4 +5,5 @@ export type { QuantityBounds } from "./cartQuantity";
 export { ROUTES } from "./constants/routes";
 export { STORAGE_KEYS } from "./constants/storage";
 export { BRAND } from "./config/brand";
+export type { Brand } from "./config/brand";
 export { SITE } from "./config/site";

@@ -1,5 +1,4 @@
 import { Eye, Heart, ShoppingBag, Star, Bell } from "lucide-react";
-import { Link } from "@tanstack/react-router";
 import type { Product } from "@/types/shop";
 import { useCart } from "@/stores/cart";
 import { useWishlist } from "@/stores/wishlist";
@@ -27,9 +26,8 @@ export function ProductCard({ p }: { p: Product }) {
 
   return (
     <article className="group relative hover-lift">
-      <Link
-        to="/products/$slug"
-        params={{ slug: p.slug }}
+      <a
+        href={`/products/${p.slug}`}
         className="block relative aspect-square overflow-hidden bg-muted"
         aria-label={`View ${p.name}${isSoldOut ? " — Sold Out" : ""}`}
       >
@@ -102,15 +100,14 @@ export function ProductCard({ p }: { p: Product }) {
 
         {/* Add to cart / Notify Me */}
         {isSoldOut ? (
-          <Link
-            to="/products/$slug"
-            params={{ slug: p.slug }}
+          <a
+            href={`/products/${p.slug}`}
             onClick={(e) => e.stopPropagation()}
             className="absolute bottom-0 left-0 right-0 bg-muted-foreground/80 text-background text-[11px] tracking-[0.24em] uppercase py-3.5 flex items-center justify-center gap-2 translate-y-full group-hover:translate-y-0 transition-transform duration-500 font-cinzel"
             aria-label={`Notify me when ${p.name} is back in stock`}
           >
             <Bell className="size-3.5" /> Notify Me
-          </Link>
+          </a>
         ) : (
           <button
             onClick={handleAddToCart}
@@ -120,7 +117,7 @@ export function ProductCard({ p }: { p: Product }) {
             <ShoppingBag className="size-3.5" /> Add to cart
           </button>
         )}
-      </Link>
+      </a>
 
       <div className="pt-4 pb-2 px-1">
         <div className="flex items-center gap-0.5 mb-1.5">
@@ -132,13 +129,12 @@ export function ProductCard({ p }: { p: Product }) {
           ))}
         </div>
         <h3 className="text-sm leading-snug line-clamp-2 min-h-[2.5rem] font-medium">
-          <Link
-            to="/products/$slug"
-            params={{ slug: p.slug }}
+          <a
+            href={`/products/${p.slug}`}
             className="hover:text-primary transition-colors"
           >
             {p.name}
-          </Link>
+          </a>
         </h3>
         <div className="mt-2 flex items-baseline gap-2">
           <span

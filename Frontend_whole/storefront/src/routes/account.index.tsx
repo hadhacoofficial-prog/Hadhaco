@@ -46,7 +46,7 @@ import type {
   AddressResponse,
   AddressCreateRequest,
   OrderListResponse,
-  OrderResponse,
+  CustomerOrderResponse,
 } from "@/types/customer";
 
 const TAB_VALUES = ["overview", "orders", "addresses", "wishlist", "profile", "security"] as const;
@@ -581,7 +581,7 @@ function TotalRow({
 
 // ── Order detail (expanded) ────────────────────────────────────────────────────
 
-function OrderDetailExpanded({ order }: { order: OrderResponse }) {
+function OrderDetailExpanded({ order }: { order: CustomerOrderResponse }) {
   const date = new Date(order.created_at).toLocaleDateString("en-IN", {
     year: "numeric",
     month: "long",
@@ -749,7 +749,7 @@ function OrderCard({
 }) {
   const { data: detail, isLoading } = useQuery({
     queryKey: queryKeys.orders.detail(order.id),
-    queryFn: () => api.get<OrderResponse>(`/orders/${order.id}`),
+    queryFn: () => api.get<CustomerOrderResponse>(`/orders/${order.id}`),
     enabled: expanded,
     staleTime: 5 * 60_000,
   });

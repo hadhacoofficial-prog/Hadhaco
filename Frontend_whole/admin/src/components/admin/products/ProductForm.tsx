@@ -25,7 +25,8 @@ import { toUserMessage } from "@/lib/api/errors";
 import { formatINR } from "@/lib/format";
 import type {
   CategoryTreeNode,
-  CollectionDto,
+  CollectionDetail,
+  CollectionListItem,
   CollectionListResponse,
   ProductDetail,
   ProductStatus,
@@ -611,7 +612,7 @@ function CreateCollectionDialog({
   onCreated,
   onClose,
 }: {
-  onCreated: (col: CollectionDto) => void;
+  onCreated: (col: CollectionDetail) => void;
   onClose: () => void;
 }) {
   const [name, setName] = useState("");
@@ -623,7 +624,7 @@ function CreateCollectionDialog({
     if (!name.trim()) return;
     setSaving(true);
     try {
-      const result = await api.post<CollectionDto>("/admin/collections", {
+      const result = await api.post<CollectionDetail>("/admin/collections", {
         body: {
           name: name.trim(),
           slug: slug || toSlug(name),
@@ -850,9 +851,9 @@ function OrganizationSection({
   set: (patch: Partial<FormState>) => void;
   errors: FormErrors;
   categoryTree: CategoryTreeNode[];
-  collections: CollectionDto[];
+  collections: CollectionListItem[];
   onCategoryCreated: (cat: CategoryTreeNode) => void;
-  onCollectionCreated: (col: CollectionDto) => void;
+  onCollectionCreated: (col: CollectionDetail) => void;
 }) {
   const [showCreateCategory, setShowCreateCategory] = useState(false);
   const [showCreateCollection, setShowCreateCollection] = useState(false);
@@ -2203,12 +2204,12 @@ export function ProductForm({ mode, initialProduct, initialCollectionIds }: Prod
       }),
     staleTime: 300_000,
   });
-  const collections: CollectionDto[] = collectionsResponse?.items ?? [];
+  const collections: CollectionListItem[] = collectionsResponse?.items ?? [];
 
   // ── Local state ─────────────────────────────────────────────────────────────
 
   const [categoryTreeLocal, setCategoryTreeLocal] = useState<CategoryTreeNode[]>([]);
-  const [collectionsLocal, setCollectionsLocal] = useState<CollectionDto[]>([]);
+  const [collectionsLocal, setCollectionsLocal] = useState<CollectionListItem[]>([]);
 
   useEffect(() => {
     if (categoryTree.length) setCategoryTreeLocal(categoryTree);
@@ -2437,7 +2438,7 @@ export function ProductForm({ mode, initialProduct, initialCollectionIds }: Prod
   );
 
   const handleCollectionCreated = useCallback(
-    (col: CollectionDto) => {
+    (col: CollectionDetail) => {
       setCollectionsLocal((prev) => [...prev, col]);
       queryClient.invalidateQueries({ queryKey: queryKeys.admin.collections });
     },

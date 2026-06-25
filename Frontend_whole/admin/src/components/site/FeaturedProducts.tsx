@@ -1,4 +1,3 @@
-import { Link } from "@tanstack/react-router";
 import { ArrowUpRight } from "lucide-react";
 import { motion } from "framer-motion";
 import { useQuery } from "@tanstack/react-query";
@@ -65,12 +64,12 @@ export function FeaturedProducts({ config }: FeaturedProductsProps) {
             <h2 className="font-cinzel text-3xl md:text-5xl">{c.title}</h2>
           </div>
           {c.view_all_url && (
-            <Link
-              to={c.view_all_url as "/search"}
+            <a
+              href={c.view_all_url}
               className="hidden md:inline-flex shrink-0 items-center gap-2 text-xs tracking-[0.24em] uppercase border-b border-primary text-primary pb-1 hover:gap-3 transition-all"
             >
               View all <ArrowUpRight className="size-4" />
-            </Link>
+            </a>
           )}
         </div>
 
@@ -98,12 +97,12 @@ export function FeaturedProducts({ config }: FeaturedProductsProps) {
 
         {c.view_all_url && (
           <div className="mt-10 md:hidden text-center">
-            <Link
-              to={c.view_all_url as "/search"}
+            <a
+              href={c.view_all_url}
               className="inline-flex items-center gap-2 text-xs tracking-[0.24em] uppercase border-b border-primary text-primary pb-1"
             >
               View all <ArrowUpRight className="size-4" />
-            </Link>
+            </a>
           </div>
         )}
       </div>

@@ -1,3 +1,5 @@
+export {};
+
 interface RazorpayPrefill {
   name?: string;
   email?: string;

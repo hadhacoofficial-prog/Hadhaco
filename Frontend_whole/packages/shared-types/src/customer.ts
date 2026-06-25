@@ -68,25 +68,6 @@ export interface CartSummary {
 }
 
 // ── Orders ────────────────────────────────────────────────────────────────────
-export interface OrderListItem {
-  id: string;
-  order_number: string;
-  status: string;
-  payment_status: string;
-  fulfillment_status: string;
-  total: number;
-  item_count: number;
-  created_at: string;
-}
-
-export interface OrderListResponse {
-  items: OrderListItem[];
-  total: number;
-  page: number;
-  page_size: number;
-  total_pages: number;
-}
-
 export interface OrderItemResponse {
   id: string;
   product_id: string;
@@ -99,7 +80,7 @@ export interface OrderItemResponse {
   line_total: number;
 }
 
-export interface OrderResponse {
+export interface CustomerOrderResponse {
   id: string;
   order_number: string;
   user_id: string;

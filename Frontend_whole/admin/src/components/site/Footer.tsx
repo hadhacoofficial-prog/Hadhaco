@@ -1,4 +1,3 @@
-import { Link } from "@tanstack/react-router";
 import { Instagram, Youtube, Facebook, MapPin, Phone, Mail } from "lucide-react";
 import logoAsset from "@/assets/hadha-logo-w.png";
 import type { FooterConfig } from "@/types/cms";
@@ -141,15 +140,15 @@ export function Footer({ config }: FooterProps) {
           reserved.
         </p>
         <div className="flex items-center gap-5">
-          <Link to="/privacy" className="hover:text-accent">
+          <a href="/privacy" className="hover:text-accent">
             Privacy
-          </Link>
-          <Link to="/terms" className="hover:text-accent">
+          </a>
+          <a href="/terms" className="hover:text-accent">
             Terms
-          </Link>
-          <Link to="/shipping-returns" className="hover:text-accent">
+          </a>
+          <a href="/shipping-returns" className="hover:text-accent">
             Refund Policy
-          </Link>
+          </a>
         </div>
       </div>
     </footer>

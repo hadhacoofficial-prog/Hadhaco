@@ -1,6 +1,5 @@
 import { useEffect, useState } from "react";
 import { ArrowRight, ChevronLeft, ChevronRight } from "lucide-react";
-import { Link } from "@tanstack/react-router";
 import heroBg from "@/assets/hero.jpg";
 import bannerBg from "@/assets/banner.jpg";
 import nakshiBg from "@/assets/cat-nakshi.jpg";
@@ -112,12 +111,12 @@ export function Hero({ config, items = [] }: HeroProps) {
               {s.cta || "Shop now"}
               <ArrowRight className="size-4 group-hover:translate-x-1 transition-transform" />
             </a>
-            <Link
-              to="/about"
+            <a
+              href="/about"
               className="text-xs tracking-[0.22em] uppercase border-b border-foreground/60 pb-0.5 hover:border-accent hover:text-accent transition"
             >
               Our story
-            </Link>
+            </a>
           </div>
         </div>
       </div>
