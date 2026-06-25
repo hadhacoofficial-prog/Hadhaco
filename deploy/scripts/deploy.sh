@@ -328,6 +328,13 @@ log_section "Pre-flight checks"
 [[ -d "${APP_DIR}" ]]      || die "Deploy directory ${APP_DIR} does not exist. Run bootstrap.sh first."
 [[ -f "${COMPOSE_FILE}" ]] || die "Compose file not found: ${COMPOSE_FILE}"
 [[ -f "${ENV_FILE}" ]]     || die "Env file not found: ${ENV_FILE}"
+
+# Docker Compose requires env_file paths to exist even if empty.
+# Create placeholder files for storefront/admin if they haven't been provisioned yet.
+for _svc_env in "${APP_DIR}/.env.storefront.production" "${APP_DIR}/.env.admin.production"; do
+  [[ -f "${_svc_env}" ]] || { touch "${_svc_env}"; log "Created placeholder: ${_svc_env}"; }
+done
+unset _svc_env
 command -v docker >/dev/null 2>&1 || die "docker is not installed"
 command -v curl   >/dev/null 2>&1 || die "curl is not installed"
 command -v jq     >/dev/null 2>&1 || die "jq is not installed (install: apt-get install jq)"
