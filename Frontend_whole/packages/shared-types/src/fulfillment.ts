@@ -30,15 +30,6 @@ export interface DispatchOrderPayload {
   dispatch_notes?: string;
 }
 
-export interface ShippingLabelResponse {
-  label_url: string;
-  pdf_r2_key: string;
-}
-
-export interface PackingSlipResponse {
-  slip_url: string;
-  pdf_r2_key: string;
-}
 
 export const SHIPPING_PROVIDER_LABELS: Record<ShippingProvider, string> = {
   india_post: "India Post",

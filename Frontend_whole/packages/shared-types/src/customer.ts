@@ -7,8 +7,10 @@ export interface AddressResponse {
   type: "shipping" | "billing";
   full_name: string;
   phone: string | null;
+  alternate_phone: string | null;
   line1: string;
   line2: string | null;
+  landmark: string | null;
   city: string;
   state: string;
   postal_code: string;
@@ -22,8 +24,10 @@ export interface AddressCreateRequest {
   type: "shipping" | "billing";
   full_name: string;
   phone?: string | null;
+  alternate_phone?: string | null;
   line1: string;
   line2?: string | null;
+  landmark?: string | null;
   city: string;
   state: string;
   postal_code: string;
@@ -100,14 +104,17 @@ export interface CustomerOrderResponse {
   dispatched_at: string | null;
   estimated_delivery: string | null;
   cancellation_reason: string | null;
+  complimentary_gift: string | null;
   created_at: string;
   items: OrderItemResponse[];
 }
 
+export type ComplimentaryGift = "Traditional Sweet" | "Traditional Hot Snack";
+
 export interface CreateOrderRequest {
   shipping_address_id: string;
   billing_address_id?: string;
-  payment_method?: "razorpay" | "cod";
+  payment_method?: "razorpay";
   coupon_code?: string;
   notes?: string;
 }
@@ -142,15 +149,28 @@ export interface VerifyPaymentResponse {
 }
 
 // ── Coupons ───────────────────────────────────────────────────────────────────
+export interface CouponValidateRequest {
+  code: string;
+  order_subtotal: number;
+  cart_product_ids?: string[];
+  cart_category_slugs?: string[];
+  payment_method?: string;
+  shipping_method?: string;
+  delivery_state?: string;
+  delivery_city?: string;
+  delivery_pincode?: string;
+}
+
 export interface CouponValidateResponse {
   valid: boolean;
   discount_amount: number;
   message: string;
+  stackable: boolean;
   coupon: {
     id: string;
     code: string;
     coupon_type: string;
     value: number;
-    min_order_amount: number | null;
+    min_order_amount: number;
   } | null;
 }

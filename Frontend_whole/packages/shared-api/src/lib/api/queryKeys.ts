@@ -67,6 +67,7 @@ export const queryKeys = {
 
   coupons: {
     all: ["coupons"] as const,
+    available: ["coupons", "available"] as const,
     validate: (code: string, subtotal: number) => ["coupons", "validate", code, subtotal] as const,
   },
 
@@ -154,6 +155,7 @@ export const queryKeys = {
     lowStock: ["admin", "inventory", "low-stock"] as const,
     coupons: (filters?: Filters) => ["admin", "coupons", filters ?? {}] as const,
     reviewsPending: ["admin", "reviews", "pending"] as const,
+    reviewsAll: (status?: string) => ["admin", "reviews", "all", status ?? "all"] as const,
     cms: ["admin", "cms"] as const,
     cmsSections: ["admin", "cms", "sections"] as const,
     cmsSection: (key: string) => ["admin", "cms", "section", key] as const,
@@ -165,6 +167,7 @@ export const queryKeys = {
     customers: (filters?: Filters) => ["admin", "customers", filters ?? {}] as const,
     fraud: (filters?: Filters) => ["admin", "fraud", filters ?? {}] as const,
     settings: ["admin", "settings", "flags"] as const,
+    companyConfig: ["admin", "company-config"] as const,
     notificationLogs: (filters?: Filters) =>
       ["admin", "notifications", "logs", filters ?? {}] as const,
     returns: (filters?: Filters) => ["admin", "returns", filters ?? {}] as const,

@@ -19,25 +19,6 @@ interface FulfillmentActionsPanelProps {
   orderId: string;
 }
 
-async function downloadFile(url: string, filename: string) {
-  try {
-    const response = await fetch(url);
-    if (!response.ok) throw new Error("Failed to download file");
-
-    const blob = await response.blob();
-    const link = document.createElement("a");
-    link.href = URL.createObjectURL(blob);
-    link.download = filename;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    URL.revokeObjectURL(link.href);
-  } catch (error) {
-    toast.error("Failed to download file");
-    console.error(error);
-  }
-}
-
 export function FulfillmentActionsPanel({ order, orderId }: FulfillmentActionsPanelProps) {
   const [showDispatchModal, setShowDispatchModal] = useState(false);
 
@@ -69,8 +50,14 @@ export function FulfillmentActionsPanel({ order, orderId }: FulfillmentActionsPa
 
   const handleDownloadLabel = async () => {
     try {
-      const response = await generateLabelMutation.mutateAsync(orderId);
-      await downloadFile(response.label_url, `shipping-label-${order.order_number}.pdf`);
+      const { blobUrl } = await generateLabelMutation.mutateAsync(orderId);
+      const link = document.createElement("a");
+      link.href = blobUrl;
+      link.download = `shipping-label-${order.order_number}.pdf`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(blobUrl);
       toast.success("Shipping label downloaded");
     } catch (error) {
       toast.error("Failed to generate shipping label");
@@ -79,8 +66,14 @@ export function FulfillmentActionsPanel({ order, orderId }: FulfillmentActionsPa
 
   const handleDownloadSlip = async () => {
     try {
-      const response = await generateSlipMutation.mutateAsync(orderId);
-      await downloadFile(response.slip_url, `packing-slip-${order.order_number}.pdf`);
+      const { blobUrl, filename } = await generateSlipMutation.mutateAsync(orderId);
+      const link = document.createElement("a");
+      link.href = blobUrl;
+      link.download = `packing-slip-${order.order_number}.pdf`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(blobUrl);
       toast.success("Packing slip downloaded");
     } catch (error) {
       toast.error("Failed to generate packing slip");

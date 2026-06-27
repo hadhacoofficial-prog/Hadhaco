@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime
+from typing import Literal
 
 from pydantic import BaseModel, Field
 
@@ -35,22 +36,44 @@ class ReviewUpdate(BaseModel):
 
 # ── Response ──────────────────────────────────────────────────────────────────
 
+ReviewStatus = Literal["pending", "approved", "rejected"]
+
 
 class ReviewOut(BaseModel):
     id: uuid.UUID
     product_id: uuid.UUID
     user_id: uuid.UUID
     order_id: uuid.UUID | None
+    customer_name: str | None
     rating: int
     title: str | None
     body: str | None
     is_verified_purchase: bool
     is_approved: bool
+    is_rejected: bool
+    is_flagged: bool
     helpful_count: int
+    approved_at: datetime | None = None
+    approved_by: str | None = None
     created_at: datetime
+    updated_at: datetime
     images: list[ReviewImageOut] = []
 
+    @property
+    def status(self) -> ReviewStatus:
+        if self.is_approved:
+            return "approved"
+        if self.is_rejected:
+            return "rejected"
+        return "pending"
+
     model_config = {"from_attributes": True}
+
+
+class AdminReviewOut(ReviewOut):
+    """Extended review DTO for admin endpoints — includes product name."""
+
+    product_name: str | None = None
 
 
 # ── Rating summary ────────────────────────────────────────────────────────────

@@ -28,6 +28,7 @@ import {
   LogOut,
   FolderOpen,
   Tag,
+  Settings2,
 } from "lucide-react";
 import markAsset from "@/assets/hadha-mark.png";
 
@@ -84,7 +85,8 @@ type NavTo =
   | "/admin/reviews"
   | "/admin/coupons"
   | "/admin/cms"
-  | "/admin/reports";
+  | "/admin/reports"
+  | "/admin/templates";
 
 type NavItem = { to: NavTo; label: string; icon: React.ReactNode; exact?: boolean };
 
@@ -100,6 +102,7 @@ const nav: NavItem[] = [
   { to: "/admin/coupons", label: "Coupons", icon: <Ticket className="size-4" /> },
   { to: "/admin/cms", label: "Homepage CMS", icon: <LayoutTemplate className="size-4" /> },
   { to: "/admin/reports", label: "Reports", icon: <BarChart3 className="size-4" /> },
+  { to: "/admin/templates", label: "Templates", icon: <Settings2 className="size-4" /> },
 ];
 
 // ─── Component-level auth gate ──────────────────────────────────────────────

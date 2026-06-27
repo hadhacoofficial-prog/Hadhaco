@@ -165,7 +165,7 @@ async def get_product_by_slug(slug: str, db: AsyncSession = Depends(get_db)):
 )
 async def admin_list_products(
     page: int = Query(1, ge=1),
-    page_size: int = Query(20, ge=1, le=100),
+    page_size: int = Query(20, ge=1, le=500),
     status: str | None = None,
     category_id: uuid.UUID | None = None,
     collection_id: uuid.UUID | None = None,

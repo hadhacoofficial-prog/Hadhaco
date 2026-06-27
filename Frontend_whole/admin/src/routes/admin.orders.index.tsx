@@ -84,7 +84,7 @@ function AdminOrders() {
       <div className="bg-background border border-border overflow-x-auto">
         {isLoading ? (
           <TableSkeleton
-            headers={["Order #", "Date", "Items", "Total", "Payment", "Status", "Fulfillment", ""]}
+            headers={["Order #", "Date", "Items", "Total", "Payment", "Status", "Fulfillment", "Gift", ""]}
             rows={8}
           />
         ) : (
@@ -98,6 +98,7 @@ function AdminOrders() {
                 <th className="px-4 py-3">Payment</th>
                 <th className="px-4 py-3">Status</th>
                 <th className="px-4 py-3">Fulfillment</th>
+                <th className="px-4 py-3">Gift</th>
                 <th className="px-4 py-3"></th>
               </tr>
             </thead>
@@ -157,6 +158,16 @@ function AdminOrders() {
                       {o.fulfillment_status.replace("_", " ")}
                     </span>
                   </td>
+                  <td className="px-4 py-3">
+                    {o.complimentary_gift ? (
+                      <span className="text-[10px] uppercase tracking-[0.16em] inline-flex items-center gap-1">
+                        <span>{o.complimentary_gift === "Traditional Sweet" ? "🍬" : "🌶️"}</span>
+                        <span className="text-muted-foreground">{o.complimentary_gift}</span>
+                      </span>
+                    ) : (
+                      <span className="text-muted-foreground">—</span>
+                    )}
+                  </td>
                   <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
                     <button
                       onClick={() =>
@@ -172,7 +183,7 @@ function AdminOrders() {
               ))}
               {list.length === 0 && (
                 <tr>
-                  <td colSpan={8} className="px-4 py-12 text-center text-muted-foreground text-sm">
+                  <td colSpan={9} className="px-4 py-12 text-center text-muted-foreground text-sm">
                     No orders to show.
                   </td>
                 </tr>

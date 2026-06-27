@@ -19,8 +19,11 @@ import { useCart } from "@/stores/cart";
 import { useWishlist } from "@/stores/wishlist";
 import { useAuthContext } from "@/providers/auth-context";
 import { useNavigationCategories } from "@/hooks/categories/useNavigationCategories";
+import { useHomepage } from "@/hooks/cms/useHomepage";
 import type { NavCategoryItem, NavigationCategoriesResponse } from "@/types/public";
+import type { FooterConfig } from "@/types/cms";
 import { NavJewelleryBg } from "./NavJewelleryBg";
+import { NavJewelleryBgMobile } from "./NavJewelleryBgMobile";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -54,6 +57,11 @@ export function Header() {
   const { data, isFetching, isError, isPlaceholderData } = useNavigationCategories();
   const categories = data ?? { women: [], men: [], unisex: [], kids: [] };
 
+  const { data: homepage } = useHomepage();
+  const footerConfig = (homepage?.sections["footer"]?.config ?? {}) as Partial<FooterConfig>;
+  const instagramUrl = footerConfig.instagram ?? "#";
+  const youtubeUrl = footerConfig.youtube ?? "#";
+
   // Show skeleton only on the very first fetch when no cached data exists yet.
   // Background refetches (after 24 h staleTime) show stale cached data instead.
   const isInitialLoading = isFetching && isPlaceholderData;
@@ -78,19 +86,16 @@ export function Header() {
         </div>
 
         {/* Utility bar */}
-        <div className="relative z-10 hidden md:flex items-center justify-between px-8 py-2 text-[11px] tracking-[0.18em] uppercase text-muted-foreground">
+        <div className="relative z-10 hidden md:flex items-center px-8 py-2 text-[11px] tracking-[0.18em] uppercase text-muted-foreground">
           <div className="flex items-center gap-4">
-            <a href="#" aria-label="Instagram" className="hover:text-foreground transition">
+            <a href={instagramUrl} target="_blank" rel="noreferrer" aria-label="Instagram" className="hover:text-foreground transition">
               <Instagram className="size-3.5" />
             </a>
-            <a href="#" aria-label="YouTube" className="hover:text-foreground transition">
+            <a href={youtubeUrl} target="_blank" rel="noreferrer" aria-label="YouTube" className="hover:text-foreground transition">
               <Youtube className="size-3.5" />
             </a>
           </div>
-          <p className="text-foreground">Crafted in 92.5 Silver · Shipping across India</p>
-          <a href="#" className="hover:text-foreground transition">
-            Track Order
-          </a>
+          <p className="absolute left-1/2 -translate-x-1/2 text-foreground">The strong Decision · నిర్ణయం మీది నాణ్యత మాది</p>
         </div>
 
         {/* Main bar */}
@@ -192,6 +197,13 @@ export function Header() {
         </div>
       </header>
 
+      {/* Mobile-only tagline bar */}
+      <div className="md:hidden bg-background border-b border-border px-4 py-2 text-center">
+        <p className="text-[10px] tracking-[0.22em] uppercase text-muted-foreground">
+          The strong Decision · నిర్ణయం మీది నాణ్యత మాది
+        </p>
+      </div>
+
       {/* Mobile drawer */}
       {mobileOpen && (
         <div className="fixed inset-0 z-[80] lg:hidden">
@@ -201,16 +213,19 @@ export function Header() {
             aria-hidden="true"
           />
           <aside
-            className="absolute left-0 top-0 h-dvh w-[85%] max-w-sm bg-background overflow-y-auto animate-slide-in-left shadow-2xl flex flex-col"
+            className="absolute left-0 top-0 h-dvh w-[85%] max-w-sm bg-background overflow-y-auto animate-slide-in-left shadow-2xl flex flex-col relative"
             aria-label="Mobile navigation"
           >
-            <div className="flex justify-between items-center mb-8 p-6 pb-0">
+            <div className="absolute inset-0 overflow-hidden pointer-events-none" aria-hidden="true">
+              <NavJewelleryBgMobile />
+            </div>
+            <div className="relative z-10 flex justify-between items-center p-6 pb-0">
               <img src={markAsset} alt="Hadha" className="h-9 w-auto" />
               <button onClick={() => setMobileOpen(false)} aria-label="Close menu">
                 <X className="size-5" />
               </button>
             </div>
-            <div className="space-y-4 text-sm tracking-[0.14em] uppercase px-6 flex-1">
+            <div className="relative z-10 space-y-4 text-sm tracking-[0.14em] uppercase px-6 flex-1 pt-6">
               {GENDER_TABS.map(({ key, label }) => (
                 <MobileAccordion
                   key={key}
@@ -253,10 +268,16 @@ export function Header() {
                 Account
               </Link>
             </div>
-            <div className="mt-10 px-6 pb-8 pt-6 border-t border-border flex flex-col items-center gap-2 text-center">
+            <div className="relative z-10 mt-10 px-6 pb-8 pt-6 border-t border-border flex flex-col items-center gap-2 text-center">
               <img src={logoAsset} alt="Hadha" className="h-16 w-24 opacity-90" />
               <p className="text-[10px] tracking-[0.32em] uppercase text-muted-foreground">
                 Since 2025
+              </p>
+                            <p className="text-[10px] tracking-[0.32em] uppercase text-muted-foreground">
+                The strong Decision
+              </p>
+                            <p className="text-[10px] tracking-[0.32em] uppercase text-muted-foreground">
+                నిర్ణయం మీది నాణ్యత మాది
               </p>
             </div>
           </aside>

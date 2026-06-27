@@ -9,11 +9,11 @@ from app.core.database import get_db
 from app.core.dependencies import get_current_user, require_admin, require_customer
 from app.modules.orders.schemas import (
     CancelOrderRequest,
-    CreateOrderRequest,
     CreatePaymentIntentRequest,
     CreatePaymentIntentResponse,
     OrderListResponse,
     OrderResponse,
+    SetComplimentaryGiftRequest,
     UpdateOrderStatusRequest,
     VerifyOrderPaymentRequest,
     VerifyOrderPaymentResponse,
@@ -26,23 +26,6 @@ _service = OrderService()
 
 
 # ── Customer endpoints ────────────────────────────────────────────────────────
-
-
-@router.post(
-    "/orders",
-    response_model=BaseSuccessResponse[OrderResponse],
-    status_code=201,
-    dependencies=[Depends(require_customer)],
-)
-async def create_order(
-    payload: CreateOrderRequest,
-    db: AsyncSession = Depends(get_db),
-    current_user: Profile = Depends(get_current_user),
-):
-    from app.common.responses import created
-
-    result = await _service.create_from_cart(db, current_user.id, payload)
-    return created(result, ResponseCode.ORDER_CREATED, "Order created successfully")
 
 
 @router.get(
@@ -108,6 +91,23 @@ async def verify_order_payment(
     return ok(
         result, ResponseCode.ORDER_CREATED, "Payment verified and order confirmed"
     )
+
+
+@router.patch(
+    "/orders/{order_id}/complimentary-gift",
+    response_model=BaseSuccessResponse[OrderResponse],
+    dependencies=[Depends(require_customer)],
+)
+async def set_complimentary_gift(
+    order_id: uuid.UUID,
+    payload: SetComplimentaryGiftRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: Profile = Depends(get_current_user),
+):
+    result = await _service.set_complimentary_gift(
+        db, order_id, current_user.id, payload
+    )
+    return ok(result, ResponseCode.ORDER_STATUS_UPDATED, "Complimentary gift saved")
 
 
 @router.post(

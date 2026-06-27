@@ -591,12 +591,7 @@ function OrderDetailExpanded({ order }: { order: CustomerOrderResponse }) {
     hour: "2-digit",
     minute: "2-digit",
   });
-  const methodLabel =
-    order.payment_method === "razorpay"
-      ? "Razorpay"
-      : order.payment_method === "cod"
-        ? "Cash on Delivery"
-        : order.payment_method;
+  const methodLabel = order.payment_method === "razorpay" ? "Razorpay" : order.payment_method;
 
   return (
     <div className="mt-5 space-y-5 border-t border-border pt-5">
@@ -932,6 +927,11 @@ function AddressesTab() {
       })(),
       line1: String(f.get("line1") ?? ""),
       line2: String(f.get("line2") ?? "") || null,
+      landmark: String(f.get("landmark") ?? "") || null,
+      alternate_phone: (() => {
+        const p = String(f.get("alternate_phone") ?? "").replace(/\s+/g, "");
+        return p ? (p.startsWith("+") ? p : `+91${p.replace(/^0+/, "")}`) : null;
+      })(),
       city: String(f.get("city") ?? ""),
       state: String(f.get("state") ?? ""),
       postal_code: String(f.get("pincode") ?? ""),
@@ -962,10 +962,16 @@ function AddressesTab() {
           <Field name="name" placeholder="Full name" required className="sm:col-span-2" />
           <Field name="line1" placeholder="Address line 1" required className="sm:col-span-2" />
           <Field name="line2" placeholder="Address line 2 (optional)" className="sm:col-span-2" />
+          <Field
+            name="landmark"
+            placeholder="Landmark (optional) — Near SBI Bank, Opposite Temple"
+            className="sm:col-span-2"
+          />
           <Field name="city" placeholder="City" required />
           <Field name="state" placeholder="State" required />
           <Field name="pincode" placeholder="Pincode" required />
           <Field name="phone" placeholder="Phone" required />
+          <Field name="alternate_phone" placeholder="Alternative phone (optional)" />
           <label className="sm:col-span-2 inline-flex items-center gap-2 text-sm">
             <input type="checkbox" name="isDefault" className="rounded" />
             Set as default address
@@ -1022,10 +1028,16 @@ function AddressesTab() {
                   {a.line1}
                   {a.line2 ? `, ${a.line2}` : ""}
                 </p>
+                {a.landmark && (
+                  <p className="text-sm text-muted-foreground">Landmark: {a.landmark}</p>
+                )}
                 <p className="text-sm text-muted-foreground">
                   {a.city}, {a.state} {a.postal_code}
                 </p>
                 {a.phone && <p className="text-sm text-muted-foreground mt-0.5">{a.phone}</p>}
+                {a.alternate_phone && (
+                  <p className="text-sm text-muted-foreground">Alt: {a.alternate_phone}</p>
+                )}
               </div>
               <button
                 onClick={() => removeMutation.mutate(a.id)}

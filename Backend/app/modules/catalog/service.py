@@ -96,9 +96,12 @@ class CatalogService:
 
         list_items = []
         for p in items:
-            primary_img = next((img.url for img in p.images if img.is_primary), None)
-            if primary_img is None and p.images:
-                primary_img = p.images[0].url
+            sorted_imgs = sorted(p.images, key=lambda i: i.sort_order)
+            primary_img = next((img.url for img in sorted_imgs if img.is_primary), None)
+            if primary_img is None and sorted_imgs:
+                primary_img = sorted_imgs[0].url
+            secondary_imgs = [img for img in sorted_imgs if img.url != primary_img]
+            secondary_img = secondary_imgs[0].url if secondary_imgs else None
             cols = [
                 ProductCollectionRef.model_validate(c) for c in col_map.get(p.id, [])
             ]
@@ -121,6 +124,7 @@ class CatalogService:
                     is_best_seller=p.is_best_seller,
                     created_at=p.created_at,
                     primary_image=primary_img,
+                    secondary_image=secondary_img,
                     collections=cols,
                 )
             )

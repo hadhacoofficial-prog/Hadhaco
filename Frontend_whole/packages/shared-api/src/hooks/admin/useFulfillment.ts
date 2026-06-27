@@ -1,11 +1,10 @@
 ﻿import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "../../lib/api/client";
 import { queryKeys } from "../../lib/api/queryKeys";
+import { authHeader, buildUrl } from "../../lib/api/interceptors";
 import type {
   DispatchOrderPayload,
   FulfillmentTimelineResponse,
-  PackingSlipResponse,
-  ShippingLabelResponse,
 } from "@hadha/shared-types";
 import type { OrderResponse } from "@hadha/shared-types";
 
@@ -43,16 +42,30 @@ export const useMarkPacking = () => {
   });
 };
 
+/**
+ * Returns a blob URL for the on-demand PDF shipping label.
+ * The endpoint streams PDF bytes — no R2 URL is returned.
+ * Callers are responsible for revoking the blob URL after download.
+ */
 export const useGenerateShippingLabel = () => {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: async (orderId: string) =>
-      api.post<ShippingLabelResponse>(`/admin/orders/${orderId}/fulfillment/shipping-label`, {}),
-    onSuccess: (_, orderId) => {
-      queryClient.invalidateQueries({
-        queryKey: queryKeys.admin.order(orderId),
+    mutationFn: async (orderId: string): Promise<{ blobUrl: string; filename: string }> => {
+      const url = buildUrl(`/admin/orders/${orderId}/fulfillment/shipping-label`, {
+        format: "pdf",
       });
+      const auth = await authHeader();
+      const res = await fetch(url, { method: "GET", headers: auth });
+      if (!res.ok) throw new Error("Failed to generate shipping label");
+      const blob = await res.blob();
+      return {
+        blobUrl: URL.createObjectURL(blob),
+        filename: `shipping-label-${orderId}.pdf`,
+      };
+    },
+    onSuccess: (_, orderId) => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.admin.order(orderId) });
       queryClient.invalidateQueries({
         queryKey: queryKeys.admin.fulfillment.timeline(orderId),
       });
@@ -60,10 +73,26 @@ export const useGenerateShippingLabel = () => {
   });
 };
 
+/**
+ * Returns a blob URL for the on-demand PDF packing slip.
+ * The endpoint streams PDF bytes — no R2 URL is returned.
+ * Callers are responsible for revoking the blob URL after download.
+ */
 export const useGeneratePackingSlip = () => {
   return useMutation({
-    mutationFn: async (orderId: string) =>
-      api.post<PackingSlipResponse>(`/admin/orders/${orderId}/fulfillment/packing-slip`, {}),
+    mutationFn: async (orderId: string): Promise<{ blobUrl: string; filename: string }> => {
+      const url = buildUrl(`/admin/orders/${orderId}/fulfillment/packing-slip`, {
+        format: "pdf",
+      });
+      const auth = await authHeader();
+      const res = await fetch(url, { method: "GET", headers: auth });
+      if (!res.ok) throw new Error("Failed to generate packing slip");
+      const blob = await res.blob();
+      return {
+        blobUrl: URL.createObjectURL(blob),
+        filename: `packing-slip-${orderId}.pdf`,
+      };
+    },
   });
 };
 

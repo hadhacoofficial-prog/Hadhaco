@@ -49,9 +49,15 @@ class Review(Base):
     is_verified_purchase: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=False
     )
+    customer_name: Mapped[str | None] = mapped_column(VARCHAR(255), nullable=True)
     is_approved: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    is_rejected: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     is_flagged: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     helpful_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    approved_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True, default=None
+    )
+    approved_by: Mapped[str | None] = mapped_column(VARCHAR(255), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, default=lambda: datetime.now(UTC)
     )

@@ -129,6 +129,7 @@ def _mount_routers(app: FastAPI) -> None:
     from app.modules.categories.router import router as categories_router
     from app.modules.cms.router import router as cms_router
     from app.modules.collections.router import router as collections_router
+    from app.modules.company.router import router as company_router
     from app.modules.coupons.router import router as coupons_router
     from app.modules.dev_auth.router import router as dev_auth_router
     from app.modules.fraud.router import router as fraud_router
@@ -178,6 +179,7 @@ def _mount_routers(app: FastAPI) -> None:
     app.include_router(notifications_router, prefix=prefix, tags=["notifications"])
     app.include_router(fraud_router, prefix=prefix, tags=["fraud"])
     app.include_router(settings_router, prefix=prefix, tags=["settings"])
+    app.include_router(company_router, prefix=prefix, tags=["company"])
     app.include_router(admin_router, prefix=prefix, tags=["admin"])
 
     @app.get("/health", tags=["ops"], include_in_schema=False)

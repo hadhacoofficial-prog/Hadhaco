@@ -69,13 +69,3 @@ class UpdateFulfillmentStatusRequest(BaseModel):
         pattern="^(pending|packing|label_generated|dispatched|in_transit|delivered|cancelled|returned|refunded)$",
     )
     notes: str | None = None
-
-
-class ShippingLabelResponse(BaseModel):
-    label_url: str
-    pdf_r2_key: str
-
-
-class PackingSlipResponse(BaseModel):
-    slip_url: str
-    pdf_r2_key: str

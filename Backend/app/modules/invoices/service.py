@@ -82,8 +82,15 @@ def _build_pdf(order, invoice_number: str) -> bytes:
             order.shipping_full_name,
             order.shipping_line1,
             order.shipping_line2,
+            f"Landmark: {order.shipping_landmark}" if order.shipping_landmark else None,
             f"{order.shipping_city}, {order.shipping_state} {order.shipping_postal}",
             order.shipping_country,
+            f"Phone: {order.shipping_phone}" if order.shipping_phone else None,
+            (
+                f"Alt Phone: {order.shipping_alternate_phone}"
+                if order.shipping_alternate_phone
+                else None
+            ),
         ],
     )
     elements.append(Paragraph("<br/>".join(addr_lines), styles["Normal"]))

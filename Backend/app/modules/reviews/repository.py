@@ -24,7 +24,6 @@ class ReviewRepository:
                 WHERE o.user_id = :user_id
                   AND oi.product_id = :product_id
                   AND o.status = 'delivered'
-                  AND o.deleted_at IS NULL
                 LIMIT 1
                 """),
             {"user_id": user_id, "product_id": product_id},
@@ -103,6 +102,9 @@ class ReviewRepository:
         db.add(review)
         await db.flush()
 
+    async def hard_delete(self, db: AsyncSession, review_id: uuid.UUID) -> None:
+        await db.execute(delete(Review).where(Review.id == review_id))
+
     # ── Listing ───────────────────────────────────────────────────────────────
 
     async def list_for_product(
@@ -110,17 +112,35 @@ class ReviewRepository:
         db: AsyncSession,
         *,
         product_id: uuid.UUID,
-        approved_only: bool = True,
+        viewer_user_id: uuid.UUID | None = None,
         offset: int = 0,
         limit: int = 20,
     ) -> list[Review]:
+        """Return approved reviews + viewer's own pending/rejected if authenticated."""
+        from sqlalchemy import or_
+
         q = select(Review).where(
             Review.product_id == product_id,
             Review.deleted_at.is_(None),
         )
-        if approved_only:
+        if viewer_user_id is not None:
+            q = q.where(
+                or_(
+                    Review.is_approved.is_(True),
+                    Review.user_id == viewer_user_id,
+                )
+            )
+        else:
             q = q.where(Review.is_approved.is_(True))
-        q = q.order_by(Review.created_at.desc()).offset(offset).limit(limit)
+        # Own pending/rejected reviews first, then approved by newest
+        q = (
+            q.order_by(
+                Review.is_approved.asc(),
+                Review.created_at.desc(),
+            )
+            .offset(offset)
+            .limit(limit)
+        )
         result = await db.execute(q)
         return list(result.scalars().all())
 
@@ -129,12 +149,45 @@ class ReviewRepository:
     ) -> list[Review]:
         result = await db.execute(
             select(Review)
-            .where(Review.is_approved.is_(False), Review.deleted_at.is_(None))
+            .where(
+                Review.is_approved.is_(False),
+                Review.is_rejected.is_(False),
+                Review.deleted_at.is_(None),
+            )
             .order_by(Review.created_at.asc())
             .offset(offset)
             .limit(limit)
         )
         return list(result.scalars().all())
+
+    async def list_all(
+        self,
+        db: AsyncSession,
+        *,
+        status: str | None = None,
+        offset: int = 0,
+        limit: int = 50,
+    ) -> list[dict[str, Any]]:
+        """Admin: list all reviews with product name (all statuses unless filtered)."""
+        status_filter = ""
+        if status == "approved":
+            status_filter = "AND r.is_approved = true"
+        elif status == "rejected":
+            status_filter = "AND r.is_rejected = true AND r.is_approved = false"
+        elif status == "pending":
+            status_filter = "AND r.is_approved = false AND r.is_rejected = false"
+
+        q = text(f"""
+            SELECT r.*, p.name AS product_name
+            FROM reviews r
+            LEFT JOIN products p ON p.id = r.product_id
+            WHERE r.deleted_at IS NULL
+              {status_filter}
+            ORDER BY r.created_at DESC
+            OFFSET :offset LIMIT :limit
+        """)
+        result = await db.execute(q, {"offset": offset, "limit": limit})
+        return [dict(r._mapping) for r in result.fetchall()]
 
     # ── Rating summary ────────────────────────────────────────────────────────
 

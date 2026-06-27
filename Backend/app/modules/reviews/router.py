@@ -2,15 +2,20 @@ from __future__ import annotations
 
 import uuid
 
-from fastapi import APIRouter, Depends, File, Query, UploadFile
+from fastapi import APIRouter, Depends, File, Form, Query, UploadFile
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.common.response_codes import ResponseCode
 from app.common.responses import BaseSuccessResponse, deleted, ok
 from app.core.database import get_db
-from app.core.dependencies import get_current_user, require_admin
+from app.core.dependencies import (
+    get_current_user,
+    get_current_user_optional,
+    require_admin,
+)
 from app.modules.reviews.schemas import (
     AdminReviewAction,
+    AdminReviewOut,
     ProductRatingSummary,
     ReviewCreate,
     ReviewOut,
@@ -35,9 +40,15 @@ async def list_product_reviews(
     offset: int = Query(0, ge=0),
     limit: int = Query(20, ge=1, le=100),
     db: AsyncSession = Depends(get_db),
+    user=Depends(get_current_user_optional),
 ):
+    viewer_user_id = user.id if user else None
     result = await _svc.list_product_reviews(
-        db, product_id=product_id, offset=offset, limit=limit
+        db,
+        product_id=product_id,
+        viewer_user_id=viewer_user_id,
+        offset=offset,
+        limit=limit,
     )
     return ok(result, ResponseCode.REVIEW_LISTED, "Reviews listed successfully")
 
@@ -76,15 +87,30 @@ async def product_rating_summary(
 
 @router.post("", response_model=BaseSuccessResponse[ReviewOut], status_code=201)
 async def submit_review(
-    data: ReviewCreate,
+    product_id: uuid.UUID = Form(...),
+    rating: int = Form(..., ge=1, le=5),
+    body: str | None = Form(None),
+    title: str | None = Form(None),
+    order_id: uuid.UUID | None = Form(None),
     images: list[UploadFile] = File(default=[]),
     db: AsyncSession = Depends(get_db),
     user=Depends(get_current_user),
 ):
     from app.common.responses import created
 
+    data = ReviewCreate(
+        product_id=product_id,
+        rating=rating,
+        body=body,
+        title=title,
+        order_id=order_id,
+    )
     result = await _svc.submit_review(
-        db, user_id=user.id, data=data, images=images or None
+        db,
+        user_id=user.id,
+        customer_name=getattr(user, "full_name", None),
+        data=data,
+        images=images or None,
     )
     return created(
         result, ResponseCode.REVIEW_SUBMITTED, "Review submitted successfully"
@@ -128,6 +154,18 @@ async def vote_review(
 
 
 # ── Admin ─────────────────────────────────────────────────────────────────────
+
+
+@router.get("/admin/reviews", response_model=BaseSuccessResponse[list[AdminReviewOut]])
+async def list_all_reviews(
+    status: str | None = Query(None, description="pending | approved | rejected"),
+    offset: int = Query(0, ge=0),
+    limit: int = Query(50, ge=1, le=200),
+    db: AsyncSession = Depends(get_db),
+    _=Depends(require_admin),
+):
+    result = await _svc.list_all_reviews(db, status=status, offset=offset, limit=limit)
+    return ok(result, ResponseCode.REVIEW_ALL_LISTED, "Reviews listed successfully")
 
 
 @router.get("/admin/pending", response_model=BaseSuccessResponse[list[ReviewOut]])
@@ -206,9 +244,24 @@ async def admin_review_action(
     review_id: uuid.UUID,
     body: AdminReviewAction,
     db: AsyncSession = Depends(get_db),
-    _=Depends(require_admin),
+    admin=Depends(require_admin),
 ):
-    result = await _svc.admin_action(db, review_id=review_id, action=body.action)
+    admin_id = str(getattr(admin, "id", "")) if admin else None
+    result = await _svc.admin_action(
+        db, review_id=review_id, action=body.action, admin_identifier=admin_id
+    )
     return ok(
         result, ResponseCode.REVIEW_ACTION_APPLIED, "Review action applied successfully"
     )
+
+
+@router.delete(
+    "/admin/{review_id}", response_model=BaseSuccessResponse[None], status_code=200
+)
+async def admin_delete_review(
+    review_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    _=Depends(require_admin),
+):
+    await _svc.admin_delete(db, review_id=review_id)
+    return deleted(ResponseCode.REVIEW_DELETED, "Review deleted successfully")

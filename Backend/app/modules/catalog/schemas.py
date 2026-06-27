@@ -241,6 +241,8 @@ class ProductResponse(BaseModel):
     created_at: datetime
     updated_at: datetime
     published_at: datetime | None
+    average_rating: float | None = None
+    review_count: int = 0
     images: list[ProductImageResponse] = []
     variants: list[ProductVariantResponse] = []
     attributes: list[ProductAttributeResponse] = []
@@ -267,6 +269,9 @@ class ProductListItem(BaseModel):
     is_best_seller: bool
     created_at: datetime
     primary_image: str | None = None
+    secondary_image: str | None = None
+    average_rating: float | None = None
+    review_count: int = 0
     collections: list[ProductCollectionRef] = []
 
     model_config = {"from_attributes": True}

@@ -24,15 +24,11 @@ const groups = [
     items: [
       {
         q: "What payment methods do you accept?",
-        a: "We accept all major credit and debit cards, UPI, net banking, and Cash on Delivery across India.",
+        a: "We accept all major credit and debit cards, UPI, and net banking via Razorpay.",
       },
       {
         q: "Can I modify or cancel my order?",
         a: "You can modify or cancel your order within 2 hours of placing it by contacting us. Once dispatched, the order can no longer be cancelled.",
-      },
-      {
-        q: "Is COD available?",
-        a: "Yes, Cash on Delivery is available on orders up to ₹10,000 across India. A nominal handling fee may apply.",
       },
     ],
   },

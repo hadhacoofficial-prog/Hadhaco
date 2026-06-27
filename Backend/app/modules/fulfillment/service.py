@@ -2,47 +2,16 @@ import uuid
 from datetime import datetime
 from io import BytesIO
 
-import barcode
-import boto3
 import qrcode
-from botocore.config import Config
-from reportlab.lib import colors
-from reportlab.lib.pagesizes import A4, A6
-from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
-from reportlab.lib.units import mm
-from reportlab.platypus import (
-    Paragraph,
-    SimpleDocTemplate,
-    Spacer,
-    Table,
-    TableStyle,
-)
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.config import settings
 from app.modules.fulfillment.models import FulfillmentTimeline
 from app.modules.fulfillment.repository import FulfillmentTimelineRepository
-from app.modules.fulfillment.schemas import (
-    DispatchOrderRequest,
-    PackingSlipResponse,
-    ShippingLabelResponse,
-)
+from app.modules.fulfillment.schemas import DispatchOrderRequest
 from app.modules.orders.models import Order
 from app.modules.orders.repository import OrderRepository
 from app.modules.shipping.models import Shipment
 from app.modules.shipping.repository import ShipmentRepository
-
-
-def _r2_client():
-    """Create and return an R2 client."""
-    return boto3.client(
-        "s3",
-        endpoint_url=settings.R2_ENDPOINT_URL,
-        aws_access_key_id=settings.R2_ACCESS_KEY_ID,
-        aws_secret_access_key=settings.R2_SECRET_ACCESS_KEY,
-        config=Config(signature_version="s3v4"),
-        region_name="auto",
-    )
 
 
 class FulfillmentService:
@@ -129,32 +98,17 @@ class FulfillmentService:
 
         return order
 
-    async def generate_shipping_label(
+    async def mark_label_generated(
         self,
         db: AsyncSession,
         order_id: uuid.UUID,
         admin_id: uuid.UUID,
         admin_name: str,
-    ) -> ShippingLabelResponse:
-        """Generate and store shipping label PDF.
-
-        Args:
-            db: Database session
-            order_id: Order for which to generate label
-            admin_id: Admin user ID
-            admin_name: Admin user name
-
-        Returns:
-            ShippingLabelResponse with URL and R2 key
-        """
+    ) -> None:
+        """Record that a shipping label was generated (on-demand; no file stored)."""
         order = await self.order_repo.get_by_id(db, order_id)
         if not order:
             raise ValueError(f"Order {order_id} not found")
-
-        label_service = ShippingLabelService()
-        label_url, r2_key = await label_service.generate_label(
-            db, order, admin_id, admin_name
-        )
 
         order.fulfillment_status = "label_generated"
         order.shipping_label_generated_at = datetime.utcnow()
@@ -167,33 +121,38 @@ class FulfillmentService:
             "generate_label",
             actor_id=admin_id,
             admin_name=admin_name,
-            details={"label_url": label_url},
+            details={"method": "on_demand"},
         )
 
-        return ShippingLabelResponse(label_url=label_url, pdf_r2_key=r2_key)
-
-    async def generate_packing_slip(
-        self,
-        db: AsyncSession,
-        order_id: uuid.UUID,
-    ) -> PackingSlipResponse:
-        """Generate and store packing slip PDF.
-
-        Args:
-            db: Database session
-            order_id: Order for which to generate slip
-
-        Returns:
-            PackingSlipResponse with URL and R2 key
-        """
+    async def get_shipping_label_html(
+        self, db: AsyncSession, order_id: uuid.UUID
+    ) -> str:
         order = await self.order_repo.get_by_id(db, order_id)
         if not order:
             raise ValueError(f"Order {order_id} not found")
+        return await ShippingLabelService().render_html(db, order)
 
-        slip_service = PackingSlipService()
-        slip_url, r2_key = await slip_service.generate_slip(db, order)
+    async def get_shipping_label_pdf(
+        self, db: AsyncSession, order_id: uuid.UUID
+    ) -> bytes:
+        order = await self.order_repo.get_by_id(db, order_id)
+        if not order:
+            raise ValueError(f"Order {order_id} not found")
+        return await ShippingLabelService().render_pdf(db, order)
 
-        return PackingSlipResponse(slip_url=slip_url, pdf_r2_key=r2_key)
+    async def get_packing_slip_html(self, db: AsyncSession, order_id: uuid.UUID) -> str:
+        order = await self.order_repo.get_by_id(db, order_id)
+        if not order:
+            raise ValueError(f"Order {order_id} not found")
+        return await PackingSlipService().render_html(db, order)
+
+    async def get_packing_slip_pdf(
+        self, db: AsyncSession, order_id: uuid.UUID
+    ) -> bytes:
+        order = await self.order_repo.get_by_id(db, order_id)
+        if not order:
+            raise ValueError(f"Order {order_id} not found")
+        return await PackingSlipService().render_pdf(db, order)
 
     async def dispatch_order(
         self,
@@ -388,269 +347,298 @@ class FulfillmentService:
         return True
 
 
-class ShippingLabelService:
-    """Service for generating shipping label PDFs."""
+def _register_unicode_font() -> bool:
+    """Register a Telugu/Unicode-capable font with ReportLab (once per process).
 
-    COMPANY_NAME = "Hadha Jewellery"
-    COMPANY_ADDRESS = "Your Company Address\nYour City, State ZIP\nIndia"
-    COMPANY_PHONE = "+91 XXXXX XXXXX"
-    COMPANY_GST = "Your GST Number"
+    Returns True if a suitable font was registered as 'HadhaUni'.
+    """
+    import pathlib
 
-    async def generate_label(
-        self,
-        db: AsyncSession,
-        order: Order,
-        admin_id: uuid.UUID,
-        admin_name: str,
-    ) -> tuple[str, str]:
-        """Generate A6 shipping label PDF.
+    from reportlab.pdfbase import pdfmetrics
+    from reportlab.pdfbase.ttfonts import TTFont
 
-        Args:
-            db: Database session
-            order: Order to generate label for
-            admin_id: Admin user ID
-            admin_name: Admin user name
-
-        Returns:
-            Tuple of (label_url, r2_key)
-        """
-        # Create PDF in memory
-        pdf_buffer = BytesIO()
-        doc = SimpleDocTemplate(
-            pdf_buffer,
-            pagesize=A6,
-            leftMargin=5 * mm,
-            rightMargin=5 * mm,
-            topMargin=5 * mm,
-            bottomMargin=5 * mm,
-        )
-
-        styles = getSampleStyleSheet()
-        title_style = ParagraphStyle(
-            "CustomTitle",
-            parent=styles["Normal"],
-            fontSize=10,
-            fontName="Helvetica-Bold",
-            spaceAfter=6,
-        )
-        normal_style = ParagraphStyle(
-            "CustomNormal",
-            parent=styles["Normal"],
-            fontSize=8,
-            spaceAfter=2,
-        )
-
-        # Build content
-        elements = []
-
-        # FROM Address Section
-        elements.append(Paragraph("<b>FROM:</b>", title_style))
-        from_text = (
-            f"{self.COMPANY_NAME}<br/>{self.COMPANY_ADDRESS}<br/>{self.COMPANY_PHONE}"
-        )
-        elements.append(Paragraph(from_text, normal_style))
-        elements.append(Spacer(1, 3 * mm))
-
-        # TO Address Section
-        elements.append(Paragraph("<b>TO:</b>", title_style))
-        to_text = f"{order.shipping_full_name}<br/>{order.shipping_line1}"
-        if order.shipping_line2:
-            to_text += f"<br/>{order.shipping_line2}"
-        to_text += f"<br/>{order.shipping_city}, {order.shipping_state} {order.shipping_postal}"
-        if order.shipping_phone:
-            to_text += f"<br/>Phone: {order.shipping_phone}"
-        elements.append(Paragraph(to_text, normal_style))
-        elements.append(Spacer(1, 3 * mm))
-
-        # Order Details Section
-        elements.append(Paragraph("<b>ORDER DETAILS:</b>", title_style))
-        details_text = f"Order #: {order.order_number}<br/>Date: {order.created_at.strftime('%Y-%m-%d')}"
-        if order.tracking_number:
-            details_text += f"<br/>AWB: {order.tracking_number}"
-        elements.append(Paragraph(details_text, normal_style))
-        elements.append(Spacer(1, 3 * mm))
-
-        # Generate barcode if tracking number exists
-        if order.tracking_number:
-            barcode_buffer = BytesIO()
+    if "HadhaUni" in pdfmetrics.getRegisteredFontNames():
+        return True
+    candidates = [
+        r"C:\Windows\Fonts\Gautami.ttf",
+        r"C:\Windows\Fonts\gautamib.ttf",
+        "/usr/share/fonts/truetype/noto/NotoSansTelugu-Regular.ttf",
+        "/usr/share/fonts/truetype/noto/NotoSans-Regular.ttf",
+    ]
+    for path in candidates:
+        if pathlib.Path(path).exists():
             try:
-                barcode_obj = barcode.get(
-                    "code128",
-                    order.tracking_number,
-                    writer_options={"module_width": 0.5},
-                )
-                barcode_obj.write(barcode_buffer)
-                barcode_buffer.seek(0)
+                pdfmetrics.registerFont(TTFont("HadhaUni", path))
+                return True
             except Exception:
-                pass
+                continue
+    return False
 
-        # Generate QR code
+
+def _logo_data_uri() -> str | None:
+    import base64
+    import pathlib
+
+    logo = pathlib.Path(__file__).parent.parent.parent / "templates" / "hadha-logo.png"
+    try:
+        data = base64.b64encode(logo.read_bytes()).decode()
+        return f"data:image/png;base64,{data}"
+    except Exception:
+        return None
+
+
+class ShippingLabelService:
+    """On-demand shipping label renderer — no file storage.
+
+    Fetches order + company config from DB, generates barcode/QR as base64,
+    renders the Jinja2 HTML template, and optionally converts to PDF via
+    xhtml2pdf. Nothing is written to disk or uploaded to R2.
+    """
+
+    _TEMPLATE_PATH = (
+        __import__("pathlib").Path(__file__).parent.parent.parent
+        / "templates"
+        / "shipping_label.html"
+    )
+
+    def _get_template(self) -> str:
+        return self._TEMPLATE_PATH.read_text(encoding="utf-8")
+
+    @staticmethod
+    def _barcode_b64(value: str) -> str | None:
+        import base64
+
+        try:
+            from barcode import get as bc_get
+            from barcode.writer import ImageWriter
+
+            buf = BytesIO()
+            bc_get("code128", value, writer=ImageWriter()).write(
+                buf, options={"module_width": 0.4, "module_height": 8, "quiet_zone": 1}
+            )
+            return base64.b64encode(buf.getvalue()).decode()
+        except Exception:
+            return None
+
+    @staticmethod
+    def _qr_b64(value: str) -> str:
+        import base64
+
         qr = qrcode.QRCode(
             version=1,
             error_correction=qrcode.constants.ERROR_CORRECT_L,
-            box_size=5,
+            box_size=4,
             border=1,
         )
-        qr.add_data(f"{order.order_number}:{order.tracking_number or ''}")
+        qr.add_data(value)
         qr.make(fit=True)
-        qr_img = qr.make_image(fill_color="black", back_color="white")
-        qr_buffer = BytesIO()
-        qr_img.save(qr_buffer, format="PNG")
-        qr_buffer.seek(0)
+        img = qr.make_image(fill_color="black", back_color="white")
+        buf = BytesIO()
+        img.save(buf, format="PNG")
+        return base64.b64encode(buf.getvalue()).decode()
 
-        # Additional Info
-        elements.append(Spacer(1, 2 * mm))
-        additional_text = f"Provider: {order.shipping_provider or 'TBD'}<br/>Payment: {('PREPAID' if order.payment_status == 'paid' else 'COD')}"
-        elements.append(Paragraph(additional_text, normal_style))
+    async def _build_context(self, db: AsyncSession, order: Order) -> dict:
 
-        # Build PDF
-        doc.build(elements)
+        from app.modules.company.repository import CompanyConfigRepository
 
-        # Upload to R2
-        pdf_buffer.seek(0)
-        filename = f"shipping-labels/{order.id}/{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}.pdf"
+        company = await CompanyConfigRepository().get(db)
 
-        client = _r2_client()
-        client.put_object(
-            Bucket=settings.R2_BUCKET_NAME,
-            Key=filename,
-            Body=pdf_buffer.getvalue(),
-            ContentType="application/pdf",
+        company_data = {
+            "name": company.name if company else "Hadha Jewellery",
+            "tagline": (
+                company.tagline if company else "Timeless Beauty, Trusted Quality"
+            ),
+            "address_line1": company.address_line1 if company else None,
+            "address_line2": company.address_line2 if company else None,
+            "city": company.city if company else None,
+            "state": company.state if company else None,
+            "postal_code": company.postal_code if company else None,
+            "country": company.country if company else "IN",
+            "phone": company.phone if company else None,
+            "support_email": company.support_email if company else None,
+            "website": company.website if company else None,
+            "logo_url": company.logo_url if company else None,
+        }
+
+        order_data = {
+            "order_number": order.order_number,
+            "created_at": order.created_at.strftime("%Y-%m-%d"),
+            "dispatched_at": (
+                order.dispatched_at.strftime("%Y-%m-%d")
+                if order.dispatched_at
+                else None
+            ),
+            "shipping_full_name": order.shipping_full_name,
+            "shipping_phone": order.shipping_phone,
+            "shipping_alternate_phone": order.shipping_alternate_phone,
+            "shipping_line1": order.shipping_line1,
+            "shipping_line2": order.shipping_line2,
+            "shipping_landmark": order.shipping_landmark,
+            "shipping_city": order.shipping_city,
+            "shipping_state": order.shipping_state,
+            "shipping_postal": order.shipping_postal,
+            "shipping_provider": order.shipping_provider,
+            "tracking_number": order.tracking_number,
+            "shipping_charge": float(order.shipping_charge),
+            "discount": float(order.discount),
+            "total": float(order.total),
+            "item_count": sum(i.quantity for i in order.items),
+        }
+
+        items_data = [
+            {
+                "product_name": item.product_name,
+                "product_sku": item.product_sku,
+                "variant_name": item.variant_name,
+                "quantity": item.quantity,
+                "line_total": float(item.line_total),
+            }
+            for item in order.items
+        ]
+
+        barcode_b64 = (
+            self._barcode_b64(order.tracking_number) if order.tracking_number else None
         )
+        qr_data = f"{order.order_number}:{order.tracking_number or ''}"
+        qr_b64 = self._qr_b64(qr_data)
 
-        # Generate URL
-        label_url = f"{settings.R2_PUBLIC_URL.rstrip('/')}/{filename}"
+        return {
+            "company": company_data,
+            "order": order_data,
+            "items": items_data,
+            "logo_data_uri": _logo_data_uri(),
+            "barcode_b64": barcode_b64,
+            "qr_b64": qr_b64,
+        }
 
-        return label_url, filename
+    def _render_html(self, context: dict) -> str:
+        from jinja2 import BaseLoader, Environment
+
+        env = Environment(loader=BaseLoader(), autoescape=True)
+        tmpl = env.from_string(self._get_template())
+        return tmpl.render(**context)
+
+    def _html_to_pdf(self, html: str) -> bytes:
+        from xhtml2pdf import pisa
+
+        _register_unicode_font()
+        buf = BytesIO()
+        result = pisa.CreatePDF(html.encode("utf-8"), dest=buf)
+        if result.err:
+            raise RuntimeError("PDF generation failed")
+        return buf.getvalue()
+
+    async def render_html(self, db: AsyncSession, order: Order) -> str:
+        context = await self._build_context(db, order)
+        return self._render_html(context)
+
+    async def render_pdf(self, db: AsyncSession, order: Order) -> bytes:
+        context = await self._build_context(db, order)
+        return self._html_to_pdf(self._render_html(context))
 
 
 class PackingSlipService:
-    """Service for generating packing slip PDFs."""
+    """On-demand packing slip renderer — no file storage.
 
-    async def generate_slip(
-        self,
-        db: AsyncSession,
-        order: Order,
-    ) -> tuple[str, str]:
-        """Generate A4 packing slip PDF.
+    Fetches order + company config from DB, renders the Jinja2 HTML template,
+    and optionally converts it to PDF bytes via xhtml2pdf. Nothing is written
+    to disk or uploaded to R2.
+    """
 
-        Args:
-            db: Database session
-            order: Order to generate slip for
+    _TEMPLATE_PATH = (
+        __import__("pathlib").Path(__file__).parent.parent.parent
+        / "templates"
+        / "packing_slip.html"
+    )
 
-        Returns:
-            Tuple of (slip_url, r2_key)
-        """
-        # Create PDF in memory
-        pdf_buffer = BytesIO()
-        doc = SimpleDocTemplate(
-            pdf_buffer,
-            pagesize=A4,
-            leftMargin=15 * mm,
-            rightMargin=15 * mm,
-            topMargin=15 * mm,
-            bottomMargin=15 * mm,
-        )
+    def _get_template(self) -> str:
+        return self._TEMPLATE_PATH.read_text(encoding="utf-8")
 
-        styles = getSampleStyleSheet()
-        title_style = ParagraphStyle(
-            "CustomTitle",
-            parent=styles["Normal"],
-            fontSize=14,
-            fontName="Helvetica-Bold",
-            spaceAfter=12,
-        )
-        heading_style = ParagraphStyle(
-            "CustomHeading",
-            parent=styles["Normal"],
-            fontSize=10,
-            fontName="Helvetica-Bold",
-            spaceAfter=6,
-        )
-        normal_style = ParagraphStyle(
-            "CustomNormal",
-            parent=styles["Normal"],
-            fontSize=9,
-            spaceAfter=3,
-        )
+    async def _build_context(self, db: AsyncSession, order: Order) -> dict:
+        from app.modules.company.repository import CompanyConfigRepository
 
-        elements = []
+        company = await CompanyConfigRepository().get(db)
 
-        # Title
-        elements.append(Paragraph("PACKING SLIP", title_style))
+        company_data = {
+            "name": company.name if company else "Hadha Jewellery",
+            "tagline": (
+                company.tagline if company else "Timeless Beauty, Trusted Quality"
+            ),
+            "address_line1": company.address_line1 if company else None,
+            "address_line2": company.address_line2 if company else None,
+            "city": company.city if company else None,
+            "state": company.state if company else None,
+            "postal_code": company.postal_code if company else None,
+            "country": company.country if company else "IN",
+            "phone": company.phone if company else None,
+            "support_email": company.support_email if company else None,
+            "website": company.website if company else None,
+            "logo_url": company.logo_url if company else None,
+        }
 
-        # Order and Customer Info
-        elements.append(
-            Paragraph(f"<b>Order Number:</b> {order.order_number}", normal_style)
-        )
-        elements.append(
-            Paragraph(f"<b>Customer:</b> {order.shipping_full_name}", normal_style)
-        )
-        if order.shipping_phone:
-            elements.append(
-                Paragraph(f"<b>Phone:</b> {order.shipping_phone}", normal_style)
-            )
-        elements.append(Spacer(1, 6 * mm))
+        order_data = {
+            "order_number": order.order_number,
+            "created_at": order.created_at.strftime("%Y-%m-%d"),
+            "shipping_full_name": order.shipping_full_name,
+            "shipping_phone": order.shipping_phone,
+            "shipping_alternate_phone": order.shipping_alternate_phone,
+            "shipping_line1": order.shipping_line1,
+            "shipping_line2": order.shipping_line2,
+            "shipping_landmark": order.shipping_landmark,
+            "shipping_city": order.shipping_city,
+            "shipping_state": order.shipping_state,
+            "shipping_postal": order.shipping_postal,
+            "shipping_provider": order.shipping_provider,
+            "tracking_number": order.tracking_number,
+            "subtotal": float(order.subtotal),
+            "tax_amount": float(order.tax_amount),
+            "shipping_charge": float(order.shipping_charge),
+            "discount": float(order.discount),
+            "total": float(order.total),
+        }
 
-        # Items Table
-        elements.append(Paragraph("<b>ITEMS TO PACK:</b>", heading_style))
+        items_data = [
+            {
+                "product_name": item.product_name,
+                "product_sku": item.product_sku,
+                "variant_name": item.variant_name,
+                "quantity": item.quantity,
+                "line_total": float(item.line_total),
+            }
+            for item in order.items
+        ]
 
-        table_data = [["Product", "SKU", "Variant", "Qty"]]
-        for item in order.items:
-            table_data.append(
-                [
-                    item.product_name,
-                    item.product_sku,
-                    item.variant_name or "-",
-                    str(item.quantity),
-                ]
-            )
+        return {
+            "company": company_data,
+            "order": order_data,
+            "items": items_data,
+            "logo_data_uri": _logo_data_uri(),
+        }
 
-        table = Table(table_data, colWidths=[150 * mm, 30 * mm, 50 * mm, 20 * mm])
-        table.setStyle(
-            TableStyle(
-                [
-                    ("BACKGROUND", (0, 0), (-1, 0), colors.grey),
-                    ("TEXTCOLOR", (0, 0), (-1, 0), colors.whitesmoke),
-                    ("ALIGN", (0, 0), (-1, -1), "LEFT"),
-                    ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
-                    ("FONTSIZE", (0, 0), (-1, 0), 9),
-                    ("BOTTOMPADDING", (0, 0), (-1, 0), 12),
-                    ("BACKGROUND", (0, 1), (-1, -1), colors.beige),
-                    ("GRID", (0, 0), (-1, -1), 1, colors.black),
-                ]
-            )
-        )
-        elements.append(table)
-        elements.append(Spacer(1, 8 * mm))
+    def _render_html(self, context: dict) -> str:
+        from jinja2 import BaseLoader, Environment
 
-        # Packing Notes Section
-        elements.append(Paragraph("<b>PACKING NOTES:</b>", heading_style))
-        elements.append(Paragraph("_" * 100, normal_style))
-        elements.append(Spacer(1, 20 * mm))
-        elements.append(Paragraph("_" * 100, normal_style))
-        elements.append(Spacer(1, 6 * mm))
+        template_str = self._get_template()
+        env = Environment(loader=BaseLoader(), autoescape=True)
+        tmpl = env.from_string(template_str)
+        return tmpl.render(**context)
 
-        # Warehouse Notes Section
-        elements.append(Paragraph("<b>WAREHOUSE NOTES:</b>", heading_style))
-        elements.append(Paragraph("_" * 100, normal_style))
+    def _html_to_pdf(self, html: str) -> bytes:
+        from io import BytesIO
 
-        # Build PDF
-        doc.build(elements)
+        from xhtml2pdf import pisa
 
-        # Upload to R2
-        pdf_buffer.seek(0)
-        filename = f"packing-slips/{order.id}/{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}.pdf"
+        buf = BytesIO()
+        result = pisa.CreatePDF(html.encode("utf-8"), dest=buf)
+        if result.err:
+            raise RuntimeError("PDF generation failed")
+        return buf.getvalue()
 
-        client = _r2_client()
-        client.put_object(
-            Bucket=settings.R2_BUCKET_NAME,
-            Key=filename,
-            Body=pdf_buffer.getvalue(),
-            ContentType="application/pdf",
-        )
+    async def render_html(self, db: AsyncSession, order: Order) -> str:
+        context = await self._build_context(db, order)
+        return self._render_html(context)
 
-        # Generate URL
-        slip_url = f"{settings.R2_PUBLIC_URL.rstrip('/')}/{filename}"
-
-        return slip_url, filename
+    async def render_pdf(self, db: AsyncSession, order: Order) -> bytes:
+        context = await self._build_context(db, order)
+        html = self._render_html(context)
+        return self._html_to_pdf(html)

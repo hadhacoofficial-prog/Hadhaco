@@ -9,6 +9,14 @@
     "./hooks/*": "./src/hooks/*.ts",
     "./supabase": "./src/lib/supabase/index.ts"
   },
+  "scripts": {
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "devDependencies": {
+    "vitest": "^3.2.6",
+    "jsdom": "^26.1.0"
+  },
   "peerDependencies": {
     "@supabase/supabase-js": "^2.107.0",
     "@tanstack/react-query": "^5.83.0",

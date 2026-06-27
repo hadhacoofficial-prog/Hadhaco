@@ -30,6 +30,27 @@ def _get_r2_client():
     )
 
 
+def _normalize_image(image: Image.Image) -> Image.Image:
+    """
+    Return a square RGB image with the source centered on a white canvas.
+    Padding is ~12.5% on each side of the longest dimension.
+    Never crops or stretches the source image.
+    """
+    if image.mode in ("RGBA", "P"):
+        flat = Image.new("RGB", image.size, (255, 255, 255))
+        src = image.convert("RGBA") if image.mode == "P" else image
+        flat.paste(src, mask=src.split()[3])
+        image = flat
+    elif image.mode != "RGB":
+        image = image.convert("RGB")
+
+    w, h = image.size
+    canvas_size = round(max(w, h) * 1.25)
+    canvas = Image.new("RGB", (canvas_size, canvas_size), (255, 255, 255))
+    canvas.paste(image, ((canvas_size - w) // 2, (canvas_size - h) // 2))
+    return canvas
+
+
 def _resize_to_webp(image: Image.Image, max_size: tuple[int, int]) -> bytes:
     img = image.copy()
     img.thumbnail(max_size, Image.LANCZOS)  # type: ignore[attr-defined]
@@ -118,8 +139,9 @@ class MediaService:
             ContentType=f"image/{ext}",
         )
 
-        img = Image.open(io.BytesIO(file_bytes))
-        img.load()
+        raw = Image.open(io.BytesIO(file_bytes))
+        raw.load()
+        img: Image.Image = _normalize_image(raw)
 
         urls: dict[str, str] = {"original": _public_url(original_key)}
         for size_name, max_size in _SIZES.items():

@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "packing-slip-preview",
+      "runtimeExecutable": "C:\\Program Files\\nodejs\\npx.cmd",
+      "runtimeArgs": ["http-server", "Backend/app/templates", "-p", "5501", "--cors", "-c-1"],
+      "port": 5501
+    }
+  ]
+}

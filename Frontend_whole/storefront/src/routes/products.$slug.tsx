@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { createFileRoute, Link, notFound, useNavigate } from "@tanstack/react-router";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   Heart,
   Truck,
@@ -11,7 +11,11 @@ import {
   Bell,
   RefreshCw,
   AlertTriangle,
+  Pencil,
+  X,
+  Upload,
 } from "lucide-react";
+import { toast } from "sonner";
 import { SiteLayout } from "@/components/site/SiteLayout";
 import { Breadcrumbs } from "@/components/site/Breadcrumbs";
 import { QuantityStepper } from "@/components/site/QuantityStepper";
@@ -25,9 +29,10 @@ import { formatINR } from "@/lib/format";
 import { api } from "@/lib/api/client";
 import { queryKeys } from "@/lib/api/queryKeys";
 import { toProductDetail, toProduct, toReview } from "@/lib/api/mappers";
+import { supabase } from "@/lib/supabase/client";
 import type { ProductListResponse } from "@/types/admin";
 import type { ProductDetail, ProductVariant, PublicReview, ReviewSummary } from "@/types/public";
-import type { Product, ProductSpec } from "@/types/shop";
+import type { Product, ProductSpec, Review } from "@/types/shop";
 
 export const Route = createFileRoute("/products/$slug")({
   loader: async ({ params }) => {
@@ -167,22 +172,26 @@ function ProductPage() {
     setVariantError(false);
   }, [product.id, pushRV]);
 
-  const { data: rawReviews } = useQuery({
+  const queryClient = useQueryClient();
+
+  const { data: rawReviews, refetch: refetchReviews } = useQuery({
     queryKey: queryKeys.reviews.forProduct(product.id),
     queryFn: () =>
-      api.get<PublicReview[]>(`/reviews/products/${product.id}`, { params: { limit: 20 } }),
-    staleTime: 5 * 60_000,
+      api.get<PublicReview[]>(`/reviews/products/${product.id}`, { params: { limit: 50 } }),
+    staleTime: 2 * 60_000,
   });
   const reviews = (rawReviews ?? []).map(toReview);
 
-  const { data: reviewSummary } = useQuery({
+  const { data: reviewSummary, refetch: refetchSummary } = useQuery({
     queryKey: queryKeys.reviews.summary(product.id),
     queryFn: () => api.get<ReviewSummary>(`/reviews/products/${product.id}/summary`),
-    staleTime: 5 * 60_000,
+    staleTime: 2 * 60_000,
   });
 
-  const avgRating = reviewSummary?.average_rating ?? 5;
-  const reviewCount = reviewSummary?.review_count ?? 0;
+  const avgRating = reviewSummary?.average_rating ?? product.rating ?? 0;
+  const reviewCount = reviewSummary?.review_count ?? product.reviewCount ?? 0;
+
+  const [showReviewModal, setShowReviewModal] = useState(false);
 
   const gallery = product.gallery ?? [product.image];
   const recentlyViewed: Product[] = [];
@@ -285,37 +294,24 @@ function ProductPage() {
               <button
                 key={i}
                 onClick={() => setActive(i)}
-                className={`shrink-0 w-20 h-20 bg-secondary overflow-hidden border ${active === i ? "border-foreground" : "border-transparent"}`}
+                className={`shrink-0 w-20 h-20 bg-white overflow-hidden border ${active === i ? "border-foreground" : "border-transparent"}`}
               >
-                <img src={img} alt="" className="w-full h-full object-cover" />
+                <img src={img} alt="" className="w-full h-full object-contain" />
               </button>
             ))}
           </div>
-          <div className="relative aspect-square bg-secondary overflow-hidden group max-lg:order-1">
-            <img
-              src={gallery[active]}
-              alt={product.name}
-              className={`absolute inset-0 w-full h-full object-cover transition-transform duration-500 group-hover:scale-110 ${globalSoldOut ? "opacity-60" : ""}`}
-            />
-            {globalSoldOut && (
-              <div className="absolute inset-0 flex items-center justify-center" aria-hidden>
-                <span className="bg-foreground/80 text-background text-sm tracking-[0.24em] uppercase px-6 py-2">
-                  Sold Out
-                </span>
-              </div>
-            )}
-            {product.badge && !globalSoldOut && (
-              <span className="absolute top-4 left-4 bg-primary text-primary-foreground text-[11px] tracking-[0.2em] uppercase px-3 py-1.5">
-                {product.badge}
-              </span>
-            )}
-          </div>
+          <ProductImageViewer
+            src={gallery[active]}
+            alt={product.name}
+            globalSoldOut={globalSoldOut}
+            badge={product.badge}
+          />
         </div>
 
         {/* Info */}
         <div>
-          <p className="text-[11px] uppercase tracking-[0.22em] text-muted-foreground">
-            SKU · {displaySku}
+          <p className="text-[11px] uppercase tracking-[0.22em] text-amber-600">
+            Hadha Jewellery
           </p>
           <h1 className="font-display text-3xl md:text-4xl mt-2 leading-tight">{product.name}</h1>
 
@@ -325,17 +321,25 @@ function ProductPage() {
             aria-label="Jump to customer reviews"
             className="flex items-center gap-3 mt-3 cursor-pointer group focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-foreground rounded-sm"
           >
-            <div className="flex">
-              {Array.from({ length: 5 }).map((_, i) => (
-                <Star
-                  key={i}
-                  className={`size-4 ${i < Math.round(avgRating) ? "fill-accent text-accent" : "text-border"}`}
-                />
-              ))}
-            </div>
-            <span className="text-xs text-muted-foreground group-hover:text-foreground group-hover:underline transition-colors">
-              {reviewCount} reviews
-            </span>
+            {reviewCount > 0 ? (
+              <>
+                <div className="flex">
+                  {Array.from({ length: 5 }).map((_, i) => (
+                    <Star
+                      key={i}
+                      className={`size-4 ${i < Math.round(avgRating) ? "fill-accent text-accent" : "text-border"}`}
+                    />
+                  ))}
+                </div>
+                <span className="text-xs text-muted-foreground group-hover:text-foreground group-hover:underline transition-colors">
+                  {avgRating.toFixed(1)} · {reviewCount} review{reviewCount !== 1 ? "s" : ""}
+                </span>
+              </>
+            ) : (
+              <span className="text-xs text-muted-foreground group-hover:text-foreground group-hover:underline transition-colors">
+                No reviews yet
+              </span>
+            )}
           </button>
 
           <div className="flex items-baseline gap-3 mt-5">
@@ -557,7 +561,9 @@ function ProductPage() {
         </div>
         <div className="py-8 max-w-3xl">
           {tab === "details" && (
-            <p className="text-sm leading-relaxed text-foreground/80">{product.description}</p>
+            <p className="text-sm leading-relaxed text-foreground/80 whitespace-pre-line">
+              {product.description}
+            </p>
           )}
           {tab === "specs" && (
             <table className="w-full text-sm">
@@ -574,25 +580,17 @@ function ProductPage() {
             </table>
           )}
           {tab === "reviews" && (
-            <div className="space-y-6">
-              {reviews.map((r) => (
-                <div key={r.id} className="border-b border-border pb-5">
-                  <div className="flex gap-1 mb-1.5">
-                    {Array.from({ length: 5 }).map((_, i) => (
-                      <Star
-                        key={i}
-                        className={`size-3.5 ${i < r.rating ? "fill-accent text-accent" : "text-border"}`}
-                      />
-                    ))}
-                  </div>
-                  <p className="font-display">{r.name}</p>
-                  <p className="text-sm text-foreground/80 mt-1">{r.text}</p>
-                </div>
-              ))}
-              {reviews.length === 0 && (
-                <p className="text-sm text-muted-foreground">No reviews yet.</p>
-              )}
-            </div>
+            <ReviewsSection
+              reviews={reviews}
+              productId={product.id}
+              onWriteReview={() => setShowReviewModal(true)}
+              onRefresh={() => {
+                refetchReviews();
+                refetchSummary();
+                queryClient.invalidateQueries({ queryKey: queryKeys.reviews.forProduct(product.id) });
+                queryClient.invalidateQueries({ queryKey: queryKeys.reviews.summary(product.id) });
+              }}
+            />
           )}
         </div>
       </div>
@@ -610,6 +608,659 @@ function ProductPage() {
           <ProductGrid products={recentlyViewed} />
         </section>
       )}
+
+      {showReviewModal && (
+        <WriteReviewModal
+          productId={product.id}
+          onClose={() => setShowReviewModal(false)}
+          onSuccess={() => {
+            queryClient.invalidateQueries({ queryKey: queryKeys.reviews.forProduct(product.id) });
+            queryClient.invalidateQueries({ queryKey: queryKeys.reviews.summary(product.id) });
+          }}
+        />
+      )}
     </SiteLayout>
+  );
+}
+
+// ── Reviews section ────────────────────────────────────────────────────────────
+
+function StarRating({
+  value,
+  onChange,
+  size = "md",
+}: {
+  value: number;
+  onChange?: (v: number) => void;
+  size?: "sm" | "md" | "lg";
+}) {
+  const [hovered, setHovered] = useState(0);
+  const sz = size === "lg" ? "size-7" : size === "md" ? "size-5" : "size-3.5";
+  return (
+    <div className="flex gap-1">
+      {Array.from({ length: 5 }).map((_, i) => {
+        const filled = i < (hovered || value);
+        return (
+          <button
+            key={i}
+            type="button"
+            onClick={() => onChange?.(i + 1)}
+            onMouseEnter={() => onChange && setHovered(i + 1)}
+            onMouseLeave={() => onChange && setHovered(0)}
+            className={`${onChange ? "cursor-pointer" : "cursor-default pointer-events-none"}`}
+            aria-label={`Rate ${i + 1} star${i > 0 ? "s" : ""}`}
+          >
+            <Star
+              className={`${sz} ${filled ? "fill-accent text-accent" : "text-border"} transition-colors`}
+            />
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+function ReviewCard({ review }: { review: Review }) {
+  const [imgIdx, setImgIdx] = useState(0);
+
+  return (
+    <div className="border-b border-border pb-6">
+      <div className="flex items-start justify-between gap-3 mb-2">
+        <div>
+          <div className="flex items-center gap-2 flex-wrap">
+            <p className="font-medium text-sm">{review.name}</p>
+            {review.isVerifiedPurchase && (
+              <span className="inline-flex items-center gap-1 text-[10px] uppercase tracking-[0.16em] px-2 py-0.5 bg-accent/10 text-accent border border-accent/20">
+                <BadgeCheck className="size-3" />
+                Verified Purchase
+              </span>
+            )}
+          </div>
+          <StarRating value={review.rating} size="sm" />
+        </div>
+        {review.createdAt && (
+          <p className="text-[11px] text-muted-foreground shrink-0">
+            {new Date(review.createdAt).toLocaleDateString("en-IN", {
+              day: "numeric",
+              month: "short",
+              year: "numeric",
+            })}
+          </p>
+        )}
+      </div>
+      {review.text && (
+        <p className="text-sm text-foreground/80 leading-relaxed">{review.text}</p>
+      )}
+      {(review.images?.length ?? 0) > 0 && (
+        <div className="mt-3 flex gap-2 flex-wrap">
+          {review.images!.map((img, i) => (
+            <button
+              key={img.id}
+              type="button"
+              onClick={() => setImgIdx(i)}
+              className={`size-16 border overflow-hidden shrink-0 ${imgIdx === i ? "border-foreground" : "border-border"}`}
+            >
+              <img
+                src={img.url}
+                alt={`Review image ${i + 1}`}
+                className="w-full h-full object-cover"
+              />
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ReviewsSection({
+  reviews,
+  productId,
+  onWriteReview,
+  onRefresh,
+}: {
+  reviews: Review[];
+  productId: string;
+  onWriteReview: () => void;
+  onRefresh: () => void;
+}) {
+  const [currentUserId, setCurrentUserId] = useState<string | undefined>(undefined);
+
+  useEffect(() => {
+    import("@/lib/supabase/session").then(({ getSession }) => {
+      getSession().then((s) => setCurrentUserId(s?.user?.id));
+    });
+  }, []);
+
+  const approvedReviews = reviews.filter((r) => r.isApproved);
+  const ownUnapproved = reviews.filter(
+    (r) => r.userId === currentUserId && !r.isApproved,
+  );
+  const displayReviews = [...ownUnapproved, ...approvedReviews];
+
+  return (
+    <div>
+      <div className="flex items-center justify-between mb-6">
+        <p className="text-sm text-muted-foreground">
+          {approvedReviews.length === 0
+            ? "No reviews yet — be the first!"
+            : `${approvedReviews.length} review${approvedReviews.length > 1 ? "s" : ""}`}
+        </p>
+        <button
+          type="button"
+          onClick={onWriteReview}
+          className="inline-flex items-center gap-2 border border-foreground text-foreground text-[11px] uppercase tracking-[0.22em] px-4 py-2.5 hover:bg-foreground hover:text-background transition"
+        >
+          <Pencil className="size-3.5" />
+          Write a Review
+        </button>
+      </div>
+      <div className="space-y-6">
+        {displayReviews.map((r) => (
+          <ReviewCard key={r.id} review={r} />
+        ))}
+        {displayReviews.length === 0 && (
+          <p className="text-sm text-muted-foreground">No reviews yet.</p>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function WriteReviewModal({
+  productId,
+  onClose,
+  onSuccess,
+}: {
+  productId: string;
+  onClose: () => void;
+  onSuccess: () => void;
+}) {
+  const [rating, setRating] = useState(0);
+  const [body, setBody] = useState("");
+  const [image, setImage] = useState<File | null>(null);
+  const [imagePreview, setImagePreview] = useState<string | null>(null);
+  const [submitting, setSubmitting] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setImage(file);
+    setImagePreview(URL.createObjectURL(file));
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (rating === 0) {
+      toast.error("Please select a rating.");
+      return;
+    }
+    if (!body.trim()) {
+      toast.error("Please write a review description.");
+      return;
+    }
+    setSubmitting(true);
+    try {
+      const form = new FormData();
+      form.append("product_id", productId);
+      form.append("rating", String(rating));
+      form.append("body", body.trim());
+      if (image) form.append("images", image);
+
+      await api.upload("/reviews", form);
+      toast.success("Review submitted! It will appear after approval.");
+      onSuccess();
+      onClose();
+    } catch (err: unknown) {
+      const msg =
+        (err as { message?: string })?.message ?? "Failed to submit review.";
+      toast.error(msg);
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-foreground/40 backdrop-blur-sm p-4"
+      onClick={(e) => e.target === e.currentTarget && onClose()}
+    >
+      <div className="bg-background border border-border w-full max-w-md p-6 relative">
+        <button
+          type="button"
+          onClick={onClose}
+          className="absolute top-4 right-4 text-muted-foreground hover:text-foreground"
+          aria-label="Close"
+        >
+          <X className="size-5" />
+        </button>
+        <h2 className="font-display text-2xl mb-1">Write a Review</h2>
+        <p className="text-sm text-muted-foreground mb-6">
+          Your review will be visible after admin approval.
+        </p>
+        <form onSubmit={handleSubmit} className="space-y-5">
+          <div>
+            <label className="text-[11px] uppercase tracking-[0.22em] text-muted-foreground block mb-2">
+              Rating <span className="text-destructive">*</span>
+            </label>
+            <StarRating value={rating} onChange={setRating} size="lg" />
+          </div>
+          <div>
+            <label
+              htmlFor="review-body"
+              className="text-[11px] uppercase tracking-[0.22em] text-muted-foreground block mb-2"
+            >
+              Review <span className="text-destructive">*</span>
+            </label>
+            <textarea
+              id="review-body"
+              rows={4}
+              value={body}
+              onChange={(e) => setBody(e.target.value)}
+              placeholder="Share your experience with this product…"
+              className="w-full border border-border bg-background px-3 py-2.5 text-sm resize-none focus:outline-none focus:border-foreground transition"
+              maxLength={2000}
+            />
+            <p className="text-[11px] text-muted-foreground mt-1 text-right">
+              {body.length}/2000
+            </p>
+          </div>
+          <div>
+            <label className="text-[11px] uppercase tracking-[0.22em] text-muted-foreground block mb-2">
+              Photo (optional)
+            </label>
+            {imagePreview ? (
+              <div className="relative inline-block">
+                <img
+                  src={imagePreview}
+                  alt="Preview"
+                  className="size-20 object-cover border border-border"
+                />
+                <button
+                  type="button"
+                  onClick={() => {
+                    setImage(null);
+                    setImagePreview(null);
+                  }}
+                  className="absolute -top-2 -right-2 bg-destructive text-destructive-foreground rounded-full size-5 flex items-center justify-center"
+                  aria-label="Remove image"
+                >
+                  <X className="size-3" />
+                </button>
+              </div>
+            ) : (
+              <button
+                type="button"
+                onClick={() => fileInputRef.current?.click()}
+                className="flex items-center gap-2 border border-dashed border-border px-4 py-3 text-sm text-muted-foreground hover:border-foreground hover:text-foreground transition"
+              >
+                <Upload className="size-4" />
+                Upload photo
+              </button>
+            )}
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/*"
+              className="hidden"
+              onChange={handleImageChange}
+            />
+          </div>
+          <button
+            type="submit"
+            disabled={submitting}
+            className="w-full bg-primary text-primary-foreground text-[11px] uppercase tracking-[0.22em] py-3.5 hover:bg-accent hover:text-accent-foreground transition disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {submitting ? "Submitting…" : "Submit Review"}
+          </button>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+// ── Product image viewer: desktop cursor-zoom + mobile pinch/double-tap ────────
+//
+// React registers touchstart/touchmove as PASSIVE listeners, so calling
+// e.preventDefault() inside a React synthetic handler is silently ignored and
+// the browser still pinch-zooms the page. We fix this by attaching ALL touch
+// (and wheel) listeners as non-passive native listeners via a containerRef.
+// React synthetic handlers are only used for mouse events (which are fine).
+
+function ProductImageViewer({
+  src,
+  alt,
+  globalSoldOut,
+  badge,
+}: {
+  src: string;
+  alt: string;
+  globalSoldOut: boolean;
+  badge?: string;
+}) {
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  // Desktop hover state (React state is fine — mouse events are non-passive by default)
+  const [isHovering, setIsHovering] = useState(false);
+  const [cursorOrigin, setCursorOrigin] = useState("50% 50%");
+  const isHoveringRef = useRef(false); // mirror for use inside non-passive handlers
+
+  // Desktop wheel-scale multiplier (1 = default, adjusted by scroll wheel)
+  const [wheelScale, setWheelScale] = useState(1);
+  const wheelScaleRef = useRef(1);
+
+  // Mobile pinch/pan state (mirrors in both React state and a ref)
+  const [touchScale, setTouchScale] = useState(1);
+  const [touchOrigin, setTouchOrigin] = useState({ x: 50, y: 50 });
+
+  // Single mutable ref for all touch bookkeeping — avoids stale-closure issues
+  // inside the native event handlers.
+  const tRef = useRef({
+    scale: 1,
+    origin: { x: 50, y: 50 },
+    lastTap: 0,
+    lastPinchDist: 0,
+    drag: { active: false, startX: 0, startY: 0, ox: 50, oy: 50 },
+  });
+
+  const DESKTOP_BASE_ZOOM = 2.5;
+  const WHEEL_MIN = 0.5;
+  const WHEEL_MAX = 2.0;
+  const MOBILE_MAX_SCALE = 5;
+
+  // Derive large.webp URL for higher-res zoom
+  const zoomSrc = src.replace(/\/original\.[^/]+$/, "/large.webp");
+  const effectiveZoomSrc = zoomSrc !== src ? zoomSrc : src;
+
+  // Preload the large image so hover/zoom switches are instant
+  useEffect(() => {
+    if (effectiveZoomSrc === src) return;
+    const img = new Image();
+    img.src = effectiveZoomSrc;
+  }, [effectiveZoomSrc, src]);
+
+  // Reset all zoom state when the displayed image changes (thumbnail click)
+  useEffect(() => {
+    tRef.current = {
+      scale: 1,
+      origin: { x: 50, y: 50 },
+      lastTap: 0,
+      lastPinchDist: 0,
+      drag: { active: false, startX: 0, startY: 0, ox: 50, oy: 50 },
+    };
+    setTouchScale(1);
+    setTouchOrigin({ x: 50, y: 50 });
+    wheelScaleRef.current = 1;
+    setWheelScale(1);
+    setIsHovering(false);
+    isHoveringRef.current = false;
+    setCursorOrigin("50% 50%");
+  }, [src]);
+
+  // ── Non-passive native event listeners ─────────────────────────────────────
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+
+    // ── Touch handlers ────────────────────────────────────────────────────────
+
+    const onTouchStart = (e: TouchEvent) => {
+      const t = tRef.current;
+
+      if (e.touches.length === 2) {
+        // Two-finger pinch start — always intercept
+        e.preventDefault();
+        t.drag.active = false;
+        const dx = e.touches[0].clientX - e.touches[1].clientX;
+        const dy = e.touches[0].clientY - e.touches[1].clientY;
+        t.lastPinchDist = Math.hypot(dx, dy);
+        // Anchor the zoom origin at the midpoint between the two fingers
+        const rect = el.getBoundingClientRect();
+        const mx = (e.touches[0].clientX + e.touches[1].clientX) / 2;
+        const my = (e.touches[0].clientY + e.touches[1].clientY) / 2;
+        const newOrigin = {
+          x: ((mx - rect.left) / rect.width) * 100,
+          y: ((my - rect.top) / rect.height) * 100,
+        };
+        t.origin = newOrigin;
+        setTouchOrigin(newOrigin);
+        return;
+      }
+
+      if (e.touches.length === 1) {
+        const now = Date.now();
+        const isDoubleTap = now - t.lastTap < 300;
+
+        if (isDoubleTap) {
+          e.preventDefault();
+          t.lastTap = 0;
+          if (t.scale > 1) {
+            // Reset zoom
+            t.scale = 1;
+            t.origin = { x: 50, y: 50 };
+            setTouchScale(1);
+            setTouchOrigin({ x: 50, y: 50 });
+          } else {
+            // Zoom in to the tapped point
+            const rect = el.getBoundingClientRect();
+            const newOrigin = {
+              x: ((e.touches[0].clientX - rect.left) / rect.width) * 100,
+              y: ((e.touches[0].clientY - rect.top) / rect.height) * 100,
+            };
+            t.scale = 2.5;
+            t.origin = newOrigin;
+            setTouchScale(2.5);
+            setTouchOrigin(newOrigin);
+          }
+          return;
+        }
+
+        t.lastTap = now;
+
+        if (t.scale > 1) {
+          // Begin panning when already zoomed
+          e.preventDefault();
+          t.drag = {
+            active: true,
+            startX: e.touches[0].clientX,
+            startY: e.touches[0].clientY,
+            ox: t.origin.x,
+            oy: t.origin.y,
+          };
+        }
+        // If scale === 1, let the single-finger touch fall through so the
+        // page can still be scrolled by touching outside the image.
+      }
+    };
+
+    const onTouchMove = (e: TouchEvent) => {
+      const t = tRef.current;
+
+      if (e.touches.length === 2) {
+        e.preventDefault();
+        const dx = e.touches[0].clientX - e.touches[1].clientX;
+        const dy = e.touches[0].clientY - e.touches[1].clientY;
+        const dist = Math.hypot(dx, dy);
+        if (t.lastPinchDist > 0) {
+          const newScale = Math.max(1, Math.min(MOBILE_MAX_SCALE, t.scale * (dist / t.lastPinchDist)));
+          t.scale = newScale;
+          setTouchScale(newScale);
+        }
+        t.lastPinchDist = dist;
+        return;
+      }
+
+      if (e.touches.length === 1 && t.drag.active && t.scale > 1) {
+        e.preventDefault();
+        const rect = el.getBoundingClientRect();
+        const dxPct = ((e.touches[0].clientX - t.drag.startX) / rect.width) * 100;
+        const dyPct = ((e.touches[0].clientY - t.drag.startY) / rect.height) * 100;
+        // As the finger moves right the origin shifts left (more of the right side is revealed)
+        const panFactor = 1 / (t.scale - 1);
+        const newOrigin = {
+          x: Math.max(0, Math.min(100, t.drag.ox - dxPct * panFactor)),
+          y: Math.max(0, Math.min(100, t.drag.oy - dyPct * panFactor)),
+        };
+        t.origin = newOrigin;
+        setTouchOrigin(newOrigin);
+      }
+    };
+
+    const onTouchEnd = (e: TouchEvent) => {
+      const t = tRef.current;
+      // Multi-touch lift — reset pinch distance but keep scale/drag state
+      // until all fingers are lifted.
+      if (e.touches.length === 0) {
+        t.drag.active = false;
+        t.lastPinchDist = 0;
+        if (t.scale < 1.1) {
+          t.scale = 1;
+          t.origin = { x: 50, y: 50 };
+          setTouchScale(1);
+          setTouchOrigin({ x: 50, y: 50 });
+        }
+      } else {
+        // One finger lifted during pinch — stop pinch, start possible pan
+        t.lastPinchDist = 0;
+      }
+    };
+
+    // ── Wheel handler (desktop) ───────────────────────────────────────────────
+    // Prevents the page from scrolling when the cursor is over the image and
+    // the user spins the wheel; instead the zoom multiplier is adjusted.
+    const onWheel = (e: WheelEvent) => {
+      if (!isHoveringRef.current) return;
+      e.preventDefault();
+      const delta = e.deltaY > 0 ? -0.1 : 0.1;
+      const next = Math.max(WHEEL_MIN, Math.min(WHEEL_MAX, wheelScaleRef.current + delta));
+      wheelScaleRef.current = next;
+      setWheelScale(next);
+    };
+
+    el.addEventListener("touchstart", onTouchStart, { passive: false });
+    el.addEventListener("touchmove", onTouchMove, { passive: false });
+    el.addEventListener("touchend", onTouchEnd, { passive: true });
+    el.addEventListener("wheel", onWheel, { passive: false });
+
+    return () => {
+      el.removeEventListener("touchstart", onTouchStart);
+      el.removeEventListener("touchmove", onTouchMove);
+      el.removeEventListener("touchend", onTouchEnd);
+      el.removeEventListener("wheel", onWheel);
+    };
+  }, []); // stable — all mutable state lives in refs
+
+  // ── Desktop mouse handlers (React synthetic events — fine for mouse) ────────
+  const handleMouseEnter = () => {
+    isHoveringRef.current = true;
+    setIsHovering(true);
+  };
+
+  const handleMouseLeave = () => {
+    isHoveringRef.current = false;
+    setIsHovering(false);
+    setCursorOrigin("50% 50%");
+    // Reset wheel scale so next hover starts fresh
+    wheelScaleRef.current = 1;
+    setWheelScale(1);
+  };
+
+  const handleMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
+    const rect = e.currentTarget.getBoundingClientRect();
+    const x = ((e.clientX - rect.left) / rect.width) * 100;
+    const y = ((e.clientY - rect.top) / rect.height) * 100;
+    setCursorOrigin(`${x}% ${y}%`);
+  };
+
+  const effectiveDesktopScale = isHovering ? DESKTOP_BASE_ZOOM * wheelScale : 1;
+  const isZoomedTouch = touchScale > 1;
+  // Use high-res source whenever any zoom is active
+  const desktopSrc = isHovering ? effectiveZoomSrc : src;
+  const mobileSrc = isZoomedTouch ? effectiveZoomSrc : src;
+
+  return (
+    <div
+      ref={containerRef}
+      className="relative aspect-square bg-white overflow-hidden max-lg:order-1 select-none"
+      // touch-action:none tells the browser to hand ALL touch gestures to JS.
+      // Our non-passive handlers then selectively call preventDefault only when
+      // needed, so the rest of the page is unaffected.
+      style={{ touchAction: "none" }}
+      onMouseEnter={handleMouseEnter}
+      onMouseLeave={handleMouseLeave}
+      onMouseMove={handleMouseMove}
+    >
+      {/* Desktop image — cursor-follow zoom with optional wheel multiplier */}
+      <img
+        src={desktopSrc}
+        alt={alt}
+        draggable={false}
+        className="absolute inset-0 w-full h-full object-contain pointer-events-none hidden md:block"
+        style={{
+          transformOrigin: cursorOrigin,
+          transform: `scale(${effectiveDesktopScale})`,
+          transition: isHovering
+            ? "transform 0.15s ease-out"
+            : "transform 0.3s ease-out",
+          willChange: "transform",
+          imageRendering: "auto",
+        }}
+      />
+
+      {/* Mobile image — pinch / double-tap / pan */}
+      <img
+        src={mobileSrc}
+        alt={alt}
+        draggable={false}
+        className="absolute inset-0 w-full h-full object-contain pointer-events-none md:hidden"
+        style={{
+          transformOrigin: `${touchOrigin.x}% ${touchOrigin.y}%`,
+          transform: `scale(${touchScale})`,
+          transition: touchScale === 1 ? "transform 0.3s ease-out" : "none",
+          willChange: "transform",
+          imageRendering: "auto",
+        }}
+      />
+
+      {globalSoldOut && (
+        <div className="absolute inset-0 flex items-center justify-center" aria-hidden>
+          <span className="bg-foreground/80 text-background text-sm tracking-[0.24em] uppercase px-6 py-2">
+            Sold Out
+          </span>
+        </div>
+      )}
+
+      {badge && !globalSoldOut && (
+        <span className="absolute top-4 left-4 bg-primary text-primary-foreground text-[11px] tracking-[0.2em] uppercase px-3 py-1.5">
+          {badge}
+        </span>
+      )}
+
+      {/* Desktop zoom hint */}
+      {!isHovering && !globalSoldOut && (
+        <div className="absolute bottom-3 right-3 hidden md:flex items-center gap-1.5 bg-background/75 backdrop-blur-sm px-2 py-1 text-[9px] uppercase tracking-[0.18em] text-muted-foreground pointer-events-none">
+          <svg
+            className="size-3"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth={2}
+            aria-hidden
+          >
+            <circle cx="11" cy="11" r="8" />
+            <path d="m21 21-4.35-4.35M11 8v6M8 11h6" />
+          </svg>
+          Zoom
+        </div>
+      )}
+
+      {/* Mobile zoom hint */}
+      {!isZoomedTouch && !globalSoldOut && (
+        <div className="absolute bottom-3 right-3 md:hidden flex items-center gap-1.5 bg-background/75 backdrop-blur-sm px-2 py-1 text-[9px] uppercase tracking-[0.18em] text-muted-foreground pointer-events-none">
+          Pinch to zoom
+        </div>
+      )}
+    </div>
   );
 }

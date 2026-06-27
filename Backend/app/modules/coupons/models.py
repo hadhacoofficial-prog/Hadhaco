@@ -14,7 +14,7 @@ from sqlalchemy import (
     UniqueConstraint,
     func,
 )
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.database import Base
@@ -32,10 +32,36 @@ class Coupon(Base):
         String(20), nullable=False, server_default="percentage"
     )
     value: Mapped[float] = mapped_column(Numeric(12, 2), nullable=False)
+
+    # ── Status (active / inactive / draft) ────────────────────────────────────
+    status: Mapped[str] = mapped_column(
+        String(10), nullable=False, server_default="active"
+    )
+    # Kept for backward-compat; new code should use status
+    is_active: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, server_default="true"
+    )
+
+    # ── Validity window ───────────────────────────────────────────────────────
+    valid_from: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    valid_until: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+
+    # ── Order-value constraints ───────────────────────────────────────────────
     min_order_amount: Mapped[float] = mapped_column(
         Numeric(12, 2), nullable=False, server_default="0"
     )
+    max_order_amount: Mapped[float | None] = mapped_column(
+        Numeric(12, 2), nullable=True
+    )
+
+    # ── Discount caps ─────────────────────────────────────────────────────────
     max_discount: Mapped[float | None] = mapped_column(Numeric(12, 2), nullable=True)
+
+    # ── Usage limits ──────────────────────────────────────────────────────────
     usage_limit: Mapped[int | None] = mapped_column(Integer, nullable=True)
     usage_count: Mapped[int] = mapped_column(
         Integer, nullable=False, server_default="0"
@@ -43,15 +69,49 @@ class Coupon(Base):
     per_user_limit: Mapped[int] = mapped_column(
         Integer, nullable=False, server_default="1"
     )
-    is_active: Mapped[bool] = mapped_column(
+    one_time_per_customer: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, server_default="false"
+    )
+
+    # ── Customer eligibility ──────────────────────────────────────────────────
+    first_order_only: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, server_default="false"
+    )
+    new_customer_only: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, server_default="false"
+    )
+    returning_customer_only: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, server_default="false"
+    )
+
+    # ── Product / category restrictions (JSONB lists) ─────────────────────────
+    eligible_product_ids: Mapped[list | None] = mapped_column(JSONB, nullable=True)
+    eligible_collection_ids: Mapped[list | None] = mapped_column(JSONB, nullable=True)
+    eligible_category_slugs: Mapped[list | None] = mapped_column(JSONB, nullable=True)
+    excluded_product_ids: Mapped[list | None] = mapped_column(JSONB, nullable=True)
+    excluded_category_slugs: Mapped[list | None] = mapped_column(JSONB, nullable=True)
+
+    # ── Audience restrictions ─────────────────────────────────────────────────
+    allowed_emails: Mapped[list | None] = mapped_column(JSONB, nullable=True)
+    allowed_phone_numbers: Mapped[list | None] = mapped_column(JSONB, nullable=True)
+    customer_groups: Mapped[list | None] = mapped_column(JSONB, nullable=True)
+
+    # ── Region restrictions ───────────────────────────────────────────────────
+    allowed_states: Mapped[list | None] = mapped_column(JSONB, nullable=True)
+    allowed_cities: Mapped[list | None] = mapped_column(JSONB, nullable=True)
+    allowed_pincodes: Mapped[list | None] = mapped_column(JSONB, nullable=True)
+
+    # ── Method restrictions ───────────────────────────────────────────────────
+    allowed_payment_methods: Mapped[list | None] = mapped_column(JSONB, nullable=True)
+    allowed_shipping_methods: Mapped[list | None] = mapped_column(JSONB, nullable=True)
+
+    # ── Campaign & stacking ───────────────────────────────────────────────────
+    stackable: Mapped[bool] = mapped_column(
         Boolean, nullable=False, server_default="true"
     )
-    valid_from: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False, server_default=func.now()
-    )
-    valid_until: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True
-    )
+    campaign_name: Mapped[str | None] = mapped_column(String(100), nullable=True)
+
+    # ── Timestamps ────────────────────────────────────────────────────────────
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )
@@ -65,10 +125,16 @@ class Coupon(Base):
     __table_args__ = (
         Index("idx_coupons_code", "code"),
         Index("idx_coupons_is_active", "is_active"),
+        Index("idx_coupons_status", "status"),
+        Index("idx_coupons_campaign", "campaign_name"),
         CheckConstraint("value > 0", name="coupons_value_positive"),
         CheckConstraint(
             "coupon_type IN ('percentage','fixed_amount','free_shipping')",
             name="coupons_type_check",
+        ),
+        CheckConstraint(
+            "status IN ('active','inactive','draft')",
+            name="coupons_status_check",
         ),
     )
 

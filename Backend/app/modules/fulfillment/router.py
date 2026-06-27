@@ -1,6 +1,7 @@
 import uuid
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi.responses import HTMLResponse, StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.common.response_codes import ResponseCode
@@ -8,11 +9,8 @@ from app.common.responses import BaseSuccessResponse, ok
 from app.core.database import get_db
 from app.core.dependencies import get_current_user, require_admin
 from app.modules.fulfillment.schemas import (
-    ConfirmPaymentRequest,
     DispatchOrderRequest,
     FulfillmentTimelineListResponse,
-    PackingSlipResponse,
-    ShippingLabelResponse,
 )
 from app.modules.fulfillment.service import FulfillmentService
 from app.modules.orders.schemas import OrderResponse
@@ -29,7 +27,6 @@ _service = FulfillmentService()
 )
 async def confirm_payment(
     order_id: uuid.UUID,
-    payload: ConfirmPaymentRequest,
     db: AsyncSession = Depends(get_db),
     current_user: Profile = Depends(get_current_user),
 ):
@@ -75,48 +72,78 @@ async def mark_packing(
         raise HTTPException(status_code=404, detail=str(e)) from e
 
 
-@router.post(
+@router.get(
     "/{order_id}/fulfillment/shipping-label",
-    response_model=BaseSuccessResponse[ShippingLabelResponse],
     dependencies=[Depends(require_admin)],
+    responses={
+        200: {
+            "content": {
+                "application/pdf": {},
+                "text/html": {},
+            }
+        }
+    },
 )
-async def generate_shipping_label(
+async def get_shipping_label(
     order_id: uuid.UUID,
+    format: str = Query(default="pdf", pattern="^(pdf|html)$"),
     db: AsyncSession = Depends(get_db),
     current_user: Profile = Depends(get_current_user),
 ):
-    """Generate and download shipping label PDF."""
+    """Render shipping label on demand. ?format=pdf (default) or ?format=html."""
     try:
-        result = await _service.generate_shipping_label(
+        if format == "html":
+            html = await _service.get_shipping_label_html(db, order_id)
+            return HTMLResponse(content=html)
+
+        pdf_bytes = await _service.get_shipping_label_pdf(db, order_id)
+        await _service.mark_label_generated(
             db, order_id, current_user.id, current_user.email or "Admin"
         )
         await db.commit()
-        return ok(
-            result,
-            ResponseCode.ORDER_STATUS_UPDATED,
-            "Shipping label generated successfully",
+        return StreamingResponse(
+            iter([pdf_bytes]),
+            media_type="application/pdf",
+            headers={
+                "Content-Disposition": f'attachment; filename="shipping-label-{order_id}.pdf"',
+                "Content-Length": str(len(pdf_bytes)),
+            },
         )
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e)) from e
 
 
-@router.post(
+@router.get(
     "/{order_id}/fulfillment/packing-slip",
-    response_model=BaseSuccessResponse[PackingSlipResponse],
     dependencies=[Depends(require_admin)],
+    responses={
+        200: {
+            "content": {
+                "application/pdf": {},
+                "text/html": {},
+            }
+        }
+    },
 )
-async def generate_packing_slip(
+async def get_packing_slip(
     order_id: uuid.UUID,
+    format: str = Query(default="pdf", pattern="^(pdf|html)$"),
     db: AsyncSession = Depends(get_db),
-    current_user: Profile = Depends(get_current_user),
 ):
-    """Generate and download packing slip PDF."""
+    """Render packing slip on demand. ?format=pdf (default) or ?format=html."""
     try:
-        result = await _service.generate_packing_slip(db, order_id)
-        return ok(
-            result,
-            ResponseCode.ORDER_STATUS_UPDATED,
-            "Packing slip generated successfully",
+        if format == "html":
+            html = await _service.get_packing_slip_html(db, order_id)
+            return HTMLResponse(content=html)
+
+        pdf_bytes = await _service.get_packing_slip_pdf(db, order_id)
+        return StreamingResponse(
+            iter([pdf_bytes]),
+            media_type="application/pdf",
+            headers={
+                "Content-Disposition": f'attachment; filename="packing-slip-{order_id}.pdf"',
+                "Content-Length": str(len(pdf_bytes)),
+            },
         )
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e)) from e

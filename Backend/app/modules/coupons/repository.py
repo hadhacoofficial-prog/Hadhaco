@@ -6,6 +6,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.modules.coupons.models import Coupon, CouponUsage
 
+_COMPLETED_STATUSES = ("confirmed", "shipped", "delivered")
+
 
 class CouponRepository:
     async def get_by_code(self, db: AsyncSession, code: str) -> Coupon | None:
@@ -92,6 +94,21 @@ class CouponRepository:
             )
             .values(order_id=order_id)
         )
+
+    async def get_user_completed_order_count(
+        self, db: AsyncSession, user_id: uuid.UUID
+    ) -> int:
+        """Count orders in a terminal-success status for eligibility checks."""
+        from sqlalchemy import text
+
+        result = await db.execute(
+            text(
+                "SELECT COUNT(*) FROM orders "
+                "WHERE user_id = :uid AND status = ANY(:statuses)"
+            ),
+            {"uid": str(user_id), "statuses": list(_COMPLETED_STATUSES)},
+        )
+        return result.scalar_one()
 
     async def delete(self, db: AsyncSession, coupon_id: uuid.UUID) -> None:
         coupon = await self.get_by_id(db, coupon_id)

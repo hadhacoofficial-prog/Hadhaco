@@ -269,12 +269,7 @@ function SuccessContent({ order }: { order: CustomerOrderResponse }) {
     minute: "2-digit",
   });
 
-  const methodLabel =
-    order.payment_method === "razorpay"
-      ? "Razorpay"
-      : order.payment_method === "cod"
-        ? "Cash on Delivery"
-        : order.payment_method;
+  const methodLabel = order.payment_method === "razorpay" ? "Razorpay" : order.payment_method;
 
   return (
     <div className="px-4 md:px-8 py-12 max-w-3xl mx-auto">
@@ -390,6 +385,21 @@ function SuccessContent({ order }: { order: CustomerOrderResponse }) {
             <TotalRow label="Total" value={formatINR(order.total)} bold />
           </div>
         </div>
+
+        {/* Complimentary Gift */}
+        {order.complimentary_gift && (
+          <div className="mt-4 pt-4 border-t border-border flex items-center gap-3 text-sm">
+            <span className="text-lg">
+              {order.complimentary_gift === "Traditional Sweet" ? "🍬" : "🌶️"}
+            </span>
+            <div>
+              <p className="text-[11px] uppercase tracking-[0.16em] text-muted-foreground mb-0.5">
+                Complimentary Gift
+              </p>
+              <p className="font-medium">{order.complimentary_gift}</p>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* ── Timeline ── */}

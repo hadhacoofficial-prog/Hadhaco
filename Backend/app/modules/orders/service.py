@@ -23,12 +23,12 @@ from app.modules.inventory.reservation_service import ReservationService
 from app.modules.orders.repository import OrderRepository
 from app.modules.orders.schemas import (
     CancelOrderRequest,
-    CreateOrderRequest,
     CreatePaymentIntentRequest,
     CreatePaymentIntentResponse,
     OrderListItem,
     OrderListResponse,
     OrderResponse,
+    SetComplimentaryGiftRequest,
     UpdateOrderStatusRequest,
     VerifyOrderPaymentRequest,
     VerifyOrderPaymentResponse,
@@ -153,8 +153,10 @@ class OrderService:
         return {
             "full_name": addr.full_name,
             "phone": addr.phone,
+            "alternate_phone": addr.alternate_phone,
             "line1": addr.line1,
             "line2": addr.line2,
+            "landmark": addr.landmark,
             "city": addr.city,
             "state": addr.state,
             "postal_code": addr.postal_code,
@@ -165,115 +167,15 @@ class OrderService:
         return {
             f"{prefix}_full_name": addr["full_name"],
             f"{prefix}_phone": addr.get("phone"),
+            f"{prefix}_alternate_phone": addr.get("alternate_phone"),
             f"{prefix}_line1": addr["line1"],
             f"{prefix}_line2": addr.get("line2"),
+            f"{prefix}_landmark": addr.get("landmark"),
             f"{prefix}_city": addr["city"],
             f"{prefix}_state": addr["state"],
             f"{prefix}_postal": addr["postal_code"],
             f"{prefix}_country": addr["country"],
         }
-
-    # ── COD flow ──────────────────────────────────────────────────────────────
-
-    async def create_from_cart(
-        self,
-        db: AsyncSession,
-        user_id: uuid.UUID,
-        payload: CreateOrderRequest,
-    ) -> OrderResponse:
-        """
-        COD checkout. Locks stock via SELECT FOR UPDATE and immediately
-        transitions quantity to sold (no 10-minute reservation window needed
-        because the order is confirmed on the spot).
-        """
-        from app.modules.cart.repository import CartRepository
-
-        cart_repo = CartRepository()
-        cart = await cart_repo.get_for_user(db, user_id)
-        if not cart or not cart.items:
-            raise ValidationError("Cart is empty")
-
-        addr = await self._get_address(db, payload.shipping_address_id, user_id)
-        bill_addr = addr
-        if payload.billing_address_id:
-            bill_addr = await self._get_address(db, payload.billing_address_id, user_id)
-
-        line_items = await self._resolve_line_items(db, cart.items)
-
-        # Lock and validate available stock for each item
-        reservation_items = [
-            {
-                "product_id": li["product_id"],
-                "variant_id": li["variant_id"],
-                "quantity": li["quantity"],
-            }
-            for li in line_items
-        ]
-        # Use reserve_items to lock and check stock, then immediately complete
-        reservations = await _reservation_svc.reserve_items(
-            db, user_id=user_id, items=reservation_items
-        )
-
-        subtotal, total_tax, shipping_charge, discount, coupon_id, coupon_code = (
-            await self._compute_totals(db, line_items, payload.coupon_code, user_id)
-        )
-        total = round(max(subtotal + total_tax + shipping_charge - discount, 0), 2)
-
-        order_number = await _repo.generate_order_number(db)
-        order_data = {
-            "id": uuid.uuid4(),
-            "order_number": order_number,
-            "user_id": user_id,
-            "status": "confirmed",
-            "payment_status": "pending",
-            **self._build_address_data("shipping", addr),
-            **self._build_address_data("billing", bill_addr),
-            "subtotal": subtotal,
-            "tax_amount": total_tax,
-            "shipping_charge": shipping_charge,
-            "discount": discount,
-            "total": total,
-            "coupon_code": coupon_code,
-            "coupon_id": coupon_id,
-            "payment_method": payload.payment_method,
-            "notes": payload.notes,
-        }
-        order = await _repo.create(db, order_data)
-
-        for item_data in line_items:
-            item_data["order_id"] = order.id
-            await _repo.add_item(db, item_data)
-
-        # Link reservations to order then immediately complete them (COD)
-        await _reservation_svc.link_reservations_to_order(db, reservations, order.id)
-        await _reservation_svc.complete_order_reservations(db, order.id)
-
-        if coupon_id:
-            from app.modules.coupons.service import CouponService
-
-            await CouponService().finalize_usage(db, coupon_id, user_id, order.id)
-
-        await CartRepository().clear_items(db, cart.id)
-
-        from app.modules.profiles.repository import ProfileRepository
-
-        profile = await ProfileRepository().get_by_id(db, user_id)
-        await event_bus.publish(
-            OrderCreatedEvent(
-                order_id=str(order.id),
-                user_id=str(user_id),
-                order_number=order_number,
-                total_amount=float(total),
-                customer_email=(profile.email if profile else "") or "",
-                customer_phone=(profile.phone if profile else None)
-                or addr.get("phone")
-                or "",
-            )
-        )
-
-        order = await _repo.get_by_id(db, order.id)  # type: ignore[assignment]
-        assert order is not None
-        return OrderResponse.model_validate(order)
 
     # ── Razorpay flow — Phase 1: reserve stock + create pending order ─────────
 
@@ -607,6 +509,7 @@ class OrderService:
                 fulfillment_status=o.fulfillment_status,
                 total=float(o.total),
                 item_count=getattr(o, "_item_count", 0),
+                complimentary_gift=o.complimentary_gift,
                 created_at=o.created_at,
             )
             for o in items
@@ -648,6 +551,7 @@ class OrderService:
                 fulfillment_status=o.fulfillment_status,
                 total=float(o.total),
                 item_count=getattr(o, "_item_count", 0),
+                complimentary_gift=o.complimentary_gift,
                 created_at=o.created_at,
             )
             for o in items
@@ -674,6 +578,9 @@ class OrderService:
         if payload.status == "cancelled":
             data["cancellation_reason"] = payload.cancellation_reason
             data["cancelled_at"] = datetime.now(UTC)
+            # Restock inventory only when transitioning *into* cancelled
+            if order.status != "cancelled":
+                await self._restock_cancelled_order(db, order, order_id)
         if payload.status == "delivered":
             data["delivered_at"] = datetime.now(UTC)
         if payload.tracking_number:
@@ -697,6 +604,61 @@ class OrderService:
 
         return OrderResponse.model_validate(updated)
 
+    async def set_complimentary_gift(
+        self,
+        db: AsyncSession,
+        order_id: uuid.UUID,
+        user_id: uuid.UUID,
+        payload: SetComplimentaryGiftRequest,
+    ) -> OrderResponse:
+        order = await _repo.get_by_id(db, order_id)
+        if not order or order.user_id != user_id:
+            raise NotFoundError("Order not found")
+        if order.payment_status != "paid":
+            raise ValidationError("Order must be paid before selecting a gift")
+        if float(order.total) < 2000:
+            raise ValidationError("Order is not eligible for a complimentary gift")
+        if order.complimentary_gift:
+            raise ValidationError("Complimentary gift has already been selected")
+        updated = await _repo.update(db, order_id, {"complimentary_gift": payload.gift})
+        await db.commit()
+        return OrderResponse.model_validate(updated)
+
+    async def _restock_cancelled_order(
+        self,
+        db: AsyncSession,
+        order,
+        order_id: uuid.UUID,
+    ) -> None:
+        """
+        Idempotent inventory release for a cancellation.
+        - Releases any remaining ACTIVE reservations (pre-payment / stock_reserved orders).
+        - If the order was confirmed, reverses sold_quantity for each item (handles
+          both COD orders [payment_status=pending] and paid orders [payment_status=paid]).
+        Already-cancelled orders produce no-ops in both sub-calls.
+        """
+        await _reservation_svc.release_order_reservations(
+            db, order_id, reason="RELEASED"
+        )
+        if order.status == "confirmed":
+            for item in order.items:
+                if item.product_id:
+                    await _reservation_svc.record_return(
+                        db,
+                        product_id=item.product_id,
+                        variant_id=item.variant_id,
+                        quantity=item.quantity,
+                        order_id=order_id,
+                        reference=f"cancel:{order_id}",
+                    )
+                    log.info(
+                        "order_cancel_restock",
+                        order_id=str(order_id),
+                        product_id=str(item.product_id),
+                        variant_id=str(item.variant_id) if item.variant_id else None,
+                        quantity=item.quantity,
+                    )
+
     async def cancel_order(
         self,
         db: AsyncSession,
@@ -714,23 +676,7 @@ class OrderService:
                 f"Order in '{order.status}' status cannot be cancelled"
             )
 
-        # Release any active stock reservations
-        await _reservation_svc.release_order_reservations(
-            db, order_id, reason="RELEASED"
-        )
-
-        # If the order was already confirmed (paid), restore sold stock as return
-        if order.status == "confirmed" and order.payment_status == "paid":
-            for item in order.items:
-                if item.product_id:
-                    await _reservation_svc.record_return(
-                        db,
-                        product_id=item.product_id,
-                        variant_id=item.variant_id,
-                        quantity=item.quantity,
-                        order_id=order_id,
-                        reference=f"cancel:{order_id}",
-                    )
+        await self._restock_cancelled_order(db, order, order_id)
 
         updated = await _repo.update(
             db,

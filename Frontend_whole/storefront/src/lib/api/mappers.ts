@@ -10,6 +10,7 @@ export function toProduct(p: ProductListItem): Product {
     sku: p.sku,
     name: p.name,
     image: p.primary_image ?? "",
+    altImage: p.secondary_image ?? undefined,
     price: p.base_price,
     compareAt: p.compare_at_price ?? undefined,
     inStock: availableStock > 0,
@@ -19,6 +20,8 @@ export function toProduct(p: ProductListItem): Product {
     collectionIds: [],
     gender: "unisex",
     shortDescription: p.short_description ?? undefined,
+    rating: p.average_rating ?? undefined,
+    reviewCount: p.review_count ?? 0,
     badge: p.is_new_arrival ? "New" : p.is_best_seller ? "Bestseller" : undefined,
   };
 }
@@ -50,11 +53,17 @@ export function toProductDetail(p: ProductDetail): Product {
     gender: parseGender(p.gender),
     shortDescription: p.short_description ?? undefined,
     description: p.description ?? undefined,
+    rating: p.average_rating ?? undefined,
+    reviewCount: p.review_count ?? 0,
     badge: p.is_new_arrival ? "New" : p.is_best_seller ? "Bestseller" : undefined,
-    specifications:
-      p.attributes.length > 0
-        ? p.attributes.map((a) => ({ label: a.name, value: a.value }))
-        : undefined,
+    specifications: (() => {
+      const specs: { label: string; value: string }[] = [];
+      if (p.metal_type) specs.push({ label: "Metal", value: p.metal_type });
+      if (p.purity) specs.push({ label: "Purity", value: p.purity });
+      if (p.weight_grams != null) specs.push({ label: "Weight", value: `${p.weight_grams}g` });
+      for (const a of p.attributes) specs.push({ label: a.name, value: a.value });
+      return specs.length > 0 ? specs : undefined;
+    })(),
     attributes: {
       metal: p.metal_type ?? undefined,
       purity: p.purity ?? undefined,
@@ -78,9 +87,14 @@ export function toReview(r: PublicReview): Review {
   return {
     id: r.id,
     productId: r.product_id,
-    name: r.title ?? (r.is_verified_purchase ? "Verified Buyer" : "Customer"),
+    userId: r.user_id,
+    name: r.customer_name ?? (r.is_verified_purchase ? "Verified Buyer" : "Customer"),
     text: r.body ?? "",
     rating: r.rating,
     createdAt: r.created_at,
+    isVerifiedPurchase: r.is_verified_purchase,
+    isApproved: r.is_approved,
+    isRejected: r.is_rejected,
+    images: r.images,
   };
 }

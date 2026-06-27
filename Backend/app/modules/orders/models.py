@@ -44,8 +44,12 @@ class Order(Base):
     # Shipping address snapshot
     shipping_full_name: Mapped[str] = mapped_column(String(255), nullable=False)
     shipping_phone: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    shipping_alternate_phone: Mapped[str | None] = mapped_column(
+        String(20), nullable=True
+    )
     shipping_line1: Mapped[str] = mapped_column(String(255), nullable=False)
     shipping_line2: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    shipping_landmark: Mapped[str | None] = mapped_column(String(255), nullable=True)
     shipping_city: Mapped[str] = mapped_column(String(100), nullable=False)
     shipping_state: Mapped[str] = mapped_column(String(100), nullable=False)
     shipping_postal: Mapped[str] = mapped_column(String(20), nullable=False)
@@ -56,8 +60,12 @@ class Order(Base):
     # Billing address snapshot (optional — defaults to shipping)
     billing_full_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
     billing_phone: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    billing_alternate_phone: Mapped[str | None] = mapped_column(
+        String(20), nullable=True
+    )
     billing_line1: Mapped[str | None] = mapped_column(String(255), nullable=True)
     billing_line2: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    billing_landmark: Mapped[str | None] = mapped_column(String(255), nullable=True)
     billing_city: Mapped[str | None] = mapped_column(String(100), nullable=True)
     billing_state: Mapped[str | None] = mapped_column(String(100), nullable=True)
     billing_postal: Mapped[str | None] = mapped_column(String(20), nullable=True)
@@ -91,6 +99,8 @@ class Order(Base):
     shipping_provider: Mapped[str | None] = mapped_column(String(50), nullable=True)
     tracking_number: Mapped[str | None] = mapped_column(String(100), nullable=True)
     estimated_delivery: Mapped[date | None] = mapped_column(Date, nullable=True)
+
+    complimentary_gift: Mapped[str | None] = mapped_column(String(50), nullable=True)
 
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
     cancellation_reason: Mapped[str | None] = mapped_column(Text, nullable=True)

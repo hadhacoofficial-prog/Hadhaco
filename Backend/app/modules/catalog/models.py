@@ -114,6 +114,12 @@ class Product(Base):
     meta_description: Mapped[str | None] = mapped_column(String(500), nullable=True)
     meta_keywords: Mapped[str | None] = mapped_column(String(500), nullable=True)
 
+    # Cached review aggregates (recalculated on approve/reject/delete)
+    average_rating: Mapped[float | None] = mapped_column(Numeric(3, 1), nullable=True)
+    review_count: Mapped[int] = mapped_column(
+        Integer, nullable=False, server_default="0"
+    )
+
     # Full-text search vector (populated by DB trigger)
     search_vector: Mapped[str | None] = mapped_column(TSVECTOR, nullable=True)
 

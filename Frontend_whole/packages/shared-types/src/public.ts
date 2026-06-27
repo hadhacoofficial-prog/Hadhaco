@@ -102,12 +102,15 @@ export interface PublicReview {
   product_id: string;
   user_id: string;
   order_id: string | null;
+  customer_name: string | null;
   rating: number;
   title: string | null;
   body: string | null;
   is_verified_purchase: boolean;
   is_approved: boolean;
+  is_rejected: boolean;
   helpful_count: number;
+  approved_at: string | null;
   created_at: string;
   images: { id: string; url: string; sort_order: number }[];
 }

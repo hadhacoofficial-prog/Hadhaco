@@ -30,26 +30,37 @@ export function ProductCard({ p }: { p: Product }) {
       <Link
         to="/products/$slug"
         params={{ slug: p.slug }}
-        className="block relative aspect-square overflow-hidden bg-muted"
+        className="block relative aspect-square bg-white [perspective:900px]"
         aria-label={`View ${p.name}${isSoldOut ? " — Sold Out" : ""}`}
       >
-        <img
-          src={p.image}
-          alt={p.name}
-          loading="lazy"
-          width={800}
-          height={800}
-          className={`absolute inset-0 w-full h-full object-cover transition-all duration-[900ms] ease-out group-hover:scale-110 group-hover:opacity-0 ${isSoldOut ? "opacity-60" : ""}`}
-        />
-        <img
-          src={p.altImage ?? p.image}
-          alt=""
-          aria-hidden
-          loading="lazy"
-          width={800}
-          height={800}
-          className={`absolute inset-0 w-full h-full object-cover opacity-0 transition-all duration-[900ms] ease-out group-hover:opacity-100 scale-105 group-hover:scale-110 ${isSoldOut ? "opacity-60" : ""}`}
-        />
+        {/* 3-D flip container — only animates when a second image exists */}
+        <div
+          className={`absolute inset-0 [transform-style:preserve-3d] transition-transform duration-300 ease-out ${p.altImage ? "group-hover:[transform:rotateY(180deg)]" : ""}`}
+        >
+          {/* Front face */}
+          <div className="absolute inset-0 [backface-visibility:hidden]">
+            <img
+              src={p.image}
+              alt={p.name}
+              loading="lazy"
+              width={800}
+              height={800}
+              className={`w-full h-full object-contain ${isSoldOut ? "opacity-60" : ""}`}
+            />
+          </div>
+          {/* Back face */}
+          <div className="absolute inset-0 [backface-visibility:hidden] [transform:rotateY(180deg)]">
+            <img
+              src={p.altImage ?? p.image}
+              alt=""
+              aria-hidden
+              loading="lazy"
+              width={800}
+              height={800}
+              className={`w-full h-full object-contain ${isSoldOut ? "opacity-60" : ""}`}
+            />
+          </div>
+        </div>
 
         {/* Sold-out overlay */}
         {isSoldOut && (
@@ -99,38 +110,42 @@ export function ProductCard({ p }: { p: Product }) {
             <Eye className="size-4" />
           </span>
         </div>
-
-        {/* Add to cart / Notify Me */}
-        {isSoldOut ? (
-          <Link
-            to="/products/$slug"
-            params={{ slug: p.slug }}
-            onClick={(e) => e.stopPropagation()}
-            className="absolute bottom-0 left-0 right-0 bg-muted-foreground/80 text-background text-[11px] tracking-[0.24em] uppercase py-3.5 flex items-center justify-center gap-2 translate-y-full group-hover:translate-y-0 transition-transform duration-500 font-cinzel"
-            aria-label={`Notify me when ${p.name} is back in stock`}
-          >
-            <Bell className="size-3.5" /> Notify Me
-          </Link>
-        ) : (
-          <button
-            onClick={handleAddToCart}
-            className="absolute bottom-0 left-0 right-0 bg-primary text-primary-foreground text-[11px] tracking-[0.24em] uppercase py-3.5 flex items-center justify-center gap-2 translate-y-full group-hover:translate-y-0 transition-transform duration-500 font-cinzel"
-            aria-label={`Add ${p.name} to cart`}
-          >
-            <ShoppingBag className="size-3.5" /> Add to cart
-          </button>
-        )}
       </Link>
 
+      {/* Add to Cart / Notify Me — always visible below the image */}
+      {isSoldOut ? (
+        <Link
+          to="/products/$slug"
+          params={{ slug: p.slug }}
+          className="flex items-center justify-center gap-2 w-full bg-muted-foreground/80 text-background text-[11px] tracking-[0.24em] uppercase py-3.5 font-cinzel hover:bg-muted-foreground transition-colors"
+          aria-label={`Notify me when ${p.name} is back in stock`}
+        >
+          <Bell className="size-3.5" /> Notify Me
+        </Link>
+      ) : (
+        <button
+          onClick={handleAddToCart}
+          className="flex items-center justify-center gap-2 w-full bg-primary text-primary-foreground text-[11px] tracking-[0.24em] uppercase py-3.5 font-cinzel hover:bg-accent hover:text-accent-foreground transition-colors"
+          aria-label={`Add ${p.name} to cart`}
+        >
+          <ShoppingBag className="size-3.5" /> Add to cart
+        </button>
+      )}
+
       <div className="pt-4 pb-2 px-1">
-        <div className="flex items-center gap-0.5 mb-1.5">
-          {Array.from({ length: 5 }).map((_, i) => (
-            <Star
-              key={i}
-              className={`size-3 ${i < (p.rating ?? 5) ? "fill-accent text-accent" : "text-border"}`}
-            />
-          ))}
-        </div>
+        {(p.reviewCount ?? 0) > 0 && (
+          <div className="flex items-center gap-1.5 mb-1.5">
+            <div className="flex items-center gap-0.5">
+              {Array.from({ length: 5 }).map((_, i) => (
+                <Star
+                  key={i}
+                  className={`size-3 ${i < Math.round(p.rating ?? 0) ? "fill-accent text-accent" : "text-border"}`}
+                />
+              ))}
+            </div>
+            <span className="text-[11px] text-muted-foreground">{p.reviewCount}</span>
+          </div>
+        )}
         <h3 className="text-sm leading-snug line-clamp-2 min-h-[2.5rem] font-medium">
           <Link
             to="/products/$slug"

@@ -30,16 +30,20 @@ class OrderResponse(BaseModel):
     fulfillment_status: str
     shipping_full_name: str
     shipping_phone: str | None
+    shipping_alternate_phone: str | None
     shipping_line1: str
     shipping_line2: str | None
+    shipping_landmark: str | None
     shipping_city: str
     shipping_state: str
     shipping_postal: str
     shipping_country: str
     billing_full_name: str | None
     billing_phone: str | None
+    billing_alternate_phone: str | None
     billing_line1: str | None
     billing_line2: str | None
+    billing_landmark: str | None
     billing_city: str | None
     billing_state: str | None
     billing_postal: str | None
@@ -56,6 +60,7 @@ class OrderResponse(BaseModel):
     shipping_provider: str | None
     tracking_number: str | None
     estimated_delivery: date | None
+    complimentary_gift: str | None
     notes: str | None
     cancellation_reason: str | None
     cancelled_at: datetime | None
@@ -81,6 +86,7 @@ class OrderListItem(BaseModel):
     fulfillment_status: str
     total: float
     item_count: int
+    complimentary_gift: str | None = None
     created_at: datetime
 
     model_config = {"from_attributes": True}
@@ -92,14 +98,6 @@ class OrderListResponse(BaseModel):
     page: int
     page_size: int
     total_pages: int
-
-
-class CreateOrderRequest(BaseModel):
-    shipping_address_id: uuid.UUID
-    billing_address_id: uuid.UUID | None = None
-    payment_method: str = Field(default="razorpay", pattern="^(razorpay|cod)$")
-    coupon_code: str | None = None
-    notes: str | None = Field(None, max_length=500)
 
 
 class UpdateOrderStatusRequest(BaseModel):
@@ -147,3 +145,10 @@ class VerifyOrderPaymentResponse(BaseModel):
     success: bool
     order_id: str
     order_number: str
+
+
+COMPLIMENTARY_GIFT_VALUES = ("Traditional Sweet", "Traditional Hot Snack")
+
+
+class SetComplimentaryGiftRequest(BaseModel):
+    gift: str = Field(..., pattern="^(Traditional Sweet|Traditional Hot Snack)$")

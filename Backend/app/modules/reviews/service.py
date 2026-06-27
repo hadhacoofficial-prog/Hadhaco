@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import uuid
+from datetime import UTC, datetime
 from typing import Any
 
 from fastapi import HTTPException, UploadFile, status
@@ -10,7 +11,7 @@ from app.core.events import ReviewRequestEvent, event_bus
 from app.modules.media.service import MediaService
 from app.modules.reviews.models import Review, ReviewVote
 from app.modules.reviews.repository import ReviewRepository
-from app.modules.reviews.schemas import ReviewCreate, ReviewUpdate
+from app.modules.reviews.schemas import AdminReviewOut, ReviewCreate, ReviewUpdate
 
 
 class ReviewService:
@@ -25,10 +26,10 @@ class ReviewService:
         db: AsyncSession,
         *,
         user_id: uuid.UUID,
+        customer_name: str | None,
         data: ReviewCreate,
         images: list[UploadFile] | None = None,
     ) -> Review:
-        # one review per product per user
         existing = await self._repo.get_by_product_user(
             db, product_id=data.product_id, user_id=user_id
         )
@@ -46,11 +47,13 @@ class ReviewService:
             product_id=data.product_id,
             user_id=user_id,
             order_id=data.order_id,
+            customer_name=customer_name,
             rating=data.rating,
             title=data.title,
             body=data.body,
             is_verified_purchase=is_verified,
-            is_approved=False,  # requires admin approval
+            is_approved=False,
+            is_rejected=False,
         )
 
         if images:
@@ -73,8 +76,8 @@ class ReviewService:
         review = await self._get_owned(db, review_id=review_id, user_id=user_id)
         updates = data.model_dump(exclude_unset=True)
         if updates:
-            # re-queue for approval on edit
             updates["is_approved"] = False
+            updates["is_rejected"] = False
             review = await self._repo.update(db, review, updates)
         await db.commit()
         await db.refresh(review)
@@ -96,11 +99,16 @@ class ReviewService:
         db: AsyncSession,
         *,
         product_id: uuid.UUID,
+        viewer_user_id: uuid.UUID | None = None,
         offset: int = 0,
         limit: int = 20,
     ) -> list[Review]:
         return await self._repo.list_for_product(
-            db, product_id=product_id, approved_only=True, offset=offset, limit=limit
+            db,
+            product_id=product_id,
+            viewer_user_id=viewer_user_id,
+            offset=offset,
+            limit=limit,
         )
 
     async def rating_summary(
@@ -133,41 +141,125 @@ class ReviewService:
 
     # ── Admin ─────────────────────────────────────────────────────────────────
 
+    async def _sync_product_rating(
+        self, db: AsyncSession, product_id: uuid.UUID
+    ) -> None:
+        """Recalculate and cache average_rating + review_count on the product."""
+        from sqlalchemy import text as sql
+
+        row = (
+            await db.execute(
+                sql("""
+                    SELECT
+                        COUNT(*) AS review_count,
+                        ROUND(AVG(rating)::NUMERIC, 1) AS average_rating
+                    FROM reviews
+                    WHERE product_id = :pid
+                      AND is_approved = true
+                      AND deleted_at IS NULL
+                """),
+                {"pid": product_id},
+            )
+        ).fetchone()
+        if row is None:
+            return
+        mapping = dict(row._mapping)
+        await db.execute(
+            sql("""
+                UPDATE products
+                SET average_rating = :avg, review_count = :cnt
+                WHERE id = :pid
+            """),
+            {
+                "avg": mapping.get("average_rating"),
+                "cnt": int(mapping.get("review_count") or 0),
+                "pid": product_id,
+            },
+        )
+
     async def admin_action(
-        self, db: AsyncSession, *, review_id: uuid.UUID, action: str
+        self,
+        db: AsyncSession,
+        *,
+        review_id: uuid.UUID,
+        action: str,
+        admin_identifier: str | None = None,
     ) -> Review:
         review = await self._repo.get_by_id(db, review_id)
         if not review:
             raise HTTPException(status.HTTP_404_NOT_FOUND, "Review not found")
         if action == "approve":
             review = await self._repo.update(
-                db, review, {"is_approved": True, "is_flagged": False}
+                db,
+                review,
+                {
+                    "is_approved": True,
+                    "is_rejected": False,
+                    "is_flagged": False,
+                    "approved_at": datetime.now(UTC),
+                    "approved_by": admin_identifier,
+                },
             )
         elif action == "reject":
-            await self._repo.soft_delete(db, review)
+            review = await self._repo.update(
+                db,
+                review,
+                {
+                    "is_approved": False,
+                    "is_rejected": True,
+                    "is_flagged": False,
+                },
+            )
         elif action == "flag":
             review = await self._repo.update(db, review, {"is_flagged": True})
         else:
             raise HTTPException(
                 status.HTTP_400_BAD_REQUEST, f"Unknown action: {action}"
             )
+        product_id = review.product_id
+        await self._sync_product_rating(db, product_id)
         await db.commit()
         await db.refresh(review)
         return review
+
+    async def admin_delete(self, db: AsyncSession, *, review_id: uuid.UUID) -> None:
+        review = await self._repo.get_by_id(db, review_id)
+        if not review:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "Review not found")
+        product_id = review.product_id
+        await self._repo.hard_delete(db, review_id)
+        await self._sync_product_rating(db, product_id)
+        await db.commit()
 
     async def list_pending(
         self, db: AsyncSession, *, offset: int = 0, limit: int = 50
     ) -> list[Review]:
         return await self._repo.list_pending(db, offset=offset, limit=limit)
 
+    async def list_all_reviews(
+        self,
+        db: AsyncSession,
+        *,
+        status: str | None = None,
+        offset: int = 0,
+        limit: int = 50,
+    ) -> list[AdminReviewOut]:
+        rows = await self._repo.list_all(db, status=status, offset=offset, limit=limit)
+        result: list[AdminReviewOut] = []
+        for row in rows:
+            # images must be fetched separately or included via the ORM
+            review = await self._repo.get_by_id(db, row["id"])
+            if review is None:
+                continue
+            out = AdminReviewOut.model_validate(review)
+            out.product_name = row.get("product_name")
+            result.append(out)
+        return result
+
     # ── ReviewRequest event listener ──────────────────────────────────────────
 
     @staticmethod
     def register_review_request_listener() -> None:
-        """Subscribe to ReviewRequestEvent (fired after order delivery)."""
-
-        # ReviewRequestEvent is informational — could trigger email/push.
-        # Implementation here is a no-op hook; notification module handles delivery.
         async def _on_review_request(event: ReviewRequestEvent) -> None:
             pass  # notification module will pick this up
 

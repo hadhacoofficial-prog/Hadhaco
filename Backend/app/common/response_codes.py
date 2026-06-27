@@ -99,6 +99,7 @@ class ResponseCode(StrEnum):
     REVIEW_DELETED = "REVIEW_DELETED"
     REVIEW_VOTED = "REVIEW_VOTED"
     REVIEW_PENDING_LISTED = "REVIEW_PENDING_LISTED"
+    REVIEW_ALL_LISTED = "REVIEW_ALL_LISTED"
     REVIEW_ACTION_APPLIED = "REVIEW_ACTION_APPLIED"
 
     # ── CMS ──────────────────────────────────────────────────────────────────
@@ -207,6 +208,10 @@ class ResponseCode(StrEnum):
 
     # ── Webhooks ─────────────────────────────────────────────────────────────
     WEBHOOK_PROCESSED = "WEBHOOK_PROCESSED"
+
+    # ── Company Config ───────────────────────────────────────────────────────
+    COMPANY_CONFIG_RETRIEVED = "COMPANY_CONFIG_RETRIEVED"
+    COMPANY_CONFIG_UPDATED = "COMPANY_CONFIG_UPDATED"
 
     # ── Dev Auth (development only) ───────────────────────────────────────────
     DEV_AUTH_LOGIN = "DEV_AUTH_LOGIN"

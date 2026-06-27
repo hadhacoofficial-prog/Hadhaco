@@ -8,6 +8,7 @@ import {
   Scripts,
 } from "@tanstack/react-router";
 import { useEffect, type ReactNode } from "react";
+import { CartDrawer } from "../components/site/CartDrawer";
 
 import appCss from "../styles.css?url";
 import { reportLovableError } from "../lib/lovable-error-reporting";
@@ -182,6 +183,8 @@ function AppContent() {
         <SearchOverlay />
         <WelcomeOfferModal />
       </RouteTransition>
+      {/* Mounted once globally so it never unmounts during route transitions */}
+      <CartDrawer />
     </>
   );
 }

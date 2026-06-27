@@ -31,8 +31,14 @@ async def validate_coupon(
     db: AsyncSession = Depends(get_db),
     current_user: Profile = Depends(get_current_user),
 ):
-    result = await _service.validate(
-        db, payload.code, payload.order_subtotal, current_user.id
+    result = await _service.validate_with_email_check(
+        db,
+        payload.code,
+        payload.order_subtotal,
+        current_user.id,
+        user_email=current_user.email or "",
+        user_phone=getattr(current_user, "phone", None),
+        ctx=payload,
     )
     return ok(result, ResponseCode.COUPON_VALIDATED, "Coupon validated successfully")
 

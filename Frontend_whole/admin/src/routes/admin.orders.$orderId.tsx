@@ -117,6 +117,12 @@ function OrderDetailPage() {
                 <p className="text-sm text-muted-foreground">Phone</p>
                 <p className="font-semibold">{order.shipping_phone || "—"}</p>
               </div>
+              {order.shipping_alternate_phone && (
+                <div>
+                  <p className="text-sm text-muted-foreground">Alt Phone</p>
+                  <p className="font-semibold">{order.shipping_alternate_phone}</p>
+                </div>
+              )}
             </CardContent>
           </Card>
 
@@ -130,10 +136,16 @@ function OrderDetailPage() {
                 <p className="font-semibold">{order.shipping_full_name}</p>
                 <p>{order.shipping_line1}</p>
                 {order.shipping_line2 && <p>{order.shipping_line2}</p>}
+                {order.shipping_landmark && (
+                  <p className="text-muted-foreground">Landmark: {order.shipping_landmark}</p>
+                )}
                 <p>
                   {order.shipping_city}, {order.shipping_state} {order.shipping_postal}
                 </p>
                 {order.shipping_phone && <p>Phone: {order.shipping_phone}</p>}
+                {order.shipping_alternate_phone && (
+                  <p>Alt Phone: {order.shipping_alternate_phone}</p>
+                )}
               </div>
             </CardContent>
           </Card>
@@ -199,6 +211,15 @@ function OrderDetailPage() {
                 <span>Grand Total</span>
                 <span>{formatCurrency(order.total)}</span>
               </div>
+              {order.complimentary_gift && (
+                <div className="flex items-center gap-2 pt-3 border-t text-sm">
+                  <span className="text-lg">
+                    {order.complimentary_gift === "Traditional Sweet" ? "🍬" : "🌶️"}
+                  </span>
+                  <span className="text-muted-foreground">Complimentary Gift</span>
+                  <span className="font-medium ml-auto">{order.complimentary_gift}</span>
+                </div>
+              )}
             </CardContent>
           </Card>
         </div>

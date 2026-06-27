@@ -1,5 +1,26 @@
 import type { ProductImage, ProductVariant, ProductAttribute } from "./public";
 
+// ── Company config ───────────────────────────────────────────────────────────
+export interface CompanyConfig {
+  name: string;
+  tagline: string | null;
+  gstin: string | null;
+  address_line1: string | null;
+  address_line2: string | null;
+  city: string | null;
+  state: string | null;
+  postal_code: string | null;
+  country: string;
+  phone: string | null;
+  support_email: string | null;
+  website: string | null;
+  logo_url: string | null;
+  instagram_url: string | null;
+  facebook_url: string | null;
+}
+
+export type CompanyConfigUpdate = Partial<CompanyConfig>;
+
 // ── Admin dashboard ──────────────────────────────────────────────────────────
 export interface KPIStats {
   today_orders: number;
@@ -157,6 +178,9 @@ export interface ProductListItem {
   is_best_seller: boolean;
   created_at: string;
   primary_image: string | null;
+  secondary_image: string | null;
+  average_rating: number | null;
+  review_count: number;
   collections: ProductCollectionRef[];
 }
 
@@ -198,6 +222,8 @@ export interface ProductDetail {
   reserved_quantity?: number;
   sold_quantity?: number;
   max_order_quantity?: number;
+  average_rating?: number | null;
+  review_count?: number;
   status: ProductStatus;
   is_featured: boolean;
   is_new_arrival: boolean;
@@ -228,6 +254,7 @@ export interface OrderListItem {
   fulfillment_status: string;
   total: number;
   item_count: number;
+  complimentary_gift: string | null;
   created_at: string;
 }
 
@@ -262,16 +289,20 @@ export interface OrderResponse {
   fulfillment_status: string;
   shipping_full_name: string;
   shipping_phone: string | null;
+  shipping_alternate_phone: string | null;
   shipping_line1: string;
   shipping_line2: string | null;
+  shipping_landmark: string | null;
   shipping_city: string;
   shipping_state: string;
   shipping_postal: string;
   shipping_country: string;
   billing_full_name: string | null;
   billing_phone: string | null;
+  billing_alternate_phone: string | null;
   billing_line1: string | null;
   billing_line2: string | null;
+  billing_landmark: string | null;
   billing_city: string | null;
   billing_state: string | null;
   billing_postal: string | null;
@@ -294,6 +325,7 @@ export interface OrderResponse {
   shipment_notes: string | null;
   fulfilled_by: string | null;
   last_fulfillment_action: string | null;
+  complimentary_gift: string | null;
   notes: string | null;
   cancellation_reason: string | null;
   cancelled_at: string | null;
@@ -305,6 +337,7 @@ export interface OrderResponse {
 
 // ── Coupons (admin) ──────────────────────────────────────────────────────────
 export type CouponType = "percentage" | "fixed_amount" | "free_shipping";
+export type CouponStatus = "active" | "inactive" | "draft";
 
 export interface CouponDto {
   id: string;
@@ -312,14 +345,43 @@ export interface CouponDto {
   description: string | null;
   coupon_type: CouponType;
   value: number;
-  min_order_amount: number | null;
-  max_discount: number | null;
-  usage_limit: number | null;
-  usage_count: number;
-  per_user_limit: number | null;
+  status: CouponStatus;
   is_active: boolean;
   valid_from: string | null;
   valid_until: string | null;
+  // Order value
+  min_order_amount: number;
+  max_order_amount: number | null;
+  max_discount: number | null;
+  // Usage limits
+  usage_limit: number | null;
+  usage_count: number;
+  per_user_limit: number;
+  one_time_per_customer: boolean;
+  // Customer eligibility
+  first_order_only: boolean;
+  new_customer_only: boolean;
+  returning_customer_only: boolean;
+  // Product / category restrictions
+  eligible_product_ids: string[] | null;
+  eligible_collection_ids: string[] | null;
+  eligible_category_slugs: string[] | null;
+  excluded_product_ids: string[] | null;
+  excluded_category_slugs: string[] | null;
+  // Audience
+  allowed_emails: string[] | null;
+  allowed_phone_numbers: string[] | null;
+  customer_groups: string[] | null;
+  // Region
+  allowed_states: string[] | null;
+  allowed_cities: string[] | null;
+  allowed_pincodes: string[] | null;
+  // Methods
+  allowed_payment_methods: string[] | null;
+  allowed_shipping_methods: string[] | null;
+  // Campaign & stacking
+  stackable: boolean;
+  campaign_name: string | null;
   created_at: string;
 }
 
@@ -328,12 +390,33 @@ export interface CreateCouponDto {
   coupon_type: CouponType;
   value: number;
   description?: string | null;
+  status?: CouponStatus;
+  valid_from?: string | null;
+  valid_until?: string | null;
   min_order_amount?: number | null;
+  max_order_amount?: number | null;
   max_discount?: number | null;
   usage_limit?: number | null;
   per_user_limit?: number | null;
-  valid_from?: string | null;
-  valid_until?: string | null;
+  one_time_per_customer?: boolean;
+  first_order_only?: boolean;
+  new_customer_only?: boolean;
+  returning_customer_only?: boolean;
+  eligible_product_ids?: string[] | null;
+  eligible_collection_ids?: string[] | null;
+  eligible_category_slugs?: string[] | null;
+  excluded_product_ids?: string[] | null;
+  excluded_category_slugs?: string[] | null;
+  allowed_emails?: string[] | null;
+  allowed_phone_numbers?: string[] | null;
+  customer_groups?: string[] | null;
+  allowed_states?: string[] | null;
+  allowed_cities?: string[] | null;
+  allowed_pincodes?: string[] | null;
+  allowed_payment_methods?: string[] | null;
+  allowed_shipping_methods?: string[] | null;
+  stackable?: boolean;
+  campaign_name?: string | null;
 }
 
 // ── Reviews (admin) ──────────────────────────────────────────────────────────
@@ -346,19 +429,25 @@ export interface ReviewImageDto {
 export interface ReviewDto {
   id: string;
   product_id: string;
+  product_name?: string | null;
   user_id: string;
   order_id: string | null;
+  customer_name: string | null;
   rating: number;
   title: string | null;
   body: string | null;
   is_verified_purchase: boolean;
   is_approved: boolean;
+  is_rejected: boolean;
+  is_flagged: boolean;
   helpful_count: number;
+  approved_at: string | null;
+  approved_by: string | null;
   created_at: string;
   images: ReviewImageDto[];
 }
 
-export type ReviewAction = "approve" | "reject" | "flag";
+export type ReviewAction = "approve" | "reject" | "flag" | "delete";
 
 // ── CMS sections (admin) ─────────────────────────────────────────────────────
 export interface LandingSectionDto {

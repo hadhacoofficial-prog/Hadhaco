@@ -8,8 +8,10 @@ class AddressCreateRequest(BaseModel):
     type: str = Field(default="shipping", pattern="^(shipping|billing)$")
     full_name: str = Field(..., min_length=1, max_length=255)
     phone: str | None = Field(None, max_length=20)
+    alternate_phone: str | None = Field(None, max_length=20)
     line1: str = Field(..., min_length=1, max_length=255)
     line2: str | None = Field(None, max_length=255)
+    landmark: str | None = Field(None, max_length=255)
     city: str = Field(..., min_length=1, max_length=100)
     state: str = Field(..., min_length=1, max_length=100)
     postal_code: str = Field(..., min_length=1, max_length=20)
@@ -26,8 +28,10 @@ class AddressUpdateRequest(BaseModel):
     type: str | None = Field(None, pattern="^(shipping|billing)$")
     full_name: str | None = Field(None, min_length=1, max_length=255)
     phone: str | None = Field(None, max_length=20)
+    alternate_phone: str | None = Field(None, max_length=20)
     line1: str | None = Field(None, min_length=1, max_length=255)
     line2: str | None = None
+    landmark: str | None = Field(None, max_length=255)
     city: str | None = Field(None, min_length=1, max_length=100)
     state: str | None = Field(None, min_length=1, max_length=100)
     postal_code: str | None = Field(None, min_length=1, max_length=20)
@@ -41,8 +45,10 @@ class AddressResponse(BaseModel):
     type: str
     full_name: str
     phone: str | None
+    alternate_phone: str | None
     line1: str
     line2: str | None
+    landmark: str | None
     city: str
     state: str
     postal_code: str

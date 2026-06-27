@@ -72,13 +72,24 @@ export interface Paginated<T> {
   pageSize: number;
 }
 
+export interface ReviewImage {
+  id: string;
+  url: string;
+  sort_order: number;
+}
+
 export interface Review {
   id: string;
   productId?: string;
+  userId?: string;
   name: string;
   text: string;
   rating: number;
   createdAt?: string;
+  isVerifiedPurchase?: boolean;
+  isApproved?: boolean;
+  isRejected?: boolean;
+  images?: ReviewImage[];
 }
 
 export type CartCouponType = "percent" | "flat";

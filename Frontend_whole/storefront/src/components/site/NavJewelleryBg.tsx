@@ -12,7 +12,7 @@ export function NavJewelleryBg() {
     <svg
       aria-hidden="true"
       viewBox="0 0 1440 110"
-      preserveAspectRatio="xMidYMid slice"
+      preserveAspectRatio="xMinYMid slice"
       xmlns="http://www.w3.org/2000/svg"
       style={{ position: "absolute", inset: 0, width: "100%", height: "100%" }}
     >

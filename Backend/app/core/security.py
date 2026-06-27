@@ -85,6 +85,7 @@ async def verify_supabase_jwt(token: str) -> JWTPayload:
             audience="authenticated",
             issuer=settings.supabase_issuer,
             options={"require": ["exp", "iat", "sub"]},
+            leeway=60,  # tolerate up to 60 s of clock skew between server and Supabase
         )
     except jwt.ExpiredSignatureError as exc:
         raise HTTPException(

@@ -1,3 +1,4 @@
+import logoAsset from "@/assets/hadha-logo.png";
 import { useEffect, useState } from "react";
 import { Link } from "@tanstack/react-router";
 import { X, Gift } from "lucide-react";
@@ -42,9 +43,9 @@ export function WelcomeOfferModal() {
         </button>
 
         <div className="px-8 pt-10 pb-8 text-center">
-          <div className="mx-auto size-14 rounded-full bg-primary/10 text-primary flex items-center justify-center mb-5">
-            <Gift className="size-6" />
-          </div>
+
+            <img src={logoAsset} alt="Hadha" className="h-26 w-46 mx-auto" />
+
           <p className="text-[11px] tracking-[0.32em] uppercase text-primary mb-3 font-cinzel">
             A gift from Hadha
           </p>
