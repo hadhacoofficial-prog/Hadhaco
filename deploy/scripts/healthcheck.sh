@@ -112,9 +112,12 @@ check_redis() {
 }
 
 check_nginx() {
+  # Stage 1: config syntax — detects broken reloads even if port 80 is blocked.
   docker exec "${NGINX_CONTAINER}" nginx -t 2>/dev/null || return 1
-  docker exec "${NGINX_CONTAINER}" \
-    wget -q -O /dev/null --no-check-certificate "http://127.0.0.1:80/" 2>/dev/null
+  # Stage 2: probe /nginx-health via the published port 80 (plain HTTP, no
+  # redirect). conf.d/00-health.conf serves 200 OK here without ever going
+  # through the HTTPS redirect chain or requiring a TLS certificate.
+  curl -sf --max-time 5 "http://127.0.0.1/nginx-health" -o /dev/null 2>/dev/null
 }
 
 check_redis_commander() {

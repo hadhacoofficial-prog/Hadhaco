@@ -297,20 +297,23 @@ services:
       - hadha-internal
     healthcheck:
       # Two-stage check:
-      #   1. nginx -t  — config is syntactically valid
-      #   2. wget      — nginx process is listening and returning HTTP responses
-      # nginx -t alone does NOT verify that the daemon is running and listening.
+      #   1. nginx -t           — config is syntactically valid (detects broken reload)
+      #   2. /nginx-health      — nginx is listening and routing HTTP responses
       #
-      # C-2 FIX: --server-response is GNU wget only; nginx:stable-alpine uses
-      # BusyBox wget which does not support it (grep would never match → always
-      # fails). Use wget -q -O /dev/null with --no-check-certificate so the
-      # request succeeds even when port 80 redirects to HTTPS (the TLS cert is
-      # for hadha.co, not localhost — without --no-check-certificate BusyBox
-      # wget would fail SSL verification on the redirect target).
+      # /nginx-health is served by conf.d/00-health.conf, a default_server block
+      # on port 80 that returns 200 OK directly — no HTTPS redirect, no TLS cert
+      # dependency. This is the correct production pattern (Kubernetes liveness
+      # probes, AWS ALB, GCP Load Balancer all use a dedicated plain-HTTP health
+      # endpoint for the same reason).
+      #
+      # WHY NOT wget http://127.0.0.1:80/ ?
+      #   Port 80 for known domains redirects to HTTPS. Nginx serves the request
+      #   as 301 → https://127.0.0.1/ which fails TLS — the cert covers hadha.co
+      #   domains, not 127.0.0.1. --no-check-certificate is a hack, not a fix.
       test:
         [
           "CMD-SHELL",
-          "nginx -t 2>/dev/null && wget -q -O /dev/null --no-check-certificate http://127.0.0.1:80/ 2>/dev/null"
+          "nginx -t 2>/dev/null && wget -qO- http://127.0.0.1/nginx-health 2>/dev/null | grep -q '^OK'"
         ]
       interval: 30s
       timeout: 10s
