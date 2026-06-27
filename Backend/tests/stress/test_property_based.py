@@ -48,8 +48,12 @@ def test_available_formula_never_negative_when_inputs_valid(
 
 @given(
     stock=st.integers(min_value=1, max_value=10_000),
-    reserved_frac=st.floats(min_value=0.0, max_value=1.0, allow_nan=False, allow_infinity=False),
-    sold_frac=st.floats(min_value=0.0, max_value=1.0, allow_nan=False, allow_infinity=False),
+    reserved_frac=st.floats(
+        min_value=0.0, max_value=1.0, allow_nan=False, allow_infinity=False
+    ),
+    sold_frac=st.floats(
+        min_value=0.0, max_value=1.0, allow_nan=False, allow_infinity=False
+    ),
 )
 @settings(max_examples=300, suppress_health_check=[HealthCheck.too_slow])
 def test_available_formula_structure(

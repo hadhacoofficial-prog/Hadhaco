@@ -57,7 +57,9 @@ def _make_order(**overrides):
     return o
 
 
-def _make_item(name="Ring", sku="SKU-001", variant="Gold", qty=2, total=Decimal("500.00")):
+def _make_item(
+    name="Ring", sku="SKU-001", variant="Gold", qty=2, total=Decimal("500.00")
+):
     item = MagicMock()
     item.product_name = name
     item.product_sku = sku

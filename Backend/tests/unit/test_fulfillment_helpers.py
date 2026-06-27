@@ -60,10 +60,14 @@ class TestRegisterUnicodeFont:
 
         import unittest.mock as _mock
 
-        return _mock.patch.multiple(
-            "app.modules.fulfillment.service",
-            # The function imports these locally — patch via sys.modules instead.
-        ), mock_pdfmetrics, mock_ttfont_cls
+        return (
+            _mock.patch.multiple(
+                "app.modules.fulfillment.service",
+                # The function imports these locally — patch via sys.modules instead.
+            ),
+            mock_pdfmetrics,
+            mock_ttfont_cls,
+        )
 
     def test_returns_true_immediately_if_already_registered(self):
         mock_pdfmetrics = MagicMock()
@@ -87,11 +91,11 @@ class TestRegisterUnicodeFont:
             "reportlab.pdfbase.pdfmetrics.getRegisteredFontNames",
             mock_pdfmetrics.getRegisteredFontNames,
         ):
-            with patch(
-                "reportlab.pdfbase.pdfmetrics.registerFont"
-            ) as mock_register:
+            with patch("reportlab.pdfbase.pdfmetrics.registerFont") as mock_register:
                 with patch("pathlib.Path.exists", return_value=True):
-                    with patch("reportlab.pdfbase.ttfonts.TTFont", return_value=MagicMock()):
+                    with patch(
+                        "reportlab.pdfbase.ttfonts.TTFont", return_value=MagicMock()
+                    ):
                         result = self._call()
 
         assert result is True
