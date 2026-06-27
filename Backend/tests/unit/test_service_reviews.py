@@ -30,6 +30,7 @@ class TestReviewServiceSubmit:
                 await self.svc.submit_review(
                     db,
                     user_id=uuid.uuid4(),
+                    customer_name=None,
                     data=ReviewCreate(
                         product_id=uuid.uuid4(),
                         rating=5,
@@ -61,6 +62,7 @@ class TestReviewServiceSubmit:
             result = await self.svc.submit_review(
                 db,
                 user_id=uuid.uuid4(),
+                customer_name=None,
                 data=ReviewCreate(
                     product_id=uuid.uuid4(), rating=5, title="Great", body="Loved it"
                 ),
@@ -94,6 +96,7 @@ class TestReviewServiceSubmit:
             result = await self.svc.submit_review(
                 db,
                 user_id=uuid.uuid4(),
+                customer_name=None,
                 data=ReviewCreate(
                     product_id=uuid.uuid4(), rating=3, title="OK", body="Meh"
                 ),
@@ -193,6 +196,7 @@ class TestReviewServiceAdmin:
             patch.object(
                 ReviewRepository, "update", AsyncMock(return_value=mock_updated)
             ),
+            patch.object(self.svc, "_sync_product_rating", AsyncMock()),
         ):
             db.commit = AsyncMock()
             db.refresh = AsyncMock()
@@ -201,14 +205,18 @@ class TestReviewServiceAdmin:
             )
         assert result is mock_updated
 
-    async def test_admin_action_reject_soft_deletes(self):
+    async def test_admin_action_reject_calls_update(self):
         db = AsyncMock()
         mock_review = MagicMock()
+        mock_updated = MagicMock()
         with (
             patch.object(
                 ReviewRepository, "get_by_id", AsyncMock(return_value=mock_review)
             ),
-            patch.object(ReviewRepository, "soft_delete", AsyncMock()),
+            patch.object(
+                ReviewRepository, "update", AsyncMock(return_value=mock_updated)
+            ),
+            patch.object(self.svc, "_sync_product_rating", AsyncMock()),
         ):
             db.commit = AsyncMock()
             db.refresh = AsyncMock()

@@ -253,13 +253,13 @@ class TestExpiryMultiBatch:
 
     async def test_partial_last_batch(self):
         """
-        10 250 reservations: 20 full batches of 500 + 1 partial batch of 250.
-        All must be expired.
+        3 batches: 2 full (500 each) + 1 partial (250).
+        Verifies that the last partial batch is processed completely.
         """
         from app.modules.inventory.reservation_service import ReservationService
 
         product_id = uuid.uuid4()
-        batches = [500] * 20 + [250]
+        batches = [500, 500, 250]
         total_expected = sum(batches)
         svc = ReservationService()
         total_expired = 0

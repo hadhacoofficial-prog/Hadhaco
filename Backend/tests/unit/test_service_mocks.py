@@ -219,6 +219,7 @@ class TestCouponServiceMocked:
         db = AsyncMock()
         coupon = MagicMock()
         coupon.is_active = True
+        coupon.status = "active"
         coupon.valid_from = datetime(2020, 1, 1, tzinfo=UTC)
         coupon.valid_until = datetime(2020, 12, 31, tzinfo=UTC)
         coupon.usage_limit = None
@@ -234,17 +235,31 @@ class TestCouponServiceMocked:
         db = AsyncMock()
         coupon = MagicMock()
         coupon.is_active = True
+        coupon.status = "active"
         coupon.valid_from = None
         coupon.valid_until = None
         coupon.usage_limit = None
+        coupon.usage_count = 0
         coupon.min_order_amount = Decimal("1000.00")
-        with patch(
-            "app.modules.coupons.service._repo.get_by_code",
-            AsyncMock(return_value=coupon),
+        coupon.max_order_amount = None
+        coupon.one_time_per_customer = False
+        coupon.first_order_only = False
+        coupon.new_customer_only = False
+        coupon.returning_customer_only = False
+        coupon.per_user_limit = 99
+        with (
+            patch(
+                "app.modules.coupons.service._repo.get_by_code",
+                AsyncMock(return_value=coupon),
+            ),
+            patch(
+                "app.modules.coupons.service._repo.get_user_usage_count",
+                AsyncMock(return_value=0),
+            ),
         ):
             result = await self.svc.validate(db, "BIG500", 500.0, uuid.uuid4())
         assert result.valid is False
-        assert "minimum" in result.message.lower()
+        assert "add" in result.message.lower()
 
 
 # ─── Address Service ────────────────────────────────────────────────────────────

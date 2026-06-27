@@ -7,10 +7,7 @@ No real DB or auth service required — dependency overrides replace both.
 import uuid
 from unittest.mock import AsyncMock, MagicMock, patch
 
-import pytest
 import pytest_asyncio
-from httpx import AsyncClient
-
 
 # ─── Mock company helper ──────────────────────────────────────────────────────
 

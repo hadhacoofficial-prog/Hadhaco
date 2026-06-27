@@ -21,15 +21,33 @@ export function NavJewelleryBgMobile() {
         }
       `}</style>
 
-      <g className="njbm" fill="none" strokeWidth="0.72" strokeLinecap="round" strokeLinejoin="round">
-
+      <g
+        className="njbm"
+        fill="none"
+        strokeWidth="0.72"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      >
         {/* ── Necklace chain — flows down from top-right ── */}
         <path d="M200,10 C230,20 260,35 280,60 C300,85 300,120 280,145" />
         {[
-          [205, 14], [220, 22], [240, 34], [258, 48], [272, 66],
-          [284, 88], [287, 112], [281, 136],
+          [205, 14],
+          [220, 22],
+          [240, 34],
+          [258, 48],
+          [272, 66],
+          [284, 88],
+          [287, 112],
+          [281, 136],
         ].map(([cx, cy], i) => (
-          <ellipse key={i} cx={cx} cy={cy} rx="7" ry="2.5" transform={`rotate(${-60 + i * 10},${cx},${cy})`} />
+          <ellipse
+            key={i}
+            cx={cx}
+            cy={cy}
+            rx="7"
+            ry="2.5"
+            transform={`rotate(${-60 + i * 10},${cx},${cy})`}
+          />
         ))}
 
         {/* ── Pendant — hangs from chain ── */}
@@ -49,8 +67,10 @@ export function NavJewelleryBgMobile() {
             return (
               <line
                 key={i}
-                x1={Math.cos(a) * 11} y1={Math.sin(a) * 11}
-                x2={Math.cos(a) * 22} y2={Math.sin(a) * 22}
+                x1={Math.cos(a) * 11}
+                y1={Math.sin(a) * 11}
+                x2={Math.cos(a) * 22}
+                y2={Math.sin(a) * 22}
               />
             );
           })}
@@ -136,11 +156,16 @@ export function NavJewelleryBgMobile() {
         {[20, 55, 90, 125, 160, 195, 230, 270, 310].map((cx, i) => {
           const cy = 770 + (i % 2 === 0 ? -2 : 2);
           return (
-            <ellipse key={cx} cx={cx} cy={cy} rx="9" ry="3"
-              transform={`rotate(${i % 2 === 0 ? -5 : 5},${cx},${cy})`} />
+            <ellipse
+              key={cx}
+              cx={cx}
+              cy={cy}
+              rx="9"
+              ry="3"
+              transform={`rotate(${i % 2 === 0 ? -5 : 5},${cx},${cy})`}
+            />
           );
         })}
-
       </g>
     </svg>
   );

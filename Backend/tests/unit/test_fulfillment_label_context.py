@@ -7,7 +7,6 @@ patched for every test.
 from decimal import Decimal
 from unittest.mock import AsyncMock, MagicMock, patch
 
-
 # ─── Mock helpers ─────────────────────────────────────────────────────────────
 
 
@@ -276,11 +275,9 @@ class TestShippingLabelServiceBarcode:
 
     def test_barcode_b64_returns_base64_string_when_library_works(self):
         import base64
-        from io import BytesIO
         from unittest.mock import MagicMock, patch
 
         fake_bytes = b"PNG_IMAGE_DATA"
-        fake_buf = BytesIO(fake_bytes)
 
         mock_bc_obj = MagicMock()
 

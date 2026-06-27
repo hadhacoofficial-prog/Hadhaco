@@ -88,14 +88,28 @@ export function Header() {
         {/* Utility bar */}
         <div className="relative z-10 hidden md:flex items-center px-8 py-2 text-[11px] tracking-[0.18em] uppercase text-muted-foreground">
           <div className="flex items-center gap-4">
-            <a href={instagramUrl} target="_blank" rel="noreferrer" aria-label="Instagram" className="hover:text-foreground transition">
+            <a
+              href={instagramUrl}
+              target="_blank"
+              rel="noreferrer"
+              aria-label="Instagram"
+              className="hover:text-foreground transition"
+            >
               <Instagram className="size-3.5" />
             </a>
-            <a href={youtubeUrl} target="_blank" rel="noreferrer" aria-label="YouTube" className="hover:text-foreground transition">
+            <a
+              href={youtubeUrl}
+              target="_blank"
+              rel="noreferrer"
+              aria-label="YouTube"
+              className="hover:text-foreground transition"
+            >
               <Youtube className="size-3.5" />
             </a>
           </div>
-          <p className="absolute left-1/2 -translate-x-1/2 text-foreground">The strong Decision · నిర్ణయం మీది నాణ్యత మాది</p>
+          <p className="absolute left-1/2 -translate-x-1/2 text-foreground">
+            The strong Decision · నిర్ణయం మీది నాణ్యత మాది
+          </p>
         </div>
 
         {/* Main bar */}
@@ -216,7 +230,10 @@ export function Header() {
             className="absolute left-0 top-0 h-dvh w-[85%] max-w-sm bg-background overflow-y-auto animate-slide-in-left shadow-2xl flex flex-col relative"
             aria-label="Mobile navigation"
           >
-            <div className="absolute inset-0 overflow-hidden pointer-events-none" aria-hidden="true">
+            <div
+              className="absolute inset-0 overflow-hidden pointer-events-none"
+              aria-hidden="true"
+            >
               <NavJewelleryBgMobile />
             </div>
             <div className="relative z-10 flex justify-between items-center p-6 pb-0">
@@ -273,10 +290,10 @@ export function Header() {
               <p className="text-[10px] tracking-[0.32em] uppercase text-muted-foreground">
                 Since 2025
               </p>
-                            <p className="text-[10px] tracking-[0.32em] uppercase text-muted-foreground">
+              <p className="text-[10px] tracking-[0.32em] uppercase text-muted-foreground">
                 The strong Decision
               </p>
-                            <p className="text-[10px] tracking-[0.32em] uppercase text-muted-foreground">
+              <p className="text-[10px] tracking-[0.32em] uppercase text-muted-foreground">
                 నిర్ణయం మీది నాణ్యత మాది
               </p>
             </div>

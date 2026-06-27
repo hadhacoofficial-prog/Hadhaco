@@ -297,25 +297,30 @@ class TestReviewService:
                 self.repo_cls, "get_by_id", AsyncMock(return_value=mock_review)
             ),
             patch.object(self.repo_cls, "update", AsyncMock(return_value=mock_updated)),
+            patch.object(self.svc, "_sync_product_rating", AsyncMock()),
         ):
             result = await self.svc.admin_action(
                 db, review_id=uuid.uuid4(), action="approve"
             )
         assert result is mock_updated
 
-    async def test_admin_action_reject_calls_soft_delete(self):
+    async def test_admin_action_reject_calls_update(self):
         db = AsyncMock()
         db.commit = AsyncMock()
         db.refresh = AsyncMock()
         mock_review = MagicMock()
+        mock_updated = MagicMock()
         with (
             patch.object(
                 self.repo_cls, "get_by_id", AsyncMock(return_value=mock_review)
             ),
-            patch.object(self.repo_cls, "soft_delete", AsyncMock()) as mock_del,
+            patch.object(
+                self.repo_cls, "update", AsyncMock(return_value=mock_updated)
+            ) as mock_upd,
+            patch.object(self.svc, "_sync_product_rating", AsyncMock()),
         ):
             await self.svc.admin_action(db, review_id=uuid.uuid4(), action="reject")
-        mock_del.assert_awaited_once()
+        mock_upd.assert_awaited_once()
 
     async def test_admin_action_flag(self):
         db = AsyncMock()
@@ -328,6 +333,7 @@ class TestReviewService:
                 self.repo_cls, "get_by_id", AsyncMock(return_value=mock_review)
             ),
             patch.object(self.repo_cls, "update", AsyncMock(return_value=mock_updated)),
+            patch.object(self.svc, "_sync_product_rating", AsyncMock()),
         ):
             await self.svc.admin_action(db, review_id=uuid.uuid4(), action="flag")
 
@@ -786,6 +792,7 @@ class TestReviewServiceImages:
             result = await self.svc.submit_review(
                 db,
                 user_id=user_id,
+                customer_name=None,
                 data=ReviewCreate(
                     product_id=product_id,
                     rating=5,

@@ -1,7 +1,17 @@
 ﻿import { useState, useEffect } from "react";
 import { createFileRoute } from "@tanstack/react-router";
 import { toast } from "sonner";
-import { Save, Settings2, Building2, Phone, Globe, Mail, MapPin, FileText, Tag } from "lucide-react";
+import {
+  Save,
+  Settings2,
+  Building2,
+  Phone,
+  Globe,
+  Mail,
+  MapPin,
+  FileText,
+  Tag,
+} from "lucide-react";
 import { useCompanyConfig, useUpdateCompanyConfig } from "@hadha/shared-api";
 import type { CompanyConfigUpdate } from "@hadha/shared-types";
 
@@ -41,7 +51,15 @@ function Field({
   );
 }
 
-function Section({ title, icon, children }: { title: string; icon: React.ReactNode; children: React.ReactNode }) {
+function Section({
+  title,
+  icon,
+  children,
+}: {
+  title: string;
+  icon: React.ReactNode;
+  children: React.ReactNode;
+}) {
   return (
     <div className="rounded-lg border border-border bg-card p-6 space-y-4">
       <div className="flex items-center gap-2 pb-2 border-b border-border">
@@ -58,9 +76,21 @@ function AdminTemplates() {
   const update = useUpdateCompanyConfig();
 
   const [form, setForm] = useState<Record<keyof CompanyConfigUpdate, string>>({
-    name: "", tagline: "", gstin: "", address_line1: "", address_line2: "",
-    city: "", state: "", postal_code: "", country: "IN", phone: "",
-    support_email: "", website: "", logo_url: "", instagram_url: "", facebook_url: "",
+    name: "",
+    tagline: "",
+    gstin: "",
+    address_line1: "",
+    address_line2: "",
+    city: "",
+    state: "",
+    postal_code: "",
+    country: "IN",
+    phone: "",
+    support_email: "",
+    website: "",
+    logo_url: "",
+    instagram_url: "",
+    facebook_url: "",
   });
   const [dirty, setDirty] = useState(false);
 
@@ -93,7 +123,7 @@ function AdminTemplates() {
 
   async function handleSave() {
     const payload = Object.fromEntries(
-      Object.entries(form).map(([k, v]) => [k, v === "" ? null : v])
+      Object.entries(form).map(([k, v]) => [k, v === "" ? null : v]),
     ) as CompanyConfigUpdate;
     try {
       await update.mutateAsync(payload);
@@ -166,27 +196,95 @@ function AdminTemplates() {
 
       <Section title="Address" icon={<MapPin className="size-4 text-muted-foreground" />}>
         <div className="grid grid-cols-2 gap-4">
-          <Field label="Address Line 1" name="address_line1" value={form.address_line1} onChange={handleChange} placeholder="Plot 42, Jewellery Complex" />
-          <Field label="Address Line 2" name="address_line2" value={form.address_line2} onChange={handleChange} placeholder="Jubilee Hills" />
-          <Field label="City" name="city" value={form.city} onChange={handleChange} placeholder="Hyderabad" />
-          <Field label="State" name="state" value={form.state} onChange={handleChange} placeholder="Telangana" />
-          <Field label="Postal Code" name="postal_code" value={form.postal_code} onChange={handleChange} placeholder="500033" />
-          <Field label="Country Code" name="country" value={form.country} onChange={handleChange} placeholder="IN" />
+          <Field
+            label="Address Line 1"
+            name="address_line1"
+            value={form.address_line1}
+            onChange={handleChange}
+            placeholder="Plot 42, Jewellery Complex"
+          />
+          <Field
+            label="Address Line 2"
+            name="address_line2"
+            value={form.address_line2}
+            onChange={handleChange}
+            placeholder="Jubilee Hills"
+          />
+          <Field
+            label="City"
+            name="city"
+            value={form.city}
+            onChange={handleChange}
+            placeholder="Hyderabad"
+          />
+          <Field
+            label="State"
+            name="state"
+            value={form.state}
+            onChange={handleChange}
+            placeholder="Telangana"
+          />
+          <Field
+            label="Postal Code"
+            name="postal_code"
+            value={form.postal_code}
+            onChange={handleChange}
+            placeholder="500033"
+          />
+          <Field
+            label="Country Code"
+            name="country"
+            value={form.country}
+            onChange={handleChange}
+            placeholder="IN"
+          />
         </div>
       </Section>
 
       <Section title="Contact" icon={<Phone className="size-4 text-muted-foreground" />}>
         <div className="grid grid-cols-2 gap-4">
-          <Field label="Phone" name="phone" value={form.phone} onChange={handleChange} placeholder="+91 98765 43210" type="tel" />
-          <Field label="Support Email" name="support_email" value={form.support_email} onChange={handleChange} placeholder="info@hadhajewellery.com" type="email" />
-          <Field label="Website" name="website" value={form.website} onChange={handleChange} placeholder="www.hadhajewellery.com" />
+          <Field
+            label="Phone"
+            name="phone"
+            value={form.phone}
+            onChange={handleChange}
+            placeholder="+91 98765 43210"
+            type="tel"
+          />
+          <Field
+            label="Support Email"
+            name="support_email"
+            value={form.support_email}
+            onChange={handleChange}
+            placeholder="info@hadhajewellery.com"
+            type="email"
+          />
+          <Field
+            label="Website"
+            name="website"
+            value={form.website}
+            onChange={handleChange}
+            placeholder="www.hadhajewellery.com"
+          />
         </div>
       </Section>
 
       <Section title="Social Media" icon={<Globe className="size-4 text-muted-foreground" />}>
         <div className="grid grid-cols-2 gap-4">
-          <Field label="Instagram URL" name="instagram_url" value={form.instagram_url} onChange={handleChange} placeholder="https://instagram.com/hadha" />
-          <Field label="Facebook URL" name="facebook_url" value={form.facebook_url} onChange={handleChange} placeholder="https://facebook.com/hadha" />
+          <Field
+            label="Instagram URL"
+            name="instagram_url"
+            value={form.instagram_url}
+            onChange={handleChange}
+            placeholder="https://instagram.com/hadha"
+          />
+          <Field
+            label="Facebook URL"
+            name="facebook_url"
+            value={form.facebook_url}
+            onChange={handleChange}
+            placeholder="https://facebook.com/hadha"
+          />
         </div>
       </Section>
 
@@ -196,17 +294,21 @@ function AdminTemplates() {
           <h2 className="text-sm font-semibold">Document Templates</h2>
         </div>
         <p className="text-sm text-muted-foreground">
-          Packing slips and shipping labels are generated automatically from the company settings above.
-          Email templates will be configurable here in a future update.
+          Packing slips and shipping labels are generated automatically from the company settings
+          above. Email templates will be configurable here in a future update.
         </p>
         <div className="grid grid-cols-2 gap-3 mt-3">
           <div className="rounded-md border border-border bg-card p-3">
             <div className="text-sm font-medium">Packing Slip</div>
-            <div className="text-xs text-muted-foreground mt-1">A4, shows order items, addresses, and totals</div>
+            <div className="text-xs text-muted-foreground mt-1">
+              A4, shows order items, addresses, and totals
+            </div>
           </div>
           <div className="rounded-md border border-border bg-card p-3">
             <div className="text-sm font-medium">Shipping Label</div>
-            <div className="text-xs text-muted-foreground mt-1">A4, shows delivery address for courier handlers</div>
+            <div className="text-xs text-muted-foreground mt-1">
+              A4, shows delivery address for courier handlers
+            </div>
           </div>
         </div>
       </div>
@@ -224,4 +326,3 @@ function AdminTemplates() {
     </div>
   );
 }
-

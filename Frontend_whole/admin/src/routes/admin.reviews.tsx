@@ -86,9 +86,7 @@ function AdminReviews() {
   return (
     <div>
       <header className="mb-6">
-        <p className="text-[11px] uppercase tracking-[0.3em] text-muted-foreground">
-          Moderation
-        </p>
+        <p className="text-[11px] uppercase tracking-[0.3em] text-muted-foreground">Moderation</p>
         <h1 className="font-display text-4xl mt-1">
           Reviews{" "}
           {pendingCount > 0 && activeTab === "all" && (
@@ -127,9 +125,7 @@ function AdminReviews() {
             <div className="flex flex-col md:flex-row md:items-start gap-4">
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2 flex-wrap mb-1">
-                  <span className="font-medium text-sm">
-                    {r.customer_name ?? "Customer"}
-                  </span>
+                  <span className="font-medium text-sm">{r.customer_name ?? "Customer"}</span>
                   {statusBadge(r)}
                   {r.is_verified_purchase && (
                     <span className="text-[10px] uppercase tracking-[0.18em] px-2 py-0.5 bg-secondary text-muted-foreground border border-border">
@@ -166,9 +162,7 @@ function AdminReviews() {
                     })}
                   </span>
                 </div>
-                {r.title && (
-                  <p className="font-display text-base mt-2">{r.title}</p>
-                )}
+                {r.title && <p className="font-display text-base mt-2">{r.title}</p>}
                 {r.body && (
                   <p className="text-sm text-muted-foreground mt-1 line-clamp-3">{r.body}</p>
                 )}
@@ -232,11 +226,7 @@ function AdminReviews() {
                     rel="noopener noreferrer"
                     className="size-16 border border-border overflow-hidden block hover:border-foreground transition"
                   >
-                    <img
-                      src={img.url}
-                      alt="Review"
-                      className="w-full h-full object-cover"
-                    />
+                    <img src={img.url} alt="Review" className="w-full h-full object-cover" />
                   </a>
                 ))}
               </div>

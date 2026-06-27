@@ -1,4 +1,4 @@
-"""Tests for OrderService.create_from_cart success path."""
+"""Tests for OrderService.create_payment_intent success path."""
 
 import uuid
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -69,18 +69,16 @@ def _make_address():
     return addr
 
 
-class TestOrderServiceCreateFromCart:
+class TestOrderServiceCreatePaymentIntent:
     def setup_method(self):
         from app.modules.orders.service import OrderService
 
         self.svc = OrderService()
 
-    async def test_create_from_cart_success_no_coupon(self):
+    async def test_create_payment_intent_success_no_coupon(self):
         from app.modules.addresses.repository import AddressRepository
         from app.modules.cart.repository import CartRepository
-        from app.modules.inventory.service import InventoryService
-        from app.modules.orders.schemas import CreateOrderRequest, OrderResponse
-        from app.modules.profiles.repository import ProfileRepository
+        from app.modules.orders.schemas import CreatePaymentIntentRequest
 
         user_id = uuid.uuid4()
         addr_id = uuid.uuid4()
@@ -93,7 +91,6 @@ class TestOrderServiceCreateFromCart:
         mock_addr = _make_address()
         prod_row = _make_prod_row(base_price=500.0, tax_rate=3.0, stock_quantity=10)
 
-        # db.execute returns fetchone row for product query
         prod_result = MagicMock()
         prod_result.fetchone.return_value = prod_row
         db = AsyncMock()
@@ -103,13 +100,6 @@ class TestOrderServiceCreateFromCart:
         mock_order = MagicMock()
         mock_order.id = uuid.uuid4()
         mock_order.items = []
-
-        mock_profile = MagicMock()
-        mock_profile.email = "haris@example.com"
-        mock_profile.phone = "9999999999"
-
-        mock_final_order = MagicMock()
-        mock_response = MagicMock()
 
         mock_reservation = MagicMock()
         mock_reservation.id = uuid.uuid4()
@@ -128,10 +118,6 @@ class TestOrderServiceCreateFromCart:
                 AsyncMock(),
             ),
             patch(
-                "app.modules.orders.service._reservation_svc.complete_order_reservations",
-                AsyncMock(),
-            ),
-            patch(
                 "app.modules.orders.service._repo.generate_order_number",
                 AsyncMock(return_value="ORD-2026-0001"),
             ),
@@ -140,34 +126,27 @@ class TestOrderServiceCreateFromCart:
                 AsyncMock(return_value=mock_order),
             ),
             patch("app.modules.orders.service._repo.add_item", AsyncMock()),
-            patch.object(InventoryService, "record_movement", AsyncMock()),
-            patch.object(CartRepository, "clear_items", AsyncMock()),
-            patch.object(
-                ProfileRepository, "get_by_id", AsyncMock(return_value=mock_profile)
-            ),
-            patch("app.core.events.event_bus.publish", AsyncMock()),
-            patch(
-                "app.modules.orders.service._repo.get_by_id",
-                AsyncMock(return_value=mock_final_order),
-            ),
-            patch.object(OrderResponse, "model_validate", return_value=mock_response),
+            patch("app.modules.orders.service._repo.update", AsyncMock()),
+            patch("asyncio.get_running_loop") as mock_loop,
         ):
-            result = await self.svc.create_from_cart(
+            mock_loop.return_value.run_in_executor = AsyncMock(
+                return_value={"id": "rzp_ord_test123"}
+            )
+            result = await self.svc.create_payment_intent(
                 db,
-                user_id=user_id,
-                payload=CreateOrderRequest(
+                user_id,
+                CreatePaymentIntentRequest(
                     shipping_address_id=addr_id,
-                    payment_method="razorpay",
                 ),
             )
 
-        assert result is mock_response
+        assert result.razorpay_order_id == "rzp_ord_test123"
 
-    async def test_create_from_cart_product_not_found_raises(self):
+    async def test_create_payment_intent_product_not_found_raises(self):
         from app.core.exceptions import ValidationError
         from app.modules.addresses.repository import AddressRepository
         from app.modules.cart.repository import CartRepository
-        from app.modules.orders.schemas import CreateOrderRequest
+        from app.modules.orders.schemas import CreatePaymentIntentRequest
 
         user_id = uuid.uuid4()
         cart_item = _make_cart_item()
@@ -186,26 +165,21 @@ class TestOrderServiceCreateFromCart:
                 CartRepository, "get_for_user", AsyncMock(return_value=mock_cart)
             ),
             patch.object(AddressRepository, "get", AsyncMock(return_value=mock_addr)),
-            patch(
-                "app.modules.orders.service._repo.generate_order_number",
-                AsyncMock(return_value="ORD-2026-0001"),
-            ),
         ):
             with pytest.raises(ValidationError, match="no longer available"):
-                await self.svc.create_from_cart(
+                await self.svc.create_payment_intent(
                     db,
-                    user_id=user_id,
-                    payload=CreateOrderRequest(
+                    user_id,
+                    CreatePaymentIntentRequest(
                         shipping_address_id=uuid.uuid4(),
-                        payment_method="razorpay",
                     ),
                 )
 
-    async def test_create_from_cart_insufficient_stock_raises(self):
+    async def test_create_payment_intent_insufficient_stock_raises(self):
         from app.core.exceptions import InventoryError
         from app.modules.addresses.repository import AddressRepository
         from app.modules.cart.repository import CartRepository
-        from app.modules.orders.schemas import CreateOrderRequest
+        from app.modules.orders.schemas import CreatePaymentIntentRequest
 
         user_id = uuid.uuid4()
         # Request 10, only 3 in stock, no backorder
@@ -234,21 +208,18 @@ class TestOrderServiceCreateFromCart:
             ),
         ):
             with pytest.raises(InventoryError, match="3 item"):
-                await self.svc.create_from_cart(
+                await self.svc.create_payment_intent(
                     db,
-                    user_id=user_id,
-                    payload=CreateOrderRequest(
+                    user_id,
+                    CreatePaymentIntentRequest(
                         shipping_address_id=uuid.uuid4(),
-                        payment_method="razorpay",
                     ),
                 )
 
-    async def test_create_from_cart_with_billing_address(self):
+    async def test_create_payment_intent_with_billing_address(self):
         from app.modules.addresses.repository import AddressRepository
         from app.modules.cart.repository import CartRepository
-        from app.modules.inventory.service import InventoryService
-        from app.modules.orders.schemas import CreateOrderRequest, OrderResponse
-        from app.modules.profiles.repository import ProfileRepository
+        from app.modules.orders.schemas import CreatePaymentIntentRequest
 
         user_id = uuid.uuid4()
         cart_item = _make_cart_item(quantity=1)
@@ -266,11 +237,6 @@ class TestOrderServiceCreateFromCart:
         mock_order = MagicMock()
         mock_order.id = uuid.uuid4()
         mock_order.items = []
-        mock_final_order = MagicMock()
-        mock_response = MagicMock()
-        mock_profile = MagicMock()
-        mock_profile.email = "test@example.com"
-        mock_profile.phone = None
 
         mock_reservation = MagicMock()
         mock_reservation.id = uuid.uuid4()
@@ -289,10 +255,6 @@ class TestOrderServiceCreateFromCart:
                 AsyncMock(),
             ),
             patch(
-                "app.modules.orders.service._reservation_svc.complete_order_reservations",
-                AsyncMock(),
-            ),
-            patch(
                 "app.modules.orders.service._repo.generate_order_number",
                 AsyncMock(return_value="ORD-2026-0002"),
             ),
@@ -301,37 +263,28 @@ class TestOrderServiceCreateFromCart:
                 AsyncMock(return_value=mock_order),
             ),
             patch("app.modules.orders.service._repo.add_item", AsyncMock()),
-            patch.object(InventoryService, "record_movement", AsyncMock()),
-            patch.object(CartRepository, "clear_items", AsyncMock()),
-            patch.object(
-                ProfileRepository, "get_by_id", AsyncMock(return_value=mock_profile)
-            ),
-            patch("app.core.events.event_bus.publish", AsyncMock()),
-            patch(
-                "app.modules.orders.service._repo.get_by_id",
-                AsyncMock(return_value=mock_final_order),
-            ),
-            patch.object(OrderResponse, "model_validate", return_value=mock_response),
+            patch("app.modules.orders.service._repo.update", AsyncMock()),
+            patch("asyncio.get_running_loop") as mock_loop,
         ):
-            result = await self.svc.create_from_cart(
+            mock_loop.return_value.run_in_executor = AsyncMock(
+                return_value={"id": "rzp_ord_test456"}
+            )
+            result = await self.svc.create_payment_intent(
                 db,
-                user_id=user_id,
-                payload=CreateOrderRequest(
+                user_id,
+                CreatePaymentIntentRequest(
                     shipping_address_id=uuid.uuid4(),
                     billing_address_id=uuid.uuid4(),  # separate billing
-                    payment_method="cod",
                 ),
             )
-        assert result is mock_response
+        assert result.razorpay_order_id == "rzp_ord_test456"
 
-    async def test_create_from_cart_with_coupon(self):
+    async def test_create_payment_intent_with_coupon(self):
         from app.modules.addresses.repository import AddressRepository
         from app.modules.cart.repository import CartRepository
         from app.modules.coupons.repository import CouponRepository
         from app.modules.coupons.service import CouponService
-        from app.modules.inventory.service import InventoryService
-        from app.modules.orders.schemas import CreateOrderRequest, OrderResponse
-        from app.modules.profiles.repository import ProfileRepository
+        from app.modules.orders.schemas import CreatePaymentIntentRequest
 
         user_id = uuid.uuid4()
         coupon_id = uuid.uuid4()
@@ -352,11 +305,6 @@ class TestOrderServiceCreateFromCart:
         mock_order.items = []
         mock_coupon = MagicMock()
         mock_coupon.coupon_type = "percentage"
-        mock_final_order = MagicMock()
-        mock_response = MagicMock()
-        mock_profile = MagicMock()
-        mock_profile.email = "test@example.com"
-        mock_profile.phone = "9999999999"
 
         mock_reservation = MagicMock()
         mock_reservation.id = uuid.uuid4()
@@ -375,10 +323,6 @@ class TestOrderServiceCreateFromCart:
                 AsyncMock(),
             ),
             patch(
-                "app.modules.orders.service._reservation_svc.complete_order_reservations",
-                AsyncMock(),
-            ),
-            patch(
                 "app.modules.orders.service._repo.generate_order_number",
                 AsyncMock(return_value="ORD-2026-0003"),
             ),
@@ -387,6 +331,7 @@ class TestOrderServiceCreateFromCart:
                 AsyncMock(return_value=mock_order),
             ),
             patch("app.modules.orders.service._repo.add_item", AsyncMock()),
+            patch("app.modules.orders.service._repo.update", AsyncMock()),
             patch.object(
                 CouponService,
                 "apply_and_reserve",
@@ -395,39 +340,28 @@ class TestOrderServiceCreateFromCart:
             patch.object(
                 CouponRepository, "get_by_id", AsyncMock(return_value=mock_coupon)
             ),
-            patch.object(CouponService, "finalize_usage", AsyncMock()),
-            patch.object(InventoryService, "record_movement", AsyncMock()),
-            patch.object(CartRepository, "clear_items", AsyncMock()),
-            patch.object(
-                ProfileRepository, "get_by_id", AsyncMock(return_value=mock_profile)
-            ),
-            patch("app.core.events.event_bus.publish", AsyncMock()),
-            patch(
-                "app.modules.orders.service._repo.get_by_id",
-                AsyncMock(return_value=mock_final_order),
-            ),
-            patch.object(OrderResponse, "model_validate", return_value=mock_response),
+            patch("asyncio.get_running_loop") as mock_loop,
         ):
-            result = await self.svc.create_from_cart(
+            mock_loop.return_value.run_in_executor = AsyncMock(
+                return_value={"id": "rzp_ord_coupon"}
+            )
+            result = await self.svc.create_payment_intent(
                 db,
-                user_id=user_id,
-                payload=CreateOrderRequest(
+                user_id,
+                CreatePaymentIntentRequest(
                     shipping_address_id=uuid.uuid4(),
-                    payment_method="razorpay",
                     coupon_code="SAVE10",
                 ),
             )
-        assert result is mock_response
+        assert result.razorpay_order_id == "rzp_ord_coupon"
 
-    async def test_create_from_cart_free_shipping_coupon(self):
+    async def test_create_payment_intent_free_shipping_coupon(self):
         """A free_shipping coupon type overrides shipping charge."""
         from app.modules.addresses.repository import AddressRepository
         from app.modules.cart.repository import CartRepository
         from app.modules.coupons.repository import CouponRepository
         from app.modules.coupons.service import CouponService
-        from app.modules.inventory.service import InventoryService
-        from app.modules.orders.schemas import CreateOrderRequest, OrderResponse
-        from app.modules.profiles.repository import ProfileRepository
+        from app.modules.orders.schemas import CreatePaymentIntentRequest
 
         user_id = uuid.uuid4()
         coupon_id = uuid.uuid4()
@@ -450,10 +384,6 @@ class TestOrderServiceCreateFromCart:
         # coupon_type = free_shipping
         mock_coupon = MagicMock()
         mock_coupon.coupon_type = "free_shipping"
-        mock_response = MagicMock()
-        mock_profile = MagicMock()
-        mock_profile.email = "t@t.com"
-        mock_profile.phone = None
 
         mock_reservation = MagicMock()
         mock_reservation.id = uuid.uuid4()
@@ -472,10 +402,6 @@ class TestOrderServiceCreateFromCart:
                 AsyncMock(),
             ),
             patch(
-                "app.modules.orders.service._reservation_svc.complete_order_reservations",
-                AsyncMock(),
-            ),
-            patch(
                 "app.modules.orders.service._repo.generate_order_number",
                 AsyncMock(return_value="ORD-2026-0004"),
             ),
@@ -484,6 +410,7 @@ class TestOrderServiceCreateFromCart:
                 AsyncMock(return_value=mock_order),
             ),
             patch("app.modules.orders.service._repo.add_item", AsyncMock()),
+            patch("app.modules.orders.service._repo.update", AsyncMock()),
             patch.object(
                 CouponService,
                 "apply_and_reserve",
@@ -492,37 +419,26 @@ class TestOrderServiceCreateFromCart:
             patch.object(
                 CouponRepository, "get_by_id", AsyncMock(return_value=mock_coupon)
             ),
-            patch.object(CouponService, "finalize_usage", AsyncMock()),
-            patch.object(InventoryService, "record_movement", AsyncMock()),
-            patch.object(CartRepository, "clear_items", AsyncMock()),
-            patch.object(
-                ProfileRepository, "get_by_id", AsyncMock(return_value=mock_profile)
-            ),
-            patch("app.core.events.event_bus.publish", AsyncMock()),
-            patch(
-                "app.modules.orders.service._repo.get_by_id",
-                AsyncMock(return_value=MagicMock()),
-            ),
-            patch.object(OrderResponse, "model_validate", return_value=mock_response),
+            patch("asyncio.get_running_loop") as mock_loop,
         ):
-            result = await self.svc.create_from_cart(
+            mock_loop.return_value.run_in_executor = AsyncMock(
+                return_value={"id": "rzp_ord_freeship"}
+            )
+            result = await self.svc.create_payment_intent(
                 db,
-                user_id=user_id,
-                payload=CreateOrderRequest(
+                user_id,
+                CreatePaymentIntentRequest(
                     shipping_address_id=uuid.uuid4(),
-                    payment_method="cod",
                     coupon_code="FREESHIP",
                 ),
             )
-        assert result is mock_response
+        assert result.razorpay_order_id == "rzp_ord_freeship"
 
-    async def test_create_from_cart_no_inventory_tracking(self):
+    async def test_create_payment_intent_no_inventory_tracking(self):
         """track_inventory=False skips stock check."""
         from app.modules.addresses.repository import AddressRepository
         from app.modules.cart.repository import CartRepository
-        from app.modules.inventory.service import InventoryService
-        from app.modules.orders.schemas import CreateOrderRequest, OrderResponse
-        from app.modules.profiles.repository import ProfileRepository
+        from app.modules.orders.schemas import CreatePaymentIntentRequest
 
         user_id = uuid.uuid4()
         # Requesting 100, only 1 in stock, but tracking disabled
@@ -541,10 +457,6 @@ class TestOrderServiceCreateFromCart:
         mock_order = MagicMock()
         mock_order.id = uuid.uuid4()
         mock_order.items = []
-        mock_response = MagicMock()
-        mock_profile = MagicMock()
-        mock_profile.email = "a@b.com"
-        mock_profile.phone = None
 
         mock_reservation = MagicMock()
         mock_reservation.id = uuid.uuid4()
@@ -563,10 +475,6 @@ class TestOrderServiceCreateFromCart:
                 AsyncMock(),
             ),
             patch(
-                "app.modules.orders.service._reservation_svc.complete_order_reservations",
-                AsyncMock(),
-            ),
-            patch(
                 "app.modules.orders.service._repo.generate_order_number",
                 AsyncMock(return_value="ORD-2026-0005"),
             ),
@@ -575,32 +483,26 @@ class TestOrderServiceCreateFromCart:
                 AsyncMock(return_value=mock_order),
             ),
             patch("app.modules.orders.service._repo.add_item", AsyncMock()),
-            patch.object(InventoryService, "record_movement", AsyncMock()),
-            patch.object(CartRepository, "clear_items", AsyncMock()),
-            patch.object(
-                ProfileRepository, "get_by_id", AsyncMock(return_value=mock_profile)
-            ),
-            patch("app.core.events.event_bus.publish", AsyncMock()),
-            patch(
-                "app.modules.orders.service._repo.get_by_id",
-                AsyncMock(return_value=MagicMock()),
-            ),
-            patch.object(OrderResponse, "model_validate", return_value=mock_response),
+            patch("app.modules.orders.service._repo.update", AsyncMock()),
+            patch("asyncio.get_running_loop") as mock_loop,
         ):
-            result = await self.svc.create_from_cart(
+            mock_loop.return_value.run_in_executor = AsyncMock(
+                return_value={"id": "rzp_ord_notrack"}
+            )
+            result = await self.svc.create_payment_intent(
                 db,
-                user_id=user_id,
-                payload=CreateOrderRequest(
-                    shipping_address_id=uuid.uuid4(), payment_method="razorpay"
+                user_id,
+                CreatePaymentIntentRequest(
+                    shipping_address_id=uuid.uuid4(),
                 ),
             )
-        assert result is mock_response
+        assert result.razorpay_order_id == "rzp_ord_notrack"
 
-    async def test_create_from_cart_address_not_found_raises(self):
+    async def test_create_payment_intent_address_not_found_raises(self):
         from app.core.exceptions import NotFoundError
         from app.modules.addresses.repository import AddressRepository
         from app.modules.cart.repository import CartRepository
-        from app.modules.orders.schemas import CreateOrderRequest
+        from app.modules.orders.schemas import CreatePaymentIntentRequest
 
         user_id = uuid.uuid4()
         mock_cart = MagicMock()
@@ -615,10 +517,10 @@ class TestOrderServiceCreateFromCart:
             patch.object(AddressRepository, "get", AsyncMock(return_value=None)),
         ):
             with pytest.raises(NotFoundError, match="Address not found"):
-                await self.svc.create_from_cart(
+                await self.svc.create_payment_intent(
                     db,
-                    user_id=user_id,
-                    payload=CreateOrderRequest(
-                        shipping_address_id=uuid.uuid4(), payment_method="razorpay"
+                    user_id,
+                    CreatePaymentIntentRequest(
+                        shipping_address_id=uuid.uuid4(),
                     ),
                 )

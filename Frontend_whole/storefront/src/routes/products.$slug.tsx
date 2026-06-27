@@ -310,9 +310,7 @@ function ProductPage() {
 
         {/* Info */}
         <div>
-          <p className="text-[11px] uppercase tracking-[0.22em] text-amber-600">
-            Hadha Jewellery
-          </p>
+          <p className="text-[11px] uppercase tracking-[0.22em] text-amber-600">Hadha Jewellery</p>
           <h1 className="font-display text-3xl md:text-4xl mt-2 leading-tight">{product.name}</h1>
 
           <button
@@ -587,7 +585,9 @@ function ProductPage() {
               onRefresh={() => {
                 refetchReviews();
                 refetchSummary();
-                queryClient.invalidateQueries({ queryKey: queryKeys.reviews.forProduct(product.id) });
+                queryClient.invalidateQueries({
+                  queryKey: queryKeys.reviews.forProduct(product.id),
+                });
                 queryClient.invalidateQueries({ queryKey: queryKeys.reviews.summary(product.id) });
               }}
             />
@@ -688,9 +688,7 @@ function ReviewCard({ review }: { review: Review }) {
           </p>
         )}
       </div>
-      {review.text && (
-        <p className="text-sm text-foreground/80 leading-relaxed">{review.text}</p>
-      )}
+      {review.text && <p className="text-sm text-foreground/80 leading-relaxed">{review.text}</p>}
       {(review.images?.length ?? 0) > 0 && (
         <div className="mt-3 flex gap-2 flex-wrap">
           {review.images!.map((img, i) => (
@@ -733,9 +731,7 @@ function ReviewsSection({
   }, []);
 
   const approvedReviews = reviews.filter((r) => r.isApproved);
-  const ownUnapproved = reviews.filter(
-    (r) => r.userId === currentUserId && !r.isApproved,
-  );
+  const ownUnapproved = reviews.filter((r) => r.userId === currentUserId && !r.isApproved);
   const displayReviews = [...ownUnapproved, ...approvedReviews];
 
   return (
@@ -813,8 +809,7 @@ function WriteReviewModal({
       onSuccess();
       onClose();
     } catch (err: unknown) {
-      const msg =
-        (err as { message?: string })?.message ?? "Failed to submit review.";
+      const msg = (err as { message?: string })?.message ?? "Failed to submit review.";
       toast.error(msg);
     } finally {
       setSubmitting(false);
@@ -862,9 +857,7 @@ function WriteReviewModal({
               className="w-full border border-border bg-background px-3 py-2.5 text-sm resize-none focus:outline-none focus:border-foreground transition"
               maxLength={2000}
             />
-            <p className="text-[11px] text-muted-foreground mt-1 text-right">
-              {body.length}/2000
-            </p>
+            <p className="text-[11px] text-muted-foreground mt-1 text-right">{body.length}/2000</p>
           </div>
           <div>
             <label className="text-[11px] uppercase tracking-[0.22em] text-muted-foreground block mb-2">
@@ -1083,7 +1076,10 @@ function ProductImageViewer({
         const dy = e.touches[0].clientY - e.touches[1].clientY;
         const dist = Math.hypot(dx, dy);
         if (t.lastPinchDist > 0) {
-          const newScale = Math.max(1, Math.min(MOBILE_MAX_SCALE, t.scale * (dist / t.lastPinchDist)));
+          const newScale = Math.max(
+            1,
+            Math.min(MOBILE_MAX_SCALE, t.scale * (dist / t.lastPinchDist)),
+          );
           t.scale = newScale;
           setTouchScale(newScale);
         }
@@ -1200,9 +1196,7 @@ function ProductImageViewer({
         style={{
           transformOrigin: cursorOrigin,
           transform: `scale(${effectiveDesktopScale})`,
-          transition: isHovering
-            ? "transform 0.15s ease-out"
-            : "transform 0.3s ease-out",
+          transition: isHovering ? "transform 0.15s ease-out" : "transform 0.3s ease-out",
           willChange: "transform",
           imageRendering: "auto",
         }}

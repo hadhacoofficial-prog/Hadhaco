@@ -1,14 +1,7 @@
 import { useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import {
-  ChevronDown,
-  ChevronRight,
-  Plus,
-  Tag,
-  Trash2,
-  X,
-} from "lucide-react";
+import { ChevronDown, ChevronRight, Plus, Tag, Trash2, X } from "lucide-react";
 import { toast } from "sonner";
 import { api } from "@/lib/api/client";
 import { queryKeys } from "@/lib/api/queryKeys";
@@ -64,8 +57,7 @@ function AdminCoupons() {
   });
 
   const createMutation = useMutation({
-    mutationFn: (body: CreateCouponDto) =>
-      api.post<CouponDto>("/admin/coupons", { body }),
+    mutationFn: (body: CreateCouponDto) => api.post<CouponDto>("/admin/coupons", { body }),
     onSuccess: (c) => {
       queryClient.invalidateQueries({ queryKey: ["admin", "coupons"] });
       toast.success(`Saved ${c.code}`);
@@ -90,18 +82,14 @@ function AdminCoupons() {
   };
 
   const list = coupons ?? [];
-  const set = (patch: Partial<CreateCouponDto>) =>
-    setDraft((d) => ({ ...d, ...patch }));
+  const set = (patch: Partial<CreateCouponDto>) => setDraft((d) => ({ ...d, ...patch }));
 
   return (
     <div>
       <header className="mb-8">
-        <p className="text-[11px] uppercase tracking-[0.3em] text-muted-foreground">
-          Promotions
-        </p>
+        <p className="text-[11px] uppercase tracking-[0.3em] text-muted-foreground">Promotions</p>
         <h1 className="font-display text-4xl mt-1">
-          Coupons{" "}
-          <span className="text-muted-foreground text-2xl">({list.length})</span>
+          Coupons <span className="text-muted-foreground text-2xl">({list.length})</span>
         </h1>
       </header>
 
@@ -164,10 +152,7 @@ function AdminCoupons() {
               ))}
               {list.length === 0 && (
                 <tr>
-                  <td
-                    colSpan={7}
-                    className="px-4 py-10 text-center text-muted-foreground text-sm"
-                  >
+                  <td colSpan={7} className="px-4 py-10 text-center text-muted-foreground text-sm">
                     No coupons yet. Create one →
                   </td>
                 </tr>
@@ -226,11 +211,7 @@ function StatusBadge({ status }: { status: CouponStatus }) {
         ? "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400"
         : "bg-secondary text-muted-foreground";
   return (
-    <span
-      className={`text-[10px] uppercase tracking-[0.22em] px-2 py-0.5 ${cls}`}
-    >
-      {status}
-    </span>
+    <span className={`text-[10px] uppercase tracking-[0.22em] px-2 py-0.5 ${cls}`}>{status}</span>
   );
 }
 
@@ -248,8 +229,7 @@ function CouponDetail({ coupon: c, onClose }: { coupon: CouponDto; onClose: () =
   );
 
   const yn = (v: boolean) => (v ? "Yes" : "No");
-  const list = (arr: string[] | null) =>
-    arr?.length ? arr.join(", ") : "—";
+  const list = (arr: string[] | null) => (arr?.length ? arr.join(", ") : "—");
 
   return (
     <div className="space-y-1 text-sm">
@@ -335,9 +315,7 @@ function Section({
 function F({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <label className="grid gap-1">
-      <span className="text-[11px] uppercase tracking-[0.22em] text-muted-foreground">
-        {label}
-      </span>
+      <span className="text-[11px] uppercase tracking-[0.22em] text-muted-foreground">{label}</span>
       {children}
     </label>
   );
@@ -345,8 +323,7 @@ function F({ label, children }: { label: string; children: React.ReactNode }) {
 
 const inputCls =
   "border border-border bg-background px-3 py-2 text-sm w-full focus:outline-none focus:border-foreground transition";
-const checkCls =
-  "flex items-center gap-2 text-sm cursor-pointer select-none";
+const checkCls = "flex items-center gap-2 text-sm cursor-pointer select-none";
 
 // ── Textarea helper for list fields ──────────────────────────────────────────
 
@@ -391,8 +368,7 @@ function CouponForm({
   onSubmit: () => void;
   isPending: boolean;
 }) {
-  const toggle = (id: string) =>
-    setOpenSection(openSection === id ? "" : id);
+  const toggle = (id: string) => setOpenSection(openSection === id ? "" : id);
 
   return (
     <div className="space-y-0">
@@ -467,7 +443,12 @@ function CouponForm({
       </Section>
 
       {/* Validity */}
-      <Section id="validity" label="Validity period" open={openSection === "validity"} onToggle={toggle}>
+      <Section
+        id="validity"
+        label="Validity period"
+        open={openSection === "validity"}
+        onToggle={toggle}
+      >
         <F label="Valid from">
           <input
             type="datetime-local"
@@ -487,7 +468,12 @@ function CouponForm({
       </Section>
 
       {/* Discount rules */}
-      <Section id="discount" label="Discount rules" open={openSection === "discount"} onToggle={toggle}>
+      <Section
+        id="discount"
+        label="Discount rules"
+        open={openSection === "discount"}
+        onToggle={toggle}
+      >
         <F label="Min order amount (₹)">
           <input
             type="number"
@@ -535,9 +521,7 @@ function CouponForm({
             type="number"
             min={1}
             value={d.usage_limit ?? ""}
-            onChange={(e) =>
-              set({ usage_limit: e.target.value ? Number(e.target.value) : null })
-            }
+            onChange={(e) => set({ usage_limit: e.target.value ? Number(e.target.value) : null })}
             className={inputCls}
             placeholder="Unlimited"
           />
@@ -565,7 +549,12 @@ function CouponForm({
       </Section>
 
       {/* Customer eligibility */}
-      <Section id="eligibility" label="Customer eligibility" open={openSection === "eligibility"} onToggle={toggle}>
+      <Section
+        id="eligibility"
+        label="Customer eligibility"
+        open={openSection === "eligibility"}
+        onToggle={toggle}
+      >
         <label className={checkCls}>
           <input
             type="checkbox"
@@ -611,7 +600,12 @@ function CouponForm({
       </Section>
 
       {/* Product / category */}
-      <Section id="products" label="Product restrictions" open={openSection === "products"} onToggle={toggle}>
+      <Section
+        id="products"
+        label="Product restrictions"
+        open={openSection === "products"}
+        onToggle={toggle}
+      >
         <ListField
           label="Eligible product IDs"
           value={d.eligible_product_ids}
@@ -645,7 +639,12 @@ function CouponForm({
       </Section>
 
       {/* Region */}
-      <Section id="region" label="Region restrictions" open={openSection === "region"} onToggle={toggle}>
+      <Section
+        id="region"
+        label="Region restrictions"
+        open={openSection === "region"}
+        onToggle={toggle}
+      >
         <ListField
           label="Allowed states"
           value={d.allowed_states}
@@ -667,28 +666,31 @@ function CouponForm({
       </Section>
 
       {/* Methods */}
-      <Section id="methods" label="Payment & shipping" open={openSection === "methods"} onToggle={toggle}>
+      <Section
+        id="methods"
+        label="Payment & shipping"
+        open={openSection === "methods"}
+        onToggle={toggle}
+      >
         <F label="Allowed payment methods">
           <div className="grid gap-1.5">
-            {["upi", "credit_card", "debit_card", "net_banking", "wallet", "cod"].map(
-              (m) => (
-                <label key={m} className={checkCls}>
-                  <input
-                    type="checkbox"
-                    checked={(d.allowed_payment_methods ?? []).includes(m)}
-                    onChange={(e) => {
-                      const curr = d.allowed_payment_methods ?? [];
-                      set({
-                        allowed_payment_methods: e.target.checked
-                          ? [...curr, m]
-                          : curr.filter((x) => x !== m) || null,
-                      });
-                    }}
-                  />
-                  {m.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase())}
-                </label>
-              ),
-            )}
+            {["upi", "credit_card", "debit_card", "net_banking", "wallet", "cod"].map((m) => (
+              <label key={m} className={checkCls}>
+                <input
+                  type="checkbox"
+                  checked={(d.allowed_payment_methods ?? []).includes(m)}
+                  onChange={(e) => {
+                    const curr = d.allowed_payment_methods ?? [];
+                    set({
+                      allowed_payment_methods: e.target.checked
+                        ? [...curr, m]
+                        : curr.filter((x) => x !== m) || null,
+                    });
+                  }}
+                />
+                {m.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase())}
+              </label>
+            ))}
           </div>
         </F>
         <F label="Allowed shipping methods">

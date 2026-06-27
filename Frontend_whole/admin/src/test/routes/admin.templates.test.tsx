@@ -38,7 +38,8 @@ vi.mock("lucide-react", () => ({
 
 // Import after mocks
 import { Route } from "../../routes/admin.templates";
-const AdminTemplates = (Route as unknown as { options: { component: React.ComponentType } }).options.component;
+const AdminTemplates = (Route as unknown as { options: { component: React.ComponentType } }).options
+  .component;
 
 const mockConfig = {
   name: "Hadha Jewellery",
@@ -172,9 +173,7 @@ describe("AdminTemplates — Save Changes", () => {
     fireEvent.change(nameInput, { target: { value: "New Name" } });
     const buttons = screen.getAllByRole("button", { name: /save changes/i });
     fireEvent.click(buttons[0]);
-    await waitFor(() =>
-      expect(toast.success).toHaveBeenCalledWith("Company settings saved")
-    );
+    await waitFor(() => expect(toast.success).toHaveBeenCalledWith("Company settings saved"));
   });
 
   it("shows error toast when save fails", async () => {
@@ -184,9 +183,7 @@ describe("AdminTemplates — Save Changes", () => {
     fireEvent.change(nameInput, { target: { value: "New Name" } });
     const buttons = screen.getAllByRole("button", { name: /save changes/i });
     fireEvent.click(buttons[0]);
-    await waitFor(() =>
-      expect(toast.error).toHaveBeenCalledWith("Failed to save settings")
-    );
+    await waitFor(() => expect(toast.error).toHaveBeenCalledWith("Failed to save settings"));
   });
 
   it("Save button shows 'Saving' text when isPending is true", () => {

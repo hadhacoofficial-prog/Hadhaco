@@ -507,8 +507,8 @@ class TestCreateFromCartCOD:
 
         self.svc = OrderService()
 
-    async def test_cod_reserves_then_immediately_completes(self):
-        """COD flow: reserve_items called, then complete_order_reservations called."""
+    async def test_reserves_and_links_on_checkout(self):
+        """create_payment_intent: reserve_items and link_reservations_to_order are called."""
         user_id = uuid.uuid4()
         product_id = uuid.uuid4()
         cart_item = _make_cart_item(product_id=product_id, quantity=1)
@@ -525,18 +525,16 @@ class TestCreateFromCartCOD:
 
         addr = _make_address()
         reservation = _make_reservation()
-        mock_order = _make_order(user_id=user_id, status="confirmed")
+        mock_order = _make_order(user_id=user_id, status="payment_pending")
 
         payload = MagicMock()
         payload.shipping_address_id = uuid.uuid4()
         payload.billing_address_id = None
         payload.coupon_code = None
         payload.notes = None
-        payload.payment_method = "cod"
 
         with patch("app.modules.cart.repository.CartRepository") as MockCartRepo:
             MockCartRepo.return_value.get_for_user = AsyncMock(return_value=mock_cart)
-            MockCartRepo.return_value.clear_items = AsyncMock()
             with patch(
                 "app.modules.addresses.repository.AddressRepository"
             ) as MockAddrRepo:
@@ -550,48 +548,37 @@ class TestCreateFromCartCOD:
                         AsyncMock(),
                     ) as mock_link:
                         with patch(
-                            "app.modules.orders.service._reservation_svc.complete_order_reservations",
-                            AsyncMock(),
-                        ) as mock_complete:
+                            "app.modules.orders.service._repo.generate_order_number",
+                            AsyncMock(return_value="ORD-2024-001"),
+                        ):
                             with patch(
-                                "app.modules.orders.service._repo.generate_order_number",
-                                AsyncMock(return_value="ORD-2024-001"),
+                                "app.modules.orders.service._repo.create",
+                                AsyncMock(return_value=mock_order),
                             ):
                                 with patch(
-                                    "app.modules.orders.service._repo.create",
-                                    AsyncMock(return_value=mock_order),
+                                    "app.modules.orders.service._repo.add_item",
+                                    AsyncMock(),
                                 ):
                                     with patch(
-                                        "app.modules.orders.service._repo.add_item",
+                                        "app.modules.orders.service._repo.update",
                                         AsyncMock(),
                                     ):
                                         with patch(
-                                            "app.modules.orders.service._repo.get_by_id",
-                                            AsyncMock(return_value=mock_order),
-                                        ):
-                                            with patch(
-                                                "app.modules.profiles.repository.ProfileRepository"
-                                            ) as MockProfile:
-                                                MockProfile.return_value.get_by_id = (
-                                                    AsyncMock(return_value=None)
+                                            "asyncio.get_running_loop"
+                                        ) as mock_loop:
+                                            mock_loop.return_value.run_in_executor = (
+                                                AsyncMock(
+                                                    return_value={
+                                                        "id": "rzp_ord_cod_test"
+                                                    }
                                                 )
-                                                with patch(
-                                                    "app.modules.orders.service.event_bus.publish",
-                                                    AsyncMock(),
-                                                ):
-                                                    with patch(
-                                                        "app.modules.orders.schemas.OrderResponse.model_validate",
-                                                        MagicMock(
-                                                            return_value=MagicMock()
-                                                        ),
-                                                    ):
-                                                        await self.svc.create_from_cart(
-                                                            db, user_id, payload
-                                                        )
+                                            )
+                                            await self.svc.create_payment_intent(
+                                                db, user_id, payload
+                                            )
 
         mock_reserve.assert_called_once()
         mock_link.assert_called_once()
-        mock_complete.assert_called_once_with(db, mock_order.id)
 
     async def test_cod_empty_cart_raises_validation_error(self):
         from app.core.exceptions import ValidationError
@@ -608,7 +595,7 @@ class TestCreateFromCartCOD:
             MockCartRepo.return_value.get_for_user = AsyncMock(return_value=None)
 
             with pytest.raises(ValidationError, match="Cart is empty"):
-                await self.svc.create_from_cart(db, uuid.uuid4(), payload)
+                await self.svc.create_payment_intent(db, uuid.uuid4(), payload)
 
 
 # ── TestCancelOrderReservation ────────────────────────────────────────────────

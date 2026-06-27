@@ -67,6 +67,7 @@ class TestOrderServiceGetAndList:
         mock_order.total = 999.0
         mock_order.created_at = datetime.now(UTC)
         mock_order.items = []
+        mock_order.complimentary_gift = None
         with patch(
             "app.modules.orders.service._repo.list_for_user",
             AsyncMock(return_value=([mock_order], 1)),
@@ -88,6 +89,7 @@ class TestOrderServiceGetAndList:
         mock_order.fulfillment_status = "pending"
         mock_order.total = 1500.0
         mock_order.created_at = datetime.now(UTC)
+        mock_order.complimentary_gift = None
         with patch(
             "app.modules.orders.service._repo.list_all",
             AsyncMock(return_value=([mock_order], 1)),
@@ -281,24 +283,23 @@ class TestOrderServiceCreateFromCart:
     async def test_create_raises_validation_error_when_cart_empty(self):
         from app.core.exceptions import ValidationError
         from app.modules.cart.repository import CartRepository
-        from app.modules.orders.schemas import CreateOrderRequest
+        from app.modules.orders.schemas import CreatePaymentIntentRequest
 
         db = AsyncMock()
         with patch.object(CartRepository, "get_for_user", AsyncMock(return_value=None)):
             with pytest.raises(ValidationError, match="Cart is empty"):
-                await self.svc.create_from_cart(
+                await self.svc.create_payment_intent(
                     db,
                     uuid.uuid4(),
-                    CreateOrderRequest(
+                    CreatePaymentIntentRequest(
                         shipping_address_id=uuid.uuid4(),
-                        payment_method="razorpay",
                     ),
                 )
 
     async def test_create_raises_error_when_cart_has_no_items(self):
         from app.core.exceptions import ValidationError
         from app.modules.cart.repository import CartRepository
-        from app.modules.orders.schemas import CreateOrderRequest
+        from app.modules.orders.schemas import CreatePaymentIntentRequest
 
         db = AsyncMock()
         empty_cart = MagicMock()
@@ -307,12 +308,11 @@ class TestOrderServiceCreateFromCart:
             CartRepository, "get_for_user", AsyncMock(return_value=empty_cart)
         ):
             with pytest.raises(ValidationError, match="Cart is empty"):
-                await self.svc.create_from_cart(
+                await self.svc.create_payment_intent(
                     db,
                     uuid.uuid4(),
-                    CreateOrderRequest(
+                    CreatePaymentIntentRequest(
                         shipping_address_id=uuid.uuid4(),
-                        payment_method="razorpay",
                     ),
                 )
 

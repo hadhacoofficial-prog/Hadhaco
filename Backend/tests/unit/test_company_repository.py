@@ -6,7 +6,6 @@ import pytest
 
 import app.modules.company.models  # noqa: F401  — ensure mapper is configured
 
-
 # ─── Mock helpers ─────────────────────────────────────────────────────────────
 
 
@@ -80,7 +79,7 @@ class TestCompanyConfigRepositoryUpdate:
 
     async def test_update_creates_new_company_config_when_none_exists(self):
         db = _db(_scalar_one_or_none(None))
-        result = await self.repo.update(db, {"name": "Hadha"})
+        await self.repo.update(db, {"name": "Hadha"})
 
         # db.add must have been called with a CompanyConfig(id=1)
         assert db.add.called

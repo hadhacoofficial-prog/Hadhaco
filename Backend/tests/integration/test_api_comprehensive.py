@@ -32,7 +32,9 @@ class TestAuthRequiredEndpoints:
         assert (await client.get("/api/v1/orders")).status_code == 401
 
     async def test_order_create_requires_auth(self, client):
-        assert (await client.post("/api/v1/orders", json={})).status_code == 401
+        assert (
+            await client.post("/api/v1/orders/create-payment", json={})
+        ).status_code == 401
 
     async def test_coupon_validate_requires_auth(self, client):
         r = await client.post(

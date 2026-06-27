@@ -43,8 +43,7 @@ export function WelcomeOfferModal() {
         </button>
 
         <div className="px-8 pt-10 pb-8 text-center">
-
-            <img src={logoAsset} alt="Hadha" className="h-26 w-46 mx-auto" />
+          <img src={logoAsset} alt="Hadha" className="h-26 w-46 mx-auto" />
 
           <p className="text-[11px] tracking-[0.32em] uppercase text-primary mb-3 font-cinzel">
             A gift from Hadha

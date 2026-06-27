@@ -85,6 +85,7 @@ class TestOrderServiceList:
         mock_order.total = Decimal("1500.00")
         mock_order.created_at = datetime.now(UTC)
         mock_order.items = []
+        mock_order.complimentary_gift = None
         with patch(
             "app.modules.orders.service._repo.list_for_user",
             AsyncMock(return_value=([mock_order], 1)),
@@ -128,6 +129,7 @@ class TestOrderServiceList:
         mock_order.fulfillment_status = "pending"
         mock_order.total = Decimal("500.00")
         mock_order.created_at = datetime.now(UTC)
+        mock_order.complimentary_gift = None
         with patch(
             "app.modules.orders.service._repo.list_all",
             AsyncMock(return_value=([mock_order], 1)),
@@ -277,6 +279,10 @@ class TestOrderServiceUpdateStatus:
             patch(
                 "app.modules.orders.schemas.OrderResponse.model_validate",
                 return_value=MagicMock(),
+            ),
+            patch(
+                "app.modules.orders.service._reservation_svc.release_order_reservations",
+                AsyncMock(),
             ),
         ):
             await self.svc.update_status(

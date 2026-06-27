@@ -84,7 +84,17 @@ function AdminOrders() {
       <div className="bg-background border border-border overflow-x-auto">
         {isLoading ? (
           <TableSkeleton
-            headers={["Order #", "Date", "Items", "Total", "Payment", "Status", "Fulfillment", "Gift", ""]}
+            headers={[
+              "Order #",
+              "Date",
+              "Items",
+              "Total",
+              "Payment",
+              "Status",
+              "Fulfillment",
+              "Gift",
+              "",
+            ]}
             rows={8}
           />
         ) : (

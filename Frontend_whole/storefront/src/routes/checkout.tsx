@@ -633,7 +633,8 @@ function CheckoutPage() {
                       shippingMethod,
                       deliveryState: addresses.find((a) => a.id === selectedAddressId)?.state,
                       deliveryCity: addresses.find((a) => a.id === selectedAddressId)?.city,
-                      deliveryPincode: addresses.find((a) => a.id === selectedAddressId)?.postal_code,
+                      deliveryPincode: addresses.find((a) => a.id === selectedAddressId)
+                        ?.postal_code,
                     }}
                   />
                 </Section>

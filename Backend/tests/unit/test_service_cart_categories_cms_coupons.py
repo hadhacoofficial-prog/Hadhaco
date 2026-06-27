@@ -70,12 +70,18 @@ class TestCouponServiceValidate:
         now = datetime.now(UTC)
         c = MagicMock()
         c.is_active = True
+        c.status = "active"
         c.valid_from = now - timedelta(days=1)
         c.valid_until = None
         c.usage_limit = None
         c.usage_count = 0
         c.min_order_amount = 0
         c.per_user_limit = 5
+        c.one_time_per_customer = False
+        c.first_order_only = False
+        c.new_customer_only = False
+        c.returning_customer_only = False
+        c.max_order_amount = None
         c.coupon_type = "percentage"
         c.value = 10
         c.max_discount = None
@@ -96,7 +102,7 @@ class TestCouponServiceValidate:
 
     async def test_inactive_coupon_returns_invalid(self):
         db = AsyncMock()
-        c = self._active_coupon(is_active=False)
+        c = self._active_coupon(is_active=False, status="inactive")
         with patch(
             "app.modules.coupons.service._repo.get_by_code", AsyncMock(return_value=c)
         ):
@@ -132,17 +138,24 @@ class TestCouponServiceValidate:
         ):
             result = await self.svc.validate(db, "SAVE10", 1000, uuid.uuid4())
         assert result.valid is False
-        assert "limit" in result.message
+        assert "available" in result.message
 
     async def test_below_minimum_order_returns_invalid(self):
         db = AsyncMock()
         c = self._active_coupon(min_order_amount=500)
-        with patch(
-            "app.modules.coupons.service._repo.get_by_code", AsyncMock(return_value=c)
+        with (
+            patch(
+                "app.modules.coupons.service._repo.get_by_code",
+                AsyncMock(return_value=c),
+            ),
+            patch(
+                "app.modules.coupons.service._repo.get_user_usage_count",
+                AsyncMock(return_value=0),
+            ),
         ):
             result = await self.svc.validate(db, "SAVE10", 100, uuid.uuid4())
         assert result.valid is False
-        assert "Minimum" in result.message
+        assert "Add" in result.message
 
     async def test_per_user_limit_exceeded_returns_invalid(self):
         db = AsyncMock()
