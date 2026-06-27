@@ -169,24 +169,25 @@ class ReviewRepository:
         limit: int = 50,
     ) -> list[dict[str, Any]]:
         """Admin: list all reviews with product name (all statuses unless filtered)."""
-        status_filter = ""
+        params: dict[str, Any] = {"offset": offset, "limit": limit}
         if status == "approved":
-            status_filter = "AND r.is_approved = true"
+            where_extra = "AND r.is_approved = true"
         elif status == "rejected":
-            status_filter = "AND r.is_rejected = true AND r.is_approved = false"
+            where_extra = "AND r.is_rejected = true AND r.is_approved = false"
         elif status == "pending":
-            status_filter = "AND r.is_approved = false AND r.is_rejected = false"
+            where_extra = "AND r.is_approved = false AND r.is_rejected = false"
+        else:
+            where_extra = ""
 
-        q = text(f"""
-            SELECT r.*, p.name AS product_name
-            FROM reviews r
-            LEFT JOIN products p ON p.id = r.product_id
-            WHERE r.deleted_at IS NULL
-              {status_filter}
-            ORDER BY r.created_at DESC
-            OFFSET :offset LIMIT :limit
-        """)
-        result = await db.execute(q, {"offset": offset, "limit": limit})
+        q = text(
+            "SELECT r.*, p.name AS product_name "
+            "FROM reviews r "
+            "LEFT JOIN products p ON p.id = r.product_id "
+            f"WHERE r.deleted_at IS NULL {where_extra} "  # nosec B608 — where_extra is one of three hardcoded literals, never user input
+            "ORDER BY r.created_at DESC "
+            "OFFSET :offset LIMIT :limit"
+        )
+        result = await db.execute(q, params)
         return [dict(r._mapping) for r in result.fetchall()]
 
     # ── Rating summary ────────────────────────────────────────────────────────
