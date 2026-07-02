@@ -45,10 +45,7 @@ function AdminCustomers() {
 
       <div className="bg-background border border-border overflow-x-auto">
         {isLoading ? (
-          <TableSkeleton
-            headers={["Customer", "Email", "Orders", "Total Spent", "Joined"]}
-            rows={8}
-          />
+          <TableSkeleton headers={["Email", "Name", "Role", "Status", "Joined"]} rows={8} />
         ) : (
           <table className="w-full text-sm">
             <thead className="bg-secondary text-left text-[11px] uppercase tracking-[0.18em] text-muted-foreground">

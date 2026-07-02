@@ -3,6 +3,11 @@ import { useQuery } from "@tanstack/react-query";
 import { api } from "@/lib/api/client";
 import { queryKeys } from "@/lib/api/queryKeys";
 import { formatINR } from "@/lib/format";
+import {
+  DashboardKPISkeleton,
+  DashboardListSkeleton,
+  ChartSkeleton,
+} from "@/components/loading/DashboardSkeleton";
 import type { AnalyticsDashboard } from "@/types/admin";
 
 export const Route = createFileRoute("/admin/reports")({
@@ -33,7 +38,17 @@ function AdminReports() {
           <p className="text-[11px] uppercase tracking-[0.3em] text-muted-foreground">Analytics</p>
           <h1 className="font-display text-4xl mt-1">Reports</h1>
         </header>
-        <p className="text-sm text-muted-foreground">Loading analytics…</p>
+        <DashboardKPISkeleton count={3} cols={3} showIcon={false} showTrend={false} />
+        <div className="grid lg:grid-cols-[2fr_1fr] gap-6 mt-6">
+          <div className="bg-background border border-border p-6">
+            <h2 className="font-display text-xl mb-5">Daily revenue</h2>
+            <ChartSkeleton />
+          </div>
+          <div className="bg-background border border-border p-6">
+            <h2 className="font-display text-xl mb-5">Orders by status</h2>
+            <DashboardListSkeleton rows={4} />
+          </div>
+        </div>
       </div>
     );
   }

@@ -4,127 +4,72 @@
 <meta charset="UTF-8" />
 <title>Shipping Label — {{ order.order_number }}</title>
 <style>
-@page { size: A4; margin: 8mm; }
-* { margin: 0; padding: 0; }
-body {
-  font-family: Helvetica, Arial, sans-serif;
-  font-size: 10pt;
-  color: #111827;
-  background: #FFFFFF;
-  -webkit-print-color-adjust: exact;
-  print-color-adjust: exact;
-}
-table { border-collapse: collapse; }
+{% include "_pdf_shared_style.html" %}
 </style>
 </head>
 <body>
+{% import "_pdf_macros.html" as pdf %}
 
-<table width="100%" cellpadding="0" cellspacing="0" style="border: 2px solid #0A1F44; border-collapse: collapse;">
+{% set meta_rows = [("Order #", order.order_number), ("Order Date", order.created_at)] %}
+{% if order.dispatched_at %}{% set meta_rows = meta_rows + [("Dispatched", order.dispatched_at)] %}{% endif %}
+{{ pdf.doc_header("SHIPPING LABEL", company, logo_data_uri, meta_rows) }}
 
-  <!-- TOP BAR: logo left, order meta right -->
-  <tr>
-    <td style="background-color: #0A1F44; padding: 14px 18px;">
-      <table width="100%" cellpadding="0" cellspacing="0">
-      <tr>
-        <td valign="middle" width="60%">
-          {% if logo_data_uri %}
-          <img src="{{ logo_data_uri }}" style="height: 48px; max-width: 180px;" />
-          {% else %}
-          <table cellpadding="0" cellspacing="0">
-          <tr>
-            <td width="48" height="48" align="center" valign="middle"
-                style="background-color: #D4AF37; color: #0A1F44; font-size: 22pt; font-weight: bold; width: 48px; height: 48px;">H</td>
-            <td width="12"></td>
-            <td valign="middle">
-              <div style="font-size: 17pt; font-weight: bold; color: #FFFFFF;">{{ company.name | upper }}</div>
-            </td>
-          </tr>
-          </table>
-          {% endif %}
-          {% if company.tagline %}
-          <div style="font-size: 7pt; color: #D4AF37; margin-top: 4px; font-family: HadhaUni, Helvetica, Arial, sans-serif;">{{ company.tagline }}</div>
-          {% endif %}
-        </td>
-        <td valign="middle" align="right" width="40%">
-          <div style="font-size: 17pt; font-weight: bold; color: #FFFFFF; margin-bottom: 5px;">{{ order.order_number }}</div>
-          <div style="font-size: 9pt; color: #D4AF37;">Order Date: <b style="color: #FFFFFF;">{{ order.created_at }}</b></div>
-          {% if order.dispatched_at %}
-          <div style="font-size: 9pt; color: #D4AF37; margin-top: 2px;">Dispatched: <b style="color: #FFFFFF;">{{ order.dispatched_at }}</b></div>
-          {% endif %}
-        </td>
-      </tr>
-      </table>
-    </td>
-  </tr>
-
-  <!-- BADGES ROW -->
-  <tr>
-    <td style="background-color: #F8F9FB; border-bottom: 1.5px solid #E5E7EB; padding: 7px 18px;">
-      <table cellpadding="0" cellspacing="0">
-      <tr>
-        <td style="background-color: #D1FAE5; color: #065F46; border: 1px solid #6EE7B7; font-size: 8pt; font-weight: bold; padding: 3px 10px;">PREPAID</td>
-        {% if order.shipping_provider %}
-        <td width="8"></td>
-        <td style="background-color: #0A1F44; color: #FFFFFF; font-size: 8pt; font-weight: bold; padding: 3px 10px;">{{ order.shipping_provider }}</td>
-        {% endif %}
-        <td width="8"></td>
-        <td style="background-color: #FEF3C7; color: #92400E; border: 1px solid #FCD34D; font-size: 8pt; font-weight: bold; padding: 3px 10px;">EXPRESS</td>
-        <td width="16"></td>
-        <td style="font-size: 8.5pt; color: #6B7280;">{{ order.item_count }} item(s)</td>
-      </tr>
-      </table>
-    </td>
-  </tr>
-
-  <!-- DELIVER TO -->
-  <tr>
-    <td style="padding: 24px 18px 28px 18px;">
-      <table cellpadding="0" cellspacing="0" style="margin-bottom: 14px;">
-      <tr>
-        <td style="background-color: #D4AF37; color: #0A1F44; font-size: 9pt; font-weight: bold; padding: 4px 14px;">DELIVER TO</td>
-      </tr>
-      </table>
-      <div style="font-size: 26pt; font-weight: bold; color: #0A1F44; margin-bottom: 10px;">{{ order.shipping_full_name }}</div>
-      <div style="font-size: 13pt; color: #111827; line-height: 1.9; margin-bottom: 8px;">
-        {{ order.shipping_line1 }}<br/>
-        {% if order.shipping_line2 %}{{ order.shipping_line2 }}<br/>{% endif %}
-        {% if order.shipping_landmark %}Near {{ order.shipping_landmark }}<br/>{% endif %}
-        {{ order.shipping_city }}
-      </div>
-      <div style="font-size: 16pt; font-weight: bold; color: #0A1F44; margin-bottom: 14px;">
-        {{ order.shipping_state }} — {{ order.shipping_postal }}
-      </div>
-      <table cellpadding="0" cellspacing="0">
-      <tr>
-        <td style="border: 2px solid #0A1F44; background-color: #F8F9FB; font-size: 14pt; font-weight: bold; color: #111827; padding: 8px 16px;">
-          Ph: {{ order.shipping_phone }}{% if order.shipping_alternate_phone %} / {{ order.shipping_alternate_phone }}{% endif %}
-        </td>
-      </tr>
-      </table>
-    </td>
-  </tr>
-
-  <!-- FOOTER: just contact -->
-  <tr>
-    <td style="background-color: #F8F9FB; padding: 8px 18px; border-top: 1.5px solid #E5E7EB;">
-      <table width="100%" cellpadding="0" cellspacing="0">
-      <tr>
-        <td>
-          <table cellpadding="0" cellspacing="0">
-          <tr>
-            {% if company.phone %}<td style="font-size: 8.5pt; color: #6B7280; padding-right: 16px;">Ph: {{ company.phone }}</td>{% endif %}
-            {% if company.support_email %}<td style="font-size: 8.5pt; color: #6B7280; padding-right: 16px;">{{ company.support_email }}</td>{% endif %}
-            {% if company.website %}<td style="font-size: 8.5pt; color: #6B7280;">{{ company.website }}</td>{% endif %}
-          </tr>
-          </table>
-        </td>
-        <td align="right" style="font-size: 7.5pt; color: #9CA3AF;">System-generated label. No signature required.</td>
-      </tr>
-      </table>
-    </td>
-  </tr>
-
+<!-- BADGES -->
+<table class="pdf-w100" cellpadding="0" cellspacing="0" style="margin-bottom: 12pt;">
+<tr>
+  <td>
+    <span class="pdf-badge pdf-badge-success">PREPAID</span>
+    {% if order.shipping_provider %}<span class="pdf-badge pdf-badge-navy" style="margin-left: 8pt;">{{ order.shipping_provider | upper }}</span>{% endif %}
+  </td>
+  <td align="right" class="pdf-body pdf-muted">{{ order.item_count }} item(s)</td>
+</tr>
 </table>
+
+<!-- DELIVER TO -->
+<table class="pdf-w100" cellpadding="0" cellspacing="0" style="margin-bottom: 12pt;">
+<tr><td class="pdf-card">
+  <div class="pdf-card-label-bar" style="background-color: #D4AF37; color: #0A1F44;">DELIVER TO</div>
+  <div class="pdf-card-body">
+    <div class="pdf-card-name-lg">{{ order.shipping_full_name }}</div>
+    <div class="pdf-card-address">
+      {{ order.shipping_line1 }}<br/>
+      {% if order.shipping_line2 %}{{ order.shipping_line2 }}<br/>{% endif %}
+      {% if order.shipping_landmark %}Near {{ order.shipping_landmark }}<br/>{% endif %}
+      {{ order.shipping_city }}, {{ order.shipping_state }} — {{ order.shipping_postal }}
+    </div>
+    <div class="pdf-card-phone">
+      Ph: {{ order.shipping_phone }}{% if order.shipping_alternate_phone %} / {{ order.shipping_alternate_phone }}{% endif %}
+    </div>
+  </div>
+</td></tr>
+</table>
+
+<!-- SHIP FROM -->
+<table class="pdf-w100" cellpadding="0" cellspacing="0" style="margin-bottom: 12pt;"><tr><td class="pdf-card">
+  <div class="pdf-card-label-bar">SHIP FROM</div>
+  <table class="pdf-w100" cellpadding="0" cellspacing="0"><tr>
+    <td class="pdf-card-body" width="72%">
+      <div class="pdf-card-name">{{ company.name }}</div>
+      <div class="pdf-card-address">
+        {% if company.city %}{{ company.city }}<br/>{% endif %}
+        {% if company.state or company.postal_code %}{{ company.state }}{% if company.postal_code %} - {{ company.postal_code }}{% endif %}<br/>{% endif %}
+        {{ company.country }}
+      </div>
+      {% if company.phone %}<div class="pdf-card-phone">Phone: {{ company.phone }}</div>{% endif %}
+    </td>
+    <td class="pdf-card-body" width="28%" align="right">
+      {% if barcode_b64 %}
+      <img src="data:image/png;base64,{{ barcode_b64 }}" style="height: 34pt; max-width: 130pt;" /><br/>
+      <div class="pdf-muted" style="font-size: 8pt; margin-top: 3pt;">{{ order.tracking_number }}</div>
+      {% elif qr_b64 %}
+      <img src="data:image/png;base64,{{ qr_b64 }}" style="width: 54pt; height: 54pt;" />
+      <div class="pdf-muted" style="font-size: 7pt; margin-top: 3pt;">SCAN TO TRACK</div>
+      {% endif %}
+    </td>
+  </tr></table>
+</td></tr></table>
+
+{{ pdf.doc_footer(company, logo_data_uri, order.order_number) }}
 
 </body>
 </html>

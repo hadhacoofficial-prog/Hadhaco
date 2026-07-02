@@ -64,11 +64,14 @@ function Index() {
 
   const announcement = useSection<AnnouncementConfig>(sections, "announcement_bar");
   const hero = useSection<HeroCarouselConfig>(sections, "hero_carousel");
+  const featuredCollection = useSection(sections, "featured_collection");
   const craftsmanship = useSection<VideoSectionConfig>(sections, "craftsmanship_video");
   const featuredProducts = useSection<ProductGridConfig>(sections, "featured_products");
   const newArrivals = useSection<ProductGridConfig>(sections, "new_arrivals");
   const trending = useSection<ProductGridConfig>(sections, "trending");
   const promoBanner = useSection<ImageBannerConfig>(sections, "promo_banner");
+  const whyChoose = useSection(sections, "why_choose_us");
+  const reviews = useSection(sections, "reviews");
   const instagram = useSection<InstagramGalleryConfig>(sections, "instagram_gallery");
   const newsletter = useSection<NewsletterConfig>(sections, "newsletter");
 
@@ -82,7 +85,7 @@ function Index() {
           <ShopByGender />
         </div>
         <div className="bg-card">
-          <FeaturedCollection />
+          <FeaturedCollection items={featuredCollection.items} />
         </div>
         <div className="bg-muted">
           <FeaturedProducts config={featuredProducts.config} />
@@ -99,12 +102,12 @@ function Index() {
           <Trending />
         </div>
         <OrnamentalDivider className="py-10" />
-        <WhyChooseUs />
+        <WhyChooseUs items={whyChoose.items} />
         <div className="bg-card">
-          <Reviews />
+          <Reviews items={reviews.items} />
         </div>
         <div className="bg-background">
-          <InstagramSection config={instagram.config} />
+          <InstagramSection config={instagram.config} items={instagram.items} />
         </div>
         <Newsletter config={newsletter.config} />
       </main>

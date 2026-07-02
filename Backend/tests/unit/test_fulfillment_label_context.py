@@ -14,8 +14,6 @@ def _make_company(**overrides):
     c = MagicMock()
     c.name = "Hadha Jewellery"
     c.tagline = "Quality First"
-    c.address_line1 = "Plot 42"
-    c.address_line2 = None
     c.city = "Hyderabad"
     c.state = "Telangana"
     c.postal_code = "500033"
@@ -24,6 +22,8 @@ def _make_company(**overrides):
     c.support_email = "info@hadha.com"
     c.website = "www.hadha.com"
     c.logo_url = None
+    c.packing_slip_logo_url = None
+    c.shipping_label_logo_url = None
     for k, v in overrides.items():
         setattr(c, k, v)
     return c

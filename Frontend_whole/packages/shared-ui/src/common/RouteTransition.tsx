@@ -16,7 +16,7 @@ export function RouteTransition({ children, logoSrc }: RouteTransitionProps) {
       setVisible(true);
       return;
     }
-    const t = setTimeout(() => setVisible(false), 220);
+    const t = setTimeout(() => setVisible(false), 280);
     return () => clearTimeout(t);
   }, [status]);
 

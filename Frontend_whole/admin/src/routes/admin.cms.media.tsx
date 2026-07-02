@@ -5,6 +5,7 @@ import { toast } from "sonner";
 
 import { useMediaList, useUploadMedia, useDeleteMedia } from "@/hooks/cms/useMedia";
 import { toUserMessage } from "@/lib/api/errors";
+import { ImageWithFallback } from "@/components/common/ImageWithFallback";
 import type { CmsMedia } from "@/types/cms";
 
 export const Route = createFileRoute("/admin/cms/media")({
@@ -184,10 +185,10 @@ function MediaLibrary() {
 
             <div className="aspect-square border border-border overflow-hidden mb-3 bg-muted">
               {selected.mime_type.startsWith("image/") ? (
-                <img
+                <ImageWithFallback
                   src={selected.thumbnail_url || selected.cdn_url}
                   alt={selected.alt_text ?? ""}
-                  className="w-full h-full object-cover"
+                  className="w-full h-full"
                 />
               ) : (
                 <div className="w-full h-full flex items-center justify-center text-xs text-muted-foreground">
@@ -261,11 +262,10 @@ function MediaTile({
       }`}
     >
       {isImage ? (
-        <img
+        <ImageWithFallback
           src={media.thumbnail_url || media.cdn_url}
           alt={media.alt_text ?? ""}
-          className="w-full h-full object-cover"
-          loading="lazy"
+          className="w-full h-full"
         />
       ) : (
         <div className="w-full h-full bg-muted flex items-center justify-center text-[10px] text-muted-foreground uppercase tracking-widest">

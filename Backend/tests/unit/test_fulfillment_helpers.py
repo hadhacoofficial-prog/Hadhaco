@@ -92,11 +92,12 @@ class TestRegisterUnicodeFont:
             mock_pdfmetrics.getRegisteredFontNames,
         ):
             with patch("reportlab.pdfbase.pdfmetrics.registerFont") as mock_register:
-                with patch("pathlib.Path.exists", return_value=True):
-                    with patch(
-                        "reportlab.pdfbase.ttfonts.TTFont", return_value=MagicMock()
-                    ):
-                        result = self._call()
+                with patch("reportlab.pdfbase.pdfmetrics.registerFontFamily"):
+                    with patch("pathlib.Path.exists", return_value=True):
+                        with patch(
+                            "reportlab.pdfbase.ttfonts.TTFont", return_value=MagicMock()
+                        ):
+                            result = self._call()
 
         assert result is True
         assert mock_register.called
@@ -116,7 +117,11 @@ class TestRegisterUnicodeFont:
         assert result is False
 
     def test_skips_failing_candidates_and_tries_next(self):
-        """First candidate path raises on registerFont; second succeeds → True."""
+        """First candidate's regular-weight registerFont call raises; the
+        whole candidate is skipped and the second candidate (regular + bold)
+        succeeds → True. With `pathlib.Path.exists` globally patched to
+        True, every candidate's bold path also "exists", so a successful
+        candidate makes two registerFont calls (regular, bold)."""
         mock_pdfmetrics = MagicMock()
         mock_pdfmetrics.getRegisteredFontNames.return_value = []
 
@@ -126,7 +131,7 @@ class TestRegisterUnicodeFont:
             call_count["n"] += 1
             if call_count["n"] == 1:
                 raise Exception("bad font")
-            # second call succeeds silently
+            # subsequent calls succeed silently
 
         with patch(
             "reportlab.pdfbase.pdfmetrics.getRegisteredFontNames",
@@ -136,15 +141,16 @@ class TestRegisterUnicodeFont:
                 "reportlab.pdfbase.pdfmetrics.registerFont",
                 side_effect=register_side_effect,
             ):
-                with patch("pathlib.Path.exists", return_value=True):
-                    with patch(
-                        "reportlab.pdfbase.ttfonts.TTFont",
-                        return_value=MagicMock(),
-                    ):
-                        result = self._call()
+                with patch("reportlab.pdfbase.pdfmetrics.registerFontFamily"):
+                    with patch("pathlib.Path.exists", return_value=True):
+                        with patch(
+                            "reportlab.pdfbase.ttfonts.TTFont",
+                            return_value=MagicMock(),
+                        ):
+                            result = self._call()
 
         assert result is True
-        assert call_count["n"] == 2
+        assert call_count["n"] == 3
 
     def test_returns_false_when_all_candidates_fail_with_exceptions(self):
         mock_pdfmetrics = MagicMock()

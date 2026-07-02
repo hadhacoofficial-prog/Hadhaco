@@ -13,6 +13,7 @@ import {
   Tag,
 } from "lucide-react";
 import { useCompanyConfig, useUpdateCompanyConfig } from "@hadha/shared-api";
+import { FormSkeleton } from "@/components/loading/FormSkeleton";
 import type { CompanyConfigUpdate } from "@hadha/shared-types";
 
 export const Route = createFileRoute("/admin/templates")({
@@ -27,6 +28,7 @@ function Field({
   placeholder,
   hint,
   type = "text",
+  maxLength,
 }: {
   label: string;
   name: string;
@@ -35,6 +37,7 @@ function Field({
   placeholder?: string;
   hint?: string;
   type?: string;
+  maxLength?: number;
 }) {
   return (
     <div className="space-y-1.5">
@@ -44,6 +47,7 @@ function Field({
         value={value}
         onChange={(e) => onChange(name, e.target.value)}
         placeholder={placeholder}
+        maxLength={maxLength}
         className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-foreground/20"
       />
       {hint && <p className="text-xs text-muted-foreground">{hint}</p>}
@@ -79,8 +83,6 @@ function AdminTemplates() {
     name: "",
     tagline: "",
     gstin: "",
-    address_line1: "",
-    address_line2: "",
     city: "",
     state: "",
     postal_code: "",
@@ -89,19 +91,22 @@ function AdminTemplates() {
     support_email: "",
     website: "",
     logo_url: "",
+    packing_slip_logo_url: "",
+    shipping_label_logo_url: "",
     instagram_url: "",
     facebook_url: "",
   });
   const [dirty, setDirty] = useState(false);
 
   useEffect(() => {
-    if (config) {
+    // Guard with `!dirty` so a background refetch (query invalidation,
+    // window refocus, etc.) can't silently clobber in-progress edits the
+    // user hasn't saved yet.
+    if (config && !dirty) {
       setForm({
         name: config.name ?? "",
         tagline: config.tagline ?? "",
         gstin: config.gstin ?? "",
-        address_line1: config.address_line1 ?? "",
-        address_line2: config.address_line2 ?? "",
         city: config.city ?? "",
         state: config.state ?? "",
         postal_code: config.postal_code ?? "",
@@ -110,14 +115,20 @@ function AdminTemplates() {
         support_email: config.support_email ?? "",
         website: config.website ?? "",
         logo_url: config.logo_url ?? "",
+        packing_slip_logo_url: config.packing_slip_logo_url ?? "",
+        shipping_label_logo_url: config.shipping_label_logo_url ?? "",
         instagram_url: config.instagram_url ?? "",
         facebook_url: config.facebook_url ?? "",
       });
     }
-  }, [config]);
+  }, [config, dirty]);
 
   function handleChange(name: string, value: string) {
-    setForm((prev) => ({ ...prev, [name]: value }));
+    // Country is a 2-letter ISO code (DB column is varchar(2)) — force
+    // uppercase and truncate defensively so a stray full country name
+    // can't reach the API and fail the whole save.
+    const nextValue = name === "country" ? value.toUpperCase().slice(0, 2) : value;
+    setForm((prev) => ({ ...prev, [name]: nextValue }));
     setDirty(true);
   }
 
@@ -136,8 +147,10 @@ function AdminTemplates() {
 
   if (isLoading) {
     return (
-      <div className="flex items-center justify-center h-48">
-        <div className="size-6 border-2 border-foreground border-t-transparent rounded-full animate-spin" />
+      <div className="max-w-3xl space-y-6">
+        <FormSkeleton fields={4} columns={2} showTitle />
+        <FormSkeleton fields={4} columns={2} showTitle />
+        <FormSkeleton fields={3} columns={2} showTitle />
       </div>
     );
   }
@@ -157,7 +170,7 @@ function AdminTemplates() {
           className="flex items-center gap-2 rounded-md bg-foreground text-background px-4 py-2 text-sm font-medium disabled:opacity-40 hover:opacity-90 transition"
         >
           <Save className="size-4" />
-          {update.isPending ? "Savingâ€¦" : "Save Changes"}
+          {update.isPending ? "Saving…" : "Save Changes"}
         </button>
       </div>
 
@@ -197,20 +210,6 @@ function AdminTemplates() {
       <Section title="Address" icon={<MapPin className="size-4 text-muted-foreground" />}>
         <div className="grid grid-cols-2 gap-4">
           <Field
-            label="Address Line 1"
-            name="address_line1"
-            value={form.address_line1}
-            onChange={handleChange}
-            placeholder="Plot 42, Jewellery Complex"
-          />
-          <Field
-            label="Address Line 2"
-            name="address_line2"
-            value={form.address_line2}
-            onChange={handleChange}
-            placeholder="Jubilee Hills"
-          />
-          <Field
             label="City"
             name="city"
             value={form.city}
@@ -237,6 +236,8 @@ function AdminTemplates() {
             value={form.country}
             onChange={handleChange}
             placeholder="IN"
+            maxLength={2}
+            hint="2-letter ISO code only, e.g. IN — not the full country name."
           />
         </div>
       </Section>
@@ -288,6 +289,30 @@ function AdminTemplates() {
         </div>
       </Section>
 
+      <Section
+        title="Document Branding"
+        icon={<FileText className="size-4 text-muted-foreground" />}
+      >
+        <div className="grid grid-cols-2 gap-4">
+          <Field
+            label="Packing Slip Logo"
+            name="packing_slip_logo_url"
+            value={form.packing_slip_logo_url}
+            onChange={handleChange}
+            placeholder="https://cdn.hadhajewellery.com/packing-slip-logo.png"
+            hint="Used only on Packing Slip PDFs. PNG with transparent background recommended."
+          />
+          <Field
+            label="Shipping Label Logo"
+            name="shipping_label_logo_url"
+            value={form.shipping_label_logo_url}
+            onChange={handleChange}
+            placeholder="https://cdn.hadhajewellery.com/shipping-label-logo.png"
+            hint="Used only on Shipping Label PDFs. PNG with transparent background recommended."
+          />
+        </div>
+      </Section>
+
       <div className="rounded-lg border border-border bg-secondary/30 p-5 space-y-2">
         <div className="flex items-center gap-2">
           <FileText className="size-4 text-muted-foreground" />
@@ -320,7 +345,7 @@ function AdminTemplates() {
           className="flex items-center gap-2 rounded-md bg-foreground text-background px-5 py-2.5 text-sm font-medium disabled:opacity-40 hover:opacity-90 transition"
         >
           <Save className="size-4" />
-          {update.isPending ? "Savingâ€¦" : "Save Changes"}
+          {update.isPending ? "Saving…" : "Save Changes"}
         </button>
       </div>
     </div>

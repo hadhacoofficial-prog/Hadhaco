@@ -201,6 +201,7 @@ export interface InstagramItemConfig {
 export interface CollectionCardConfig {
   image_url: string;
   hover_image_url?: string;
+  eyebrow?: string;
   title: string;
   subtitle?: string;
   button_text?: string;
@@ -214,6 +215,12 @@ export interface ReviewItemConfig {
   photo_url?: string;
   verified?: boolean;
   location?: string;
+}
+
+export interface WhyChooseCardConfig {
+  icon?: "shield" | "gem" | "sparkles" | "heart";
+  title: string;
+  text: string;
 }
 
 // ── Media library ──────────────────────────────────────────────────────────────

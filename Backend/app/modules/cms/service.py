@@ -29,6 +29,11 @@ from app.modules.cms.schemas import (
 _HOMEPAGE_CACHE_KEY = "cms:homepage"
 _HOMEPAGE_CACHE_TTL = 86_400  # 24 h
 
+# Sections that are still fully hardcoded on the storefront and never read CMS
+# data — hidden from the admin CMS so editing them can't create a false
+# impression that they affect the site.
+_UNMANAGED_SECTION_KEYS = frozenset({"navbar", "shop_by_gender", "shop_by_category"})
+
 
 class CMSService:
     def __init__(self) -> None:
@@ -103,6 +108,11 @@ class CMSService:
 
     # ── Admin sections ─────────────────────────────────────────────────────────
 
+    @staticmethod
+    def _ensure_manageable(key: str) -> None:
+        if key in _UNMANAGED_SECTION_KEYS:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "Section not found")
+
     async def list_sections(self, db: AsyncSession) -> list[LandingSection]:
         return await self._repo.get_all_sections(db)
 
@@ -110,11 +120,14 @@ class CMSService:
         sections = await self._repo.get_all_sections(db)
         result = []
         for s in sections:
+            if s.section_key in _UNMANAGED_SECTION_KEYS:
+                continue
             items = await self._repo.get_items_for_section(db, s.id)
             result.append({"section": s, "items": items})
         return result
 
     async def get_section(self, db: AsyncSession, key: str) -> dict:
+        self._ensure_manageable(key)
         s = await self._repo.get_section_by_key(db, key)
         if not s:
             raise HTTPException(status.HTTP_404_NOT_FOUND, "Section not found")
@@ -124,6 +137,7 @@ class CMSService:
     async def update_section(
         self, db: AsyncSession, key: str, data: LandingSectionUpdate
     ) -> LandingSection:
+        self._ensure_manageable(key)
         s = await self._repo.get_section_by_key(db, key)
         if not s:
             raise HTTPException(status.HTTP_404_NOT_FOUND, "Section not found")
@@ -139,6 +153,7 @@ class CMSService:
         data: SaveDraftRequest,
         admin_id: uuid.UUID,
     ) -> LandingSection:
+        self._ensure_manageable(key)
         s = await self._repo.get_section_by_key(db, key)
         if not s:
             raise HTTPException(status.HTTP_404_NOT_FOUND, "Section not found")
@@ -158,6 +173,7 @@ class CMSService:
         data: PublishSectionRequest,
         admin_id: uuid.UUID,
     ) -> LandingSection:
+        self._ensure_manageable(key)
         s = await self._repo.get_section_by_key(db, key)
         if not s:
             raise HTTPException(status.HTTP_404_NOT_FOUND, "Section not found")
@@ -216,6 +232,7 @@ class CMSService:
         key: str,
         admin_id: uuid.UUID,
     ) -> LandingSection:
+        self._ensure_manageable(key)
         s = await self._repo.get_section_by_key(db, key)
         if not s:
             raise HTTPException(status.HTTP_404_NOT_FOUND, "Section not found")

@@ -9,4 +9,10 @@ export default defineConfig({
       entry: "server",
     },
   },
+  vite: {
+    server: {
+      port: 8081,
+      strictPort: true,
+    },
+  },
 });

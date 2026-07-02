@@ -35,6 +35,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { TableSkeleton } from "@/components/loading/TableSkeleton";
+import { ImageWithFallback } from "@/components/common/ImageWithFallback";
 import { api } from "@/lib/api/client";
 import { queryKeys } from "@/lib/api/queryKeys";
 import { toUserMessage } from "@/lib/api/errors";
@@ -300,10 +301,10 @@ function AdminCollections() {
                   </td>
                   <td className="px-4 py-3">
                     {col.image_url ? (
-                      <img
+                      <ImageWithFallback
                         src={col.image_url}
                         alt=""
-                        className="size-10 object-cover bg-secondary"
+                        className="size-10 bg-secondary"
                       />
                     ) : (
                       <div className="size-10 bg-secondary flex items-center justify-center">

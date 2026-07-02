@@ -155,10 +155,10 @@ export function ProductPickerModal({
           </Button>
           <Button
             onClick={handleConfirm}
-            disabled={selected.size === 0 || loading}
+            disabled={selected.size === 0}
+            loading={loading}
             className="gap-2"
           >
-            {loading && <Loader2 className="size-3.5 animate-spin" />}
             Add {selected.size > 0 ? `(${selected.size})` : ""}
           </Button>
         </DialogFooter>

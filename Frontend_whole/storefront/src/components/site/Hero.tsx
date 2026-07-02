@@ -13,6 +13,9 @@ interface Slide {
   sub?: string;
   cta?: string;
   href: string;
+  alignment: "left" | "center" | "right";
+  overlay: boolean;
+  overlayOpacity: number;
 }
 
 const FALLBACK_SLIDES: Slide[] = [
@@ -23,6 +26,9 @@ const FALLBACK_SLIDES: Slide[] = [
     sub: "Sterling silver pieces shaped by artisans in Visakhapatnam.",
     cta: "Shop collection",
     href: "/collections",
+    alignment: "left",
+    overlay: false,
+    overlayOpacity: 0.5,
   },
   {
     image: bannerBg,
@@ -31,6 +37,9 @@ const FALLBACK_SLIDES: Slide[] = [
     sub: "Gift-ready pieces, hand-finished and packaged with care.",
     cta: "Explore gifting",
     href: "/collections",
+    alignment: "left",
+    overlay: false,
+    overlayOpacity: 0.5,
   },
   {
     image: nakshiBg,
@@ -39,6 +48,9 @@ const FALLBACK_SLIDES: Slide[] = [
     sub: "Temple-inspired motifs reimagined for the modern wardrobe.",
     cta: "Discover temple",
     href: "/collections/nakshi-mala",
+    alignment: "left",
+    overlay: false,
+    overlayOpacity: 0.5,
   },
 ];
 
@@ -51,6 +63,9 @@ function cmsItemToSlide(item: SectionItem): Slide {
     sub: c.subheading,
     cta: c.primary_btn_text,
     href: c.primary_btn_url || "/collections",
+    alignment: c.alignment ?? "left",
+    overlay: c.overlay ?? true,
+    overlayOpacity: c.overlay_opacity ?? 0.5,
   };
 }
 
@@ -78,6 +93,20 @@ export function Hero({ config, items = [] }: HeroProps) {
   }, [slides.length, rotationSpeed, autoRotate]);
 
   const s = slides[idx];
+  const alignRow =
+    s.alignment === "center"
+      ? "justify-center"
+      : s.alignment === "right"
+        ? "justify-end"
+        : "justify-start";
+  const alignText =
+    s.alignment === "center" ? "text-center" : s.alignment === "right" ? "text-right" : "text-left";
+  const alignItems =
+    s.alignment === "center"
+      ? "items-center"
+      : s.alignment === "right"
+        ? "items-end"
+        : "items-start";
 
   return (
     <section className="relative h-[78vh] min-h-[560px] w-full overflow-hidden">
@@ -92,9 +121,12 @@ export function Hero({ config, items = [] }: HeroProps) {
           fetchPriority={i === 0 ? "high" : "low"}
         />
       ))}
+      {s.overlay && (
+        <div className="absolute inset-0 bg-black" style={{ opacity: s.overlayOpacity }} />
+      )}
       <div className="absolute inset-0 bg-gradient-to-r from-background/85 via-background/30 to-transparent" />
-      <div className="relative z-10 h-full flex items-center px-6 md:px-16">
-        <div className="max-w-xl">
+      <div className={`relative z-10 h-full flex items-center px-6 md:px-16 ${alignRow}`}>
+        <div className={`max-w-xl flex flex-col ${alignItems} ${alignText}`}>
           {s.eyebrow && (
             <p className="text-[11px] tracking-[0.3em] uppercase text-accent mb-5">{s.eyebrow}</p>
           )}

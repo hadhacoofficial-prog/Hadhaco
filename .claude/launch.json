@@ -6,6 +6,24 @@
       "runtimeExecutable": "C:\\Program Files\\nodejs\\npx.cmd",
       "runtimeArgs": ["http-server", "Backend/app/templates", "-p", "5501", "--cors", "-c-1"],
       "port": 5501
+    },
+    {
+      "name": "root-preview",
+      "runtimeExecutable": "C:\\Program Files\\nodejs\\npx.cmd",
+      "runtimeArgs": ["http-server", ".", "-p", "5502", "--cors", "-c-1"],
+      "port": 5502
+    },
+    {
+      "name": "storefront",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["--prefix", "Frontend_whole", "run", "dev:storefront"],
+      "port": 8080
+    },
+    {
+      "name": "admin",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["--prefix", "Frontend_whole", "run", "dev:admin"],
+      "port": 8081
     }
   ]
 }

@@ -6,6 +6,7 @@ import { api } from "@/lib/api/client";
 import { queryKeys } from "@/lib/api/queryKeys";
 import { toUserMessage } from "@/lib/api/errors";
 import { TableSkeleton } from "@/components/loading/TableSkeleton";
+import { ImageWithFallback } from "@/components/common/ImageWithFallback";
 import type { LowStockItem, ProductListResponse } from "@/types/admin";
 
 export const Route = createFileRoute("/admin/inventory")({
@@ -88,10 +89,10 @@ function AdminInventory() {
                     <td className="px-4 py-3">
                       <div className="flex items-center gap-3">
                         {p.primary_image ? (
-                          <img
+                          <ImageWithFallback
                             src={p.primary_image}
                             alt=""
-                            className="size-10 object-cover bg-secondary shrink-0"
+                            className="size-10 bg-secondary shrink-0"
                           />
                         ) : (
                           <div className="size-10 bg-secondary shrink-0" />

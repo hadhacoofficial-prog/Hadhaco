@@ -1,31 +1,48 @@
-import { ShieldCheck, Heart, Sparkles, Gem } from "lucide-react";
+import { ShieldCheck, Heart, Sparkles, Gem, type LucideIcon } from "lucide-react";
 import { motion } from "framer-motion";
 import { staggerContainer, staggerItem } from "@/components/common/Reveal";
+import type { SectionItem, WhyChooseCardConfig } from "@/types/cms";
 
-const items = [
+const ICONS: Record<string, LucideIcon> = {
+  shield: ShieldCheck,
+  gem: Gem,
+  sparkles: Sparkles,
+  heart: Heart,
+};
+
+const FALLBACK_CARDS: WhyChooseCardConfig[] = [
   {
-    icon: ShieldCheck,
+    icon: "shield",
     title: "92.5 Sterling Silver",
     text: "BIS-hallmarked. Guaranteed purity in every piece we craft.",
   },
   {
-    icon: Gem,
+    icon: "gem",
     title: "Authentic Craftsmanship",
     text: "Hand-finished by master silversmiths in our Visakhapatnam atelier.",
   },
   {
-    icon: Sparkles,
+    icon: "sparkles",
     title: "Trusted Quality",
     text: "Anti-tarnish coating and lifetime polish on every Hadha creation.",
   },
   {
-    icon: Heart,
+    icon: "heart",
     title: "Made With Love",
     text: "A family heirloom in the making — gift-wrapped and delivered with care.",
   },
 ];
 
-export function WhyChooseUs() {
+interface WhyChooseUsProps {
+  items?: SectionItem[];
+}
+
+export function WhyChooseUs({ items = [] }: WhyChooseUsProps) {
+  const cmsCards = items
+    .filter((i) => i.is_enabled)
+    .sort((a, b) => a.sort_order - b.sort_order)
+    .map((i) => i.config as unknown as WhyChooseCardConfig);
+  const cards = cmsCards.length > 0 ? cmsCards : FALLBACK_CARDS;
   return (
     <section className="relative px-4 md:px-12 py-20 md:py-28 overflow-hidden">
       {/* Layered premium background */}
@@ -59,22 +76,25 @@ export function WhyChooseUs() {
           viewport={{ once: true, amount: 0.2 }}
           className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5 md:gap-7"
         >
-          {items.map(({ icon: Icon, title, text }) => (
-            <motion.div
-              key={title}
-              variants={staggerItem}
-              whileHover={{ y: -6 }}
-              transition={{ type: "spring", stiffness: 220, damping: 18 }}
-              className="group relative overflow-hidden p-7 md:p-8 text-center bg-card/70 backdrop-blur-md border border-border/70 shadow-[0_20px_50px_-30px_oklch(0.27_0.025_258/0.25)] hover:border-primary/30 hover:shadow-[0_30px_60px_-30px_oklch(0.27_0.025_258/0.40)] transition-all duration-500"
-            >
-              <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-accent/60 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
-              <div className="mx-auto size-14 rounded-full bg-gradient-to-br from-muted to-background border border-border flex items-center justify-center mb-5 group-hover:border-accent/50 group-hover:text-accent transition-colors">
-                <Icon className="size-6" />
-              </div>
-              <h3 className="font-cinzel text-base md:text-lg mb-2 tracking-wide">{title}</h3>
-              <p className="text-sm text-muted-foreground leading-relaxed">{text}</p>
-            </motion.div>
-          ))}
+          {cards.map(({ icon, title, text }, i) => {
+            const Icon = ICONS[icon ?? "shield"] ?? ShieldCheck;
+            return (
+              <motion.div
+                key={title || i}
+                variants={staggerItem}
+                whileHover={{ y: -6 }}
+                transition={{ type: "spring", stiffness: 220, damping: 18 }}
+                className="group relative overflow-hidden p-7 md:p-8 text-center bg-card/70 backdrop-blur-md border border-border/70 shadow-[0_20px_50px_-30px_oklch(0.27_0.025_258/0.25)] hover:border-primary/30 hover:shadow-[0_30px_60px_-30px_oklch(0.27_0.025_258/0.40)] transition-all duration-500"
+              >
+                <div className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-accent/60 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
+                <div className="mx-auto size-14 rounded-full bg-gradient-to-br from-muted to-background border border-border flex items-center justify-center mb-5 group-hover:border-accent/50 group-hover:text-accent transition-colors">
+                  <Icon className="size-6" />
+                </div>
+                <h3 className="font-cinzel text-base md:text-lg mb-2 tracking-wide">{title}</h3>
+                <p className="text-sm text-muted-foreground leading-relaxed">{text}</p>
+              </motion.div>
+            );
+          })}
         </motion.div>
       </div>
     </section>

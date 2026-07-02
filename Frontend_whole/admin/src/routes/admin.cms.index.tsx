@@ -43,6 +43,8 @@ import { api } from "@/lib/api/client";
 import { queryKeys } from "@/lib/api/queryKeys";
 import { toUserMessage } from "@/lib/api/errors";
 import { ImageUploadField } from "@/components/cms/ImageUploadField";
+import { ImageWithFallback } from "@/components/common/ImageWithFallback";
+import { Skeleton } from "@/components/ui/skeleton";
 
 import { AnnouncementBar } from "@/components/site/AnnouncementBar";
 import { Hero } from "@/components/site/Hero";
@@ -51,6 +53,9 @@ import { PromoBanner } from "@/components/site/PromoBanner";
 import { CraftsmanshipVideo } from "@/components/site/CraftsmanshipVideo";
 import { InstagramSection } from "@/components/site/InstagramSection";
 import { FeaturedProducts } from "@/components/site/FeaturedProducts";
+import { WhyChooseUs } from "@/components/site/WhyChooseUs";
+import { Reviews } from "@/components/site/Reviews";
+import { FeaturedCollection } from "@/components/site/FeaturedCollection";
 import { Footer } from "@/components/site/Footer";
 
 import type {
@@ -70,6 +75,7 @@ import type {
   SectionItem,
   SectionType,
   VideoSectionConfig,
+  WhyChooseCardConfig,
 } from "@/types/cms";
 import type { ProductListItem, ProductListResponse } from "@/types/admin";
 
@@ -96,7 +102,7 @@ const NATURAL_H: Partial<Record<SectionType, number>> = {
   collection_showcase: 400,
   product_grid: 460,
   testimonials: 360,
-  content_block: 280,
+  content_block: 460,
   custom: 280,
 };
 
@@ -196,6 +202,70 @@ const DEFAULT_ITEMS: Partial<Record<SectionType, Array<Record<string, unknown>>>
     { text: "FREE SHIPPING ABOVE ₹999", bg_color: "#0F2340", text_color: "#FFFFFF" },
     { text: "Certified 92.5 Sterling Silver", bg_color: "#0F2340", text_color: "#FFFFFF" },
     { text: "Handcrafted in Visakhapatnam", bg_color: "#0F2340", text_color: "#FFFFFF" },
+  ],
+  collection_showcase: [
+    {
+      image_url: "",
+      eyebrow: "Featured edit",
+      title: "Finger Rings, redefined.",
+      subtitle:
+        "Stylish rings crafted to bring subtle elegance to every look — from stackable everyday bands to statement temple stones.",
+      button_text: "Shop rings",
+      button_url: "/collections",
+    },
+    {
+      image_url: "",
+      eyebrow: "Bestseller",
+      title: "The Bugadi edit.",
+      subtitle:
+        "Heritage temple ear cuffs reimagined — non-piercing, press-on, and poised to become your new favourite.",
+      button_text: "Discover Bugadi",
+      button_url: "/collections",
+    },
+  ],
+  content_block: [
+    {
+      icon: "shield",
+      title: "92.5 Sterling Silver",
+      text: "BIS-hallmarked. Guaranteed purity in every piece we craft.",
+    },
+    {
+      icon: "gem",
+      title: "Authentic Craftsmanship",
+      text: "Hand-finished by master silversmiths in our Visakhapatnam atelier.",
+    },
+    {
+      icon: "sparkles",
+      title: "Trusted Quality",
+      text: "Anti-tarnish coating and lifetime polish on every Hadha creation.",
+    },
+    {
+      icon: "heart",
+      title: "Made With Love",
+      text: "A family heirloom in the making — gift-wrapped and delivered with care.",
+    },
+  ],
+  testimonials: [
+    {
+      customer_name: "Priya S.",
+      text: "The sterling silver anklet I ordered arrived beautifully packaged. The craftsmanship is exquisite — I've received so many compliments.",
+      rating: 5,
+    },
+    {
+      customer_name: "Ananya R.",
+      text: "I've been buying jewellery for years and Hadha's quality is truly outstanding. My oxidised silver necklace is stunning.",
+      rating: 5,
+    },
+    {
+      customer_name: "Meera K.",
+      text: "Fast shipping, gorgeous packaging, and the ring fits perfectly. Will definitely be ordering again for Diwali gifts.",
+      rating: 5,
+    },
+    {
+      customer_name: "Divya T.",
+      text: "Hadha has become my go-to for silver jewellery. The BIS hallmark gives me complete confidence in the quality.",
+      rating: 5,
+    },
   ],
 };
 
@@ -312,7 +382,7 @@ function ToggleRow({
         className={`relative h-5 w-9 rounded-full transition-colors ${checked ? "bg-primary" : "bg-muted-foreground/30"}`}
       >
         <span
-          className={`absolute top-0.5 h-4 w-4 rounded-full bg-white shadow transition-transform ${checked ? "translate-x-4" : "translate-x-0.5"}`}
+          className={`absolute left-0.5 top-0.5 h-4 w-4 rounded-full bg-white shadow transition-transform ${checked ? "translate-x-4" : "translate-x-0"}`}
         />
       </button>
     </div>
@@ -983,7 +1053,7 @@ function InstagramItemCard({
     >
       {ic.image_url && (
         <div className="relative">
-          <img src={ic.image_url} alt="" className="w-full h-28 object-cover" />
+          <ImageWithFallback src={ic.image_url} alt="" className="w-full h-28" />
         </div>
       )}
       <div className="p-3 space-y-2">
@@ -1208,7 +1278,7 @@ function ProductPickerEditor({ config, onChange }: EP<Partial<ProductGridConfig>
             {isLoading && (
               <div className="space-y-1.5">
                 {Array.from({ length: 4 }).map((_, i) => (
-                  <div key={i} className="h-14 bg-muted animate-pulse rounded-lg" />
+                  <Skeleton key={i} className="h-14 rounded-lg" />
                 ))}
               </div>
             )}
@@ -1223,7 +1293,7 @@ function ProductPickerEditor({ config, onChange }: EP<Partial<ProductGridConfig>
                 >
                   <div className="size-10 rounded overflow-hidden shrink-0 bg-muted">
                     {p.primary_image && (
-                      <img src={p.primary_image} alt="" className="w-full h-full object-cover" />
+                      <ImageWithFallback src={p.primary_image} alt="" className="size-full" />
                     )}
                   </div>
                   <div className="flex-1 min-w-0">
@@ -1329,6 +1399,13 @@ function CollectionCardItem({
             folder="/cms/collections"
             previewHeight={70}
           />
+          <Field label="Eyebrow tag">
+            <TextInput
+              value={c.eyebrow ?? ""}
+              onChange={(v) => onUpdate("eyebrow", v)}
+              placeholder="Featured edit"
+            />
+          </Field>
           <Field label="Title">
             <TextInput
               value={c.title ?? ""}
@@ -1337,7 +1414,7 @@ function CollectionCardItem({
             />
           </Field>
           <Field label="Subtitle">
-            <TextInput value={c.subtitle ?? ""} onChange={(v) => onUpdate("subtitle", v)} />
+            <TextArea value={c.subtitle ?? ""} onChange={(v) => onUpdate("subtitle", v)} rows={2} />
           </Field>
           <div className="grid grid-cols-2 gap-3">
             <Field label="Button text">
@@ -1386,6 +1463,7 @@ function CollectionCardsEditor({
           onClick={() =>
             onAddItem({
               image_url: "",
+              eyebrow: "",
               title: "",
               subtitle: "",
               button_text: "Shop now",
@@ -1407,6 +1485,128 @@ function CollectionCardsEditor({
             onDelete={() => onDeleteItem(item.id)}
             onDuplicate={() => onDuplicateItem(item.id)}
             onToggleEnabled={() => toggleEnabled(i)}
+          />
+        ))}
+        {items.length === 0 && (
+          <p className="text-xs text-muted-foreground italic text-center py-4">
+            No cards yet. Click "Add Card".
+          </p>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ── Why Choose Hadha ──────────────────────────────────────────────────────────
+
+const WHY_CHOOSE_ICON_OPTIONS = [
+  { value: "shield", label: "Shield" },
+  { value: "gem", label: "Gem" },
+  { value: "sparkles", label: "Sparkles" },
+  { value: "heart", label: "Heart" },
+];
+
+function WhyChooseCardItem({
+  item,
+  index,
+  onUpdate,
+  onDelete,
+  onDuplicate,
+}: {
+  item: SectionItem;
+  index: number;
+  onUpdate: (field: keyof WhyChooseCardConfig, val: string) => void;
+  onDelete: () => void;
+  onDuplicate: () => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const c = item.config as unknown as WhyChooseCardConfig;
+  return (
+    <div className="border border-border/40 rounded-xl overflow-hidden">
+      <div className="flex items-center gap-2 p-3 bg-muted/20">
+        <div className="flex-1 min-w-0">
+          <p className="text-xs font-medium truncate">{c.title || `Card ${index + 1}`}</p>
+        </div>
+        <div className="flex items-center gap-1">
+          <button onClick={onDuplicate} className="p-1.5 rounded hover:bg-muted transition-colors">
+            <Copy className="size-3.5 text-muted-foreground" />
+          </button>
+          <button
+            onClick={onDelete}
+            className="p-1.5 rounded hover:bg-red-50 hover:text-red-500 transition-colors"
+          >
+            <Trash2 className="size-3.5 text-muted-foreground" />
+          </button>
+          <button
+            onClick={() => setOpen((v) => !v)}
+            className="p-1.5 rounded hover:bg-muted transition-colors"
+          >
+            {open ? (
+              <ChevronUp className="size-3.5 text-muted-foreground" />
+            ) : (
+              <ChevronDown className="size-3.5 text-muted-foreground" />
+            )}
+          </button>
+        </div>
+      </div>
+      {open && (
+        <div className="p-4 space-y-4 border-t border-border/30">
+          <SelectRow
+            label="Icon"
+            value={c.icon ?? "shield"}
+            onChange={(v) => onUpdate("icon", v)}
+            options={WHY_CHOOSE_ICON_OPTIONS}
+          />
+          <Field label="Title">
+            <TextInput
+              value={c.title ?? ""}
+              onChange={(v) => onUpdate("title", v)}
+              placeholder="92.5 Sterling Silver"
+            />
+          </Field>
+          <Field label="Text">
+            <TextArea value={c.text ?? ""} onChange={(v) => onUpdate("text", v)} rows={3} />
+          </Field>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function WhyChooseEditor({
+  items,
+  onItemChange,
+  onAddItem,
+  onDeleteItem,
+  onDuplicateItem,
+}: ItemCtrl & { config: Record<string, unknown>; onChange: (v: Record<string, unknown>) => void }) {
+  function updateItem(idx: number, field: keyof WhyChooseCardConfig, val: string) {
+    onItemChange(
+      items.map((it, i) => (i === idx ? { ...it, config: { ...it.config, [field]: val } } : it)),
+    );
+  }
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-muted-foreground">
+          Cards ({items.length})
+        </p>
+        <button
+          onClick={() => onAddItem({ icon: "shield", title: "", text: "" })}
+          className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wide text-primary hover:text-primary/80 transition-colors"
+        >
+          <Plus className="size-3.5" /> Add Card
+        </button>
+      </div>
+      <div className="space-y-2.5">
+        {items.map((item, i) => (
+          <WhyChooseCardItem
+            key={item.id}
+            item={item}
+            index={i}
+            onUpdate={(field, val) => updateItem(i, field, val)}
+            onDelete={() => onDeleteItem(item.id)}
+            onDuplicate={() => onDuplicateItem(item.id)}
           />
         ))}
         {items.length === 0 && (
@@ -1841,6 +2041,8 @@ function SectionConfigEditor({
       return <CollectionCardsEditor config={config} onChange={onChange} {...ctrl} />;
     case "testimonials":
       return <ReviewsEditor config={config} onChange={onChange} {...ctrl} />;
+    case "content_block":
+      return <WhyChooseEditor config={config} onChange={onChange} {...ctrl} />;
     case "footer":
       return (
         <FooterEditor
@@ -1894,6 +2096,12 @@ function renderSection(
       );
     case "product_grid":
       return <FeaturedProducts config={config as unknown as ProductGridConfig} />;
+    case "content_block":
+      return <WhyChooseUs items={items} />;
+    case "testimonials":
+      return <Reviews items={items} />;
+    case "collection_showcase":
+      return <FeaturedCollection items={items} />;
     case "footer":
       return <Footer config={config as unknown as FooterConfig} />;
     default:
@@ -2762,7 +2970,7 @@ function AdminCmsEditor() {
           <div className="flex-1 overflow-y-auto p-3 space-y-2">
             {isLoading &&
               Array.from({ length: 6 }).map((_, i) => (
-                <div key={i} className="h-[72px] bg-muted animate-pulse rounded-xl" />
+                <Skeleton key={i} className="h-[72px] rounded-xl" />
               ))}
             {localOrder.map((section, idx) => (
               <SectionCard

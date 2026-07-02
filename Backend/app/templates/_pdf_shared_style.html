@@ -1,0 +1,158 @@
+{# Shared design system for PDF documents (packing slip, shipping label).
+
+Included via {% include %} inside each document's own <style> block.
+xhtml2pdf/reportlab has no support for CSS variables, flexbox, grid, or
+border-radius — every rule below is written to those constraints and
+verified against the actual xhtml2pdf renderer, not a browser.
+
+Color tokens (hardcoded per-rule since var() isn't supported):
+  Navy      #0A1F44   — brand primary, headers, dark text accents
+  Gold      #D4AF37   — brand accent, totals, dividers
+  Ink       #1F2430   — primary body text
+  Muted     #6B7280   — secondary text
+  Line      #E4E7EC   — borders/dividers
+  Surface   #F7F8FA   — subtle fill backgrounds
+  Success   #E6F4EA / #1E7B34 — paid/status badges
+
+Typography scale (pt, per spec px/1.333):
+  .pdf-h1     24pt  (~32px) — document title
+  .pdf-h2     13pt  (~17px) — section/card names, GRAND TOTAL
+  .pdf-body   10pt  (~13px) — address/table body text
+  .pdf-label   9pt  (~12px) — pills, table headers, meta labels
+#}
+@page {
+  size: A4;
+  margin: 11mm;
+}
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+body {
+  font-family: HadhaUni, Helvetica, Arial, sans-serif;
+  font-size: 10pt;
+  color: #1F2430;
+  background: #FFFFFF;
+  -webkit-print-color-adjust: exact;
+  print-color-adjust: exact;
+}
+table {
+  border-collapse: collapse;
+}
+td {
+  vertical-align: top;
+}
+/* Explicit opt-in for full-width layout tables — intentionally NOT a
+   blanket `table { width: 100% }`, which forced small content-sized
+   tables (meta rows, footer contact strip) to over-stretch and left
+   large, uneven gaps between labels and values. */
+.pdf-w100 { width: 100%; }
+
+/* ---------- Typography ---------- */
+.pdf-h1 { font-size: 24pt; font-weight: bold; color: #0A1F44; letter-spacing: 0.3pt; }
+.pdf-h2 { font-size: 13pt; font-weight: bold; color: #0A1F44; }
+.pdf-body { font-size: 10pt; color: #1F2430; line-height: 1.6; }
+.pdf-muted { color: #6B7280; }
+.pdf-label {
+  font-size: 9pt;
+  font-weight: bold;
+  letter-spacing: 0.5pt;
+  text-transform: uppercase;
+}
+
+/* ---------- Header (identical structure on both documents) ---------- */
+.pdf-header-wrap {
+  border-bottom: 2pt solid #0A1F44;
+  padding-bottom: 6pt;
+  margin-bottom: 8pt;
+}
+.pdf-logo { max-width: 128pt; }
+.pdf-brand-name { font-size: 16pt; font-weight: bold; color: #0A1F44; letter-spacing: 0.5pt; }
+.pdf-tagline { font-size: 8pt; color: #6B7280; margin-top: 5pt; }
+.pdf-doc-title { font-size: 24pt; font-weight: bold; color: #0A1F44; text-align: right; margin-bottom: 8pt; }
+.pdf-meta-label { font-size: 9pt; color: #6B7280; text-align: right; padding: 2pt 10pt 2pt 0; }
+.pdf-meta-value { font-size: 9pt; font-weight: bold; color: #1F2430; padding: 2pt 0; text-align: right; }
+
+/* ---------- Badges ---------- */
+.pdf-badge {
+  display: inline-block;
+  font-size: 8pt;
+  font-weight: bold;
+  letter-spacing: 0.3pt;
+  padding: 4pt 11pt;
+}
+.pdf-badge-success { background-color: #E6F4EA; color: #1E7B34; border: 1pt solid #A6E3B5; }
+.pdf-badge-navy { background-color: #0A1F44; color: #FFFFFF; }
+.pdf-badge-gold { background-color: #D4AF37; color: #0A1F44; }
+
+/* ---------- Address cards (TO / FROM / SHIP FROM) ---------- */
+.pdf-card { border: 1pt solid #E4E7EC; }
+.pdf-card-label-bar {
+  background-color: #0A1F44;
+  color: #FFFFFF;
+  font-size: 8.5pt;
+  font-weight: bold;
+  letter-spacing: 0.5pt;
+  padding: 6pt 12pt;
+}
+.pdf-card-body { padding: 6pt 14pt; }
+.pdf-card-name { font-size: 13pt; font-weight: bold; color: #0A1F44; margin-bottom: 5pt; }
+.pdf-card-name-lg { font-size: 19pt; font-weight: bold; color: #0A1F44; margin-bottom: 6pt; }
+.pdf-card-address { font-size: 10pt; color: #1F2430; line-height: 1.42; }
+.pdf-card-phone {
+  font-size: 10pt;
+  font-weight: bold;
+  color: #1F2430;
+  margin-top: 7pt;
+  border: 1.5pt solid #0A1F44;
+  background-color: #F7F8FA;
+  padding: 6pt 12pt;
+}
+
+/* ---------- Items table ---------- */
+.pdf-table { border: 1pt solid #E4E7EC; }
+.pdf-table thead td {
+  background-color: #0A1F44;
+  color: #FFFFFF;
+  font-size: 8.5pt;
+  font-weight: bold;
+  padding: 6pt 8pt;
+}
+.pdf-table tbody td {
+  padding: 6pt 8pt;
+  font-size: 10pt;
+  border-bottom: 1pt solid #E4E7EC;
+}
+.pdf-table tbody tr:nth-child(even) { background-color: #F7F8FA; }
+.pdf-table .pdf-sku { font-size: 8.5pt; color: #6B7280; font-family: Courier, monospace; }
+.pdf-table .pdf-qty { text-align: center; }
+.pdf-table .pdf-amount { text-align: right; font-weight: bold; }
+
+/* ---------- Totals ---------- */
+.pdf-totals-row td { font-size: 9.5pt; color: #6B7280; padding: 4pt 8pt; }
+.pdf-totals-row .pdf-amount { font-weight: bold; color: #1F2430; text-align: right; }
+.pdf-grand-total td {
+  background-color: #0A1F44;
+  color: #FFFFFF;
+  font-size: 11pt;
+  font-weight: bold;
+  padding: 11pt 12pt;
+  white-space: nowrap;
+}
+.pdf-grand-total .pdf-amount { color: #D4AF37; font-size: 14pt; text-align: right; }
+
+/* ---------- Thank-you panel ---------- */
+.pdf-thanks {
+  background-color: #F7F8FA;
+  border: 1pt solid #E4E7EC;
+  padding: 7pt 14pt;
+  margin-bottom: 0;
+}
+.pdf-thanks-title { font-size: 12pt; font-weight: bold; color: #0A1F44; margin-bottom: 4pt; }
+
+/* ---------- Footer (identical structure on both documents) ---------- */
+.pdf-footer-wrap { border-top: 1pt solid #E4E7EC; padding-top: 4pt; margin-top: 0; }
+.pdf-footer-logo { max-width: 70pt; opacity: 0.85; }
+.pdf-footer-item { font-size: 8.5pt; color: #6B7280; padding: 3pt 16pt 3pt 0; white-space: nowrap; }
+.pdf-footer-note { font-size: 7.5pt; color: #9CA3AF; }

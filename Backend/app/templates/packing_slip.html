@@ -4,111 +4,45 @@
 <meta charset="UTF-8" />
 <title>Packing Slip — {{ order.order_number }}</title>
 <style>
-@page { size: A4; margin: 12mm; }
-* { margin: 0; padding: 0; }
-body {
-  font-family: Helvetica, Arial, sans-serif;
-  font-size: 10pt;
-  color: #111827;
-  background: #FFFFFF;
-  -webkit-print-color-adjust: exact;
-  print-color-adjust: exact;
-}
-table { border-collapse: collapse; }
-tbody tr:nth-child(odd) { background-color: #F3F4F6; }
+{% include "_pdf_shared_style.html" %}
 </style>
 </head>
 <body>
+{% import "_pdf_macros.html" as pdf %}
 
-<!-- HEADER: brand left, doc title + meta right -->
-<table width="100%" cellpadding="0" cellspacing="0" style="border-bottom: 3px solid #0A1F44; padding-bottom: 14px; margin-bottom: 14px;">
-<tr>
-  <td valign="top" width="55%">
-    {% if logo_data_uri %}
-    <img src="{{ logo_data_uri }}" style="height: 52px; max-width: 200px;" />
-    {% else %}
-    <table cellpadding="0" cellspacing="0">
-    <tr>
-      <td width="52" height="52" align="center" valign="middle"
-          style="background-color: #0A1F44; color: #D4AF37; font-size: 22pt; font-weight: bold; width: 52px; height: 52px;">H</td>
-      <td width="12"></td>
-      <td valign="middle">
-        <div style="font-size: 16pt; font-weight: bold; color: #0A1F44;">{{ company.name | upper }}</div>
-      </td>
-    </tr>
-    </table>
-    {% endif %}
-    {% if company.tagline %}
-    <div style="font-size: 8pt; color: #6B7280; margin-top: 5px; font-family: HadhaUni, Helvetica, Arial, sans-serif;">{{ company.tagline }}</div>
-    {% endif %}
-  </td>
-  <td valign="top" align="right" width="45%">
-    <div style="font-size: 20pt; font-weight: bold; color: #0A1F44; margin-bottom: 10px;">PACKING SLIP</div>
-    <table cellpadding="3" cellspacing="0" align="right" style="border-collapse: collapse;">
-      <tr>
-        <td style="color: #6B7280; font-size: 9pt; text-align: right; padding-right: 12px;">Invoice #</td>
-        <td style="font-weight: bold; font-size: 9pt;">{{ order.order_number }}</td>
-      </tr>
-      <tr>
-        <td style="color: #6B7280; font-size: 9pt; text-align: right; padding-right: 12px;">Date</td>
-        <td style="font-weight: bold; font-size: 9pt;">{{ order.created_at }}</td>
-      </tr>
-      <tr>
-        <td style="color: #6B7280; font-size: 9pt; text-align: right; padding-right: 12px;">Payment</td>
-        <td style="font-weight: bold; font-size: 9pt;">PREPAID</td>
-      </tr>
-      {% if order.shipping_provider %}
-      <tr>
-        <td style="color: #6B7280; font-size: 9pt; text-align: right; padding-right: 12px;">Provider</td>
-        <td style="font-weight: bold; font-size: 9pt;">{{ order.shipping_provider }}</td>
-      </tr>
-      {% endif %}
-      {% if order.tracking_number %}
-      <tr>
-        <td style="color: #6B7280; font-size: 9pt; text-align: right; padding-right: 12px;">AWB #</td>
-        <td style="font-weight: bold; font-size: 9pt; font-family: Courier, monospace;">{{ order.tracking_number }}</td>
-      </tr>
-      {% endif %}
-    </table>
-  </td>
-</tr>
-</table>
+{% set meta_rows = [("Invoice #", order.order_number), ("Date", order.created_at), ("Payment", "PREPAID")] %}
+{% if order.shipping_provider %}{% set meta_rows = meta_rows + [("Provider", order.shipping_provider)] %}{% endif %}
+{% if order.tracking_number %}{% set meta_rows = meta_rows + [("AWB #", order.tracking_number)] %}{% endif %}
+{{ pdf.doc_header("PACKING SLIP", company, logo_data_uri, meta_rows) }}
 
-<!-- ADDRESS CARDS: FROM | TO -->
-<table width="100%" cellpadding="0" cellspacing="0" style="margin-bottom: 14px;">
+<!-- FROM / TO -->
+<table class="pdf-w100" cellpadding="0" cellspacing="0" style="margin-bottom: 9pt;">
 <tr>
-  <td width="49%" valign="top" style="border: 1.5px solid #E5E7EB;">
-    <table width="100%" cellpadding="7" cellspacing="0">
-      <tr><td style="background-color: #0A1F44; color: #FFFFFF; font-size: 8pt; font-weight: bold;">FROM</td></tr>
-    </table>
-    <div style="padding: 10px 12px;">
-      <div style="font-size: 11pt; font-weight: bold; color: #0A1F44; margin-bottom: 5px;">{{ company.name }}</div>
-      <div style="font-size: 9pt; color: #6B7280; line-height: 1.7;">
-        {% if company.address_line1 %}{{ company.address_line1 }}<br/>{% endif %}
-        {% if company.address_line2 %}{{ company.address_line2 }}<br/>{% endif %}
-        {% if company.city %}{{ company.city }}{% if company.state %}, {{ company.state }}{% endif %}{% if company.postal_code %} {{ company.postal_code }}{% endif %}<br/>{% endif %}
-        {{ company.country or "India" }}
+  <td width="49%" class="pdf-card">
+    <div class="pdf-card-label-bar">FROM</div>
+    <div class="pdf-card-body">
+      <div class="pdf-card-name">{{ company.name }}</div>
+      <div class="pdf-card-address">
+        {% if company.city %}{{ company.city }}<br/>{% endif %}
+        {% if company.state or company.postal_code %}{{ company.state }}{% if company.postal_code %} - {{ company.postal_code }}{% endif %}<br/>{% endif %}
+        {{ company.country }}
       </div>
-      {% if company.phone %}
-      <div style="font-size: 9.5pt; font-weight: bold; color: #111827; margin-top: 7px;">Ph: {{ company.phone }}</div>
-      {% endif %}
+      {% if company.phone %}<div class="pdf-card-phone">Phone: {{ company.phone }}</div>{% endif %}
     </div>
   </td>
   <td width="2%"></td>
-  <td width="49%" valign="top" style="border: 1.5px solid #E5E7EB;">
-    <table width="100%" cellpadding="7" cellspacing="0">
-      <tr><td style="background-color: #0A1F44; color: #FFFFFF; font-size: 8pt; font-weight: bold;">TO</td></tr>
-    </table>
-    <div style="padding: 10px 12px;">
-      <div style="font-size: 11pt; font-weight: bold; color: #0A1F44; margin-bottom: 5px;">{{ order.shipping_full_name }}</div>
-      <div style="font-size: 9pt; color: #6B7280; line-height: 1.7;">
+  <td width="49%" class="pdf-card">
+    <div class="pdf-card-label-bar">TO</div>
+    <div class="pdf-card-body">
+      <div class="pdf-card-name">{{ order.shipping_full_name }}</div>
+      <div class="pdf-card-address">
         {{ order.shipping_line1 }}<br/>
         {% if order.shipping_line2 %}{{ order.shipping_line2 }}<br/>{% endif %}
         {% if order.shipping_landmark %}Landmark: {{ order.shipping_landmark }}<br/>{% endif %}
         {{ order.shipping_city }}, {{ order.shipping_state }} {{ order.shipping_postal }}
       </div>
       {% if order.shipping_phone %}
-      <div style="font-size: 9.5pt; font-weight: bold; color: #111827; margin-top: 7px;">
+      <div class="pdf-card-phone">
         Ph: {{ order.shipping_phone }}{% if order.shipping_alternate_phone %} / {{ order.shipping_alternate_phone }}{% endif %}
       </div>
       {% endif %}
@@ -117,83 +51,77 @@ tbody tr:nth-child(odd) { background-color: #F3F4F6; }
 </tr>
 </table>
 
-<!-- ORDER DETAILS SECTION HEADER -->
-<table width="100%" cellpadding="0" cellspacing="0" style="margin-bottom: 8px;">
+<!-- ORDER DETAILS -->
+<table class="pdf-w100" cellpadding="0" cellspacing="0" style="margin-bottom: 8pt;">
 <tr>
   <td valign="middle">
-    <table cellpadding="0" cellspacing="0">
-    <tr>
-      <td style="background-color: #0A1F44; color: #FFFFFF; font-size: 8pt; font-weight: bold; padding: 5px 12px;">ORDER DETAILS</td>
-    </tr>
-    </table>
+    <span class="pdf-badge pdf-badge-navy">ORDER DETAILS</span>
   </td>
-  <td valign="middle" align="right" style="font-size: 9pt; color: #6B7280;">
+  <td valign="middle" align="right" class="pdf-body pdf-muted">
     Order: <b>{{ order.order_number }}</b> &nbsp;&nbsp; Date: <b>{{ order.created_at }}</b>
   </td>
 </tr>
 </table>
 
 <!-- ITEMS TABLE -->
-<table width="100%" cellpadding="0" cellspacing="0" style="margin-bottom: 12px; border: 1px solid #E5E7EB; border-collapse: collapse;">
+<table class="pdf-table pdf-w100" cellpadding="0" cellspacing="0" style="margin-bottom: 8pt;">
   <thead>
     <tr>
-      <td width="4%"  style="background-color: #0A1F44; color: #FFFFFF; padding: 8px 8px; font-size: 8pt; font-weight: bold;">#</td>
-      <td             style="background-color: #0A1F44; color: #FFFFFF; padding: 8px 8px; font-size: 8pt; font-weight: bold;">Description</td>
-      <td width="14%" style="background-color: #0A1F44; color: #FFFFFF; padding: 8px 8px; font-size: 8pt; font-weight: bold;">SKU</td>
-      <td width="6%"  style="background-color: #0A1F44; color: #FFFFFF; padding: 8px 8px; font-size: 8pt; font-weight: bold; text-align: center;">Qty</td>
-      <td width="16%" style="background-color: #0A1F44; color: #FFFFFF; padding: 8px 8px; font-size: 8pt; font-weight: bold; text-align: right;">Amount (INR)</td>
+      <td width="4%">#</td>
+      <td>Description</td>
+      <td width="14%">SKU</td>
+      <td width="8%" class="pdf-qty">Qty</td>
+      <td width="18%" class="pdf-amount">Amount (INR)</td>
     </tr>
   </thead>
   <tbody>
     {% for item in items %}
     <tr>
-      <td style="padding: 8px 8px; font-size: 9pt; color: #6B7280; border-bottom: 1px solid #E5E7EB; vertical-align: top;">{{ loop.index }}</td>
-      <td style="padding: 8px 8px; border-bottom: 1px solid #E5E7EB; vertical-align: top;">
-        <div style="font-size: 10pt; font-weight: bold; color: #111827;">{{ item.product_name }}</div>
-        {% if item.variant_name %}<div style="font-size: 8.5pt; color: #6B7280; margin-top: 2px;">{{ item.variant_name }}</div>{% endif %}
+      <td>{{ loop.index }}</td>
+      <td>
+        <b>{{ item.product_name }}</b>
+        {% if item.variant_name %}<div class="pdf-muted" style="font-size: 8.5pt; margin-top: 2pt;">{{ item.variant_name }}</div>{% endif %}
       </td>
-      <td style="padding: 8px 8px; font-size: 8.5pt; color: #6B7280; font-family: Courier, monospace; border-bottom: 1px solid #E5E7EB; vertical-align: top;">{{ item.product_sku }}</td>
-      <td style="padding: 8px 8px; font-size: 10pt; text-align: center; border-bottom: 1px solid #E5E7EB; vertical-align: top;">{{ item.quantity }}</td>
-      <td style="padding: 8px 8px; font-size: 10pt; font-weight: bold; text-align: right; border-bottom: 1px solid #E5E7EB; vertical-align: top;">Rs. {{ "%.2f"|format(item.line_total) }}</td>
+      <td class="pdf-sku">{{ item.product_sku }}</td>
+      <td class="pdf-qty">{{ item.quantity }}</td>
+      <td class="pdf-amount">Rs. {{ "%.2f"|format(item.line_total) }}</td>
     </tr>
     {% endfor %}
   </tbody>
 </table>
 
-<!-- TOTALS: right-aligned -->
-<table width="100%" cellpadding="0" cellspacing="0" style="margin-bottom: 14px;">
+<!-- TOTALS -->
+<table class="pdf-w100" cellpadding="0" cellspacing="0" style="margin-bottom: 9pt;">
 <tr>
-  <td width="52%"></td>
-  <td width="48%">
-    <table width="100%" cellpadding="5" cellspacing="0" style="border-collapse: collapse;">
-      <tr>
-        <td style="font-size: 9.5pt; color: #6B7280; padding: 5px 8px;">Subtotal</td>
-        <td style="font-size: 9.5pt; font-weight: bold; text-align: right; padding: 5px 8px;">Rs. {{ "%.2f"|format(order.subtotal) }}</td>
+  <td width="48%"></td>
+  <td width="52%">
+    <table class="pdf-w100" cellpadding="0" cellspacing="0">
+      <tr class="pdf-totals-row">
+        <td>Subtotal</td>
+        <td class="pdf-amount">Rs. {{ "%.2f"|format(order.subtotal) }}</td>
       </tr>
       {% if order.tax_amount > 0 %}
-      <tr>
-        <td style="font-size: 9.5pt; color: #6B7280; padding: 5px 8px;">Tax (GST)</td>
-        <td style="font-size: 9.5pt; font-weight: bold; text-align: right; padding: 5px 8px;">Rs. {{ "%.2f"|format(order.tax_amount) }}</td>
+      <tr class="pdf-totals-row">
+        <td>Tax (GST)</td>
+        <td class="pdf-amount">Rs. {{ "%.2f"|format(order.tax_amount) }}</td>
       </tr>
       {% endif %}
       {% if order.shipping_charge > 0 %}
-      <tr>
-        <td style="font-size: 9.5pt; color: #6B7280; padding: 5px 8px;">Shipping</td>
-        <td style="font-size: 9.5pt; font-weight: bold; text-align: right; padding: 5px 8px;">Rs. {{ "%.2f"|format(order.shipping_charge) }}</td>
+      <tr class="pdf-totals-row">
+        <td>Shipping</td>
+        <td class="pdf-amount">Rs. {{ "%.2f"|format(order.shipping_charge) }}</td>
       </tr>
       {% endif %}
       {% if order.discount > 0 %}
-      <tr>
-        <td style="font-size: 9.5pt; color: #6B7280; padding: 5px 8px;">Discount</td>
-        <td style="font-size: 9.5pt; font-weight: bold; text-align: right; color: #16A34A; padding: 5px 8px;">- Rs. {{ "%.2f"|format(order.discount) }}</td>
+      <tr class="pdf-totals-row">
+        <td>Discount</td>
+        <td class="pdf-amount" style="color: #1E7B34;">- Rs. {{ "%.2f"|format(order.discount) }}</td>
       </tr>
       {% endif %}
-      <tr>
-        <td colspan="2" style="border-top: 1.5px solid #E5E7EB; padding: 3px 0;"></td>
-      </tr>
-      <tr>
-        <td style="background-color: #0A1F44; color: #FFFFFF; font-size: 10pt; font-weight: bold; padding: 9px 10px;">GRAND TOTAL</td>
-        <td style="background-color: #0A1F44; color: #D4AF37; font-size: 14pt; font-weight: bold; text-align: right; padding: 9px 10px;">Rs. {{ "%.2f"|format(order.total) }}</td>
+      <tr><td colspan="2" style="border-top: 1pt solid #E4E7EC; padding: 4pt 0;"></td></tr>
+      <tr class="pdf-grand-total">
+        <td>GRAND TOTAL</td>
+        <td class="pdf-amount">Rs. {{ "%.2f"|format(order.total) }}</td>
       </tr>
     </table>
   </td>
@@ -201,29 +129,14 @@ tbody tr:nth-child(odd) { background-color: #F3F4F6; }
 </table>
 
 <!-- THANK YOU -->
-<table width="100%" cellpadding="12" cellspacing="0" style="background-color: #F8F9FB; border: 1px solid #E5E7EB; margin-bottom: 14px; border-collapse: collapse;">
-<tr>
-  <td>
-    <div style="font-size: 11pt; font-weight: bold; color: #0A1F44; margin-bottom: 4px;">Thank you for shopping with us!</div>
-    <div style="font-size: 9pt; color: #6B7280;">We appreciate your business. For any queries, feel free to contact us.</div>
-  </td>
-</tr>
+<table class="pdf-w100" cellpadding="0" cellspacing="0">
+<tr><td class="pdf-thanks">
+  <div class="pdf-thanks-title">Thank you for shopping with us!</div>
+  <div class="pdf-body pdf-muted">We appreciate your business. For any queries, feel free to contact us.</div>
+</td></tr>
 </table>
 
-<!-- FOOTER -->
-<table width="100%" cellpadding="0" cellspacing="0" style="border-top: 1.5px solid #E5E7EB; padding-top: 10px; border-collapse: collapse;">
-<tr>
-  {% if company.phone %}
-  <td style="font-size: 9pt; color: #6B7280; text-align: center; padding: 6px 4px;">Ph: {{ company.phone }}</td>
-  {% endif %}
-  {% if company.support_email %}
-  <td style="font-size: 9pt; color: #6B7280; text-align: center; padding: 6px 4px;">{{ company.support_email }}</td>
-  {% endif %}
-  {% if company.website %}
-  <td style="font-size: 9pt; color: #6B7280; text-align: center; padding: 6px 4px;">{{ company.website }}</td>
-  {% endif %}
-</tr>
-</table>
+{{ pdf.doc_footer(company, logo_data_uri) }}
 
 </body>
 </html>

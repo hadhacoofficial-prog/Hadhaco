@@ -1,3 +1,4 @@
+import pathlib
 import uuid
 from datetime import datetime
 from io import BytesIO
@@ -347,39 +348,99 @@ class FulfillmentService:
         return True
 
 
+_TEMPLATES_DIR = pathlib.Path(__file__).parent.parent.parent / "templates"
+_FONTS_DIR = _TEMPLATES_DIR / "fonts"
+
+
 def _register_unicode_font() -> bool:
-    """Register a Telugu/Unicode-capable font with ReportLab (once per process).
+    """Register a Telugu/Unicode-capable font with ReportLab *and* xhtml2pdf.
 
-    Returns True if a suitable font was registered as 'HadhaUni'.
+    xhtml2pdf resolves CSS `font-family` through its own font map
+    (``xhtml2pdf.default.DEFAULT_FONT``), not ReportLab's global
+    ``pdfmetrics`` registry. Registering a font with ``pdfmetrics`` alone is
+    invisible to xhtml2pdf's CSS engine — `font-family: HadhaUni` would
+    silently fall back to Helvetica and any non-Latin glyphs (e.g. Telugu)
+    render as blank ".notdef" boxes. Both registries must be updated.
+
+    Returns True if a suitable font was registered as 'HadhaUni'
+    ('HadhaUni-Bold' for the bold weight, auto-selected by
+    font-weight:bold / <b> via registerFontFamily).
     """
-    import pathlib
-
     from reportlab.pdfbase import pdfmetrics
     from reportlab.pdfbase.ttfonts import TTFont
+    from xhtml2pdf import default as xhtml2pdf_default
 
     if "HadhaUni" in pdfmetrics.getRegisteredFontNames():
+        xhtml2pdf_default.DEFAULT_FONT["hadhauni"] = "HadhaUni"
         return True
+
+    # (regular, bold) candidate pairs, most specific/portable first. The
+    # bundled Noto Sans Telugu ships with the repo so it works identically
+    # in dev and prod regardless of which fonts happen to be installed on
+    # the host OS.
     candidates = [
-        r"C:\Windows\Fonts\Gautami.ttf",
-        r"C:\Windows\Fonts\gautamib.ttf",
-        "/usr/share/fonts/truetype/noto/NotoSansTelugu-Regular.ttf",
-        "/usr/share/fonts/truetype/noto/NotoSans-Regular.ttf",
+        (
+            _FONTS_DIR / "NotoSansTelugu-Regular.ttf",
+            _FONTS_DIR / "NotoSansTelugu-Bold.ttf",
+        ),
+        (
+            pathlib.Path(r"C:\Windows\Fonts\Gautami.ttf"),
+            pathlib.Path(r"C:\Windows\Fonts\gautamib.ttf"),
+        ),
+        (
+            pathlib.Path("/usr/share/fonts/truetype/noto/NotoSansTelugu-Regular.ttf"),
+            pathlib.Path("/usr/share/fonts/truetype/noto/NotoSansTelugu-Bold.ttf"),
+        ),
     ]
-    for path in candidates:
-        if pathlib.Path(path).exists():
-            try:
-                pdfmetrics.registerFont(TTFont("HadhaUni", path))
-                return True
-            except Exception:
-                continue
+    for regular_path, bold_path in candidates:
+        if not regular_path.exists():
+            continue
+        try:
+            pdfmetrics.registerFont(TTFont("HadhaUni", str(regular_path)))
+            if bold_path.exists():
+                pdfmetrics.registerFont(TTFont("HadhaUni-Bold", str(bold_path)))
+                pdfmetrics.registerFontFamily(
+                    "HadhaUni",
+                    normal="HadhaUni",
+                    bold="HadhaUni-Bold",
+                    italic="HadhaUni",
+                    boldItalic="HadhaUni-Bold",
+                )
+                xhtml2pdf_default.DEFAULT_FONT["hadhauni-bold"] = "HadhaUni-Bold"
+            xhtml2pdf_default.DEFAULT_FONT["hadhauni"] = "HadhaUni"
+            return True
+        except Exception:
+            continue
     return False
 
 
-def _logo_data_uri() -> str | None:
-    import base64
-    import pathlib
+def _logo_data_uri(
+    logo_url: str | None = None, default_filename: str = "hadha-logo.png"
+) -> str | None:
+    """Resolve a document's logo to a data URI.
 
-    logo = pathlib.Path(__file__).parent.parent.parent / "templates" / "hadha-logo.png"
+    Admin-configured `logo_url` (fetched over HTTP) takes priority; falling
+    back to the bundled static asset named by `default_filename` when unset
+    or unreachable. Callers pick the default per document type — e.g.
+    packing slips default to "hadha-logo.png", shipping labels to
+    "hadha-logo-w.png" — so each template gets its own look even before an
+    admin uploads a custom logo.
+    """
+    import base64
+
+    if logo_url:
+        try:
+            import httpx
+
+            resp = httpx.get(logo_url, timeout=5.0)
+            resp.raise_for_status()
+            content_type = resp.headers.get("content-type", "image/png").split(";")[0]
+            data = base64.b64encode(resp.content).decode()
+            return f"data:{content_type};base64,{data}"
+        except Exception:
+            pass
+
+    logo = _TEMPLATES_DIR / default_filename
     try:
         data = base64.b64encode(logo.read_bytes()).decode()
         return f"data:image/png;base64,{data}"
@@ -387,7 +448,62 @@ def _logo_data_uri() -> str | None:
         return None
 
 
-class ShippingLabelService:
+_JINJA_ENV = None
+
+
+def _jinja_env():
+    """Lazily-built, process-wide Jinja2 environment for PDF templates.
+
+    Uses a FileSystemLoader (rather than rendering an isolated string) so
+    templates can share layout/CSS via `{% include %}` and `{% import %}`.
+    """
+    global _JINJA_ENV
+    if _JINJA_ENV is None:
+        from jinja2 import Environment, FileSystemLoader
+
+        _JINJA_ENV = Environment(
+            loader=FileSystemLoader(str(_TEMPLATES_DIR)), autoescape=True
+        )
+    return _JINJA_ENV
+
+
+class _PdfDocumentService:
+    """Shared render/convert pipeline for on-demand PDF documents.
+
+    Subclasses set `_TEMPLATE_NAME` and implement `_build_context()`;
+    everything else (Jinja rendering, Telugu font registration, xhtml2pdf
+    conversion) is identical between shipping labels and packing slips.
+    """
+
+    _TEMPLATE_NAME: str
+
+    async def _build_context(self, db: AsyncSession, order: Order) -> dict:
+        raise NotImplementedError
+
+    def _render_html(self, context: dict) -> str:
+        template = _jinja_env().get_template(self._TEMPLATE_NAME)
+        return template.render(**context)
+
+    def _html_to_pdf(self, html: str) -> bytes:
+        from xhtml2pdf import pisa
+
+        _register_unicode_font()
+        buf = BytesIO()
+        result = pisa.CreatePDF(html.encode("utf-8"), dest=buf)
+        if result.err:
+            raise RuntimeError("PDF generation failed")
+        return buf.getvalue()
+
+    async def render_html(self, db: AsyncSession, order: Order) -> str:
+        context = await self._build_context(db, order)
+        return self._render_html(context)
+
+    async def render_pdf(self, db: AsyncSession, order: Order) -> bytes:
+        context = await self._build_context(db, order)
+        return self._html_to_pdf(self._render_html(context))
+
+
+class ShippingLabelService(_PdfDocumentService):
     """On-demand shipping label renderer — no file storage.
 
     Fetches order + company config from DB, generates barcode/QR as base64,
@@ -395,14 +511,7 @@ class ShippingLabelService:
     xhtml2pdf. Nothing is written to disk or uploaded to R2.
     """
 
-    _TEMPLATE_PATH = (
-        __import__("pathlib").Path(__file__).parent.parent.parent
-        / "templates"
-        / "shipping_label.html"
-    )
-
-    def _get_template(self) -> str:
-        return self._TEMPLATE_PATH.read_text(encoding="utf-8")
+    _TEMPLATE_NAME = "shipping_label.html"
 
     @staticmethod
     def _barcode_b64(value: str) -> str | None:
@@ -414,7 +523,13 @@ class ShippingLabelService:
 
             buf = BytesIO()
             bc_get("code128", value, writer=ImageWriter()).write(
-                buf, options={"module_width": 0.4, "module_height": 8, "quiet_zone": 1}
+                buf,
+                options={
+                    "module_width": 0.4,
+                    "module_height": 8,
+                    "quiet_zone": 1,
+                    "write_text": False,
+                },
             )
             return base64.b64encode(buf.getvalue()).decode()
         except Exception:
@@ -448,8 +563,6 @@ class ShippingLabelService:
             "tagline": (
                 company.tagline if company else "Timeless Beauty, Trusted Quality"
             ),
-            "address_line1": company.address_line1 if company else None,
-            "address_line2": company.address_line2 if company else None,
             "city": company.city if company else None,
             "state": company.state if company else None,
             "postal_code": company.postal_code if company else None,
@@ -458,6 +571,9 @@ class ShippingLabelService:
             "support_email": company.support_email if company else None,
             "website": company.website if company else None,
             "logo_url": company.logo_url if company else None,
+            "shipping_label_logo_url": (
+                company.shipping_label_logo_url if company else None
+            ),
         }
 
         order_data = {
@@ -506,38 +622,16 @@ class ShippingLabelService:
             "company": company_data,
             "order": order_data,
             "items": items_data,
-            "logo_data_uri": _logo_data_uri(),
+            "logo_data_uri": _logo_data_uri(
+                company_data["shipping_label_logo_url"],
+                default_filename="hadha-logo-w.png",
+            ),
             "barcode_b64": barcode_b64,
             "qr_b64": qr_b64,
         }
 
-    def _render_html(self, context: dict) -> str:
-        from jinja2 import BaseLoader, Environment
 
-        env = Environment(loader=BaseLoader(), autoescape=True)
-        tmpl = env.from_string(self._get_template())
-        return tmpl.render(**context)
-
-    def _html_to_pdf(self, html: str) -> bytes:
-        from xhtml2pdf import pisa
-
-        _register_unicode_font()
-        buf = BytesIO()
-        result = pisa.CreatePDF(html.encode("utf-8"), dest=buf)
-        if result.err:
-            raise RuntimeError("PDF generation failed")
-        return buf.getvalue()
-
-    async def render_html(self, db: AsyncSession, order: Order) -> str:
-        context = await self._build_context(db, order)
-        return self._render_html(context)
-
-    async def render_pdf(self, db: AsyncSession, order: Order) -> bytes:
-        context = await self._build_context(db, order)
-        return self._html_to_pdf(self._render_html(context))
-
-
-class PackingSlipService:
+class PackingSlipService(_PdfDocumentService):
     """On-demand packing slip renderer — no file storage.
 
     Fetches order + company config from DB, renders the Jinja2 HTML template,
@@ -545,14 +639,7 @@ class PackingSlipService:
     to disk or uploaded to R2.
     """
 
-    _TEMPLATE_PATH = (
-        __import__("pathlib").Path(__file__).parent.parent.parent
-        / "templates"
-        / "packing_slip.html"
-    )
-
-    def _get_template(self) -> str:
-        return self._TEMPLATE_PATH.read_text(encoding="utf-8")
+    _TEMPLATE_NAME = "packing_slip.html"
 
     async def _build_context(self, db: AsyncSession, order: Order) -> dict:
         from app.modules.company.repository import CompanyConfigRepository
@@ -564,8 +651,6 @@ class PackingSlipService:
             "tagline": (
                 company.tagline if company else "Timeless Beauty, Trusted Quality"
             ),
-            "address_line1": company.address_line1 if company else None,
-            "address_line2": company.address_line2 if company else None,
             "city": company.city if company else None,
             "state": company.state if company else None,
             "postal_code": company.postal_code if company else None,
@@ -574,6 +659,9 @@ class PackingSlipService:
             "support_email": company.support_email if company else None,
             "website": company.website if company else None,
             "logo_url": company.logo_url if company else None,
+            "packing_slip_logo_url": (
+                company.packing_slip_logo_url if company else None
+            ),
         }
 
         order_data = {
@@ -612,33 +700,7 @@ class PackingSlipService:
             "company": company_data,
             "order": order_data,
             "items": items_data,
-            "logo_data_uri": _logo_data_uri(),
+            "logo_data_uri": _logo_data_uri(
+                company_data["packing_slip_logo_url"], default_filename="hadha-logo.png"
+            ),
         }
-
-    def _render_html(self, context: dict) -> str:
-        from jinja2 import BaseLoader, Environment
-
-        template_str = self._get_template()
-        env = Environment(loader=BaseLoader(), autoescape=True)
-        tmpl = env.from_string(template_str)
-        return tmpl.render(**context)
-
-    def _html_to_pdf(self, html: str) -> bytes:
-        from io import BytesIO
-
-        from xhtml2pdf import pisa
-
-        buf = BytesIO()
-        result = pisa.CreatePDF(html.encode("utf-8"), dest=buf)
-        if result.err:
-            raise RuntimeError("PDF generation failed")
-        return buf.getvalue()
-
-    async def render_html(self, db: AsyncSession, order: Order) -> str:
-        context = await self._build_context(db, order)
-        return self._render_html(context)
-
-    async def render_pdf(self, db: AsyncSession, order: Order) -> bytes:
-        context = await self._build_context(db, order)
-        html = self._render_html(context)
-        return self._html_to_pdf(html)

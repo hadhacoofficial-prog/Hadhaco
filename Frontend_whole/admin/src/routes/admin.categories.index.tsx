@@ -33,6 +33,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { TableSkeleton } from "@/components/loading/TableSkeleton";
+import { ImageWithFallback } from "@/components/common/ImageWithFallback";
 import { api } from "@/lib/api/client";
 import { queryKeys } from "@/lib/api/queryKeys";
 import { toUserMessage } from "@/lib/api/errors";
@@ -159,7 +160,7 @@ function AdminCategories() {
           </td>
           <td className="px-4 py-3">
             {cat.image_url ? (
-              <img src={cat.image_url} alt="" className="size-8 object-cover bg-secondary" />
+              <ImageWithFallback src={cat.image_url} alt="" className="size-8 bg-secondary" />
             ) : (
               <div className="size-8 bg-secondary flex items-center justify-center">
                 <ImageIcon className="size-3 text-muted-foreground" />

@@ -5,8 +5,6 @@ export interface CompanyConfig {
   name: string;
   tagline: string | null;
   gstin: string | null;
-  address_line1: string | null;
-  address_line2: string | null;
   city: string | null;
   state: string | null;
   postal_code: string | null;
@@ -15,6 +13,8 @@ export interface CompanyConfig {
   support_email: string | null;
   website: string | null;
   logo_url: string | null;
+  packing_slip_logo_url: string | null;
+  shipping_label_logo_url: string | null;
   instagram_url: string | null;
   facebook_url: string | null;
 }

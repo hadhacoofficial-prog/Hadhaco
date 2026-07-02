@@ -1,0 +1,60 @@
+{# Shared header/footer building blocks for PDF documents.
+
+Imported via {% import "_pdf_macros.html" as pdf %} and called as
+{{ pdf.doc_header(...) }} / {{ pdf.doc_footer(...) }}. Kept as HTML-table
+macros (not <div> flex/grid) because that's what xhtml2pdf's layout engine
+reliably supports for column alignment.
+#}
+
+{% macro doc_header(doc_title, company, logo_data_uri, meta_rows) %}
+<table class="pdf-header-wrap pdf-w100" cellpadding="0" cellspacing="0">
+<tr>
+  <td valign="middle" width="56%">
+    {% if logo_data_uri %}
+    <img src="{{ logo_data_uri }}" class="pdf-logo" alt="{{ company.name }}" />
+    {% else %}
+    <div class="pdf-brand-name">{{ company.name | upper }}</div>
+    {% endif %}
+    {% if company.tagline %}
+    <div class="pdf-tagline">{{ company.tagline }}</div>
+    {% endif %}
+  </td>
+  <td valign="middle" align="right" width="44%">
+    <div class="pdf-doc-title">{{ doc_title }}</div>
+    <table cellpadding="0" cellspacing="0" align="right">
+      {% for label, value in meta_rows %}
+      <tr>
+        <td class="pdf-meta-label">{{ label }}</td>
+        <td class="pdf-meta-value">{{ value }}</td>
+      </tr>
+      {% endfor %}
+    </table>
+  </td>
+</tr>
+</table>
+{% endmacro %}
+
+{% macro doc_footer(company, logo_data_uri, order_number=None) %}
+<table class="pdf-footer-wrap pdf-w100" cellpadding="0" cellspacing="0">
+<tr>
+  <td valign="middle" width="12%">
+    {% if logo_data_uri %}
+    <img src="{{ logo_data_uri }}" class="pdf-footer-logo" alt="{{ company.name }}" />
+    {% endif %}
+  </td>
+  <td valign="middle" width="58%">
+    <table cellpadding="0" cellspacing="0">
+    <tr>
+      {% if company.phone %}<td class="pdf-footer-item" width="150" nowrap="nowrap">Ph: {{ company.phone }}</td>{% endif %}
+      {% if company.support_email %}<td class="pdf-footer-item" width="135" nowrap="nowrap">{{ company.support_email }}</td>{% endif %}
+      {% if company.website %}<td class="pdf-footer-item" width="110" nowrap="nowrap">{{ company.website }}</td>{% endif %}
+    </tr>
+    </table>
+  </td>
+  <td valign="middle" align="right" width="30%" class="pdf-footer-note">
+    {% if order_number %}Order {{ order_number }}<br/>{% endif %}
+    Thank you for shopping with us.
+  </td>
+</tr>
+</table>
+{% endmacro %}

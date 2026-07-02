@@ -8,6 +8,7 @@ import {
   DashboardKPISkeleton,
   DashboardListSkeleton,
 } from "@/components/loading/DashboardSkeleton";
+import { ImageWithFallback } from "@/components/common/ImageWithFallback";
 import type { KPIStats, OrderListResponse, ProductListResponse } from "@/types/admin";
 
 export const Route = createFileRoute("/admin/")({
@@ -140,10 +141,10 @@ function Dashboard() {
               {topProducts.items.map((p) => (
                 <li key={p.id} className="py-3 flex items-center gap-3">
                   {p.primary_image ? (
-                    <img
+                    <ImageWithFallback
                       src={p.primary_image}
                       alt=""
-                      className="size-10 object-cover bg-secondary"
+                      className="size-10 bg-secondary"
                     />
                   ) : (
                     <div className="size-10 bg-secondary" />

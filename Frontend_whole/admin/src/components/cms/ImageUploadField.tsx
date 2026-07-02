@@ -3,6 +3,7 @@ import { Loader2, Upload, X } from "lucide-react";
 import { toast } from "sonner";
 import { api } from "@/lib/api/client";
 import { toUserMessage } from "@/lib/api/errors";
+import { ImageWithFallback } from "@/components/common/ImageWithFallback";
 import type { CmsMedia } from "@/types/cms";
 
 interface ImageUploadFieldProps {
@@ -51,14 +52,12 @@ export function ImageUploadField({
 
       {value && (
         <div className="relative rounded overflow-hidden border border-border/40 bg-muted/20">
-          <img
+          <ImageWithFallback
             src={value}
             alt=""
             style={{ height: previewHeight }}
-            className="w-full object-cover"
-            onError={(e) => {
-              (e.target as HTMLImageElement).style.display = "none";
-            }}
+            className="w-full"
+            imgClassName="object-cover"
           />
           <button
             type="button"

@@ -15,6 +15,7 @@ import markAsset from "../assets/hadha-mark.png";
 import { AuthProvider } from "../providers/AuthProvider";
 import { Toaster } from "../components/ui/sonner";
 import { PageLoader } from "../components/common/PageLoader";
+import { RouteTransition } from "../components/common/RouteTransition";
 import { useProfile } from "../hooks/auth/useProfile";
 import { useAuthContext } from "../providers/auth-context";
 
@@ -137,10 +138,10 @@ function AppContent() {
   }
 
   return (
-    <>
+    <RouteTransition logoSrc={markAsset}>
       <ProfileSyncer />
       <Outlet />
-    </>
+    </RouteTransition>
   );
 }
 

@@ -17,8 +17,6 @@ def _make_company_mock(**overrides):
     c.name = "Hadha Jewellery"
     c.tagline = "Timeless Beauty, Trusted Quality"
     c.gstin = None
-    c.address_line1 = "Plot 42"
-    c.address_line2 = None
     c.city = "Hyderabad"
     c.state = "Telangana"
     c.postal_code = "500033"
@@ -27,6 +25,8 @@ def _make_company_mock(**overrides):
     c.support_email = "info@hadha.com"
     c.website = "www.hadha.com"
     c.logo_url = None
+    c.packing_slip_logo_url = None
+    c.shipping_label_logo_url = None
     c.instagram_url = None
     c.facebook_url = None
     for k, v in overrides.items():
@@ -189,6 +189,41 @@ class TestCompanyConfigPatch:
             headers={"Content-Type": "application/json"},
         )
         assert resp.status_code == 422
+
+    async def test_patch_rejects_full_country_name_with_422(self, admin_client):
+        """Regression test: a full country name (e.g. "India" instead of the
+        2-char ISO code "IN") must be rejected by request validation before
+        it ever reaches the DB. The `country` column is varchar(2); letting
+        an oversized value through crashed the single UPDATE statement that
+        also writes city/state/postal_code, silently discarding those too.
+        """
+        with patch(
+            "app.modules.company.router._repo.update",
+            new=AsyncMock(side_effect=AssertionError("must not reach the repository")),
+        ):
+            resp = await admin_client.patch(
+                "/api/v1/admin/company",
+                json={"city": "Hyderabad", "state": "Telangana", "country": "India"},
+            )
+
+        assert resp.status_code == 422
+
+    async def test_patch_normalizes_lowercase_country_to_uppercase(self, admin_client):
+        updated = _make_company_mock(country="IN")
+        captured: list = []
+
+        async def _capture_update(db, payload):
+            captured.append(payload)
+            return updated
+
+        with patch("app.modules.company.router._repo.update", new=_capture_update):
+            resp = await admin_client.patch(
+                "/api/v1/admin/company",
+                json={"country": "in"},
+            )
+
+        assert resp.status_code == 200
+        assert captured[0]["country"] == "IN"
 
 
 # ─── OpenAPI schema tests ─────────────────────────────────────────────────────

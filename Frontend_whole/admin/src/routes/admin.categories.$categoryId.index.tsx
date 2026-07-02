@@ -14,6 +14,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { Skeleton } from "@/components/ui/skeleton";
+import { ImageWithFallback } from "@/components/common/ImageWithFallback";
 import { api } from "@/lib/api/client";
 import { queryKeys } from "@/lib/api/queryKeys";
 import { toUserMessage } from "@/lib/api/errors";
@@ -104,10 +105,10 @@ function CategoryDetailPage() {
       <header className="flex flex-wrap items-start justify-between gap-4 mb-8">
         <div className="flex items-center gap-4">
           {category.image_url ? (
-            <img
+            <ImageWithFallback
               src={category.image_url}
               alt={category.name}
-              className="size-16 object-cover bg-secondary shrink-0"
+              className="size-16 bg-secondary shrink-0"
             />
           ) : (
             <div className="size-16 bg-secondary flex items-center justify-center shrink-0">
@@ -220,10 +221,10 @@ function CategoryDetailPage() {
                       <td className="px-6 py-3">
                         <div className="flex items-center gap-3">
                           {p.primary_image ? (
-                            <img
+                            <ImageWithFallback
                               src={p.primary_image}
                               alt=""
-                              className="size-10 object-cover bg-secondary shrink-0"
+                              className="size-10 bg-secondary shrink-0"
                             />
                           ) : (
                             <div className="size-10 bg-secondary shrink-0 flex items-center justify-center">

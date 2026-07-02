@@ -193,8 +193,8 @@ export function DispatchModal({ orderId, open, onOpenChange, onSuccess }: Dispat
               >
                 Cancel
               </Button>
-              <Button type="submit" disabled={isSubmitting} className="flex-1">
-                {isSubmitting ? "Dispatching..." : "Dispatch Order"}
+              <Button type="submit" loading={isSubmitting} className="flex-1">
+                {isSubmitting ? "Dispatching…" : "Dispatch Order"}
               </Button>
             </div>
           </form>

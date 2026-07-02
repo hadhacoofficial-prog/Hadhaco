@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Loader2, Download, Send, CheckCircle, Truck } from "lucide-react";
+import { Download, Send, CheckCircle, Truck } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import type { OrderResponse } from "@/types/admin";
@@ -121,12 +121,9 @@ export function FulfillmentActionsPanel({ order, orderId }: FulfillmentActionsPa
               size="sm"
               variant="outline"
               onClick={handleConfirmPayment}
-              disabled={confirmPaymentMutation.isPending}
+              loading={confirmPaymentMutation.isPending}
               className="w-full justify-start"
             >
-              {confirmPaymentMutation.isPending && (
-                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-              )}
               Confirm Payment
             </Button>
           )}
@@ -136,10 +133,9 @@ export function FulfillmentActionsPanel({ order, orderId }: FulfillmentActionsPa
               size="sm"
               variant="outline"
               onClick={handleMarkPacking}
-              disabled={markPackingMutation.isPending}
+              loading={markPackingMutation.isPending}
               className="w-full justify-start"
             >
-              {markPackingMutation.isPending && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
               Mark Packing
             </Button>
           )}
@@ -150,12 +146,9 @@ export function FulfillmentActionsPanel({ order, orderId }: FulfillmentActionsPa
                 size="sm"
                 variant="outline"
                 onClick={handleDownloadLabel}
-                disabled={generateLabelMutation.isPending}
+                loading={generateLabelMutation.isPending}
                 className="w-full justify-start"
               >
-                {generateLabelMutation.isPending && (
-                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                )}
                 {!generateLabelMutation.isPending && <Download className="h-4 w-4 mr-2" />}
                 Download Label
               </Button>
@@ -164,12 +157,9 @@ export function FulfillmentActionsPanel({ order, orderId }: FulfillmentActionsPa
                 size="sm"
                 variant="outline"
                 onClick={handleDownloadSlip}
-                disabled={generateSlipMutation.isPending}
+                loading={generateSlipMutation.isPending}
                 className="w-full justify-start"
               >
-                {generateSlipMutation.isPending && (
-                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                )}
                 {!generateSlipMutation.isPending && <Download className="h-4 w-4 mr-2" />}
                 Download Slip
               </Button>
@@ -193,11 +183,10 @@ export function FulfillmentActionsPanel({ order, orderId }: FulfillmentActionsPa
               size="sm"
               variant="outline"
               onClick={handleMarkInTransit}
-              disabled={markInTransitMutation.isPending}
+              loading={markInTransitMutation.isPending}
               className="w-full justify-start"
             >
-              {markInTransitMutation.isPending && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
-              <Truck className="h-4 w-4 mr-2" />
+              {!markInTransitMutation.isPending && <Truck className="h-4 w-4 mr-2" />}
               Mark In Transit
             </Button>
           )}
@@ -207,11 +196,10 @@ export function FulfillmentActionsPanel({ order, orderId }: FulfillmentActionsPa
               size="sm"
               variant="outline"
               onClick={handleMarkDelivered}
-              disabled={markDeliveredMutation.isPending}
+              loading={markDeliveredMutation.isPending}
               className="w-full justify-start"
             >
-              {markDeliveredMutation.isPending && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
-              <CheckCircle className="h-4 w-4 mr-2" />
+              {!markDeliveredMutation.isPending && <CheckCircle className="h-4 w-4 mr-2" />}
               Mark Delivered
             </Button>
           )}

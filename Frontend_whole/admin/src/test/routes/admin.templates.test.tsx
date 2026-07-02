@@ -45,8 +45,6 @@ const mockConfig = {
   name: "Hadha Jewellery",
   tagline: "The strong Decision",
   gstin: "22AAA0000A1Z5",
-  address_line1: "Plot 42",
-  address_line2: null,
   city: "Hyderabad",
   state: "Telangana",
   postal_code: "500033",
@@ -55,6 +53,8 @@ const mockConfig = {
   support_email: "info@hadha.com",
   website: "www.hadha.com",
   logo_url: null,
+  packing_slip_logo_url: null,
+  shipping_label_logo_url: null,
   instagram_url: null,
   facebook_url: null,
 };

@@ -73,7 +73,7 @@ async def get_homepage(
     content = _json.loads(payload.model_dump_json())
     return JSONResponse(
         content=content,
-        headers={"Cache-Control": "public, max-age=300, stale-while-revalidate=86400"},
+        headers={"Cache-Control": "no-store"},
     )
 
 
