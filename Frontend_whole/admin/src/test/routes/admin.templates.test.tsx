@@ -69,11 +69,11 @@ beforeEach(() => {
 });
 
 describe("AdminTemplates — loading state", () => {
-  it("shows spinner when isLoading is true", () => {
+  it("shows skeleton when isLoading is true", () => {
     mockUseCompanyConfig.mockReturnValue({ data: null, isLoading: true });
     render(<AdminTemplates />);
-    const spinner = document.querySelector(".animate-spin");
-    expect(spinner).not.toBeNull();
+    const skeleton = document.querySelector(".animate-pulse");
+    expect(skeleton).not.toBeNull();
     expect(screen.queryByRole("heading", { name: /template settings/i })).toBeNull();
   });
 });
