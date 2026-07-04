@@ -55,11 +55,13 @@ class AddressRepository:
     async def update(
         self, db: AsyncSession, address_id: uuid.UUID, data: dict[str, Any]
     ) -> UserAddress | None:
-        await db.execute(
-            update(UserAddress).where(UserAddress.id == address_id).values(**data)
-        )
+        # UPDATE ... RETURNING instead of UPDATE-then-reSELECT (UserAddress
+        # has no relationships to eager-load).
         result = await db.execute(
-            select(UserAddress).where(UserAddress.id == address_id)
+            update(UserAddress)
+            .where(UserAddress.id == address_id)
+            .values(**data)
+            .returning(UserAddress)
         )
         return result.scalar_one_or_none()
 

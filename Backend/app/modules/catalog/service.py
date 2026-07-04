@@ -22,6 +22,7 @@ from app.modules.catalog.schemas import (
     ProductVariantCreateRequest,
     ProductVariantUpdateRequest,
     StockAdjustRequest,
+    cache_busted_url,
 )
 from app.modules.inventory.reservation_service import ReservationService
 
@@ -70,6 +71,7 @@ class CatalogService:
         sort_by: str = "created_at",
         sort_dir: str = "desc",
         include_deleted: bool = False,
+        include_collections: bool = True,
     ) -> ProductListResponse:
         items, total = await _repo.list_paginated(
             db,
@@ -92,16 +94,39 @@ class CatalogService:
         )
 
         product_ids = [p.id for p in items]
-        col_map = await _repo.get_collections_for_products(db, product_ids)
+        # Skip the collections join entirely for callers that never render
+        # collection badges (e.g. homepage rails) — pass
+        # include_collections=false to opt out.
+        col_map = (
+            await _repo.get_collections_for_products(db, product_ids)
+            if include_collections
+            else {}
+        )
 
         list_items = []
         for p in items:
             sorted_imgs = sorted(p.images, key=lambda i: i.sort_order)
-            primary_img = next((img.url for img in sorted_imgs if img.is_primary), None)
-            if primary_img is None and sorted_imgs:
-                primary_img = sorted_imgs[0].url
-            secondary_imgs = [img for img in sorted_imgs if img.url != primary_img]
-            secondary_img = secondary_imgs[0].url if secondary_imgs else None
+            primary = next((img for img in sorted_imgs if img.is_primary), None)
+            if primary is None and sorted_imgs:
+                primary = sorted_imgs[0]
+            secondary_imgs = [img for img in sorted_imgs if img is not primary]
+            secondary = secondary_imgs[0] if secondary_imgs else None
+            # Product listing (cards, wishlist, cart, checkout) always uses the
+            # generated thumbnail, never the full-resolution original.
+            primary_img = (
+                cache_busted_url(
+                    primary.thumbnail_url or primary.url, primary.updated_at
+                )
+                if primary
+                else None
+            )
+            secondary_img = (
+                cache_busted_url(
+                    secondary.thumbnail_url or secondary.url, secondary.updated_at
+                )
+                if secondary
+                else None
+            )
             cols = [
                 ProductCollectionRef.model_validate(c) for c in col_map.get(p.id, [])
             ]

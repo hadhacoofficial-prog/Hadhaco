@@ -202,7 +202,7 @@ class TestWebhookEndpoints:
 
     async def test_razorpay_webhook_missing_signature_returns_400(self, client):
         resp = await client.post(
-            "/api/v1/webhooks/razorpay", json={"event": "payment.captured"}
+            "/api/v1/payments/webhook/razorpay", json={"event": "payment.captured"}
         )
         assert resp.status_code == 400
 

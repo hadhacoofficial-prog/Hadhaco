@@ -1,3 +1,4 @@
+import { memo } from "react";
 import { Eye, Heart, ShoppingBag, Star, Bell } from "lucide-react";
 import type { Product } from "@/types/shop";
 import { useCart } from "@/stores/cart";
@@ -5,7 +6,7 @@ import { useWishlist } from "@/stores/wishlist";
 import { formatINR } from "@/lib/format";
 import { StockPill } from "@/components/site/InventoryBadge";
 
-export function ProductCard({ p }: { p: Product }) {
+export const ProductCard = memo(function ProductCard({ p }: { p: Product }) {
   const add = useCart((s) => s.add);
   const toggleWishlist = useWishlist((s) => s.toggle);
   const wished = useWishlist((s) => s.items.some((i) => i.id === p.id));
@@ -153,4 +154,4 @@ export function ProductCard({ p }: { p: Product }) {
       </div>
     </article>
   );
-}
+});

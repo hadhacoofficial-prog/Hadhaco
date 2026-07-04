@@ -1,10 +1,11 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, keepPreviousData } from "@tanstack/react-query";
 import { Search } from "lucide-react";
 import { api } from "@/lib/api/client";
 import { queryKeys } from "@/lib/api/queryKeys";
 import { TableSkeleton } from "@/components/loading/TableSkeleton";
+import { useDebounce } from "@hadha/shared-ui/common/use-debounce";
 import type { AdminUserListResponse } from "@/types/admin";
 
 export const Route = createFileRoute("/admin/customers")({
@@ -13,13 +14,18 @@ export const Route = createFileRoute("/admin/customers")({
 
 function AdminCustomers() {
   const [search, setSearch] = useState("");
+  const debouncedSearch = useDebounce(search, 300);
 
-  const params = { page: 1, page_size: 50, search: search || undefined };
+  const params = useMemo(
+    () => ({ page: 1, page_size: 50, search: debouncedSearch || undefined }),
+    [debouncedSearch],
+  );
 
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, isPlaceholderData } = useQuery({
     queryKey: queryKeys.admin.customers(params),
     queryFn: () => api.get<AdminUserListResponse>("/admin/users", { params }),
     staleTime: 60_000,
+    placeholderData: keepPreviousData,
   });
 
   const customers = data?.items ?? [];
@@ -43,7 +49,9 @@ function AdminCustomers() {
         />
       </div>
 
-      <div className="bg-background border border-border overflow-x-auto">
+      <div
+        className={`bg-background border border-border overflow-x-auto transition-opacity ${isPlaceholderData ? "opacity-60" : ""}`}
+      >
         {isLoading ? (
           <TableSkeleton headers={["Email", "Name", "Role", "Status", "Joined"]} rows={8} />
         ) : (

@@ -1,5 +1,6 @@
 import uuid
 from datetime import datetime
+from typing import Any
 
 from pydantic import BaseModel, ConfigDict
 
@@ -8,13 +9,19 @@ class AuditLogEntry(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     id: uuid.UUID
-    actor_id: str | None
+    actor_id: uuid.UUID | None
+    actor_email: str | None
+    actor_role: str | None
     action: str
     resource_type: str
-    resource_id: str | None
-    meta: str | None
+    resource_id: uuid.UUID | None
+    old_value: dict[str, Any] | None
+    new_value: dict[str, Any] | None
+    meta: dict[str, Any] | None
     ip_address: str | None
     user_agent: str | None
+    request_id: str | None
+    source: str
     created_at: datetime
 
 

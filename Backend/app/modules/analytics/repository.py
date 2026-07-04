@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import date
+from datetime import date, timedelta
 from typing import Any
 
 from sqlalchemy import text
@@ -18,6 +18,7 @@ class AnalyticsRepository:
     async def get_dashboard(
         self, db: AsyncSession, *, from_date: date, to_date: date
     ) -> dict[str, Any]:
+        to_date_exclusive = to_date + timedelta(days=1)
         result = await db.execute(
             text("""
                 SELECT
@@ -25,9 +26,9 @@ class AnalyticsRepository:
                     COUNT(*) FILTER (WHERE status NOT IN ('cancelled')) AS total_orders,
                     COALESCE(ROUND(AVG(total) FILTER (WHERE status NOT IN ('cancelled','pending')), 2), 0) AS aov
                 FROM orders
-                WHERE created_at::date BETWEEN :from_date AND :to_date
+                WHERE created_at >= :from_date AND created_at < :to_date_exclusive
             """),
-            {"from_date": from_date, "to_date": to_date},
+            {"from_date": from_date, "to_date_exclusive": to_date_exclusive},
         )
         row = result.fetchone()
         return dict(row._mapping) if row else {}
@@ -35,6 +36,7 @@ class AnalyticsRepository:
     async def get_revenue_by_day(
         self, db: AsyncSession, *, from_date: date, to_date: date
     ) -> list[dict[str, Any]]:
+        to_date_exclusive = to_date + timedelta(days=1)
         result = await db.execute(
             text("""
                 SELECT
@@ -42,31 +44,33 @@ class AnalyticsRepository:
                     COALESCE(SUM(total) FILTER (WHERE status NOT IN ('cancelled','pending')), 0) AS revenue,
                     COUNT(*) FILTER (WHERE status NOT IN ('cancelled')) AS orders
                 FROM orders
-                WHERE created_at::date BETWEEN :from_date AND :to_date
+                WHERE created_at >= :from_date AND created_at < :to_date_exclusive
                 GROUP BY created_at::date
                 ORDER BY date
             """),
-            {"from_date": from_date, "to_date": to_date},
+            {"from_date": from_date, "to_date_exclusive": to_date_exclusive},
         )
         return [dict(r._mapping) for r in result.fetchall()]
 
     async def get_orders_by_status(
         self, db: AsyncSession, *, from_date: date, to_date: date
     ) -> dict[str, int]:
+        to_date_exclusive = to_date + timedelta(days=1)
         result = await db.execute(
             text("""
                 SELECT status, COUNT(*) AS cnt
                 FROM orders
-                WHERE created_at::date BETWEEN :from_date AND :to_date
+                WHERE created_at >= :from_date AND created_at < :to_date_exclusive
                 GROUP BY status
             """),
-            {"from_date": from_date, "to_date": to_date},
+            {"from_date": from_date, "to_date_exclusive": to_date_exclusive},
         )
         return {r.status: r.cnt for r in result.fetchall()}
 
     async def get_top_products(
         self, db: AsyncSession, *, from_date: date, to_date: date, limit: int = 10
     ) -> list[dict[str, Any]]:
+        to_date_exclusive = to_date + timedelta(days=1)
         result = await db.execute(
             text("""
                 SELECT
@@ -78,12 +82,16 @@ class AnalyticsRepository:
                 FROM order_items oi
                 JOIN orders o ON o.id = oi.order_id
                 JOIN products p ON p.id = oi.product_id
-                WHERE o.created_at::date BETWEEN :from_date AND :to_date
+                WHERE o.created_at >= :from_date AND o.created_at < :to_date_exclusive
                   AND o.status NOT IN ('cancelled','pending')
                 GROUP BY oi.product_id, p.name, p.slug
                 ORDER BY revenue DESC
                 LIMIT :limit
             """),
-            {"from_date": from_date, "to_date": to_date, "limit": limit},
+            {
+                "from_date": from_date,
+                "to_date_exclusive": to_date_exclusive,
+                "limit": limit,
+            },
         )
         return [dict(r._mapping) for r in result.fetchall()]

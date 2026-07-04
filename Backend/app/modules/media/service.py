@@ -51,6 +51,50 @@ def _normalize_image(image: Image.Image) -> Image.Image:
     return canvas
 
 
+def _apply_crop(
+    image: Image.Image,
+    crop_x: float,
+    crop_y: float,
+    crop_width: float,
+    crop_height: float,
+    crop_rotation: float = 0.0,
+) -> Image.Image:
+    """
+    Crop *image* to the given pixel-space box, in the original image's own
+    coordinate system (as produced by react-easy-crop's onCropComplete).
+
+    Rotation is applied first (matching react-easy-crop's own canvas
+    recipe: rotate the full image, expanding the canvas, then cut the crop
+    box out of the rotated result). PIL rotates counter-clockwise for a
+    positive angle, while react-easy-crop's `rotation` prop is a clockwise
+    CSS-style degree value, hence the sign flip below.
+    """
+    img = image
+    if img.mode in ("RGBA", "P"):
+        flat = Image.new("RGB", img.size, (255, 255, 255))
+        src = img.convert("RGBA") if img.mode == "P" else img
+        flat.paste(src, mask=src.split()[3])
+        img = flat
+    elif img.mode != "RGB":
+        img = img.convert("RGB")
+
+    if crop_rotation:
+        img = img.rotate(
+            -crop_rotation,
+            expand=True,
+            fillcolor=(255, 255, 255),
+            resample=Image.BICUBIC,  # type: ignore[attr-defined]
+        )
+
+    left = max(0, round(crop_x))
+    top = max(0, round(crop_y))
+    right = min(img.width, round(crop_x + crop_width))
+    bottom = min(img.height, round(crop_y + crop_height))
+    if right <= left or bottom <= top:
+        return img
+    return img.crop((left, top, right, bottom))
+
+
 def _resize_to_webp(image: Image.Image, max_size: tuple[int, int]) -> bytes:
     img = image.copy()
     img.thumbnail(max_size, Image.LANCZOS)  # type: ignore[attr-defined]
@@ -113,6 +157,30 @@ class MediaService:
     # Internal helpers
     # ------------------------------------------------------------------ #
 
+    def _generate_and_upload_variants(
+        self, img: Image.Image, base_key: str
+    ) -> dict[str, str]:
+        """
+        Resize *img* (already square-normalized) to thumbnail/medium/large
+        WebP and upload each under *base_key*, overwriting whatever was
+        there before. Returns dict: thumbnail, medium, large → CDN URL.
+        """
+        client = _get_r2_client()
+        bucket = settings.R2_BUCKET_NAME
+
+        urls: dict[str, str] = {}
+        for size_name, max_size in _SIZES.items():
+            webp_bytes = _resize_to_webp(img, max_size)
+            key = f"{base_key}/{size_name}.webp"
+            client.put_object(
+                Bucket=bucket,
+                Key=key,
+                Body=webp_bytes,
+                ContentType="image/webp",
+            )
+            urls[size_name] = _public_url(key)
+        return urls
+
     def _upload_image_variants(
         self,
         file_bytes: bytes,
@@ -144,17 +212,7 @@ class MediaService:
         img: Image.Image = _normalize_image(raw)
 
         urls: dict[str, str] = {"original": _public_url(original_key)}
-        for size_name, max_size in _SIZES.items():
-            webp_bytes = _resize_to_webp(img, max_size)
-            key = f"{base_key}/{size_name}.webp"
-            client.put_object(
-                Bucket=bucket,
-                Key=key,
-                Body=webp_bytes,
-                ContentType="image/webp",
-            )
-            urls[size_name] = _public_url(key)
-
+        urls.update(self._generate_and_upload_variants(img, base_key))
         return urls
 
     # ------------------------------------------------------------------ #
@@ -173,6 +231,68 @@ class MediaService:
         """
         image_id = uuid.uuid4()
         base_key = f"products/{product_id}/{image_id}"
+        return self._upload_image_variants(file_bytes, original_filename, base_key)
+
+    def get_original_bytes(self, original_url: str) -> bytes:
+        """Fetch the raw original image bytes back from R2 for a stored URL."""
+        key = _key_from_url(original_url)
+        client = _get_r2_client()
+        obj = client.get_object(Bucket=settings.R2_BUCKET_NAME, Key=key)
+        return obj["Body"].read()
+
+    def apply_crop_to_product_image(
+        self,
+        original_url: str,
+        crop_x: float,
+        crop_y: float,
+        crop_width: float,
+        crop_height: float,
+        crop_rotation: float = 0.0,
+    ) -> dict[str, str]:
+        """
+        Regenerate thumbnail/medium/large for a product image from a crop of
+        the ORIGINAL — original.{ext} is never touched, so it stays available
+        for re-cropping later. The crop box is in the original image's own
+        pixel coordinates (as produced by react-easy-crop).
+
+        Returns dict: thumbnail, medium, large → CDN URL (same keys/URLs as
+        before, overwritten in place).
+        """
+        original_key = _key_from_url(original_url)
+        base_key = original_key.rsplit("/", 1)[0]
+
+        raw = Image.open(io.BytesIO(self.get_original_bytes(original_url)))
+        raw.load()
+        cropped = _apply_crop(
+            raw, crop_x, crop_y, crop_width, crop_height, crop_rotation
+        )
+        # No _normalize_image here: the crop box the admin drew IS the final
+        # image region (react-easy-crop enforces a 1:1 aspect ratio), so
+        # padding it onto a larger square canvas would just reintroduce a
+        # white border around content that's already framed exactly as
+        # chosen. _resize_to_webp below only ever pads if the source has an
+        # alpha channel (RGBA/P), which _apply_crop already flattened to RGB.
+        return self._generate_and_upload_variants(cropped, base_key)
+
+    def replace_product_image(
+        self,
+        file_bytes: bytes,
+        original_filename: str,
+        product_id: uuid.UUID,
+        image_id: uuid.UUID,
+    ) -> dict[str, str]:
+        """
+        Replace an existing product image in place: purge the old
+        original/thumbnail/medium/large under the same image folder, then
+        upload the new file through the normal pipeline at the same
+        base_key (so the ProductImage row's id and URL layout stay stable).
+
+        Returns dict: original, thumbnail, medium, large → CDN URLs.
+        The caller should reset any stored crop metadata, since this is a
+        brand-new original with no crop applied yet.
+        """
+        base_key = f"products/{product_id}/{image_id}"
+        self.delete_entity_folder(f"{base_key}/")
         return self._upload_image_variants(file_bytes, original_filename, base_key)
 
     def upload_entity_cover(

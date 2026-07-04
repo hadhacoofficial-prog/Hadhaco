@@ -1,6 +1,6 @@
 import { useMemo } from "react";
 import { createFileRoute } from "@tanstack/react-router";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, keepPreviousData } from "@tanstack/react-query";
 import { z } from "zod";
 import { Package } from "lucide-react";
 
@@ -24,8 +24,39 @@ const productsSearchSchema = z.object({
   page: z.coerce.number().min(1).optional(),
 });
 
+type ProductsSearch = z.infer<typeof productsSearchSchema>;
+
+/** Shared between the loader and the component so both hit the identical query key. */
+function buildProductsApiParams({ gender, category, deals, sort, q, page = 1 }: ProductsSearch) {
+  return {
+    gender,
+    category_slug: category,
+    is_featured: deals === "true" ? true : undefined,
+    is_new_arrival: sort === "newest" ? true : undefined,
+    sort_by: sort === "price_asc" || sort === "price_desc" ? "base_price" : "created_at",
+    sort_dir: sort === "price_asc" ? "asc" : "desc",
+    search: q,
+    page,
+    page_size: 24,
+  };
+}
+
 export const Route = createFileRoute("/products/")({
   validateSearch: productsSearchSchema,
+  // Reload only when a search param that actually affects the results changes.
+  loaderDeps: ({ search }) => search,
+  // Pre-populates the query cache before the router commits the new location,
+  // so the router's own "pending" state reflects real data-readiness instead
+  // of flipping back to "idle" (and revealing the previous category's
+  // keepPreviousData) before the new products have actually arrived.
+  loader: async ({ context: { queryClient }, deps }) => {
+    const apiParams = buildProductsApiParams(deps);
+    await queryClient.ensureQueryData({
+      queryKey: queryKeys.products.list(apiParams),
+      queryFn: () => api.get<ProductListResponse>("/products", { params: apiParams }),
+      staleTime: 30_000,
+    });
+  },
   head: () => ({ meta: [{ title: "Shop · Hadha" }] }),
   component: ProductsPage,
 });
@@ -33,27 +64,16 @@ export const Route = createFileRoute("/products/")({
 // ─── Page ────────────────────────────────────────────────────────────────────
 
 function ProductsPage() {
-  const { gender, category, deals, sort, q, page = 1 } = Route.useSearch();
+  const search = Route.useSearch();
+  const { gender, category, deals, sort, q } = search;
 
-  const apiParams = useMemo(
-    () => ({
-      gender,
-      category_slug: category,
-      is_featured: deals === "true" ? true : undefined,
-      is_new_arrival: sort === "newest" ? true : undefined,
-      sort_by: sort === "price_asc" || sort === "price_desc" ? "base_price" : "created_at",
-      sort_dir: sort === "price_asc" ? "asc" : "desc",
-      search: q,
-      page,
-      page_size: 24,
-    }),
-    [gender, category, deals, sort, q, page],
-  );
+  const apiParams = useMemo(() => buildProductsApiParams(search), [search]);
 
   const { data, isLoading } = useQuery({
     queryKey: queryKeys.products.list(apiParams),
     queryFn: () => api.get<ProductListResponse>("/products", { params: apiParams }),
     staleTime: 30_000,
+    placeholderData: keepPreviousData,
   });
 
   const products = useMemo(() => (data?.items ?? []).map(toProduct), [data]);

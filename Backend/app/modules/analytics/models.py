@@ -31,6 +31,12 @@ class AnalyticsEvent(Base):
     ip_address: Mapped[str | None] = mapped_column(Text, nullable=True)
     user_agent: Mapped[str | None] = mapped_column(Text, nullable=True)
     referrer: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # PK is (id, created_at) to mirror the live range-partitioned table
+    # (PARTITION BY RANGE (created_at)) — Postgres requires the partition
+    # key in every unique/PK constraint on a partitioned table.
     created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False, default=lambda: datetime.now(UTC)
+        DateTime(timezone=True),
+        primary_key=True,
+        nullable=False,
+        default=lambda: datetime.now(UTC),
     )

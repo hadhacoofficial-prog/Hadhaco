@@ -51,4 +51,11 @@ class UserAddress(Base):
     __table_args__ = (
         Index("idx_user_addresses_user_id", "user_id"),
         Index("idx_user_addresses_deleted_at", "deleted_at"),
+        Index(
+            "idx_user_addresses_is_default",
+            "user_id",
+            "type",
+            unique=True,
+            postgresql_where="is_default = true AND deleted_at IS NULL",
+        ),
     )

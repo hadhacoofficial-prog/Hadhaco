@@ -9,6 +9,7 @@ from datetime import UTC, datetime
 import razorpay
 import structlog
 from sqlalchemy import text
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
@@ -50,34 +51,61 @@ class OrderService:
     async def _resolve_line_items(
         self, db: AsyncSession, cart_items: list
     ) -> list[dict]:
-        """Validate cart items against DB and compute per-item tax. No stock lock."""
+        """Validate cart items against DB and compute per-item tax. No stock lock.
+
+        Three batched queries (products, variants, primary images) instead of
+        one round trip per cart line item. Kept as independent lookups rather
+        than a single joined query so a product that appears in the cart both
+        with and without a variant across different lines still resolves
+        correctly for each line.
+        """
+        product_ids = [str(ci.product_id) for ci in cart_items]
+        variant_ids = [str(ci.variant_id) for ci in cart_items if ci.variant_id]
+
+        product_rows = await db.execute(
+            text(
+                "SELECT id, name, sku, base_price, tax_rate "
+                "FROM products "
+                "WHERE id = ANY(:pids::uuid[]) "
+                "  AND deleted_at IS NULL AND status = 'active'"
+            ),
+            {"pids": product_ids},
+        )
+        products_by_id = {r.id: r for r in product_rows.fetchall()}
+
+        variants_by_id: dict = {}
+        if variant_ids:
+            variant_rows = await db.execute(
+                text(
+                    "SELECT id, name, price_adjustment "
+                    "FROM product_variants WHERE id = ANY(:vids::uuid[])"
+                ),
+                {"vids": variant_ids},
+            )
+            variants_by_id = {r.id: r for r in variant_rows.fetchall()}
+
+        image_rows = await db.execute(
+            text(
+                "SELECT DISTINCT ON (product_id) product_id, thumbnail_url "
+                "FROM product_images "
+                "WHERE product_id = ANY(:pids::uuid[]) "
+                "ORDER BY product_id, is_primary DESC, sort_order ASC"
+            ),
+            {"pids": product_ids},
+        )
+        images_by_product = {
+            r.product_id: r.thumbnail_url for r in image_rows.fetchall()
+        }
+
         line_items = []
         for ci in cart_items:
-            row = await db.execute(
-                text(
-                    "SELECT p.name, p.sku, p.base_price, p.tax_rate, "
-                    "p.stock_quantity, p.reserved_quantity, p.sold_quantity, "
-                    "p.allow_backorder, p.track_inventory, "
-                    "v.name AS variant_name, "
-                    "COALESCE(v.price_adjustment, 0) AS price_adj, "
-                    "(SELECT pi.thumbnail_url FROM product_images pi "
-                    " WHERE pi.product_id = p.id "
-                    " ORDER BY pi.is_primary DESC, pi.sort_order ASC LIMIT 1"
-                    ") AS image_url "
-                    "FROM products p "
-                    "LEFT JOIN product_variants v ON v.id = :vid "
-                    "WHERE p.id = :pid AND p.deleted_at IS NULL AND p.status = 'active'"
-                ),
-                {
-                    "pid": str(ci.product_id),
-                    "vid": str(ci.variant_id) if ci.variant_id else None,
-                },
-            )
-            prod = row.fetchone()
+            prod = products_by_id.get(ci.product_id)
             if not prod:
                 raise ValidationError(f"Product {ci.product_id} is no longer available")
+            variant = variants_by_id.get(ci.variant_id) if ci.variant_id else None
 
-            unit_price = float(prod.base_price) + float(prod.price_adj)
+            price_adj = float(variant.price_adjustment) if variant else 0.0
+            unit_price = float(prod.base_price) + price_adj
             tax_rate = float(prod.tax_rate)
             pre_tax = round(unit_price * ci.quantity, 2)
             tax_amt = round(pre_tax * tax_rate / 100, 2)
@@ -90,8 +118,8 @@ class OrderService:
                     "variant_id": ci.variant_id,
                     "product_name": prod.name,
                     "product_sku": prod.sku,
-                    "variant_name": prod.variant_name,
-                    "image_url": prod.image_url,
+                    "variant_name": variant.name if variant else None,
+                    "image_url": images_by_product.get(ci.product_id),
                     "unit_price": unit_price,
                     "quantity": ci.quantity,
                     "tax_rate": tax_rate,
@@ -121,17 +149,13 @@ class OrderService:
             from app.modules.coupons.service import CouponService
 
             coupon_svc = CouponService()
-            discount, coupon_id = await coupon_svc.apply_and_reserve(
+            discount, coupon_id, coupon_type = await coupon_svc.apply_and_reserve(
                 db, coupon_code, subtotal, user_id
             )
             applied_coupon_code = coupon_code.upper()
-            if coupon_id:
-                from app.modules.coupons.repository import CouponRepository
-
-                c = await CouponRepository().get_by_id(db, coupon_id)
-                if c and c.coupon_type == "free_shipping":
-                    shipping_charge = 0.0
-                    discount = _SHIPPING_CHARGE
+            if coupon_type == "free_shipping":
+                shipping_charge = 0.0
+                discount = _SHIPPING_CHARGE
 
         return (
             subtotal,
@@ -192,8 +216,17 @@ class OrderService:
         2. Acquire row-level locks (SELECT FOR UPDATE) and reserve stock
         3. Create the DB order in status=stock_reserved
         4. Link reservations to order
-        5. Create Razorpay order
-        6. Return response to frontend
+        5. Commit — releases the row locks from step 2 before the external call
+        6. Create Razorpay order (no DB transaction open during this call)
+        7. Attach razorpay_order_id, flip to status=payment_pending
+        8. Return response to frontend
+
+        Splitting the commit before the Razorpay HTTP call (T3) matters: without
+        it, the FOR UPDATE locks acquired in step 2 are held for the full
+        external round trip (hundreds of ms to seconds, or a timeout), blocking
+        any other concurrent checkout or admin stock adjustment touching the
+        same product — worst exactly during flash-sale-style contention on hot
+        SKUs, and risking exhaustion of the project's small connection pool.
 
         Stock is held for exactly 10 minutes. If payment is not completed by then
         the reservation_expiry background worker releases the inventory automatically.
@@ -264,6 +297,13 @@ class OrderService:
         # Link all reservations to the new order
         await _reservation_svc.link_reservations_to_order(db, reservations, order.id)
 
+        # Commit before the Razorpay HTTP call — releases the row locks
+        # acquired by reserve_items instead of holding them for the full
+        # external round trip. A new transaction opens implicitly on the
+        # next statement (the release-on-failure path below, or the
+        # razorpay_order_id update on success).
+        await db.commit()
+
         # ── Create Razorpay order (offloaded to thread pool) ──────────────────
         amount_paise = int(round(total * 100))
         client = razorpay.Client(
@@ -283,10 +323,15 @@ class OrderService:
             log.error(
                 "razorpay_order_create_failed", order_id=str(order.id), error=str(exc)
             )
-            # Release stock if Razorpay call fails so customer isn't locked out
+            # Release stock if Razorpay call fails so customer isn't locked out.
+            # Committed explicitly here — get_db's generic rollback on the
+            # ValidationError raised below would otherwise undo the release,
+            # leaving stock locked for the full 10-minute reservation TTL
+            # after a failed checkout the customer was told to retry.
             await _reservation_svc.release_order_reservations(
                 db, order.id, reason="RELEASED"
             )
+            await db.commit()
             raise ValidationError(
                 "Failed to create payment order. Please try again."
             ) from exc
@@ -397,25 +442,39 @@ class OrderService:
         if cart:
             await cart_repo.clear_items(db, cart.id)
 
-        # Record payment
+        # Record payment. Wrapped in a SAVEPOINT (begin_nested) rather than
+        # a plain try/except: a duplicate razorpay_payment_id (frontend
+        # retry racing the Razorpay webhook, both reaching this method
+        # before either commits) raises IntegrityError against the unique
+        # index on that column — the savepoint rolls back only this insert,
+        # not the reservation-completion/coupon/cart work already done in
+        # this same transaction.
         from app.modules.payments.repository import PaymentRepository
 
         now = datetime.now(UTC)
-        await PaymentRepository().create(
-            db,
-            {
-                "id": uuid.uuid4(),
-                "order_id": order.id,
-                "user_id": user_id,
-                "razorpay_order_id": payload.razorpay_order_id,
-                "razorpay_payment_id": payload.razorpay_payment_id,
-                "razorpay_signature": payload.razorpay_signature,
-                "amount": float(order.total),
-                "currency": settings.RAZORPAY_CURRENCY,
-                "status": "captured",
-                "captured_at": now,
-            },
-        )
+        try:
+            async with db.begin_nested():
+                await PaymentRepository().create(
+                    db,
+                    {
+                        "id": uuid.uuid4(),
+                        "order_id": order.id,
+                        "user_id": user_id,
+                        "razorpay_order_id": payload.razorpay_order_id,
+                        "razorpay_payment_id": payload.razorpay_payment_id,
+                        "razorpay_signature": payload.razorpay_signature,
+                        "amount": float(order.total),
+                        "currency": settings.RAZORPAY_CURRENCY,
+                        "status": "captured",
+                        "captured_at": now,
+                    },
+                )
+        except IntegrityError:
+            log.info(
+                "payment_already_recorded",
+                order_id=str(order.id),
+                razorpay_payment_id=payload.razorpay_payment_id,
+            )
 
         # Confirm order
         await _repo.update(

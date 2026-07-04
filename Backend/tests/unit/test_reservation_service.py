@@ -142,7 +142,11 @@ class TestReserveItems:
         assert db.add.call_count == 2
 
     async def test_reserve_multiple_items_success(self):
-        pid1, pid2 = uuid.uuid4(), uuid.uuid4()
+        # Fixed, lexicographically-ordered UUIDs: reserve_items sorts by
+        # (product_id, variant_id) before locking (deadlock prevention), so
+        # the mocked db.execute side_effect sequence below must match that
+        # order rather than random uuid4() insertion order.
+        pid1, pid2 = uuid.UUID(int=1), uuid.UUID(int=2)
         user_id = uuid.uuid4()
         m1 = _prod_mapping(product_id=pid1, stock=5, reserved=0, sold=0)
         m2 = _prod_mapping(product_id=pid2, stock=8, reserved=1, sold=1)
@@ -269,7 +273,10 @@ class TestReserveItems:
         """
         from app.core.exceptions import InventoryError
 
-        pid1, pid2 = uuid.uuid4(), uuid.uuid4()
+        # Fixed, lexicographically-ordered UUIDs — reserve_items sorts by
+        # (product_id, variant_id) before locking (deadlock prevention), so
+        # the mocked side_effect order below must be stable across runs.
+        pid1, pid2 = uuid.UUID(int=1), uuid.UUID(int=2)
         m1 = _prod_mapping(product_id=pid1, stock=10)
         m2 = _prod_mapping(
             product_id=pid2, stock=2, reserved=2, sold=0, allow_backorder=False

@@ -104,13 +104,17 @@ class NotificationRepository:
     async def upsert_preferences(
         self, db: AsyncSession, user_id: uuid.UUID, data: dict[str, Any]
     ) -> NotificationPreference:
-        prefs = await self.get_preferences(db, user_id)
-        if prefs is None:
-            prefs = NotificationPreference(user_id=user_id, **data)
-            db.add(prefs)
-        else:
-            for k, v in data.items():
-                setattr(prefs, k, v)
-            db.add(prefs)
+        from sqlalchemy.dialects.postgresql import insert as pg_insert
+
+        stmt = (
+            pg_insert(NotificationPreference)
+            .values(user_id=user_id, **data)
+            .on_conflict_do_update(
+                index_elements=[NotificationPreference.user_id],
+                set_=data,
+            )
+            .returning(NotificationPreference)
+        )
+        result = await db.execute(stmt)
         await db.flush()
-        return prefs
+        return result.scalar_one()

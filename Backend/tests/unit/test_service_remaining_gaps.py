@@ -310,7 +310,8 @@ class TestCollectionsRepositoryExtra:
         await self.repo.add_products(
             db, col_id=uuid.uuid4(), product_ids=[uuid.uuid4(), uuid.uuid4()]
         )
-        assert db.execute.await_count == 3  # 1 for max_order_result + 2 upserts
+        # 1 for max_order_result + 1 bulk multi-row upsert (not one per product)
+        assert db.execute.await_count == 2
 
     async def test_add_products_empty_list(self):
         db = AsyncMock()
@@ -459,6 +460,10 @@ class TestCouponServiceExtra:
                 AsyncMock(return_value=mock_coupon),
             ),
             patch(
+                "app.modules.coupons.service._repo.get_by_code_for_update",
+                AsyncMock(return_value=mock_coupon),
+            ),
+            patch(
                 "app.modules.coupons.service._repo.get_user_usage_count",
                 AsyncMock(return_value=0),
             ),
@@ -466,10 +471,11 @@ class TestCouponServiceExtra:
             patch("app.modules.coupons.service._repo.increment_usage", AsyncMock()),
             patch.object(CouponResponse, "model_validate", return_value=mock_resp),
         ):
-            discount, c_id = await self.svc.apply_and_reserve(
+            discount, c_id, coupon_type = await self.svc.apply_and_reserve(
                 db, code="FLAT50", subtotal=200.0, user_id=uuid.uuid4()
             )
         assert c_id == coupon_id
+        assert coupon_type == "flat"
 
 
 # ─── ProfilesRepository extra ─────────────────────────────────────────────────

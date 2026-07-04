@@ -429,6 +429,78 @@ class TestMediaService:
             result = self.svc.get_presigned_upload_url("products/key.jpg", "image/jpeg")
         assert result == "https://r2.example.com/upload?signed=1"
 
+    def test_apply_crop_to_product_image_regenerates_variants_only(self):
+        import io
+
+        from app.core.config import settings
+
+        original_bytes = self._make_jpeg_bytes()
+        mock_r2 = MagicMock()
+        mock_r2.get_object.return_value = {"Body": io.BytesIO(original_bytes)}
+        mock_r2.put_object.return_value = {}
+
+        original_url = f"{settings.R2_PUBLIC_URL.rstrip('/')}/products/p/i/original.jpg"
+
+        with patch("app.modules.media.service._get_r2_client", return_value=mock_r2):
+            result = self.svc.apply_crop_to_product_image(
+                original_url, crop_x=10, crop_y=10, crop_width=50, crop_height=50
+            )
+
+        # Only thumbnail/medium/large regenerated — original is never re-uploaded.
+        assert set(result.keys()) == {"thumbnail", "medium", "large"}
+        assert mock_r2.put_object.call_count == 3
+        mock_r2.get_object.assert_called_once_with(
+            Bucket=settings.R2_BUCKET_NAME, Key="products/p/i/original.jpg"
+        )
+        for key in result:
+            assert result[key].endswith(f"products/p/i/{key}.webp")
+
+    def test_apply_crop_to_product_image_applies_rotation(self):
+        import io
+
+        from app.core.config import settings
+
+        original_bytes = self._make_jpeg_bytes()
+        mock_r2 = MagicMock()
+        mock_r2.get_object.return_value = {"Body": io.BytesIO(original_bytes)}
+        mock_r2.put_object.return_value = {}
+
+        original_url = f"{settings.R2_PUBLIC_URL.rstrip('/')}/products/p/i/original.jpg"
+
+        with patch("app.modules.media.service._get_r2_client", return_value=mock_r2):
+            result = self.svc.apply_crop_to_product_image(
+                original_url,
+                crop_x=0,
+                crop_y=0,
+                crop_width=80,
+                crop_height=80,
+                crop_rotation=90,
+            )
+
+        assert set(result.keys()) == {"thumbnail", "medium", "large"}
+
+    def test_replace_product_image_purges_old_folder_then_reuploads(self):
+        mock_r2 = MagicMock()
+        mock_r2.list_objects_v2.return_value = {
+            "Contents": [{"Key": "products/p/i/original.jpg"}]
+        }
+        mock_r2.put_object.return_value = {}
+
+        product_id = uuid.uuid4()
+        image_id = uuid.uuid4()
+
+        with patch("app.modules.media.service._get_r2_client", return_value=mock_r2):
+            result = self.svc.replace_product_image(
+                self._make_jpeg_bytes(), "new.jpg", product_id, image_id
+            )
+
+        mock_r2.delete_objects.assert_called_once()
+        assert "original" in result
+        assert "thumbnail" in result
+        assert "medium" in result
+        assert "large" in result
+        assert f"products/{product_id}/{image_id}/" in result["original"]
+
 
 # ─── AddressService ───────────────────────────────────────────────────────────
 

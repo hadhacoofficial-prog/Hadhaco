@@ -107,20 +107,26 @@ class ReservationService:
         return stock
 
     async def _invalidate_inventory_cache(
-        self, product_id: uuid.UUID, variant_id: uuid.UUID | None
+        self, targets: list[tuple[uuid.UUID, uuid.UUID | None]]
     ) -> None:
-        """Best-effort cache-aside invalidation for all inventory-derived views."""
-        if not redis_available():
+        """Best-effort cache-aside invalidation for all inventory-derived views.
+
+        Call once per checkout/batch operation (with every affected
+        product/variant collected up front) rather than once per line item —
+        the pattern-based scan below is shared across the whole batch instead
+        of being repeated per item. Uses SCAN (via scan_iter), not the
+        blocking KEYS command, so it never stalls the Redis server even on a
+        large keyspace.
+        """
+        if not redis_available() or not targets:
             return
         redis = get_redis_pool()
-        direct_keys = [
-            f"product:{product_id}",
-            f"product_details:{product_id}",
-            "featured_products",
-            "cms:homepage",
-        ]
-        if variant_id:
-            direct_keys.append(f"variant:{variant_id}")
+        direct_keys = {"featured_products", "cms:homepage"}
+        for product_id, variant_id in targets:
+            direct_keys.add(f"product:{product_id}")
+            direct_keys.add(f"product_details:{product_id}")
+            if variant_id:
+                direct_keys.add(f"variant:{variant_id}")
 
         patterns = [
             "products:list:v1:*",
@@ -134,12 +140,16 @@ class ReservationService:
             "recommendations:*",
         ]
 
+        async def _collect_pattern_keys() -> list[str]:
+            collected: list[str] = []
+            for pattern in patterns:
+                async for key in redis.scan_iter(match=pattern, count=500):
+                    collected.append(str(key))
+            return collected
+
         try:
             await safe_redis_delete(redis, *direct_keys)
-            pattern_keys: list[str] = []
-            for pattern in patterns:
-                keys = await asyncio.wait_for(redis.keys(pattern), timeout=0.3)
-                pattern_keys.extend(str(key) for key in keys)
+            pattern_keys = await asyncio.wait_for(_collect_pattern_keys(), timeout=1.0)
             if pattern_keys:
                 await safe_redis_delete(redis, *set(pattern_keys))
         except Exception:
@@ -225,6 +235,15 @@ class ReservationService:
         """
         expires_at = datetime.now(UTC) + timedelta(minutes=_RESERVATION_TTL_MINUTES)
         reservations: list[InventoryReservation] = []
+        cache_targets: list[tuple[uuid.UUID, uuid.UUID | None]] = []
+
+        # Lock rows in a fixed (product_id, variant_id) order, not
+        # cart-iteration order — two checkouts sharing 2+ products in
+        # reversed order would otherwise deadlock (Postgres detects and
+        # aborts one side after ~1s, surfacing as a checkout 500).
+        items = sorted(
+            items, key=lambda i: (str(i["product_id"]), str(i.get("variant_id") or ""))
+        )
 
         for item in items:
             product_id: uuid.UUID = item["product_id"]
@@ -280,7 +299,7 @@ class ReservationService:
                 after_sold=stock["sold_quantity"],
                 reference=reservation.reservation_number,
             )
-            await self._invalidate_inventory_cache(product_id, variant_id)
+            cache_targets.append((product_id, variant_id))
 
             reservations.append(reservation)
             log.info(
@@ -291,6 +310,7 @@ class ReservationService:
                 reservation_number=reservation.reservation_number,
             )
 
+        await self._invalidate_inventory_cache(cache_targets)
         return reservations
 
     async def link_reservations_to_order(
@@ -360,6 +380,7 @@ class ReservationService:
             log.warning("no_active_reservation_for_order", order_id=str(order_id))
             return
 
+        cache_targets: list[tuple[uuid.UUID, uuid.UUID | None]] = []
         for row in rows:
             res_id: uuid.UUID = row[0]
             product_id: uuid.UUID = row[1]
@@ -410,7 +431,7 @@ class ReservationService:
                 after_sold=after_sold,
                 reference=str(order_id),
             )
-            await self._invalidate_inventory_cache(product_id, variant_id)
+            cache_targets.append((product_id, variant_id))
 
             log.info(
                 "reservation_completed",
@@ -419,6 +440,8 @@ class ReservationService:
                 quantity=quantity,
                 order_id=str(order_id),
             )
+
+        await self._invalidate_inventory_cache(cache_targets)
 
     async def release_order_reservations(
         self,
@@ -450,6 +473,7 @@ class ReservationService:
             )
             return
 
+        cache_targets: list[tuple[uuid.UUID, uuid.UUID | None]] = []
         for row in rows:
             res_id: uuid.UUID = row[0]
             product_id: uuid.UUID = row[1]
@@ -491,7 +515,7 @@ class ReservationService:
                 after_sold=stock["sold_quantity"],
                 reference=reason,
             )
-            await self._invalidate_inventory_cache(product_id, variant_id)
+            cache_targets.append((product_id, variant_id))
 
             log.info(
                 "reservation_released",
@@ -500,6 +524,8 @@ class ReservationService:
                 quantity=quantity,
                 reason=reason,
             )
+
+        await self._invalidate_inventory_cache(cache_targets)
 
     async def expire_stale_reservations(self, db: AsyncSession) -> int:
         """
@@ -522,6 +548,7 @@ class ReservationService:
             return 0
 
         expired_count = 0
+        cache_targets: list[tuple[uuid.UUID, uuid.UUID | None]] = []
         for row in candidates:
             res_id: uuid.UUID = row[0]
             product_id: uuid.UUID = row[1]
@@ -588,7 +615,7 @@ class ReservationService:
                 after_sold=stock["sold_quantity"],
                 reference="EXPIRED",
             )
-            await self._invalidate_inventory_cache(product_id, variant_id)
+            cache_targets.append((product_id, variant_id))
 
             expired_count += 1
             log.info(
@@ -599,6 +626,7 @@ class ReservationService:
                 order_id=str(order_id) if order_id else None,
             )
 
+        await self._invalidate_inventory_cache(cache_targets)
         return expired_count
 
     async def get_available_stock(self, db: AsyncSession, product_id: uuid.UUID) -> int:
@@ -655,7 +683,7 @@ class ReservationService:
             after_stock_quantity=new_stock,
             reference=reference,
         )
-        await self._invalidate_inventory_cache(product_id, variant_id)
+        await self._invalidate_inventory_cache([(product_id, variant_id)])
 
     async def record_return(
         self,
@@ -694,7 +722,7 @@ class ReservationService:
             after_sold=new_sold,
             reference=reference,
         )
-        await self._invalidate_inventory_cache(product_id, variant_id)
+        await self._invalidate_inventory_cache([(product_id, variant_id)])
 
     async def record_adjustment(
         self,
@@ -736,5 +764,5 @@ class ReservationService:
             after_stock_quantity=new_stock,
             reference=reference,
         )
-        await self._invalidate_inventory_cache(product_id, variant_id)
+        await self._invalidate_inventory_cache([(product_id, variant_id)])
         return int(new_stock)

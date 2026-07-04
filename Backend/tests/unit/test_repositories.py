@@ -131,11 +131,12 @@ class TestAddressRepository:
         db.add.assert_called_once()
         db.flush.assert_awaited_once()
 
-    async def test_update_calls_execute_twice(self):
+    async def test_update_calls_execute_once_with_returning(self):
         mock_addr = MagicMock()
-        db = _db(MagicMock(), _scalar_one_or_none(mock_addr))
-        await self.repo.update(db, uuid.uuid4(), {"full_name": "Bob"})
-        assert db.execute.await_count == 2
+        db = _db(_scalar_one_or_none(mock_addr))
+        result = await self.repo.update(db, uuid.uuid4(), {"full_name": "Bob"})
+        assert db.execute.await_count == 1
+        assert result is mock_addr
 
     async def test_clear_default_executes_update(self):
         db = _db(MagicMock())
@@ -267,6 +268,25 @@ class TestProductRepository:
         db = _db(MagicMock(), MagicMock())
         await self.repo.set_primary_image(db, uuid.uuid4(), uuid.uuid4())
         assert db.execute.await_count == 2
+
+    async def test_get_image_returns_image(self):
+        mock_img = MagicMock()
+        db = _db(_scalar_one_or_none(mock_img))
+        result = await self.repo.get_image(db, uuid.uuid4())
+        assert result is mock_img
+
+    async def test_get_image_returns_none(self):
+        db = _db(_scalar_one_or_none(None))
+        result = await self.repo.get_image(db, uuid.uuid4())
+        assert result is None
+
+    async def test_update_image_executes_and_refetches(self):
+        mock_img = MagicMock()
+        db = _db(MagicMock(), _scalar_one_or_none(mock_img))
+        result = await self.repo.update_image(
+            db, uuid.uuid4(), {"crop_x": 10.0, "crop_y": 5.0}
+        )
+        assert result is mock_img
 
     async def test_add_variant_adds_and_refreshes(self):
         db = AsyncMock()
@@ -435,7 +455,9 @@ class TestOrderRepository:
         assert result is mock_order
 
     async def test_generate_order_number_format(self):
-        db = _db(_scalar_one(0))
+        # next_sequence_value's INSERT ... RETURNING yields the new value
+        # directly (already incremented), not a count to add 1 to.
+        db = _db(_scalar_one(1))
         result = await self.repo.generate_order_number(db)
         assert result.startswith("HDH-")
         assert len(result) > 10
@@ -739,9 +761,10 @@ class TestProfileRepository:
 
     async def test_update_returns_profile(self):
         mock_profile = MagicMock()
-        db = _db(MagicMock(), _scalar_one_or_none(mock_profile))
+        db = _db(_scalar_one_or_none(mock_profile))
         result = await self.repo.update(db, uuid.uuid4(), {"full_name": "Alice"})
         assert result is mock_profile
+        assert db.execute.await_count == 1
 
 
 # ─── CategoryRepository ───────────────────────────────────────────────────────

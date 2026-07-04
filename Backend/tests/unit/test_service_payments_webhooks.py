@@ -307,6 +307,7 @@ class TestWebhookService:
     async def test_handle_razorpay_already_processed_returns_status(self):
         db = AsyncMock()
         mock_existing = MagicMock()
+        mock_existing.status = "processed"
         mock_result = MagicMock()
         mock_result.scalar_one_or_none.return_value = mock_existing
         db.execute = AsyncMock(return_value=mock_result)

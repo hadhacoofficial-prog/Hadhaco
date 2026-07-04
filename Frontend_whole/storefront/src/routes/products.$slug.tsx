@@ -194,6 +194,7 @@ function ProductPage() {
   const [showReviewModal, setShowReviewModal] = useState(false);
 
   const gallery = product.gallery ?? [product.image];
+  const galleryLarge = product.galleryLarge ?? gallery;
   const recentlyViewed: Product[] = [];
 
   const handleAddToCart = () => {
@@ -296,12 +297,21 @@ function ProductPage() {
                 onClick={() => setActive(i)}
                 className={`shrink-0 w-20 h-20 bg-white overflow-hidden border ${active === i ? "border-foreground" : "border-transparent"}`}
               >
-                <img src={img} alt="" className="w-full h-full object-contain" />
+                <img
+                  src={img}
+                  alt=""
+                  loading="lazy"
+                  decoding="async"
+                  width={80}
+                  height={80}
+                  className="w-full h-full object-contain"
+                />
               </button>
             ))}
           </div>
           <ProductImageViewer
             src={gallery[active]}
+            zoomSrc={galleryLarge[active] ?? gallery[active]}
             alt={product.name}
             globalSoldOut={globalSoldOut}
             badge={product.badge}
@@ -923,11 +933,13 @@ function WriteReviewModal({
 
 function ProductImageViewer({
   src,
+  zoomSrc,
   alt,
   globalSoldOut,
   badge,
 }: {
   src: string;
+  zoomSrc: string;
   alt: string;
   globalSoldOut: boolean;
   badge?: string;
@@ -962,9 +974,9 @@ function ProductImageViewer({
   const WHEEL_MAX = 2.0;
   const MOBILE_MAX_SCALE = 5;
 
-  // Derive large.webp URL for higher-res zoom
-  const zoomSrc = src.replace(/\/original\.[^/]+$/, "/large.webp");
-  const effectiveZoomSrc = zoomSrc !== src ? zoomSrc : src;
+  // zoomSrc is the cropped large.webp variant, passed in explicitly by the
+  // caller (never derived from the displayed src) — see toProductDetail.
+  const effectiveZoomSrc = zoomSrc || src;
 
   // Preload the large image so hover/zoom switches are instant
   useEffect(() => {

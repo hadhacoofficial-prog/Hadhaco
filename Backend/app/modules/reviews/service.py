@@ -246,13 +246,9 @@ class ReviewService:
     ) -> list[AdminReviewOut]:
         rows = await self._repo.list_all(db, status=status, offset=offset, limit=limit)
         result: list[AdminReviewOut] = []
-        for row in rows:
-            # images must be fetched separately or included via the ORM
-            review = await self._repo.get_by_id(db, row["id"])
-            if review is None:
-                continue
+        for review, product_name in rows:
             out = AdminReviewOut.model_validate(review)
-            out.product_name = row.get("product_name")
+            out.product_name = product_name
             result.append(out)
         return result
 

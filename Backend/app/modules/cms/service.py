@@ -69,6 +69,9 @@ class CMSService:
 
     async def _build_homepage(self, db: AsyncSession) -> dict:
         sections = await self._repo.get_active_sections(db)
+        items_by_section = await self._repo.get_items_for_sections(
+            db, [s.id for s in sections]
+        )
         layout: list[dict] = []
         sections_map: dict[str, dict] = {}
         for s in sections:
@@ -81,7 +84,7 @@ class CMSService:
                     "title": s.title,
                 }
             )
-            items = await self._repo.get_items_for_section(db, s.id)
+            items = items_by_section.get(s.id, [])
             sections_map[s.section_key] = {
                 "config": s.config,
                 "items": [
@@ -118,13 +121,15 @@ class CMSService:
 
     async def list_sections_with_items(self, db: AsyncSession) -> list[dict]:
         sections = await self._repo.get_all_sections(db)
-        result = []
-        for s in sections:
-            if s.section_key in _UNMANAGED_SECTION_KEYS:
-                continue
-            items = await self._repo.get_items_for_section(db, s.id)
-            result.append({"section": s, "items": items})
-        return result
+        manageable = [
+            s for s in sections if s.section_key not in _UNMANAGED_SECTION_KEYS
+        ]
+        items_by_section = await self._repo.get_items_for_sections(
+            db, [s.id for s in manageable]
+        )
+        return [
+            {"section": s, "items": items_by_section.get(s.id, [])} for s in manageable
+        ]
 
     async def get_section(self, db: AsyncSession, key: str) -> dict:
         self._ensure_manageable(key)

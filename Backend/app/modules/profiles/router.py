@@ -92,7 +92,10 @@ async def list_users(
     role: str | None = Query(default=None),
     is_active: bool | None = Query(default=None),
     search: str | None = Query(default=None),
-    sort_by: str = Query(default="created_at"),
+    sort_by: str = Query(
+        default="created_at",
+        pattern="^(created_at|updated_at|email|full_name|role)$",
+    ),
     sort_dir: str = Query(default="desc", pattern="^(asc|desc)$"),
     _admin: Profile = Depends(require_admin),
     db: AsyncSession = Depends(get_db),

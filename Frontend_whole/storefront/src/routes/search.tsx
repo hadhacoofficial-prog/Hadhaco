@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo } from "react";
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, keepPreviousData } from "@tanstack/react-query";
 import { z } from "zod";
 import { Search as SearchIcon, X } from "lucide-react";
 import { SiteLayout } from "@/components/site/SiteLayout";
@@ -20,8 +20,36 @@ const searchSchema = z.object({
   filter: z.enum(["new", "bestseller", "deals"]).optional(),
 });
 
+type SearchSearch = z.infer<typeof searchSchema>;
+
+/** Shared between the loader and the component so both hit the identical query key. */
+function buildSearchApiParams({ q, cat, gender, filter }: SearchSearch) {
+  return {
+    search: q || undefined,
+    collection_slug: cat || undefined,
+    gender: gender && gender !== "all" ? gender : undefined,
+    is_new_arrival: filter === "new" ? true : undefined,
+    is_best_seller: filter === "bestseller" ? true : undefined,
+    page_size: 24,
+  };
+}
+
 export const Route = createFileRoute("/search")({
   validateSearch: searchSchema,
+  loaderDeps: ({ search }) => search,
+  // See products.index.tsx for why this is pre-populated in the loader: it
+  // keeps the router's "pending" state in sync with real data-readiness so
+  // the previous search/filter results never flash back in after the
+  // loading indicator disappears.
+  loader: async ({ context: { queryClient }, deps }) => {
+    if (!(deps.q || deps.cat || deps.gender || deps.filter)) return;
+    const apiParams = buildSearchApiParams(deps);
+    await queryClient.ensureQueryData({
+      queryKey: queryKeys.products.list(apiParams),
+      queryFn: () => api.get<ProductListResponse>("/products", { params: apiParams }),
+      staleTime: 30_000,
+    });
+  },
   head: () => ({ meta: [{ title: "Search · Hadha" }] }),
   component: SearchPage,
 });
@@ -29,7 +57,8 @@ export const Route = createFileRoute("/search")({
 const TRENDING = ["Bugadi", "Chains", "Anklets", "Nakshi Mala", "Bangles", "Black Bead"];
 
 function SearchPage() {
-  const { q, cat, gender, filter } = Route.useSearch();
+  const search = Route.useSearch();
+  const { q, cat, gender, filter } = search;
   const [input, setInput] = useState(q ?? "");
   const navigate = Route.useNavigate();
   const { recent, push, clear } = useRecentSearches();
@@ -38,17 +67,7 @@ function SearchPage() {
     if (q) push(q);
   }, [q, push]);
 
-  const apiParams = useMemo(
-    () => ({
-      search: q || undefined,
-      collection_slug: cat || undefined,
-      gender: gender && gender !== "all" ? gender : undefined,
-      is_new_arrival: filter === "new" ? true : undefined,
-      is_best_seller: filter === "bestseller" ? true : undefined,
-      page_size: 24,
-    }),
-    [q, cat, gender, filter],
-  );
+  const apiParams = useMemo(() => buildSearchApiParams(search), [search]);
 
   const hasFilters = !!(q || cat || gender || filter);
 
@@ -57,6 +76,7 @@ function SearchPage() {
     queryFn: () => api.get<ProductListResponse>("/products", { params: apiParams }),
     enabled: hasFilters,
     staleTime: 30_000,
+    placeholderData: keepPreviousData,
   });
 
   const results = useMemo(() => (data?.items ?? []).map(toProduct), [data]);

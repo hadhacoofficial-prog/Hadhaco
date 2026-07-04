@@ -5,6 +5,7 @@ from typing import Any
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.sequences import next_sequence_value
 from app.modules.payments.models import Invoice, Payment, Refund
 
 
@@ -30,6 +31,14 @@ class PaymentRepository:
         )
         return result.scalar_one_or_none()
 
+    async def get_by_razorpay_payment_id(
+        self, db: AsyncSession, rzp_payment_id: str
+    ) -> Payment | None:
+        result = await db.execute(
+            select(Payment).where(Payment.razorpay_payment_id == rzp_payment_id)
+        )
+        return result.scalar_one_or_none()
+
     async def get_for_order(
         self, db: AsyncSession, order_id: uuid.UUID
     ) -> Payment | None:
@@ -44,8 +53,15 @@ class PaymentRepository:
     async def update(
         self, db: AsyncSession, payment_id: uuid.UUID, data: dict[str, Any]
     ) -> Payment | None:
-        await db.execute(update(Payment).where(Payment.id == payment_id).values(**data))
-        return await self.get_by_id(db, payment_id)
+        # UPDATE ... RETURNING instead of UPDATE-then-reSELECT (Payment has
+        # no relationships to eager-load, so RETURNING alone is sufficient).
+        result = await db.execute(
+            update(Payment)
+            .where(Payment.id == payment_id)
+            .values(**data)
+            .returning(Payment)
+        )
+        return result.scalar_one_or_none()
 
     async def create_refund(self, db: AsyncSession, data: dict[str, Any]) -> Refund:
         r = Refund(**data)
@@ -59,6 +75,14 @@ class PaymentRepository:
     ) -> Refund | None:
         await db.execute(update(Refund).where(Refund.id == refund_id).values(**data))
         result = await db.execute(select(Refund).where(Refund.id == refund_id))
+        return result.scalar_one_or_none()
+
+    async def get_refund_by_razorpay_id(
+        self, db: AsyncSession, razorpay_refund_id: str
+    ) -> Refund | None:
+        result = await db.execute(
+            select(Refund).where(Refund.razorpay_refund_id == razorpay_refund_id)
+        )
         return result.scalar_one_or_none()
 
     async def get_refunds_for_order(
@@ -89,14 +113,7 @@ class PaymentRepository:
     async def generate_invoice_number(self, db: AsyncSession) -> str:
         from datetime import datetime
 
-        from sqlalchemy import func
-
         now = datetime.now(UTC)
         prefix = f"INV-{now.year}{now.month:02d}-"
-        count_result = await db.execute(
-            select(func.count(Invoice.id)).where(
-                Invoice.invoice_number.like(f"{prefix}%")
-            )
-        )
-        seq = count_result.scalar_one() + 1
+        seq = await next_sequence_value(db, f"invoice_number:{prefix}")
         return f"{prefix}{seq:06d}"

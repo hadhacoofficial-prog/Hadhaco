@@ -2,7 +2,7 @@ import uuid
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
-from sqlalchemy import delete, select, update
+from sqlalchemy import bindparam, delete, insert, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -122,16 +122,63 @@ class CartRepository:
     async def merge_guest_into_user(
         self, db: AsyncSession, guest_cart: Cart, user_cart: Cart
     ) -> None:
-        """Move guest cart items into user cart (additive merge)."""
-        for item in guest_cart.items:
-            await self.upsert_item(
-                db,
-                user_cart.id,
-                item.product_id,
-                item.variant_id,
-                item.quantity,
-                float(item.unit_price),
+        """Move guest cart items into user cart (additive merge).
+
+        Batches the existing-item lookup plus the resulting updates/inserts
+        into a constant number of round trips instead of one upsert (a
+        SELECT + INSERT-or-UPDATE) per guest item. A native
+        INSERT ... ON CONFLICT DO UPDATE isn't safe here because variant_id
+        is nullable and part of the unique constraint — Postgres never
+        treats NULL = NULL as a conflict, so it would silently duplicate
+        rows for variant-less products instead of merging quantities.
+        """
+        if guest_cart.items:
+            product_ids = [item.product_id for item in guest_cart.items]
+            existing_result = await db.execute(
+                select(CartItem).where(
+                    CartItem.cart_id == user_cart.id,
+                    CartItem.product_id.in_(product_ids),
+                )
             )
+            existing_by_key = {
+                (row.product_id, row.variant_id): row
+                for row in existing_result.scalars().all()
+            }
+
+            to_update = []
+            to_insert = []
+            for item in guest_cart.items:
+                existing = existing_by_key.get((item.product_id, item.variant_id))
+                if existing:
+                    to_update.append(
+                        {
+                            "item_id": existing.id,
+                            "new_quantity": min(existing.quantity + item.quantity, 100),
+                        }
+                    )
+                else:
+                    to_insert.append(
+                        {
+                            "id": uuid.uuid4(),
+                            "cart_id": user_cart.id,
+                            "product_id": item.product_id,
+                            "variant_id": item.variant_id,
+                            "quantity": min(item.quantity, 100),
+                            "unit_price": item.unit_price,
+                        }
+                    )
+
+            if to_update:
+                stmt = (
+                    update(CartItem)
+                    .where(CartItem.id == bindparam("item_id"))
+                    .values(quantity=bindparam("new_quantity"))
+                )
+                await db.execute(stmt, to_update)
+
+            if to_insert:
+                await db.execute(insert(CartItem), to_insert)
+
         # Expire guest cart immediately
         await db.execute(
             update(Cart)

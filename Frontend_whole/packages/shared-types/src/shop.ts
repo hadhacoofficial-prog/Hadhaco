@@ -27,6 +27,8 @@ export interface Product {
   image: string;
   altImage?: string;
   gallery?: string[];
+  /** Same order as `gallery`, but the large (1200x1200) crop — used only for zoom. */
+  galleryLarge?: string[];
   price: Money;
   compareAt?: Money;
   badge?: string;

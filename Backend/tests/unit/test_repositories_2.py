@@ -256,15 +256,31 @@ class TestNotificationRepository:
         assert result is None
 
     async def test_upsert_preferences_creates_new(self):
-        db = _db(_scalar_one_or_none(None))
-        await self.repo.upsert_preferences(db, uuid.uuid4(), {"email_enabled": True})
-        db.add.assert_called_once()
+        mock_pref = MagicMock()
+        mock_pref.email_enabled = True
+        result = MagicMock()
+        result.scalar_one.return_value = mock_pref
+        db = AsyncMock()
+        db.execute = AsyncMock(return_value=result)
+        db.flush = AsyncMock()
+        returned = await self.repo.upsert_preferences(
+            db, uuid.uuid4(), {"email_enabled": True}
+        )
+        db.execute.assert_awaited_once()
+        assert returned is mock_pref
 
     async def test_upsert_preferences_updates_existing(self):
         mock_pref = MagicMock()
-        db = _db(_scalar_one_or_none(mock_pref))
-        await self.repo.upsert_preferences(db, uuid.uuid4(), {"email_enabled": False})
-        assert mock_pref.email_enabled is False
+        mock_pref.email_enabled = False
+        result = MagicMock()
+        result.scalar_one.return_value = mock_pref
+        db = AsyncMock()
+        db.execute = AsyncMock(return_value=result)
+        db.flush = AsyncMock()
+        returned = await self.repo.upsert_preferences(
+            db, uuid.uuid4(), {"email_enabled": False}
+        )
+        assert returned.email_enabled is False
 
 
 # ─── PaymentRepository ────────────────────────────────────────────────────────
@@ -309,10 +325,11 @@ class TestPaymentRepository:
 
     async def test_update_returns_updated_payment(self):
         mock_payment = MagicMock()
-        # First execute: UPDATE (returns rowcount mock), second: SELECT get_by_id
-        db = _db(MagicMock(), _scalar_one_or_none(mock_payment))
+        # Single UPDATE ... RETURNING call, no separate reSELECT
+        db = _db(_scalar_one_or_none(mock_payment))
         result = await self.repo.update(db, uuid.uuid4(), {"status": "captured"})
         assert result is mock_payment
+        assert db.execute.await_count == 1
 
     async def test_create_refund(self):
         db = _db()
@@ -349,9 +366,11 @@ class TestPaymentRepository:
         from datetime import datetime
 
         now = datetime.now(UTC)
-        mock_count = MagicMock()
-        mock_count.scalar_one.return_value = 0
-        db = _db(mock_count)
+        # next_sequence_value's INSERT ... RETURNING yields the new value
+        # directly (already incremented), not a count to add 1 to.
+        mock_result = MagicMock()
+        mock_result.scalar_one.return_value = 1
+        db = _db(mock_result)
         result = await self.repo.generate_invoice_number(db)
         assert result.startswith(f"INV-{now.year}{now.month:02d}-")
         assert result.endswith("000001")
@@ -493,14 +512,17 @@ class TestCartRepository:
         user_cart = MagicMock()
         user_cart.id = uuid.uuid4()
 
-        # mock execute for upsert_item (select existing = None) + expire guest cart
-        mock_none = MagicMock()
-        mock_none.scalar_one_or_none.return_value = None
+        # Batched: 1 SELECT for existing user-cart items (none found), then
+        # since there's nothing to update, 1 bulk INSERT for the new item,
+        # then 1 UPDATE to expire the guest cart.
+        mock_existing = MagicMock()
+        mock_existing.scalars.return_value.all.return_value = []
+        mock_insert = MagicMock()
         mock_update = MagicMock()
-        db.execute = AsyncMock(side_effect=[mock_none, mock_update])
+        db.execute = AsyncMock(side_effect=[mock_existing, mock_insert, mock_update])
 
         await self.repo.merge_guest_into_user(db, guest_cart, user_cart)
-        assert db.execute.await_count == 2  # one select + one update
+        assert db.execute.await_count == 3  # select + bulk insert + update
 
 
 # ─── ShipmentRepository ───────────────────────────────────────────────────────

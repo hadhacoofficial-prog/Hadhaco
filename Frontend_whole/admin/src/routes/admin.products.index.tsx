@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { createFileRoute, useNavigate, Link } from "@tanstack/react-router";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient, keepPreviousData } from "@tanstack/react-query";
 import { Search, Plus, Trash2, Pencil, FolderOpen, ChevronDown } from "lucide-react";
 import { toast } from "sonner";
 import { api } from "@/lib/api/client";
@@ -9,6 +9,7 @@ import { toUserMessage } from "@/lib/api/errors";
 import { formatINR } from "@/lib/format";
 import { TableSkeleton } from "@/components/loading/TableSkeleton";
 import { ImageWithFallback } from "@/components/common/ImageWithFallback";
+import { useDebounce } from "@hadha/shared-ui/common/use-debounce";
 import type { CollectionListResponse, ProductListResponse } from "@/types/admin";
 
 export const Route = createFileRoute("/admin/products/")({
@@ -17,24 +18,26 @@ export const Route = createFileRoute("/admin/products/")({
 
 function AdminProducts() {
   const [q, setQ] = useState("");
+  const debouncedQ = useDebounce(q, 300);
   const [collectionId, setCollectionId] = useState<string>("");
   const queryClient = useQueryClient();
   const navigate = useNavigate();
 
   const params = useMemo(
     () => ({
-      search: q || undefined,
+      search: debouncedQ || undefined,
       collection_id: collectionId || undefined,
       page: 1,
       page_size: 50,
     }),
-    [q, collectionId],
+    [debouncedQ, collectionId],
   );
 
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, isPlaceholderData } = useQuery({
     queryKey: queryKeys.admin.products(params),
     queryFn: () => api.get<ProductListResponse>("/admin/products", { params }),
     staleTime: 60_000,
+    placeholderData: keepPreviousData,
   });
 
   const { data: collectionsData } = useQuery({
@@ -106,7 +109,9 @@ function AdminProducts() {
         )}
       </div>
 
-      <div className="bg-background border border-border overflow-x-auto">
+      <div
+        className={`bg-background border border-border overflow-x-auto transition-opacity ${isPlaceholderData ? "opacity-60" : ""}`}
+      >
         {isLoading ? (
           <TableSkeleton
             headers={["Product", "SKU", "Collections", "Price", "Stock", "Status", "Actions"]}

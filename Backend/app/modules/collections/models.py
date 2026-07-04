@@ -52,6 +52,18 @@ class Collection(Base):
             "is_featured",
             postgresql_where="is_featured = TRUE",
         ),
+        Index(
+            "idx_collections_name_trgm",
+            "name",
+            postgresql_using="gin",
+            postgresql_ops={"name": "gin_trgm_ops"},
+        ),
+        Index(
+            "idx_collections_slug_trgm",
+            "slug",
+            postgresql_using="gin",
+            postgresql_ops={"slug": "gin_trgm_ops"},
+        ),
     )
 
 

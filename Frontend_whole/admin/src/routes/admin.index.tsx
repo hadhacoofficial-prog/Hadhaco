@@ -1,3 +1,4 @@
+import { useMemo } from "react";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useQuery } from "@tanstack/react-query";
 import { TrendingUp, ShoppingBag, Users, Package, IndianRupee, AlertTriangle } from "lucide-react";
@@ -36,34 +37,38 @@ function Dashboard() {
     staleTime: 60_000,
   });
 
-  const stats = kpi
-    ? [
-        {
-          label: "Today's Revenue",
-          value: formatINR(kpi.today_revenue),
-          icon: <IndianRupee className="size-5" />,
-          trend: "Today",
-        },
-        {
-          label: "Today's Orders",
-          value: kpi.today_orders,
-          icon: <ShoppingBag className="size-5" />,
-          trend: `${kpi.pending_orders} pending`,
-        },
-        {
-          label: "Low Stock",
-          value: kpi.low_stock_products,
-          icon: <Package className="size-5" />,
-          trend: "Need restock",
-        },
-        {
-          label: "New Customers",
-          value: kpi.new_customers_today,
-          icon: <Users className="size-5" />,
-          trend: "Today",
-        },
-      ]
-    : [];
+  const stats = useMemo(
+    () =>
+      kpi
+        ? [
+            {
+              label: "Today's Revenue",
+              value: formatINR(kpi.today_revenue),
+              icon: <IndianRupee className="size-5" />,
+              trend: "Today",
+            },
+            {
+              label: "Today's Orders",
+              value: kpi.today_orders,
+              icon: <ShoppingBag className="size-5" />,
+              trend: `${kpi.pending_orders} pending`,
+            },
+            {
+              label: "Low Stock",
+              value: kpi.low_stock_products,
+              icon: <Package className="size-5" />,
+              trend: "Need restock",
+            },
+            {
+              label: "New Customers",
+              value: kpi.new_customers_today,
+              icon: <Users className="size-5" />,
+              trend: "Today",
+            },
+          ]
+        : [],
+    [kpi],
+  );
 
   return (
     <div>

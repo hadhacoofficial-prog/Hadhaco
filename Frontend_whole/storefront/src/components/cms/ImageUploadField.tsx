@@ -54,6 +54,8 @@ export function ImageUploadField({
           <img
             src={value}
             alt=""
+            loading="lazy"
+            decoding="async"
             style={{ height: previewHeight }}
             className="w-full object-cover"
             onError={(e) => {

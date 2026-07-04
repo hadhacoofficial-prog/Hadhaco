@@ -119,11 +119,13 @@ class CategoryRepository:
 
     async def has_children(self, db: AsyncSession, cat_id: str | uuid.UUID) -> bool:
         result = await db.execute(
-            select(func.count(Category.id)).where(
-                Category.parent_id == cat_id, Category.deleted_at.is_(None)
+            select(
+                select(Category.id)
+                .where(Category.parent_id == cat_id, Category.deleted_at.is_(None))
+                .exists()
             )
         )
-        return result.scalar_one() > 0
+        return bool(result.scalar())
 
     async def create(self, db: AsyncSession, data: dict[str, Any]) -> Category:
         cat = Category(**data)

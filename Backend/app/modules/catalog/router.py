@@ -46,7 +46,13 @@ async def _bust_product_list_cache(redis: aioredis.Redis) -> None:
     try:
         import asyncio
 
-        keys = await asyncio.wait_for(redis.keys("products:list:v1:*"), timeout=0.3)
+        async def _collect() -> list[str]:
+            return [
+                str(key)
+                async for key in redis.scan_iter(match="products:list:v1:*", count=500)
+            ]
+
+        keys = await asyncio.wait_for(_collect(), timeout=1.0)
         if keys:
             from app.core.redis import safe_redis_delete
 
@@ -80,6 +86,11 @@ async def list_products(
         "created_at", pattern="^(created_at|base_price|name|stock_quantity)$"
     ),
     sort_dir: str = Query("desc", pattern="^(asc|desc)$"),
+    include_collections: bool = Query(
+        True,
+        description="Set false for lightweight listings (e.g. homepage rails) "
+        "that never render collection badges — skips a join per product.",
+    ),
     db: AsyncSession = Depends(get_db),
     redis: aioredis.Redis = Depends(get_redis),
 ):
@@ -116,6 +127,7 @@ async def list_products(
         search=search,
         sort_by=sort_by,
         sort_dir=sort_dir,
+        include_collections=include_collections,
     )
     cached = await safe_redis_get(redis, cache_key)
     if cached:
@@ -142,6 +154,7 @@ async def list_products(
         search=search,
         sort_by=sort_by,
         sort_dir=sort_dir,
+        include_collections=include_collections,
     )
     await safe_redis_setex(
         redis, cache_key, _PRODUCT_LIST_TTL, result.model_dump_json()

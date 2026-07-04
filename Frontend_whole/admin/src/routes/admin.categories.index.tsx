@@ -34,6 +34,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { TableSkeleton } from "@/components/loading/TableSkeleton";
 import { ImageWithFallback } from "@/components/common/ImageWithFallback";
+import { useDebounce } from "@hadha/shared-ui/common/use-debounce";
 import { api } from "@/lib/api/client";
 import { queryKeys } from "@/lib/api/queryKeys";
 import { toUserMessage } from "@/lib/api/errors";
@@ -42,15 +43,6 @@ import type { CategoryAdminListItem, CategoryAdminListResponse } from "@/types/a
 export const Route = createFileRoute("/admin/categories/")({
   component: AdminCategories,
 });
-
-function useDebounce<T>(value: T, delay: number): T {
-  const [d, setD] = useState(value);
-  useMemo(() => {
-    const t = setTimeout(() => setD(value), delay);
-    return () => clearTimeout(t);
-  }, [value, delay]);
-  return d;
-}
 
 function AdminCategories() {
   const navigate = useNavigate();

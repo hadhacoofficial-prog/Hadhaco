@@ -2,6 +2,7 @@ import uuid
 from datetime import datetime
 
 from sqlalchemy import (
+    CheckConstraint,
     DateTime,
     ForeignKey,
     Index,
@@ -91,4 +92,6 @@ class CartItem(Base):
         Index("idx_cart_items_cart_id", "cart_id"),
         Index("idx_cart_items_product_id", "product_id"),
         UniqueConstraint("cart_id", "product_id", "variant_id", name="uq_cart_items"),
+        CheckConstraint("quantity > 0", name="cart_items_quantity_check"),
+        CheckConstraint("unit_price >= 0", name="cart_items_unit_price_check"),
     )

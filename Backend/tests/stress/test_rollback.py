@@ -127,8 +127,12 @@ class TestReserveItemsRollback:
         """
         from app.modules.inventory.reservation_service import ReservationService
 
-        p1_id = uuid.uuid4()
-        p2_id = uuid.uuid4()
+        # Fixed, lexicographically-ordered UUIDs — reserve_items sorts by
+        # (product_id, variant_id) before locking (deadlock prevention), so
+        # the mocked side_effect sequence below must be stable across runs
+        # rather than depending on random uuid4() insertion order.
+        p1_id = uuid.UUID(int=1)
+        p2_id = uuid.UUID(int=2)
 
         p1_row = _make_product_row(stock=10, name="Ring A")
         p2_row = _make_product_row(stock=2, reserved=2, name="Ring B")  # 0 available

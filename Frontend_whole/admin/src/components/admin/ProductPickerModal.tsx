@@ -1,6 +1,7 @@
 import { useState, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Search, Check, Loader2, ImageIcon } from "lucide-react";
+import { useDebounce } from "@hadha/shared-ui/common/use-debounce";
 import {
   Dialog,
   DialogContent,
@@ -165,13 +166,4 @@ export function ProductPickerModal({
       </DialogContent>
     </Dialog>
   );
-}
-
-function useDebounce<T>(value: T, delay: number): T {
-  const [debounced, setDebounced] = useState(value);
-  useMemo(() => {
-    const t = setTimeout(() => setDebounced(value), delay);
-    return () => clearTimeout(t);
-  }, [value, delay]);
-  return debounced;
 }

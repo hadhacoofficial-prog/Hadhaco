@@ -121,6 +121,24 @@ class CMSRepository:
         )
         return list(result.scalars().all())
 
+    async def get_items_for_sections(
+        self, db: AsyncSession, section_ids: list[uuid.UUID]
+    ) -> dict[uuid.UUID, list[CmsSectionItem]]:
+        """Batch-fetch items for multiple sections in a single query."""
+        items_by_section: dict[uuid.UUID, list[CmsSectionItem]] = {
+            sid: [] for sid in section_ids
+        }
+        if not section_ids:
+            return items_by_section
+        result = await db.execute(
+            select(CmsSectionItem)
+            .where(CmsSectionItem.section_id.in_(section_ids))
+            .order_by(CmsSectionItem.section_id, CmsSectionItem.sort_order)
+        )
+        for item in result.scalars().all():
+            items_by_section[item.section_id].append(item)
+        return items_by_section
+
     async def get_item(
         self, db: AsyncSession, item_id: uuid.UUID
     ) -> CmsSectionItem | None:

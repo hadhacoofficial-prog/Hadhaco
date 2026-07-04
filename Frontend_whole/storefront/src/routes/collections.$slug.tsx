@@ -1,6 +1,6 @@
 import { useState, useMemo } from "react";
 import { createFileRoute, Link, notFound } from "@tanstack/react-router";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, keepPreviousData } from "@tanstack/react-query";
 import { SlidersHorizontal, X } from "lucide-react";
 import { SiteLayout } from "@/components/site/SiteLayout";
 import { Breadcrumbs } from "@/components/site/Breadcrumbs";
@@ -79,6 +79,7 @@ function CollectionPage() {
     queryKey: queryKeys.products.list(apiParams),
     queryFn: () => api.get<ProductListResponse>("/products", { params: apiParams }),
     staleTime: 60_000,
+    placeholderData: keepPreviousData,
   });
 
   const products = useMemo(() => (data?.items ?? []).map(toProduct), [data]);
@@ -103,6 +104,8 @@ function CollectionPage() {
         <img
           src={collection.image}
           alt={collection.name}
+          fetchPriority="high"
+          decoding="async"
           className="absolute inset-0 w-full h-full object-cover opacity-60"
         />
         <div className="absolute inset-0 bg-foreground/30" />

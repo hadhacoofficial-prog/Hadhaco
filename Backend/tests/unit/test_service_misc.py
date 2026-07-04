@@ -39,7 +39,7 @@ class TestAuditService:
         await self.svc.log(db, actor_id=None, action="login", resource_type="auth")
         db.add.assert_called_once()
 
-    async def test_log_serializes_metadata(self):
+    async def test_log_stores_metadata_as_dict(self):
         db = AsyncMock()
         db.add = MagicMock()
         from app.modules.audit.models import AuditLog
@@ -53,15 +53,13 @@ class TestAuditService:
         db.add = capture_add
         await self.svc.log(
             db,
-            actor_id="actor-1",
+            actor_id=str(uuid.uuid4()),
             action="delete",
             resource_type="user",
             metadata={"reason": "spam"},
         )
         assert "entry" in captured
-        import json
-
-        assert json.loads(captured["entry"].meta) == {"reason": "spam"}
+        assert captured["entry"].meta == {"reason": "spam"}
 
 
 # ─── AnalyticsService ─────────────────────────────────────────────────────────

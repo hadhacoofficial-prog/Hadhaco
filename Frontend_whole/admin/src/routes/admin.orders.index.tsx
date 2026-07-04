@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient, keepPreviousData } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { Eye } from "lucide-react";
 import { api } from "@/lib/api/client";
@@ -38,17 +38,19 @@ function AdminOrders() {
     status: filter === "all" ? undefined : filter,
   };
 
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, isPlaceholderData } = useQuery({
     queryKey: queryKeys.admin.orders(params),
     queryFn: () => api.get<OrderListResponse>("/admin/orders", { params }),
     staleTime: 30_000,
+    placeholderData: keepPreviousData,
   });
 
   const statusMutation = useMutation({
     mutationFn: ({ id, status }: { id: string; status: string }) =>
       api.patch<unknown>(`/admin/orders/${id}/status`, { body: { status } }),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["admin", "orders"] });
+    onSuccess: (_, { id }) => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.admin.orders() });
+      queryClient.invalidateQueries({ queryKey: queryKeys.admin.order(id) });
       toast.success("Order status updated.");
     },
     onError: (e) => toast.error(toUserMessage(e)),
@@ -81,7 +83,9 @@ function AdminOrders() {
         ))}
       </div>
 
-      <div className="bg-background border border-border overflow-x-auto">
+      <div
+        className={`bg-background border border-border overflow-x-auto transition-opacity ${isPlaceholderData ? "opacity-60" : ""}`}
+      >
         {isLoading ? (
           <TableSkeleton
             headers={[

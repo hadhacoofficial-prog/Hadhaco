@@ -147,6 +147,11 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
+    # Reconcile the legacy is_active boolean against status before dropping
+    # it, so coupons set to 'draft' or 'inactive' after this migration was
+    # applied don't silently revert to active on rollback.
+    op.execute("UPDATE coupons SET is_active = (status = 'active')")
+
     op.drop_index("idx_coupons_campaign", table_name="coupons")
     op.drop_index("idx_coupons_status", table_name="coupons")
 

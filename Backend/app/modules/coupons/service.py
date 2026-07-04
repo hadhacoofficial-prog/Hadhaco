@@ -1,6 +1,7 @@
 import uuid
 from datetime import UTC, datetime
 
+import structlog
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import ConflictError, NotFoundError, ValidationError
@@ -15,6 +16,7 @@ from app.modules.coupons.schemas import (
 )
 
 _repo = CouponRepository()
+log = structlog.get_logger(__name__)
 
 
 def _ensure_utc(dt: datetime | None) -> datetime | None:
@@ -242,9 +244,9 @@ class CouponService:
         if not result.valid or result.coupon is None:
             return result
 
-        coupon = await _repo.get_by_code(db, code)
-        if coupon is None:
-            return result
+        # result.coupon already carries allowed_emails/allowed_phone_numbers
+        # from validate()'s fetch — no need to re-fetch the same row by code.
+        coupon = result.coupon
 
         if emails := _nonempty(coupon.allowed_emails):
             if user_email.lower() not in [e.lower() for e in emails]:
@@ -262,19 +264,39 @@ class CouponService:
         code: str,
         subtotal: float,
         user_id: uuid.UUID,
-    ) -> tuple[float, uuid.UUID]:
-        """Validate, record a pending usage (order_id filled later), return (discount, coupon_id)."""
+    ) -> tuple[float, uuid.UUID, str]:
+        """Validate, record a pending usage (order_id filled later), return
+        (discount, coupon_id, coupon_type) — coupon_type is already known
+        here, so callers don't need a separate fetch just to read it.
+
+        validate() reads usage_count/per-user usage without a lock — fine
+        for a preview, not fine for the point of actually reserving usage.
+        Re-checks both limits here under a row lock on the coupon so two
+        concurrent checkouts can't both pass validate() and both reserve
+        usage, oversubscribing a capped promo or double-redeeming a
+        one-time-per-customer coupon.
+        """
         result = await self.validate(db, code, subtotal, user_id)
         if not result.valid:
             raise ValidationError(result.message)
 
-        coupon = await _repo.get_by_code(db, code)
-        assert coupon is not None
+        coupon = await _repo.get_by_code_for_update(db, code)
+        if coupon is None:
+            raise ValidationError(result.message)
+
+        if coupon.usage_limit and coupon.usage_count >= coupon.usage_limit:
+            raise ValidationError("This coupon is no longer available.")
+
+        effective_limit = 1 if coupon.one_time_per_customer else coupon.per_user_limit
+        user_usage = await _repo.get_user_usage_count(db, coupon.id, user_id)
+        if user_usage >= effective_limit:
+            raise ValidationError("You have already used this coupon.")
+
         await _repo.record_usage(
             db, coupon.id, user_id, result.discount_amount, order_id=None
         )
         await _repo.increment_usage(db, coupon.id)
-        return result.discount_amount, coupon.id
+        return result.discount_amount, coupon.id, coupon.coupon_type
 
     async def delete(self, db: AsyncSession, coupon_id: uuid.UUID) -> None:
         coupon = await _repo.get_by_id(db, coupon_id)
@@ -290,4 +312,12 @@ class CouponService:
         user_id: uuid.UUID,
         order_id: uuid.UUID,
     ) -> None:
-        await _repo.update_usage_order_id(db, coupon_id, user_id, order_id)
+        rowcount = await _repo.update_usage_order_id(db, coupon_id, user_id, order_id)
+        if rowcount != 1:
+            log.warning(
+                "coupon_usage_finalize_unexpected_rowcount",
+                coupon_id=str(coupon_id),
+                user_id=str(user_id),
+                order_id=str(order_id),
+                rowcount=rowcount,
+            )

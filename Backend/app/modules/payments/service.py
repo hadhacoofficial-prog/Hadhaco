@@ -136,6 +136,15 @@ class PaymentService:
             )
             raise ValidationError("Payment signature verification failed")
 
+        # Complete stock reservation (reserved -> sold) with row-level locking.
+        # This mirrors orders/service.py::verify_and_fulfill — without it, a
+        # payment verified through this path stays ACTIVE in the reservation
+        # table, gets force-released by the 10-minute expiry worker, and the
+        # order flips to payment_expired even though it was actually paid.
+        from app.modules.inventory.reservation_service import ReservationService
+
+        await ReservationService().complete_order_reservations(db, payment.order_id)
+
         # Update payment record
         now = datetime.now(UTC)
         updated_payment = await _repo.update(
@@ -161,6 +170,10 @@ class PaymentService:
                 "status": "confirmed",
             },
         )
+
+        # Commit before publishing — listeners open new sessions and read
+        # order/payment state (matches verify_and_fulfill's ordering).
+        await db.commit()
 
         from app.modules.profiles.repository import ProfileRepository
 

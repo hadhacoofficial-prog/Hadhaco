@@ -1,7 +1,16 @@
 import uuid
 from datetime import datetime
 
-from sqlalchemy import DateTime, ForeignKey, Index, Numeric, String, Text, func
+from sqlalchemy import (
+    CheckConstraint,
+    DateTime,
+    ForeignKey,
+    Index,
+    Numeric,
+    String,
+    Text,
+    func,
+)
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -52,6 +61,17 @@ class Payment(Base):
         Index("idx_payments_user_id", "user_id"),
         Index("idx_payments_razorpay_order_id", "razorpay_order_id"),
         Index("idx_payments_status", "status"),
+        CheckConstraint("amount >= 0", name="payments_amount_check"),
+        # Nullable-safe (multiple NULLs allowed pre-capture) — once set, a
+        # given real Razorpay payment can only ever back one row, closing
+        # the double-submit/webhook race where two concurrent
+        # verify_and_fulfill calls could otherwise both insert a payment
+        # row for the same captured payment.
+        Index(
+            "idx_payments_razorpay_payment_id_unique",
+            "razorpay_payment_id",
+            unique=True,
+        ),
     )
 
 
@@ -75,6 +95,7 @@ class Refund(Base):
     status: Mapped[str] = mapped_column(
         String(20), nullable=False, server_default="pending"
     )
+    failure_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
     processed_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
@@ -91,6 +112,7 @@ class Refund(Base):
     __table_args__ = (
         Index("idx_refunds_payment_id", "payment_id"),
         Index("idx_refunds_order_id", "order_id"),
+        CheckConstraint("amount >= 0", name="refunds_amount_check"),
     )
 
 

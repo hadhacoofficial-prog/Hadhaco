@@ -129,6 +129,16 @@ class RefundProcessedEvent(BaseEvent):
 
 
 @dataclass
+class RefundFailedEvent(BaseEvent):
+    refund_id: str = ""
+    order_id: str = ""
+    user_id: str = ""
+    amount: float = 0.0
+    order_number: str = ""
+    reason: str = ""
+
+
+@dataclass
 class ReviewRequestEvent(BaseEvent):
     order_id: str = ""
     user_id: str = ""

@@ -170,7 +170,16 @@ CREATE TABLE IF NOT EXISTS public.product_images (
     alt_text      VARCHAR(255),
     is_primary    BOOLEAN NOT NULL DEFAULT FALSE,
     sort_order    INTEGER NOT NULL DEFAULT 0,
-    created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    -- Crop box in pixel coordinates of the untouched original image. NULL
+    -- means no crop has been saved yet — thumbnail/medium/large stay as the
+    -- uncropped, normalized variants generated at upload time.
+    crop_x        NUMERIC(10, 2),
+    crop_y        NUMERIC(10, 2),
+    crop_width    NUMERIC(10, 2),
+    crop_height   NUMERIC(10, 2),
+    crop_zoom     NUMERIC(5, 2),
+    crop_rotation NUMERIC(6, 2)
 );
 CREATE INDEX IF NOT EXISTS idx_product_images_product_id ON public.product_images(product_id, sort_order);
 

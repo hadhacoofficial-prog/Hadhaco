@@ -15,7 +15,9 @@ class Category(Base):
         UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
     )
     parent_id: Mapped[uuid.UUID | None] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("categories.id"), nullable=True
+        UUID(as_uuid=True),
+        ForeignKey("categories.id", ondelete="RESTRICT"),
+        nullable=True,
     )
     name: Mapped[str] = mapped_column(Text, nullable=False)
     slug: Mapped[str] = mapped_column(String(200), nullable=False, unique=True)
@@ -43,5 +45,17 @@ class Category(Base):
         Index("idx_categories_parent", "parent_id"),
         Index(
             "idx_categories_active", "is_active", postgresql_where="is_active = TRUE"
+        ),
+        Index(
+            "idx_categories_name_trgm",
+            "name",
+            postgresql_using="gin",
+            postgresql_ops={"name": "gin_trgm_ops"},
+        ),
+        Index(
+            "idx_categories_slug_trgm",
+            "slug",
+            postgresql_using="gin",
+            postgresql_ops={"slug": "gin_trgm_ops"},
         ),
     )

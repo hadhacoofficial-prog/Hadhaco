@@ -41,8 +41,16 @@ class ProfileRepository:
         user_id: str | uuid.UUID,
         data: dict[str, Any],
     ) -> Profile | None:
-        await db.execute(update(Profile).where(Profile.id == user_id).values(**data))
-        return await self.get_by_id(db, user_id)
+        # UPDATE ... RETURNING instead of UPDATE-then-reSELECT (Profile has
+        # no relationships to eager-load). Keeps get_by_id's deleted_at
+        # filter so a soft-deleted profile isn't "successfully" updated.
+        result = await db.execute(
+            update(Profile)
+            .where(Profile.id == user_id, Profile.deleted_at.is_(None))
+            .values(**data)
+            .returning(Profile)
+        )
+        return result.scalar_one_or_none()
 
     async def list_paginated(
         self,

@@ -132,12 +132,17 @@ class ProductRepository:
         if max_price is not None:
             filters.append(Product.base_price <= max_price)
         if search:
-            term = f"%{search}%"
+            # search_vector (GIN-indexed, trigger-maintained from name/
+            # short_description/description/metal_type/purity/meta_keywords)
+            # replaces leading-wildcard ILIKE on name/description, which
+            # can't use any index. sku is NOT part of the tsvector — it's
+            # a short, separately-indexed code, so it keeps its own ILIKE.
             filters.append(
                 or_(
-                    Product.name.ilike(term),
-                    Product.sku.ilike(term),
-                    Product.description.ilike(term),
+                    Product.search_vector.op("@@")(
+                        func.plainto_tsquery("english", search)
+                    ),
+                    Product.sku.ilike(f"%{search}%"),
                 )
             )
 
@@ -193,6 +198,22 @@ class ProductRepository:
         await db.flush()
         await db.refresh(img)
         return img
+
+    async def get_image(
+        self, db: AsyncSession, image_id: uuid.UUID
+    ) -> ProductImage | None:
+        result = await db.execute(
+            select(ProductImage).where(ProductImage.id == image_id)
+        )
+        return result.scalar_one_or_none()
+
+    async def update_image(
+        self, db: AsyncSession, image_id: uuid.UUID, data: dict[str, Any]
+    ) -> ProductImage | None:
+        await db.execute(
+            update(ProductImage).where(ProductImage.id == image_id).values(**data)
+        )
+        return await self.get_image(db, image_id)
 
     async def delete_image(self, db: AsyncSession, image_id: uuid.UUID) -> bool:
         result = await db.execute(

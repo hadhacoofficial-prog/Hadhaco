@@ -1,12 +1,14 @@
-"""Tests for order-service and webhook paths that exercise the reservation system.
+"""Tests for order-service paths that exercise the reservation system.
 
 Covers:
   - create_payment_intent: reserves stock, releases on Razorpay failure
   - verify_and_fulfill: idempotency, HMAC, complete reservations
   - create_from_cart (COD): reserve + immediately complete
   - cancel_order: release ACTIVE reservations
-  - WebhookService._on_payment_captured: idempotency + complete reservations
-  - WebhookService._on_payment_failed: release reservations
+
+WebhookService tests (payment.captured/payment.failed/handle_razorpay
+idempotency, all 6 Razorpay event types) live in
+tests/unit/test_service_webhooks.py.
 
 All repos/services are imported locally inside function bodies, so patches must
 target the source module, not app.modules.orders.service.ClassName.
@@ -48,6 +50,7 @@ def _make_cart_item(product_id: uuid.UUID | None = None, quantity: int = 2):
 
 
 def _make_product_row(
+    product_id: uuid.UUID | None = None,
     name: str = "Ring",
     sku: str = "RNG-001",
     base_price: float = 500.0,
@@ -59,6 +62,8 @@ def _make_product_row(
     track_inventory: bool = True,
 ):
     row = MagicMock()
+    row.id = product_id or uuid.uuid4()
+    row.product_id = row.id
     row.name = name
     row.sku = sku
     row.base_price = base_price
@@ -70,7 +75,20 @@ def _make_product_row(
     row.track_inventory = track_inventory
     row.variant_name = None
     row.price_adj = 0.0
+    row.thumbnail_url = None
     return row
+
+
+def _mock_db_for_line_items(prod_row):
+    """_resolve_line_items issues up to 3 batched queries (products,
+    variants, images); a single variant-less cart item only triggers the
+    product and image queries, both served by the same .fetchall() result.
+    """
+    result = MagicMock()
+    result.fetchall.return_value = [prod_row]
+    db = AsyncMock()
+    db.execute = AsyncMock(return_value=result)
+    return db
 
 
 def _make_address():
@@ -133,12 +151,10 @@ class TestCreatePaymentIntentReservation:
         mock_cart.id = uuid.uuid4()
         mock_cart.items = [cart_item]
 
-        prod_row = _make_product_row(base_price=500.0, tax_rate=3.0, stock=10)
-        prod_result = MagicMock()
-        prod_result.fetchone.return_value = prod_row
-
-        db = AsyncMock()
-        db.execute = AsyncMock(return_value=prod_result)
+        prod_row = _make_product_row(
+            product_id=product_id, base_price=500.0, tax_rate=3.0, stock=10
+        )
+        db = _mock_db_for_line_items(prod_row)
 
         addr = _make_address()
         reservation = _make_reservation()
@@ -211,12 +227,8 @@ class TestCreatePaymentIntentReservation:
         mock_cart.id = uuid.uuid4()
         mock_cart.items = [cart_item]
 
-        prod_row = _make_product_row()
-        prod_result = MagicMock()
-        prod_result.fetchone.return_value = prod_row
-
-        db = AsyncMock()
-        db.execute = AsyncMock(return_value=prod_result)
+        prod_row = _make_product_row(product_id=product_id)
+        db = _mock_db_for_line_items(prod_row)
 
         addr = _make_address()
         reservation = _make_reservation()
@@ -309,12 +321,8 @@ class TestCreatePaymentIntentReservation:
         mock_cart.id = uuid.uuid4()
         mock_cart.items = [cart_item]
 
-        prod_row = _make_product_row(stock=2)
-        prod_result = MagicMock()
-        prod_result.fetchone.return_value = prod_row
-
-        db = AsyncMock()
-        db.execute = AsyncMock(return_value=prod_result)
+        prod_row = _make_product_row(product_id=product_id, stock=2)
+        db = _mock_db_for_line_items(prod_row)
 
         addr = _make_address()
         payload = MagicMock()
@@ -458,6 +466,12 @@ class TestVerifyAndFulfill:
         payload.razorpay_signature = sig
 
         db = AsyncMock()
+        # db.begin_nested() is used as an async context manager around the
+        # payment insert (SAVEPOINT for the duplicate-payment race guard).
+        nested_cm = AsyncMock()
+        nested_cm.__aenter__ = AsyncMock(return_value=None)
+        nested_cm.__aexit__ = AsyncMock(return_value=False)
+        db.begin_nested = MagicMock(return_value=nested_cm)
 
         with patch(
             "app.modules.orders.service._repo.get_by_id", AsyncMock(return_value=order)
@@ -516,12 +530,10 @@ class TestCreateFromCartCOD:
         mock_cart.id = uuid.uuid4()
         mock_cart.items = [cart_item]
 
-        prod_row = _make_product_row(base_price=500.0, tax_rate=3.0)
-        prod_result = MagicMock()
-        prod_result.fetchone.return_value = prod_row
-
-        db = AsyncMock()
-        db.execute = AsyncMock(return_value=prod_result)
+        prod_row = _make_product_row(
+            product_id=product_id, base_price=500.0, tax_rate=3.0
+        )
+        db = _mock_db_for_line_items(prod_row)
 
         addr = _make_address()
         reservation = _make_reservation()
@@ -722,307 +734,3 @@ class TestCancelOrderReservation:
             db = AsyncMock()
             with pytest.raises(NotFoundError):
                 await self.svc.cancel_order(db, order.id, other_user, payload)
-
-
-# ── TestWebhookPaymentCaptured ────────────────────────────────────────────────
-
-
-class TestWebhookPaymentCaptured:
-    def setup_method(self):
-        # Force invoices.service to load NOW (before any PaymentRepository patches).
-        # Without this, the first test that patches payments.repository.PaymentRepository
-        # would trigger invoices.service's module-level import and permanently bind
-        # invoices.service.PaymentRepository to the mock for the entire test session.
-        import app.modules.invoices.service  # noqa: F401
-        from app.modules.webhooks.service import WebhookService
-
-        self.svc = WebhookService()
-
-    def _payload(
-        self,
-        rzp_payment_id: str = "rzp_pay_test",
-        rzp_order_id: str = "rzp_ord_test",
-        method: str = "upi",
-    ) -> dict:
-        return {
-            "payload": {
-                "payment": {
-                    "entity": {
-                        "id": rzp_payment_id,
-                        "order_id": rzp_order_id,
-                        "method": method,
-                    }
-                }
-            }
-        }
-
-    async def test_already_captured_payment_is_noop(self):
-        """If payment row status='captured', skip everything (idempotent)."""
-        db = AsyncMock()
-        webhook_payload = self._payload(rzp_order_id="rzp_ord_123")
-
-        mock_payment = MagicMock()
-        mock_payment.status = "captured"
-
-        # PaymentRepository is imported locally — patch at source module
-        with patch("app.modules.payments.repository.PaymentRepository") as MockPayRepo:
-            MockPayRepo.return_value.get_by_razorpay_order_id = AsyncMock(
-                return_value=mock_payment
-            )
-            # complete_order_reservations should NOT be called
-            with patch(
-                "app.modules.inventory.reservation_service.ReservationService"
-            ) as MockResSvc:
-                await self.svc._on_payment_captured(db, webhook_payload)
-                MockResSvc.assert_not_called()
-
-    async def test_already_paid_order_is_noop(self):
-        """If order.payment_status == 'paid', skip (idempotent)."""
-        db = AsyncMock()
-        rzp_order_id = "rzp_ord_DEF"
-        webhook_payload = self._payload(rzp_order_id=rzp_order_id)
-
-        mock_payment = MagicMock()
-        mock_payment.status = "pending"
-        order_id = uuid.uuid4()
-        mock_payment.order_id = order_id
-
-        order = _make_order(
-            status="confirmed",
-            payment_status="paid",
-            order_id=order_id,
-        )
-
-        with patch("app.modules.payments.repository.PaymentRepository") as MockPayRepo:
-            MockPayRepo.return_value.get_by_razorpay_order_id = AsyncMock(
-                return_value=mock_payment
-            )
-            MockPayRepo.return_value.update = AsyncMock()
-            with patch(
-                "app.modules.orders.repository.OrderRepository"
-            ) as MockOrderRepo:
-                MockOrderRepo.return_value.get_by_id = AsyncMock(return_value=order)
-                with patch(
-                    "app.modules.inventory.reservation_service.ReservationService"
-                ) as MockResSvc:
-                    await self.svc._on_payment_captured(db, webhook_payload)
-                    # complete_order_reservations must NOT be called
-                    MockResSvc.assert_not_called()
-
-    async def test_webhook_first_completes_reservations(self):
-        """Webhook arriving before verify_and_fulfill must complete reservations."""
-        db = AsyncMock()
-        rzp_order_id = "rzp_ord_ABC"
-        webhook_payload = self._payload(rzp_order_id=rzp_order_id)
-
-        # No payment row yet (webhook first)
-        order_id = uuid.uuid4()
-        order = _make_order(
-            status="payment_pending",
-            payment_status="pending",
-            order_id=order_id,
-        )
-
-        # Raw SQL result for finding order by razorpay_order_id
-        raw_row = MagicMock()
-        raw_row.__getitem__ = lambda self, i: order_id
-        db_result = MagicMock()
-        db_result.fetchone.return_value = raw_row
-        db.execute = AsyncMock(return_value=db_result)
-
-        with patch("app.modules.payments.repository.PaymentRepository") as MockPayRepo:
-            MockPayRepo.return_value.get_by_razorpay_order_id = AsyncMock(
-                return_value=None  # no payment row
-            )
-            with patch(
-                "app.modules.orders.repository.OrderRepository"
-            ) as MockOrderRepo:
-                MockOrderRepo.return_value.get_by_id = AsyncMock(return_value=order)
-                MockOrderRepo.return_value.update = AsyncMock()
-                with patch(
-                    "app.modules.inventory.reservation_service.ReservationService"
-                ) as MockResSvc:
-                    mock_svc_instance = MagicMock()
-                    mock_svc_instance.complete_order_reservations = AsyncMock()
-                    MockResSvc.return_value = mock_svc_instance
-                    with patch(
-                        "app.modules.invoices.service.InvoiceService"
-                    ) as MockInvoice:
-                        MockInvoice.return_value.generate_and_store = AsyncMock()
-                        with patch(
-                            "app.core.events.event_bus.publish",
-                            AsyncMock(),
-                        ):
-                            await self.svc._on_payment_captured(db, webhook_payload)
-
-                    mock_svc_instance.complete_order_reservations.assert_called_once_with(
-                        db, order.id
-                    )
-
-
-# ── TestWebhookPaymentFailed ──────────────────────────────────────────────────
-
-
-class TestWebhookPaymentFailed:
-    def setup_method(self):
-        from app.modules.webhooks.service import WebhookService
-
-        self.svc = WebhookService()
-
-    def _failed_payload(
-        self,
-        rzp_order_id: str = "rzp_ord_fail",
-        error_desc: str = "Insufficient funds",
-    ) -> dict:
-        return {
-            "payload": {
-                "payment": {
-                    "entity": {
-                        "order_id": rzp_order_id,
-                        "error_description": error_desc,
-                    }
-                }
-            }
-        }
-
-    async def test_releases_reservations_on_payment_failure(self):
-        db = AsyncMock()
-        order_id = uuid.uuid4()
-        webhook_payload = self._failed_payload(rzp_order_id="rzp_ord_FAIL")
-
-        # SQL lookup returns the order row
-        raw_row = MagicMock()
-        raw_row.__getitem__ = lambda self, i: order_id
-        db_result = MagicMock()
-        db_result.fetchone.return_value = raw_row
-        db.execute = AsyncMock(return_value=db_result)
-
-        with patch(
-            "app.modules.inventory.reservation_service.ReservationService"
-        ) as MockResSvc:
-            mock_svc = MagicMock()
-            mock_svc.release_order_reservations = AsyncMock()
-            MockResSvc.return_value = mock_svc
-            with patch(
-                "app.modules.orders.repository.OrderRepository"
-            ) as MockOrderRepo:
-                MockOrderRepo.return_value.update = AsyncMock()
-                with patch("app.core.events.event_bus.publish", AsyncMock()):
-                    await self.svc._on_payment_failed(db, webhook_payload)
-
-            mock_svc.release_order_reservations.assert_called_once_with(
-                db, order_id, reason="RELEASED"
-            )
-
-    async def test_marks_order_as_payment_failed(self):
-        db = AsyncMock()
-        order_id = uuid.uuid4()
-        webhook_payload = self._failed_payload(rzp_order_id="rzp_ord_FAIL2")
-
-        raw_row = MagicMock()
-        raw_row.__getitem__ = lambda self, i: order_id
-        db_result = MagicMock()
-        db_result.fetchone.return_value = raw_row
-        db.execute = AsyncMock(return_value=db_result)
-
-        with patch(
-            "app.modules.inventory.reservation_service.ReservationService"
-        ) as MockResSvc:
-            MockResSvc.return_value.release_order_reservations = AsyncMock()
-            with patch(
-                "app.modules.orders.repository.OrderRepository"
-            ) as MockOrderRepo:
-                mock_order_repo = MagicMock()
-                mock_order_repo.update = AsyncMock()
-                MockOrderRepo.return_value = mock_order_repo
-                with patch("app.core.events.event_bus.publish", AsyncMock()):
-                    await self.svc._on_payment_failed(db, webhook_payload)
-
-                mock_order_repo.update.assert_called_once_with(
-                    db,
-                    order_id,
-                    {"status": "payment_failed", "payment_status": "failed"},
-                )
-
-    async def test_no_order_found_is_noop(self):
-        """If neither SQL lookup nor payment row exists, do nothing."""
-        db = AsyncMock()
-        webhook_payload = self._failed_payload(rzp_order_id="rzp_ord_UNKNOWN")
-
-        # SQL lookup returns nothing
-        db_result = MagicMock()
-        db_result.fetchone.return_value = None
-        db.execute = AsyncMock(return_value=db_result)
-
-        with patch("app.modules.payments.repository.PaymentRepository") as MockPayRepo:
-            MockPayRepo.return_value.get_by_razorpay_order_id = AsyncMock(
-                return_value=None
-            )
-            with patch(
-                "app.modules.inventory.reservation_service.ReservationService"
-            ) as MockResSvc:
-                await self.svc._on_payment_failed(db, webhook_payload)
-                MockResSvc.assert_not_called()
-
-
-# ── TestWebhookHandleRazorpay (idempotency via event_id) ──────────────────────
-
-
-class TestWebhookHandleRazorpayIdempotency:
-    def setup_method(self):
-        from app.modules.webhooks.service import WebhookService
-
-        self.svc = WebhookService()
-
-    async def test_duplicate_event_id_returns_already_processed(self):
-        import json
-
-        db = AsyncMock()
-        event_id = "evt_001"
-        body = json.dumps(
-            {"event": "payment.captured", "id": event_id, "payload": {}}
-        ).encode()
-
-        with patch(
-            "app.modules.webhooks.service.verify_razorpay_webhook_signature",
-            return_value=True,
-        ):
-            with patch.object(self.svc, "_record_event", AsyncMock(return_value=None)):
-                result = await self.svc.handle_razorpay(db, body, "valid_sig")
-
-        assert result["status"] == "already_processed"
-
-    async def test_invalid_signature_returns_invalid_signature(self):
-        import json
-
-        db = AsyncMock()
-        body = json.dumps({"event": "payment.captured", "id": "evt_002"}).encode()
-
-        with patch(
-            "app.modules.webhooks.service.verify_razorpay_webhook_signature",
-            return_value=False,
-        ):
-            result = await self.svc.handle_razorpay(db, body, "bad_sig")
-
-        assert result["status"] == "invalid_signature"
-
-    async def test_unknown_event_type_returns_ignored(self):
-        import json
-
-        db = AsyncMock()
-        body = json.dumps({"event": "subscription.activated", "id": "evt_003"}).encode()
-
-        mock_event_row = MagicMock()
-        mock_event_row.id = uuid.uuid4()
-
-        with patch(
-            "app.modules.webhooks.service.verify_razorpay_webhook_signature",
-            return_value=True,
-        ):
-            with patch.object(
-                self.svc, "_record_event", AsyncMock(return_value=mock_event_row)
-            ):
-                db.execute = AsyncMock()
-                result = await self.svc.handle_razorpay(db, body, "sig")
-
-        assert result["status"] == "ignored"

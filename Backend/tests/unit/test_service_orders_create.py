@@ -33,6 +33,7 @@ def _make_cart_item(product_id=None, variant_id=None, quantity=2):
 
 
 def _make_prod_row(
+    product_id=None,
     name="Ring",
     sku="RNG-001",
     base_price=500.0,
@@ -44,6 +45,8 @@ def _make_prod_row(
     price_adj=0.0,
 ):
     row = MagicMock()
+    row.id = product_id or uuid.uuid4()
+    row.product_id = row.id
     row.name = name
     row.sku = sku
     row.base_price = base_price
@@ -53,7 +56,22 @@ def _make_prod_row(
     row.track_inventory = track_inventory
     row.variant_name = variant_name
     row.price_adj = price_adj
+    row.thumbnail_url = None
     return row
+
+
+def _mock_db_for_line_items(prod_row):
+    """_resolve_line_items now issues up to 3 batched queries (products,
+    variants, images) instead of one per cart item. Since these tests only
+    exercise a single variant-less cart item, the variant query is never
+    issued — only the product and image queries run, both returning a
+    result whose .fetchall() yields the same single row.
+    """
+    result = MagicMock()
+    result.fetchall.return_value = [prod_row]
+    db = AsyncMock()
+    db.execute = AsyncMock(return_value=result)
+    return db
 
 
 def _make_address():
@@ -89,12 +107,11 @@ class TestOrderServiceCreatePaymentIntent:
         mock_cart.items = [cart_item]
 
         mock_addr = _make_address()
-        prod_row = _make_prod_row(base_price=500.0, tax_rate=3.0, stock_quantity=10)
+        prod_row = _make_prod_row(
+            product_id=product_id, base_price=500.0, tax_rate=3.0, stock_quantity=10
+        )
 
-        prod_result = MagicMock()
-        prod_result.fetchone.return_value = prod_row
-        db = AsyncMock()
-        db.execute = AsyncMock(return_value=prod_result)
+        db = _mock_db_for_line_items(prod_row)
         db.commit = AsyncMock()
 
         mock_order = MagicMock()
@@ -154,9 +171,9 @@ class TestOrderServiceCreatePaymentIntent:
         mock_cart.items = [cart_item]
         mock_addr = _make_address()
 
-        # Product row returns None
+        # Product query returns no rows
         none_result = MagicMock()
-        none_result.fetchone.return_value = None
+        none_result.fetchall.return_value = []
         db = AsyncMock()
         db.execute = AsyncMock(return_value=none_result)
 
@@ -189,12 +206,12 @@ class TestOrderServiceCreatePaymentIntent:
         mock_addr = _make_address()
 
         prod_row = _make_prod_row(
-            stock_quantity=3, track_inventory=True, allow_backorder=False
+            product_id=cart_item.product_id,
+            stock_quantity=3,
+            track_inventory=True,
+            allow_backorder=False,
         )
-        prod_result = MagicMock()
-        prod_result.fetchone.return_value = prod_row
-        db = AsyncMock()
-        db.execute = AsyncMock(return_value=prod_result)
+        db = _mock_db_for_line_items(prod_row)
 
         with (
             patch.object(
@@ -228,11 +245,10 @@ class TestOrderServiceCreatePaymentIntent:
         mock_cart.items = [cart_item]
 
         mock_addr = _make_address()
-        prod_row = _make_prod_row(base_price=200.0, tax_rate=0.0)
-        prod_result = MagicMock()
-        prod_result.fetchone.return_value = prod_row
-        db = AsyncMock()
-        db.execute = AsyncMock(return_value=prod_result)
+        prod_row = _make_prod_row(
+            product_id=cart_item.product_id, base_price=200.0, tax_rate=0.0
+        )
+        db = _mock_db_for_line_items(prod_row)
 
         mock_order = MagicMock()
         mock_order.id = uuid.uuid4()
@@ -282,7 +298,6 @@ class TestOrderServiceCreatePaymentIntent:
     async def test_create_payment_intent_with_coupon(self):
         from app.modules.addresses.repository import AddressRepository
         from app.modules.cart.repository import CartRepository
-        from app.modules.coupons.repository import CouponRepository
         from app.modules.coupons.service import CouponService
         from app.modules.orders.schemas import CreatePaymentIntentRequest
 
@@ -294,17 +309,17 @@ class TestOrderServiceCreatePaymentIntent:
         mock_cart.items = [cart_item]
 
         mock_addr = _make_address()
-        prod_row = _make_prod_row(base_price=600.0, tax_rate=3.0, stock_quantity=10)
-        prod_result = MagicMock()
-        prod_result.fetchone.return_value = prod_row
-        db = AsyncMock()
-        db.execute = AsyncMock(return_value=prod_result)
+        prod_row = _make_prod_row(
+            product_id=cart_item.product_id,
+            base_price=600.0,
+            tax_rate=3.0,
+            stock_quantity=10,
+        )
+        db = _mock_db_for_line_items(prod_row)
 
         mock_order = MagicMock()
         mock_order.id = uuid.uuid4()
         mock_order.items = []
-        mock_coupon = MagicMock()
-        mock_coupon.coupon_type = "percentage"
 
         mock_reservation = MagicMock()
         mock_reservation.id = uuid.uuid4()
@@ -335,10 +350,7 @@ class TestOrderServiceCreatePaymentIntent:
             patch.object(
                 CouponService,
                 "apply_and_reserve",
-                AsyncMock(return_value=(50.0, coupon_id)),
-            ),
-            patch.object(
-                CouponRepository, "get_by_id", AsyncMock(return_value=mock_coupon)
+                AsyncMock(return_value=(50.0, coupon_id, "percentage")),
             ),
             patch("asyncio.get_running_loop") as mock_loop,
         ):
@@ -359,7 +371,6 @@ class TestOrderServiceCreatePaymentIntent:
         """A free_shipping coupon type overrides shipping charge."""
         from app.modules.addresses.repository import AddressRepository
         from app.modules.cart.repository import CartRepository
-        from app.modules.coupons.repository import CouponRepository
         from app.modules.coupons.service import CouponService
         from app.modules.orders.schemas import CreatePaymentIntentRequest
 
@@ -372,18 +383,17 @@ class TestOrderServiceCreatePaymentIntent:
 
         mock_addr = _make_address()
         # low price so shipping charge would apply (< 999)
-        prod_row = _make_prod_row(base_price=200.0, tax_rate=0.0, stock_quantity=5)
-        prod_result = MagicMock()
-        prod_result.fetchone.return_value = prod_row
-        db = AsyncMock()
-        db.execute = AsyncMock(return_value=prod_result)
+        prod_row = _make_prod_row(
+            product_id=cart_item.product_id,
+            base_price=200.0,
+            tax_rate=0.0,
+            stock_quantity=5,
+        )
+        db = _mock_db_for_line_items(prod_row)
 
         mock_order = MagicMock()
         mock_order.id = uuid.uuid4()
         mock_order.items = []
-        # coupon_type = free_shipping
-        mock_coupon = MagicMock()
-        mock_coupon.coupon_type = "free_shipping"
 
         mock_reservation = MagicMock()
         mock_reservation.id = uuid.uuid4()
@@ -414,10 +424,7 @@ class TestOrderServiceCreatePaymentIntent:
             patch.object(
                 CouponService,
                 "apply_and_reserve",
-                AsyncMock(return_value=(0.0, coupon_id)),
-            ),
-            patch.object(
-                CouponRepository, "get_by_id", AsyncMock(return_value=mock_coupon)
+                AsyncMock(return_value=(0.0, coupon_id, "free_shipping")),
             ),
             patch("asyncio.get_running_loop") as mock_loop,
         ):
@@ -448,11 +455,10 @@ class TestOrderServiceCreatePaymentIntent:
         mock_cart.items = [cart_item]
 
         mock_addr = _make_address()
-        prod_row = _make_prod_row(stock_quantity=1, track_inventory=False)
-        prod_result = MagicMock()
-        prod_result.fetchone.return_value = prod_row
-        db = AsyncMock()
-        db.execute = AsyncMock(return_value=prod_result)
+        prod_row = _make_prod_row(
+            product_id=cart_item.product_id, stock_quantity=1, track_inventory=False
+        )
+        db = _mock_db_for_line_items(prod_row)
 
         mock_order = MagicMock()
         mock_order.id = uuid.uuid4()

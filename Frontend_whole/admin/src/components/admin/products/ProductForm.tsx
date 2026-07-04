@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback, useEffect, useId } from "react";
+import { useState, useRef, useCallback, useEffect, useId, useMemo } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
@@ -10,19 +10,18 @@ import {
   Upload,
   X,
   ImageIcon,
-  GripVertical,
   AlertCircle,
-  ExternalLink,
-  Copy,
   Star,
-  Info,
   Sparkles,
+  Crop as CropIcon,
+  ImagePlus,
 } from "lucide-react";
 import { toast } from "sonner";
 import { api } from "@/lib/api/client";
 import { queryKeys } from "@/lib/api/queryKeys";
 import { toUserMessage } from "@/lib/api/errors";
 import { formatINR } from "@/lib/format";
+import { ImageCropModal, type SavedCrop } from "./ImageCropModal";
 import type {
   CategoryTreeNode,
   CollectionDetail,
@@ -64,7 +63,16 @@ interface PendingImage {
   file: File;
   preview: string;
   alt_text: string;
+  /** Set once the admin has cropped this image in the editor; applied right
+   * after the file is uploaded. NULL means "upload as-is" (backward
+   * compatible with the pre-cropping flow). */
+  crop: SavedCrop | null;
 }
+
+/** Which image is currently open in the crop editor, and where its bytes
+ * live (a local blob for not-yet-uploaded images, the R2 original for
+ * already-saved ones). Each image crops independently of the others. */
+type CropTarget = { kind: "pending"; id: string } | { kind: "saved"; id: string };
 
 interface FormState {
   name: string;
@@ -1264,6 +1272,9 @@ function MediaSection({
   onSetPrimaryPending,
   onDeleteSaved,
   onSetPrimarySaved,
+  onEditCropPending,
+  onEditCropSaved,
+  onReplaceSaved,
   error,
 }: {
   productId?: string;
@@ -1274,9 +1285,14 @@ function MediaSection({
   onSetPrimaryPending: (id: string) => void;
   onDeleteSaved: (id: string) => void;
   onSetPrimarySaved: (id: string) => void;
+  onEditCropPending: (id: string) => void;
+  onEditCropSaved: (id: string) => void;
+  onReplaceSaved: (id: string, file: File) => void;
   error?: string;
 }) {
   const fileRef = useRef<HTMLInputElement>(null);
+  const replaceFileRef = useRef<HTMLInputElement>(null);
+  const replaceTargetRef = useRef<string | null>(null);
   const [dragging, setDragging] = useState(false);
 
   const handleDrop = (e: React.DragEvent) => {
@@ -1290,6 +1306,19 @@ function MediaSection({
     const files = Array.from(e.target.files ?? []);
     if (files.length) onAddPending(files);
     e.target.value = "";
+  };
+
+  const triggerReplace = (imageId: string) => {
+    replaceTargetRef.current = imageId;
+    replaceFileRef.current?.click();
+  };
+
+  const handleReplaceFile = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    const targetId = replaceTargetRef.current;
+    e.target.value = "";
+    if (file && targetId) onReplaceSaved(targetId, file);
+    replaceTargetRef.current = null;
   };
 
   const totalCount = savedImages.length + pendingImages.length;
@@ -1332,6 +1361,16 @@ function MediaSection({
         />
       </div>
 
+      {/* Shared hidden input for "Replace" — target image id tracked in a ref
+          so a single input can serve every saved thumbnail. */}
+      <input
+        ref={replaceFileRef}
+        type="file"
+        accept="image/jpeg,image/png,image/webp"
+        onChange={handleReplaceFile}
+        className="hidden"
+      />
+
       {totalCount > 0 && (
         <div className="grid grid-cols-3 gap-3">
           {savedImages.map((img, i) => (
@@ -1349,6 +1388,11 @@ function MediaSection({
                   Primary
                 </span>
               )}
+              {img.crop_x != null && (
+                <span className="absolute top-1 right-1 bg-background/90 text-foreground text-[9px] uppercase tracking-wider px-1.5 py-0.5">
+                  Cropped
+                </span>
+              )}
               <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
                 {!img.is_primary && (
                   <button
@@ -1360,6 +1404,22 @@ function MediaSection({
                     <Star className="size-3.5" />
                   </button>
                 )}
+                <button
+                  type="button"
+                  onClick={() => onEditCropSaved(img.id)}
+                  className="bg-background/90 p-1.5 rounded-sm"
+                  title="Edit crop"
+                >
+                  <CropIcon className="size-3.5" />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => triggerReplace(img.id)}
+                  className="bg-background/90 p-1.5 rounded-sm"
+                  title="Replace image"
+                >
+                  <ImagePlus className="size-3.5" />
+                </button>
                 <button
                   type="button"
                   onClick={() => {
@@ -1383,12 +1443,25 @@ function MediaSection({
               <div className="absolute top-1 right-1 bg-amber-500/90 text-white text-[9px] uppercase tracking-wider px-1.5 py-0.5">
                 Pending
               </div>
+              {img.crop && (
+                <span className="absolute top-1 right-16 bg-background/90 text-foreground text-[9px] uppercase tracking-wider px-1.5 py-0.5">
+                  Cropped
+                </span>
+              )}
               {savedImages.length === 0 && i === 0 && (
                 <span className="absolute top-1 left-1 bg-primary text-primary-foreground text-[9px] uppercase tracking-wider px-1.5 py-0.5">
                   Primary
                 </span>
               )}
               <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => onEditCropPending(img.id)}
+                  className="bg-background/90 p-1.5 rounded-sm"
+                  title="Edit crop"
+                >
+                  <CropIcon className="size-3.5" />
+                </button>
                 <button
                   type="button"
                   onClick={() => onRemovePending(img.id)}
@@ -2374,16 +2447,37 @@ export function ProductForm({ mode, initialProduct, initialCollectionIds }: Prod
 
   // ── Image handlers ──────────────────────────────────────────────────────────
 
-  const addPendingImages = useCallback((files: File[]) => {
-    const newImgs: PendingImage[] = files.map((file, i) => ({
-      id: uid(),
-      file,
-      preview: URL.createObjectURL(file),
-      alt_text: "",
-    }));
-    setPendingImages((prev) => [...prev, ...newImgs]);
-    setIsDirty(true);
+  // Crop editor queue — each newly-uploaded image gets its own turn, in
+  // order, so cropping image 1 of 4 never touches images 2-4's state. "Edit
+  // Crop" / "Replace" on an existing image just append a single-item turn.
+  const [cropQueue, setCropQueue] = useState<CropTarget[]>([]);
+  const [cropSaving, setCropSaving] = useState(false);
+  const activeCropTarget = cropQueue[0] ?? null;
+
+  const enqueueCrop = useCallback((target: CropTarget) => {
+    setCropQueue((prev) => [...prev, target]);
   }, []);
+
+  const dequeueCrop = useCallback(() => {
+    setCropQueue((prev) => prev.slice(1));
+  }, []);
+
+  const addPendingImages = useCallback(
+    (files: File[]) => {
+      const newImgs: PendingImage[] = files.map((file) => ({
+        id: uid(),
+        file,
+        preview: URL.createObjectURL(file),
+        alt_text: "",
+        crop: null,
+      }));
+      setPendingImages((prev) => [...prev, ...newImgs]);
+      setIsDirty(true);
+      // Every uploaded image immediately gets its own turn in the crop editor.
+      newImgs.forEach((img) => enqueueCrop({ kind: "pending", id: img.id }));
+    },
+    [enqueueCrop],
+  );
 
   const removePendingImage = useCallback((id: string) => {
     setPendingImages((prev) => {
@@ -2391,6 +2485,7 @@ export function ProductForm({ mode, initialProduct, initialCollectionIds }: Prod
       if (img) URL.revokeObjectURL(img.preview);
       return prev.filter((i) => i.id !== id);
     });
+    setCropQueue((prev) => prev.filter((t) => !(t.kind === "pending" && t.id === id)));
   }, []);
 
   const deleteSavedImage = useCallback(
@@ -2420,6 +2515,108 @@ export function ProductForm({ mode, initialProduct, initialCollectionIds }: Prod
       }
     },
     [initialProduct?.id],
+  );
+
+  const replaceSavedImage = useCallback(
+    async (imageId: string, file: File) => {
+      if (!initialProduct) return;
+      try {
+        const fd = new FormData();
+        fd.append("file", file);
+        const updated = await api.put<ProductImage>(
+          `/admin/products/${initialProduct.id}/images/${imageId}/replace`,
+          { body: fd },
+        );
+        setSavedImages((prev) => prev.map((i) => (i.id === imageId ? updated : i)));
+        queryClient.invalidateQueries({ queryKey: queryKeys.admin.product(initialProduct.id) });
+        // The new original has no crop applied yet — open the editor for it.
+        enqueueCrop({ kind: "saved", id: imageId });
+        toast.success("Image replaced. Crop the new image to update its display size.");
+      } catch (e) {
+        toast.error(toUserMessage(e as Error));
+      }
+    },
+    [initialProduct?.id, queryClient, enqueueCrop],
+  );
+
+  const editCropPending = useCallback(
+    (id: string) => enqueueCrop({ kind: "pending", id }),
+    [enqueueCrop],
+  );
+
+  const editCropSaved = useCallback(
+    (id: string) => enqueueCrop({ kind: "saved", id }),
+    [enqueueCrop],
+  );
+
+  const activeCropImage = useMemo(() => {
+    if (!activeCropTarget) return null;
+    if (activeCropTarget.kind === "pending") {
+      const img = pendingImages.find((i) => i.id === activeCropTarget.id);
+      return img ? { src: img.preview, crop: img.crop } : null;
+    }
+    const img = savedImages.find((i) => i.id === activeCropTarget.id);
+    if (!img) return null;
+    const crop: SavedCrop | null =
+      img.crop_x != null && img.crop_y != null && img.crop_width != null && img.crop_height != null
+        ? {
+            x: img.crop_x,
+            y: img.crop_y,
+            width: img.crop_width,
+            height: img.crop_height,
+            zoom: img.crop_zoom ?? 1,
+            rotation: img.crop_rotation ?? 0,
+          }
+        : null;
+    return { src: img.url, crop };
+  }, [activeCropTarget, pendingImages, savedImages]);
+
+  const handleCropCancel = useCallback(() => {
+    dequeueCrop();
+  }, [dequeueCrop]);
+
+  const handleCropSave = useCallback(
+    async (crop: SavedCrop) => {
+      if (!activeCropTarget) return;
+
+      if (activeCropTarget.kind === "pending") {
+        // Not uploaded yet — just remember the crop, it's applied right
+        // after this image's own upload call during Save.
+        setPendingImages((prev) =>
+          prev.map((i) => (i.id === activeCropTarget.id ? { ...i, crop } : i)),
+        );
+        dequeueCrop();
+        return;
+      }
+
+      if (!initialProduct) return;
+      setCropSaving(true);
+      try {
+        const updated = await api.patch<ProductImage>(
+          `/admin/products/${initialProduct.id}/images/${activeCropTarget.id}/crop`,
+          {
+            body: {
+              crop_x: crop.x,
+              crop_y: crop.y,
+              crop_width: crop.width,
+              crop_height: crop.height,
+              crop_zoom: crop.zoom,
+              crop_rotation: crop.rotation,
+            },
+          },
+        );
+        setSavedImages((prev) => prev.map((i) => (i.id === activeCropTarget.id ? updated : i)));
+        queryClient.invalidateQueries({ queryKey: queryKeys.admin.product(initialProduct.id) });
+        queryClient.invalidateQueries({ queryKey: ["admin", "products"] });
+        toast.success("Crop saved.");
+        dequeueCrop();
+      } catch (e) {
+        toast.error(toUserMessage(e as Error));
+      } finally {
+        setCropSaving(false);
+      }
+    },
+    [activeCropTarget, initialProduct, queryClient, dequeueCrop],
   );
 
   // ── Inline category/collection creation ──────────────────────────────────────
@@ -2505,6 +2702,29 @@ export function ProductForm({ mode, initialProduct, initialCollectionIds }: Prod
 
   // ── Save handlers ───────────────────────────────────────────────────────────
 
+  // Applies a crop chosen in the editor before this image existed on the
+  // server — called right after its upload response gives us a real image id.
+  // Returns the post-crop image (fresh thumbnail/medium/large) so the caller
+  // can put the final, correctly-cropped row into `savedImages` directly,
+  // rather than the pre-crop upload response.
+  async function applyPendingCrop(
+    productId: string,
+    imageId: string,
+    crop: SavedCrop | null,
+  ): Promise<ProductImage | null> {
+    if (!crop) return null;
+    return api.patch<ProductImage>(`/admin/products/${productId}/images/${imageId}/crop`, {
+      body: {
+        crop_x: crop.x,
+        crop_y: crop.y,
+        crop_width: crop.width,
+        crop_height: crop.height,
+        crop_zoom: crop.zoom,
+        crop_rotation: crop.rotation,
+      },
+    });
+  }
+
   async function handleCreate(publishNow: boolean) {
     const errors = validateForm(form, pendingImages, []);
     if (Object.keys(errors).length > 0) {
@@ -2526,10 +2746,14 @@ export function ProductForm({ mode, initialProduct, initialCollectionIds }: Prod
         const img = pendingImages[i];
         const fd = new FormData();
         fd.append("file", img.file);
-        await api.post(`/admin/products/${product.id}/images?is_primary=${i === 0}`, {
-          body: fd,
-        });
+        const created = await api.post<ProductImage>(
+          `/admin/products/${product.id}/images?is_primary=${i === 0}`,
+          { body: fd },
+        );
+        const cropped = await applyPendingCrop(product.id, created.id, img.crop);
+        setSavedImages((prev) => [...prev, cropped ?? created]);
       }
+      setPendingImages([]);
 
       for (const colId of form.collection_ids) {
         await api.post(`/admin/collections/${colId}/products`, {
@@ -2570,7 +2794,17 @@ export function ProductForm({ mode, initialProduct, initialCollectionIds }: Prod
         const fd = new FormData();
         fd.append("file", img.file);
         const isPrimary = savedImages.length === 0 && i === 0;
-        await api.post(`/admin/products/${pid}/images?is_primary=${isPrimary}`, { body: fd });
+        const created = await api.post<ProductImage>(
+          `/admin/products/${pid}/images?is_primary=${isPrimary}`,
+          { body: fd },
+        );
+        const cropped = await applyPendingCrop(pid, created.id, img.crop);
+        // Put the final (post-crop, if any) row straight into local state —
+        // don't wait on the query invalidation below to repopulate it, since
+        // that only refetches in the background and won't re-sync this
+        // form's local `savedImages` (see the initialProduct?.id-keyed sync
+        // effect above, which intentionally doesn't re-run on every refetch).
+        setSavedImages((prev) => [...prev, cropped ?? created]);
       }
       setPendingImages([]);
 
@@ -2777,9 +3011,23 @@ export function ProductForm({ mode, initialProduct, initialCollectionIds }: Prod
               }
               onDeleteSaved={deleteSavedImage}
               onSetPrimarySaved={setPrimarySaved}
+              onEditCropPending={editCropPending}
+              onEditCropSaved={editCropSaved}
+              onReplaceSaved={replaceSavedImage}
               error={formErrors.images}
             />
           </Section>
+
+          {activeCropImage && (
+            <ImageCropModal
+              open
+              imageSrc={activeCropImage.src}
+              initialCrop={activeCropImage.crop}
+              saving={cropSaving}
+              onCancel={handleCropCancel}
+              onSave={handleCropSave}
+            />
+          )}
 
           <Section title="Variants" defaultOpen={false}>
             <VariantsSection form={form} set={handleSetForm} baseSku={form.sku} />

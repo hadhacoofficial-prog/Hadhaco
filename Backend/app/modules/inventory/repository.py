@@ -43,12 +43,13 @@ class InventoryRepository:
         result = await db.execute(q)
         return list(result.scalars().all()), total
 
-    async def get_low_stock(self, db: AsyncSession) -> list[dict]:
+    async def get_low_stock(self, db: AsyncSession, *, limit: int = 500) -> list[dict]:
         result = await db.execute(
             text(
                 "SELECT id, sku, name, stock_quantity, low_stock_threshold, status, category_id "
-                "FROM low_stock_products ORDER BY stock_quantity ASC"
-            )
+                "FROM low_stock_products ORDER BY stock_quantity ASC LIMIT :limit"
+            ),
+            {"limit": limit},
         )
         return [dict(r._mapping) for r in result.fetchall()]
 

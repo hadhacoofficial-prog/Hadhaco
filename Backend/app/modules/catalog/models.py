@@ -4,6 +4,7 @@ from typing import TYPE_CHECKING
 
 from sqlalchemy import (
     Boolean,
+    CheckConstraint,
     DateTime,
     ForeignKey,
     Index,
@@ -172,6 +173,31 @@ class Product(Base):
         Index("idx_products_deleted_at", "deleted_at"),
         Index("idx_products_is_featured", "is_featured"),
         Index("idx_products_search_vector", "search_vector", postgresql_using="gin"),
+        Index(
+            "idx_products_name_trgm",
+            "name",
+            postgresql_using="gin",
+            postgresql_ops={"name": "gin_trgm_ops"},
+        ),
+        Index(
+            "idx_products_sku_trgm",
+            "sku",
+            postgresql_using="gin",
+            postgresql_ops={"sku": "gin_trgm_ops"},
+        ),
+        CheckConstraint(
+            "gender IS NULL OR gender IN ('women','men','kids','unisex')",
+            name="products_gender_check",
+        ),
+        CheckConstraint("base_price > 0", name="products_base_price_check"),
+        CheckConstraint("stock_quantity >= 0", name="products_stock_quantity_check"),
+        CheckConstraint(
+            "reserved_quantity >= 0", name="products_reserved_quantity_check"
+        ),
+        CheckConstraint("sold_quantity >= 0", name="products_sold_quantity_check"),
+        CheckConstraint(
+            "status IN ('draft','active','archived')", name="products_status_check"
+        ),
     )
 
     @property
@@ -228,6 +254,15 @@ class ProductVariant(Base):
     __table_args__ = (
         Index("idx_product_variants_product_id", "product_id"),
         Index("idx_product_variants_sku", "sku"),
+        CheckConstraint(
+            "stock_quantity >= 0", name="product_variants_stock_quantity_check"
+        ),
+        CheckConstraint(
+            "reserved_quantity >= 0", name="product_variants_reserved_quantity_check"
+        ),
+        CheckConstraint(
+            "sold_quantity >= 0", name="product_variants_sold_quantity_check"
+        ),
     )
 
     @property
@@ -249,6 +284,7 @@ class ProductImage(Base):
     url: Mapped[str] = mapped_column(String(1024), nullable=False)
     thumbnail_url: Mapped[str | None] = mapped_column(String(1024), nullable=True)
     medium_url: Mapped[str | None] = mapped_column(String(1024), nullable=True)
+    large_url: Mapped[str | None] = mapped_column(String(1024), nullable=True)
     alt_text: Mapped[str | None] = mapped_column(String(255), nullable=True)
     is_primary: Mapped[bool] = mapped_column(
         Boolean, nullable=False, server_default="false"
@@ -258,6 +294,24 @@ class ProductImage(Base):
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )
+    # Bumped on every crop/replace so callers can cache-bust the (otherwise
+    # stable) thumbnail/medium/large URLs — see ProductImageResponse.
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+        onupdate=func.now(),
+    )
+
+    # Crop box in pixel coordinates of the untouched original image. NULL means
+    # no crop has been saved yet, so thumbnail_url/medium_url still point at the
+    # uncropped, normalized variants generated at upload time.
+    crop_x: Mapped[float | None] = mapped_column(Numeric(10, 2), nullable=True)
+    crop_y: Mapped[float | None] = mapped_column(Numeric(10, 2), nullable=True)
+    crop_width: Mapped[float | None] = mapped_column(Numeric(10, 2), nullable=True)
+    crop_height: Mapped[float | None] = mapped_column(Numeric(10, 2), nullable=True)
+    crop_zoom: Mapped[float | None] = mapped_column(Numeric(5, 2), nullable=True)
+    crop_rotation: Mapped[float | None] = mapped_column(Numeric(6, 2), nullable=True)
 
     product: Mapped["Product"] = relationship("Product", back_populates="images")
 

@@ -12,18 +12,23 @@ from app.modules.wishlist.schemas import (
 _repo = WishlistRepository()
 
 
+def _to_response(wishlist) -> WishlistResponse:
+    items = [WishlistItemResponse.model_validate(i) for i in wishlist.items]
+    return WishlistResponse(id=wishlist.id, items=items, total=len(items))
+
+
 class WishlistService:
     async def get(self, db: AsyncSession, user_id: uuid.UUID) -> WishlistResponse:
         wishlist = await _repo.get_or_create(db, user_id)
-        items = [WishlistItemResponse.model_validate(i) for i in wishlist.items]
-        return WishlistResponse(id=wishlist.id, items=items, total=len(items))
+        return _to_response(wishlist)
 
     async def add(
         self, db: AsyncSession, user_id: uuid.UUID, payload: AddToWishlistRequest
     ) -> WishlistResponse:
         wishlist = await _repo.get_or_create(db, user_id)
         await _repo.add_item(db, wishlist.id, payload.product_id, payload.variant_id)
-        return await self.get(db, user_id)
+        await db.refresh(wishlist, attribute_names=["items"])
+        return _to_response(wishlist)
 
     async def remove(
         self,
@@ -34,7 +39,8 @@ class WishlistService:
     ) -> WishlistResponse:
         wishlist = await _repo.get_or_create(db, user_id)
         await _repo.remove_item(db, wishlist.id, product_id, variant_id)
-        return await self.get(db, user_id)
+        await db.refresh(wishlist, attribute_names=["items"])
+        return _to_response(wishlist)
 
     async def toggle(
         self, db: AsyncSession, user_id: uuid.UUID, payload: AddToWishlistRequest

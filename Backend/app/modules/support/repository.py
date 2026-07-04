@@ -7,6 +7,7 @@ from typing import Any
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.sequences import next_sequence_value
 from app.modules.support.models import SupportMessage, SupportTicket
 
 
@@ -65,9 +66,6 @@ class SupportRepository:
         return ticket
 
     async def next_ticket_number(self, db: AsyncSession) -> str:
-        from sqlalchemy import text
-
-        result = await db.execute(text("SELECT COUNT(*) FROM support_tickets"))
-        count = result.scalar() or 0
         year = datetime.now(UTC).year
-        return f"SUP-{year}-{str(count + 1).zfill(4)}"
+        seq = await next_sequence_value(db, f"ticket_number:{year}")
+        return f"SUP-{year}-{str(seq).zfill(4)}"

@@ -21,13 +21,9 @@ class WishlistRepository:
             db.add(wishlist)
             await db.flush()
             await db.refresh(wishlist)
-            # reload with items relationship
-            result = await db.execute(
-                select(Wishlist)
-                .where(Wishlist.id == wishlist.id)
-                .options(selectinload(Wishlist.items))
-            )
-            wishlist = result.scalar_one()
+            # A brand-new wishlist has no items yet — set the collection
+            # directly instead of an extra round trip to reload it.
+            wishlist.items = []
         return wishlist
 
     async def add_item(

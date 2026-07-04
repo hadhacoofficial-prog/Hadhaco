@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import uuid
 from datetime import datetime
 
 from sqlalchemy import func, select
@@ -15,7 +16,7 @@ class AuditRepository:
         *,
         page: int = 1,
         page_size: int = 50,
-        actor_id: str | None = None,
+        actor_id: str | uuid.UUID | None = None,
         action: str | None = None,
         resource_type: str | None = None,
         date_from: datetime | None = None,
@@ -23,7 +24,13 @@ class AuditRepository:
     ) -> tuple[list[AuditLog], int]:
         query = select(AuditLog)
         if actor_id:
-            query = query.where(AuditLog.actor_id == actor_id)
+            try:
+                actor_uuid = (
+                    actor_id if isinstance(actor_id, uuid.UUID) else uuid.UUID(actor_id)
+                )
+            except ValueError:
+                return [], 0
+            query = query.where(AuditLog.actor_id == actor_uuid)
         if action:
             query = query.where(AuditLog.action == action)
         if resource_type:

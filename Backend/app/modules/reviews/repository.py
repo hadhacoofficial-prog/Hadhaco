@@ -6,6 +6,7 @@ from typing import Any
 from sqlalchemy import delete, func, select, text, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.modules.catalog.models import Product
 from app.modules.reviews.models import Review, ReviewImage, ReviewVote
 
 
@@ -167,28 +168,28 @@ class ReviewRepository:
         status: str | None = None,
         offset: int = 0,
         limit: int = 50,
-    ) -> list[dict[str, Any]]:
-        """Admin: list all reviews with product name (all statuses unless filtered)."""
-        params: dict[str, Any] = {"offset": offset, "limit": limit}
-        if status == "approved":
-            where_extra = "AND r.is_approved = true"
-        elif status == "rejected":
-            where_extra = "AND r.is_rejected = true AND r.is_approved = false"
-        elif status == "pending":
-            where_extra = "AND r.is_approved = false AND r.is_rejected = false"
-        else:
-            where_extra = ""
+    ) -> list[tuple[Review, str | None]]:
+        """Admin: list all reviews with product name (all statuses unless filtered).
 
-        q = text(
-            "SELECT r.*, p.name AS product_name "
-            "FROM reviews r "
-            "LEFT JOIN products p ON p.id = r.product_id "
-            f"WHERE r.deleted_at IS NULL {where_extra} "  # nosec B608 — where_extra is one of three hardcoded literals, never user input
-            "ORDER BY r.created_at DESC "
-            "OFFSET :offset LIMIT :limit"
+        Single ORM query (join for product_name); Review.images/votes use
+        lazy="selectin" so they're batch-loaded in two extra queries total
+        for the whole page, not once per row.
+        """
+        q = (
+            select(Review, Product.name)
+            .outerjoin(Product, Product.id == Review.product_id)
+            .where(Review.deleted_at.is_(None))
         )
-        result = await db.execute(q, params)
-        return [dict(r._mapping) for r in result.fetchall()]
+        if status == "approved":
+            q = q.where(Review.is_approved.is_(True))
+        elif status == "rejected":
+            q = q.where(Review.is_rejected.is_(True), Review.is_approved.is_(False))
+        elif status == "pending":
+            q = q.where(Review.is_approved.is_(False), Review.is_rejected.is_(False))
+        q = q.order_by(Review.created_at.desc()).offset(offset).limit(limit)
+
+        result = await db.execute(q)
+        return [(row[0], row[1]) for row in result.all()]
 
     # ── Rating summary ────────────────────────────────────────────────────────
 

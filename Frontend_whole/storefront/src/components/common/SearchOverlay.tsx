@@ -1,13 +1,14 @@
 import { useEffect, useState } from "react";
 import { Link, useNavigate } from "@tanstack/react-router";
 import { Search as SearchIcon, X, TrendingUp, Clock } from "lucide-react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, keepPreviousData } from "@tanstack/react-query";
 import { useUi } from "@/stores/ui";
 import { useRecentSearches } from "@/stores/search";
 import { api } from "@/lib/api/client";
 import { queryKeys } from "@/lib/api/queryKeys";
 import { toProduct, toCollection } from "@/lib/api/mappers";
 import { formatINR } from "@/lib/format";
+import { useDebounce } from "@hadha/shared-ui/common/use-debounce";
 import type { ProductListResponse } from "@/types/admin";
 import type { CollectionDto } from "@/types/public";
 
@@ -18,20 +19,13 @@ export function SearchOverlay() {
   const close = useUi((s) => s.closeSearch);
   const navigate = useNavigate();
   const [q, setQ] = useState("");
-  const [debouncedQ, setDebouncedQ] = useState("");
+  const debouncedQ = useDebounce(q, 200);
   const { recent, push, clear } = useRecentSearches();
-
-  // Debounce q → debouncedQ
-  useEffect(() => {
-    const t = setTimeout(() => setDebouncedQ(q), 200);
-    return () => clearTimeout(t);
-  }, [q]);
 
   // Reset when closing
   useEffect(() => {
     if (!open) {
       setQ("");
-      setDebouncedQ("");
     }
   }, [open]);
 
@@ -59,6 +53,7 @@ export function SearchOverlay() {
       }),
     enabled: searchTerm.length >= 2,
     staleTime: 30_000,
+    placeholderData: keepPreviousData,
   });
 
   const results = (searchData?.items ?? []).map(toProduct);
@@ -185,7 +180,13 @@ export function SearchOverlay() {
                         onClick={close}
                         className="flex items-center gap-3 p-2 border border-border hover:border-primary hover:bg-accent/40 transition"
                       >
-                        <img src={c.image} alt="" className="size-10 object-cover" />
+                        <img
+                          src={c.image}
+                          alt=""
+                          loading="lazy"
+                          decoding="async"
+                          className="size-10 object-cover"
+                        />
                         <span className="text-xs tracking-[0.16em] uppercase">{c.name}</span>
                       </Link>
                     </li>
@@ -222,7 +223,13 @@ export function SearchOverlay() {
                         onClick={close}
                         className="flex items-center gap-4 py-3 group"
                       >
-                        <img src={p.image} alt="" className="size-14 object-cover bg-secondary" />
+                        <img
+                          src={p.image}
+                          alt=""
+                          loading="lazy"
+                          decoding="async"
+                          className="size-14 object-cover bg-secondary"
+                        />
                         <div className="flex-1 min-w-0">
                           <p className="text-sm line-clamp-1 group-hover:text-primary transition">
                             {p.name}

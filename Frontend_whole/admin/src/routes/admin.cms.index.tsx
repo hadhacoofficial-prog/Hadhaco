@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useRef, useState } from "react";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
@@ -2127,8 +2127,9 @@ function renderSection(
 // Section card (left panel — Col 1)
 // ─────────────────────────────────────────────────────────────────────────────
 
-function SectionCard({
+const SectionCard = memo(function SectionCard({
   section,
+  idx,
   isActive,
   isDragging,
   isOver,
@@ -2142,14 +2143,15 @@ function SectionCard({
   onDelete,
 }: {
   section: AdminSection;
+  idx: number;
   isActive: boolean;
   isDragging: boolean;
   isOver: boolean;
-  onSelect: () => void;
-  onToggle: () => void;
+  onSelect: (key: string) => void;
+  onToggle: (section: AdminSection) => void;
   isDirty: boolean;
-  onDragStart: () => void;
-  onDragOver: (e: React.DragEvent) => void;
+  onDragStart: (idx: number) => void;
+  onDragOver: (idx: number, e: React.DragEvent) => void;
   onDrop: () => void;
   onDuplicate: () => void;
   onDelete: () => void;
@@ -2158,8 +2160,8 @@ function SectionCard({
   return (
     <div
       draggable
-      onDragStart={onDragStart}
-      onDragOver={onDragOver}
+      onDragStart={() => onDragStart(idx)}
+      onDragOver={(e) => onDragOver(idx, e)}
       onDrop={onDrop}
       onDragEnd={onDrop}
       className={`relative rounded-xl border transition-all select-none ${
@@ -2180,7 +2182,7 @@ function SectionCard({
       {/* Main row — clickable to select */}
       <button
         type="button"
-        onClick={onSelect}
+        onClick={() => onSelect(section.section_key)}
         className="w-full flex items-center gap-2.5 p-3 cursor-pointer text-left"
       >
         <GripVertical className="size-4 text-muted-foreground/30 shrink-0 cursor-grab active:cursor-grabbing" />
@@ -2211,7 +2213,7 @@ function SectionCard({
           <button
             onClick={(e) => {
               e.stopPropagation();
-              onToggle();
+              onToggle(section);
             }}
             className="p-1.5 rounded-md hover:bg-muted transition-colors text-muted-foreground hover:text-foreground"
             title={section.is_active ? "Hide section" : "Show section"}
@@ -2240,7 +2242,7 @@ function SectionCard({
           </button>
         </div>
         <button
-          onClick={onSelect}
+          onClick={() => onSelect(section.section_key)}
           className={`px-2.5 py-1 rounded-md text-[10px] font-semibold uppercase tracking-wide transition-colors ${
             isActive
               ? "bg-primary text-primary-foreground"
@@ -2252,7 +2254,7 @@ function SectionCard({
       </div>
     </div>
   );
-}
+});
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Editor panel (Col 2 — form controls only, no preview)
@@ -2729,22 +2731,25 @@ function AdminCmsEditor() {
 
   // ── DnD ──────────────────────────────────────────────────────────────────
 
-  function onDragStart(idx: number) {
+  const onDragStart = useCallback((idx: number) => {
     setDragIdx(idx);
-  }
+  }, []);
 
-  function onDragOver(idx: number, e: React.DragEvent) {
-    e.preventDefault();
-    if (dragIdx === null || dragIdx === idx) return;
-    setOverIdx(idx);
-    const next = [...localOrder];
-    const [item] = next.splice(dragIdx, 1);
-    next.splice(idx, 0, item);
-    setDragIdx(idx);
-    setLocalOrder(next);
-  }
+  const onDragOver = useCallback(
+    (idx: number, e: React.DragEvent) => {
+      e.preventDefault();
+      if (dragIdx === null || dragIdx === idx) return;
+      setOverIdx(idx);
+      const next = [...localOrder];
+      const [item] = next.splice(dragIdx, 1);
+      next.splice(idx, 0, item);
+      setDragIdx(idx);
+      setLocalOrder(next);
+    },
+    [dragIdx, localOrder],
+  );
 
-  function onDrop() {
+  const onDrop = useCallback(() => {
     if (dragIdx === null) return;
     const entries = localOrder.map((s, i) => ({ id: s.id, sort_order: i * 10 }));
     reorderMutation.mutate(entries, {
@@ -2755,14 +2760,29 @@ function AdminCmsEditor() {
     });
     setDragIdx(null);
     setOverIdx(null);
-  }
+  }, [dragIdx, localOrder, sections, reorderMutation]);
 
-  function handleToggle(section: AdminSection) {
-    toggleMutation.mutate(section.section_key, {
-      onSuccess: () => setStatusMsg(section.is_active ? "Section hidden" : "Section visible"),
-      onError: (e) => toast.error(toUserMessage(e)),
-    });
-  }
+  const handleToggle = useCallback(
+    (section: AdminSection) => {
+      toggleMutation.mutate(section.section_key, {
+        onSuccess: () => setStatusMsg(section.is_active ? "Section hidden" : "Section visible"),
+        onError: (e) => toast.error(toUserMessage(e)),
+      });
+    },
+    [toggleMutation],
+  );
+
+  const handleSelectSection = useCallback((key: string) => {
+    setActiveKey((cur) => (cur === key ? null : key));
+  }, []);
+
+  const handleDuplicateStub = useCallback(() => {
+    toast.info("Section duplication coming soon.");
+  }, []);
+
+  const handleDeleteStub = useCallback(() => {
+    toast.info("Section deletion coming soon.");
+  }, []);
 
   // ── Save / Publish / Discard ──────────────────────────────────────────────
 
@@ -2976,19 +2996,18 @@ function AdminCmsEditor() {
               <SectionCard
                 key={section.id}
                 section={section}
+                idx={idx}
                 isActive={activeKey === section.section_key}
                 isDragging={dragIdx === idx}
                 isOver={overIdx === idx}
                 isDirty={dirtyKeys.has(section.section_key)}
-                onSelect={() =>
-                  setActiveKey(activeKey === section.section_key ? null : section.section_key)
-                }
-                onToggle={() => handleToggle(section)}
-                onDragStart={() => onDragStart(idx)}
-                onDragOver={(e) => onDragOver(idx, e)}
+                onSelect={handleSelectSection}
+                onToggle={handleToggle}
+                onDragStart={onDragStart}
+                onDragOver={onDragOver}
                 onDrop={onDrop}
-                onDuplicate={() => toast.info("Section duplication coming soon.")}
-                onDelete={() => toast.info("Section deletion coming soon.")}
+                onDuplicate={handleDuplicateStub}
+                onDelete={handleDeleteStub}
               />
             ))}
             {!isLoading && localOrder.length === 0 && (

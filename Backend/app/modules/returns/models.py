@@ -16,10 +16,14 @@ class Return(Base):
         UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
     )
     order_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("orders.id"), nullable=False
+        UUID(as_uuid=True),
+        ForeignKey("orders.id", ondelete="RESTRICT"),
+        nullable=False,
     )
     customer_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("profiles.id"), nullable=False
+        UUID(as_uuid=True),
+        ForeignKey("profiles.id", ondelete="RESTRICT"),
+        nullable=False,
     )
     reason: Mapped[str] = mapped_column(Text, nullable=False)
     status: Mapped[str] = mapped_column(Text, default="requested")
@@ -43,10 +47,16 @@ class Return(Base):
         DateTime(timezone=True), nullable=False, default=lambda: datetime.now(UTC)
     )
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False, default=lambda: datetime.now(UTC)
+        DateTime(timezone=True),
+        nullable=False,
+        default=lambda: datetime.now(UTC),
+        onupdate=lambda: datetime.now(UTC),
     )
     items: Mapped[list[ReturnItem]] = relationship(
-        "ReturnItem", back_populates="return_", lazy="selectin"
+        "ReturnItem",
+        back_populates="return_",
+        lazy="selectin",
+        cascade="all, delete-orphan",
     )
 
 
@@ -60,7 +70,9 @@ class ReturnItem(Base):
         UUID(as_uuid=True), ForeignKey("returns.id", ondelete="CASCADE"), nullable=False
     )
     order_item_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("order_items.id"), nullable=False
+        UUID(as_uuid=True),
+        ForeignKey("order_items.id", ondelete="RESTRICT"),
+        nullable=False,
     )
     quantity: Mapped[int] = mapped_column(Integer, nullable=False)
     reason: Mapped[str | None] = mapped_column(Text, nullable=True)

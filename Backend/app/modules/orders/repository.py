@@ -6,6 +6,7 @@ from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from app.core.sequences import next_sequence_value
 from app.modules.orders.models import Order, OrderItem
 
 
@@ -25,6 +26,16 @@ class OrderRepository:
         result = await db.execute(
             select(Order)
             .where(Order.order_number == order_number)
+            .options(self._with_items())
+        )
+        return result.scalar_one_or_none()
+
+    async def get_by_razorpay_order_id(
+        self, db: AsyncSession, razorpay_order_id: str
+    ) -> Order | None:
+        result = await db.execute(
+            select(Order)
+            .where(Order.razorpay_order_id == razorpay_order_id)
             .options(self._with_items())
         )
         return result.scalar_one_or_none()
@@ -143,8 +154,5 @@ class OrderRepository:
 
         now = datetime.now(UTC)
         prefix = f"HDH-{now.year}{now.month:02d}-"
-        result = await db.execute(
-            select(func.count(Order.id)).where(Order.order_number.like(f"{prefix}%"))
-        )
-        seq = result.scalar_one() + 1
+        seq = await next_sequence_value(db, f"order_number:{prefix}")
         return f"{prefix}{seq:06d}"

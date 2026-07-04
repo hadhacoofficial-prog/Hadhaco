@@ -9,6 +9,7 @@ from sqlalchemy import (
     Boolean,
     DateTime,
     Float,
+    ForeignKey,
     Integer,
     String,
     Text,
@@ -51,7 +52,10 @@ class Banner(Base):
         DateTime(timezone=True), nullable=False, default=lambda: datetime.now(UTC)
     )
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False, default=lambda: datetime.now(UTC)
+        DateTime(timezone=True),
+        nullable=False,
+        default=lambda: datetime.now(UTC),
+        onupdate=lambda: datetime.now(UTC),
     )
 
 
@@ -83,7 +87,10 @@ class LandingSection(Base):
         DateTime(timezone=True), nullable=False, default=lambda: datetime.now(UTC)
     )
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False, default=lambda: datetime.now(UTC)
+        DateTime(timezone=True),
+        nullable=False,
+        default=lambda: datetime.now(UTC),
+        onupdate=lambda: datetime.now(UTC),
     )
 
 
@@ -92,7 +99,11 @@ class CmsSectionItem(Base):
     id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
     )
-    section_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
+    section_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("landing_sections.id", ondelete="CASCADE"),
+        nullable=False,
+    )
     sort_order: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     is_enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     config: Mapped[dict] = mapped_column(JSONB, default=dict)
@@ -100,7 +111,10 @@ class CmsSectionItem(Base):
         DateTime(timezone=True), nullable=False, default=lambda: datetime.now(UTC)
     )
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False, default=lambda: datetime.now(UTC)
+        DateTime(timezone=True),
+        nullable=False,
+        default=lambda: datetime.now(UTC),
+        onupdate=lambda: datetime.now(UTC),
     )
 
 
@@ -133,7 +147,10 @@ class CmsMedia(Base):
         DateTime(timezone=True), nullable=False, default=lambda: datetime.now(UTC)
     )
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False, default=lambda: datetime.now(UTC)
+        DateTime(timezone=True),
+        nullable=False,
+        default=lambda: datetime.now(UTC),
+        onupdate=lambda: datetime.now(UTC),
     )
 
 
@@ -145,7 +162,11 @@ class CmsVersionHistory(Base):
     id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
     )
-    section_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
+    section_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("landing_sections.id", ondelete="CASCADE"),
+        nullable=False,
+    )
     version_number: Mapped[int] = mapped_column(Integer, nullable=False)
     config_snapshot: Mapped[dict] = mapped_column(JSONB, nullable=False)
     items_snapshot: Mapped[list] = mapped_column(JSONB, nullable=False, default=list)
@@ -204,7 +225,10 @@ class CmsPage(Base):
         DateTime(timezone=True), nullable=False, default=lambda: datetime.now(UTC)
     )
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False, default=lambda: datetime.now(UTC)
+        DateTime(timezone=True),
+        nullable=False,
+        default=lambda: datetime.now(UTC),
+        onupdate=lambda: datetime.now(UTC),
     )
 
 
@@ -215,5 +239,8 @@ class AppSetting(Base):
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
     is_public: Mapped[bool] = mapped_column(Boolean, default=False)
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False, default=lambda: datetime.now(UTC)
+        DateTime(timezone=True),
+        nullable=False,
+        default=lambda: datetime.now(UTC),
+        onupdate=lambda: datetime.now(UTC),
     )

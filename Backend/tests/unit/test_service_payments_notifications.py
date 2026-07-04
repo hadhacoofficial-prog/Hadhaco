@@ -524,8 +524,7 @@ class TestNotificationServiceRetry:
         mock_log = MagicMock()
         mock_log.event_type = "order_created"
         mock_log.channel = "email"
-        with patch.object(self.repo_cls, "get_template", AsyncMock(return_value=None)):
-            await self.svc._retry_log(db, mock_log)
+        await self.svc._retry_log(db, mock_log, None)
 
     async def test_retry_log_email_success(self):
         db = AsyncMock()
@@ -537,9 +536,6 @@ class TestNotificationServiceRetry:
         mock_template.subject = "Test"
         mock_template.template_body = "<p>Hello</p>"
         with (
-            patch.object(
-                self.repo_cls, "get_template", AsyncMock(return_value=mock_template)
-            ),
             patch.object(self.repo_cls, "mark_sent", AsyncMock()) as mock_sent,
             patch.object(
                 self.svc._email_primary,
@@ -547,7 +543,7 @@ class TestNotificationServiceRetry:
                 AsyncMock(return_value="msg-retry"),
             ),
         ):
-            await self.svc._retry_log(db, mock_log)
+            await self.svc._retry_log(db, mock_log, mock_template)
         mock_sent.assert_awaited_once()
 
     async def test_retry_log_sms_success_when_enabled(self):
@@ -561,16 +557,13 @@ class TestNotificationServiceRetry:
         mock_template.template_body = "Order shipped"
         with (
             patch("app.modules.notifications.service.settings") as mock_settings,
-            patch.object(
-                self.repo_cls, "get_template", AsyncMock(return_value=mock_template)
-            ),
             patch.object(self.repo_cls, "mark_sent", AsyncMock()) as mock_sent,
             patch.object(
                 self.svc._sms, "send_sms", AsyncMock(return_value="req-retry")
             ),
         ):
             mock_settings.SMS_ENABLED = True
-            await self.svc._retry_log(db, mock_log)
+            await self.svc._retry_log(db, mock_log, mock_template)
         mock_sent.assert_awaited_once()
 
     async def test_retry_log_sms_skipped_when_disabled(self):
@@ -582,14 +575,9 @@ class TestNotificationServiceRetry:
         mock_template = MagicMock()
         mock_template.subject = None
         mock_template.template_body = "Order shipped"
-        with (
-            patch("app.modules.notifications.service.settings") as mock_settings,
-            patch.object(
-                self.repo_cls, "get_template", AsyncMock(return_value=mock_template)
-            ),
-        ):
+        with patch("app.modules.notifications.service.settings") as mock_settings:
             mock_settings.SMS_ENABLED = False
-            await self.svc._retry_log(db, mock_log)
+            await self.svc._retry_log(db, mock_log, mock_template)
         db.commit.assert_not_called()
 
     async def test_retry_log_marks_failed_on_error(self):
@@ -602,9 +590,6 @@ class TestNotificationServiceRetry:
         mock_template.subject = "Test"
         mock_template.template_body = "HTML"
         with (
-            patch.object(
-                self.repo_cls, "get_template", AsyncMock(return_value=mock_template)
-            ),
             patch.object(self.repo_cls, "mark_failed", AsyncMock()) as mock_failed,
             patch.object(
                 self.svc._email_primary,
@@ -612,5 +597,5 @@ class TestNotificationServiceRetry:
                 AsyncMock(side_effect=Exception("Send error")),
             ),
         ):
-            await self.svc._retry_log(db, mock_log)
+            await self.svc._retry_log(db, mock_log, mock_template)
         mock_failed.assert_awaited_once()

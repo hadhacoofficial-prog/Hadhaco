@@ -224,7 +224,9 @@ class TestSupportRepository:
         from datetime import datetime
 
         year = datetime.now(UTC).year
-        db = _db(_scalar(4))
+        # next_sequence_value's INSERT ... RETURNING yields the new value
+        # directly (already incremented), not a count to add 1 to.
+        db = _db(_scalar_one(5))
         result = await self.repo.next_ticket_number(db)
         assert result.startswith(f"SUP-{year}-")
         assert result.endswith("0005")

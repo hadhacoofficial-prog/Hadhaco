@@ -182,6 +182,10 @@ function CartPage() {
                           <img
                             src={line.snapshot.image}
                             alt={line.snapshot.name}
+                            loading="lazy"
+                            decoding="async"
+                            width={96}
+                            height={96}
                             className="w-full h-full object-cover"
                           />
                         </Link>

@@ -1,5 +1,5 @@
-import { useRef, useState } from "react";
-import { Upload, X, ImageIcon, Loader2 } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { Upload, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { api } from "@/lib/api/client";
 import { toUserMessage } from "@/lib/api/errors";
@@ -25,6 +25,13 @@ export function ImageUpload({
   const [preview, setPreview] = useState<string | null>(currentImageUrl ?? null);
   const [uploading, setUploading] = useState(false);
   const [progress, setProgress] = useState(0);
+  const objectUrlRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (objectUrlRef.current) URL.revokeObjectURL(objectUrlRef.current);
+    };
+  }, []);
 
   async function handleFile(file: File) {
     if (!file.type.match(/^image\/(jpeg|png|webp)$/)) {
@@ -36,7 +43,9 @@ export function ImageUpload({
       return;
     }
 
+    if (objectUrlRef.current) URL.revokeObjectURL(objectUrlRef.current);
     const localPreview = URL.createObjectURL(file);
+    objectUrlRef.current = localPreview;
     setPreview(localPreview);
 
     const form = new FormData();
@@ -45,13 +54,12 @@ export function ImageUpload({
     setUploading(true);
     setProgress(10);
 
-    try {
-      const simulateProgress = setInterval(() => {
-        setProgress((p) => Math.min(p + 15, 85));
-      }, 200);
+    const simulateProgress = setInterval(() => {
+      setProgress((p) => Math.min(p + 15, 85));
+    }, 200);
 
+    try {
       const res = await api.upload<{ url: string }>(uploadUrl, form);
-      clearInterval(simulateProgress);
       setProgress(100);
       onUploaded(res.url);
       setTimeout(() => setProgress(0), 500);
@@ -59,6 +67,7 @@ export function ImageUpload({
       setPreview(currentImageUrl ?? null);
       toast.error(toUserMessage(e));
     } finally {
+      clearInterval(simulateProgress);
       setUploading(false);
     }
   }

@@ -10,6 +10,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import settings
 from app.core.events import (
     OrderCreatedEvent,
+    PaymentCapturedEvent,
+    PaymentFailedEvent,
+    RefundCreatedEvent,
+    RefundFailedEvent,
+    RefundProcessedEvent,
     UserRegisteredEvent,
     event_bus,
 )
@@ -148,13 +153,21 @@ class NotificationService:
 
     async def retry_pending(self, db: AsyncSession) -> None:
         logs = await self._repo.get_pending_retries(db)
+        # Cache templates by (event_type, channel) — a retry backlog is
+        # typically dominated by a handful of distinct pairs, so this turns
+        # what used to be one template fetch per log into one per pair.
+        template_cache: dict[tuple[str, str], Any] = {}
         for log in logs:
-            await self._retry_log(db, log)
+            key = (log.event_type, log.channel)
+            if key not in template_cache:
+                template_cache[key] = await self._repo.get_template(
+                    db, event_type=log.event_type, channel=log.channel
+                )
+            await self._retry_log(db, log, template_cache[key])
 
-    async def _retry_log(self, db: AsyncSession, log: NotificationLog) -> None:
-        template = await self._repo.get_template(
-            db, event_type=log.event_type, channel=log.channel
-        )
+    async def _retry_log(
+        self, db: AsyncSession, log: NotificationLog, template: Any
+    ) -> None:
         if not template:
             return
         try:
@@ -235,8 +248,112 @@ class NotificationService:
                         context=ctx,
                     )
 
+        async def _handle_payment_captured(event: PaymentCapturedEvent) -> None:
+            if not event.customer_email:
+                return
+            from app.core.database import AsyncWorkerSessionLocal
+
+            async with AsyncWorkerSessionLocal() as db:
+                await svc.send_email(
+                    db,
+                    user_id=event.user_id,
+                    event_type="payment_captured",
+                    recipient=event.customer_email,
+                    context={
+                        "order_number": event.order_number,
+                        "amount": event.amount,
+                        "frontend_url": settings.FRONTEND_URL,
+                    },
+                )
+
+        async def _handle_payment_failed(event: PaymentFailedEvent) -> None:
+            # Optional per product spec — silently skip if we don't have an
+            # email to send to (e.g. order resolved from webhook data alone).
+            from app.core.database import AsyncWorkerSessionLocal
+            from app.modules.orders.repository import OrderRepository
+            from app.modules.profiles.repository import ProfileRepository
+
+            async with AsyncWorkerSessionLocal() as db:
+                order = await OrderRepository().get_by_id(db, uuid.UUID(event.order_id))
+                if not order:
+                    return
+                profile = await ProfileRepository().get_by_id(db, order.user_id)
+                if not profile or not profile.email:
+                    return
+                await svc.send_email(
+                    db,
+                    user_id=event.user_id,
+                    event_type="payment_failed",
+                    recipient=profile.email,
+                    context={
+                        "order_number": order.order_number,
+                        "reason": event.reason,
+                        "frontend_url": settings.FRONTEND_URL,
+                    },
+                )
+
+        async def _handle_refund_created(event: RefundCreatedEvent) -> None:
+            if not event.customer_email:
+                return
+            from app.core.database import AsyncWorkerSessionLocal
+
+            async with AsyncWorkerSessionLocal() as db:
+                await svc.send_email(
+                    db,
+                    user_id=event.user_id,
+                    event_type="refund_created",
+                    recipient=event.customer_email,
+                    context={
+                        "order_number": event.order_number,
+                        "amount": event.amount,
+                        "frontend_url": settings.FRONTEND_URL,
+                    },
+                )
+
+        async def _handle_refund_processed(event: RefundProcessedEvent) -> None:
+            if not event.customer_email:
+                return
+            from app.core.database import AsyncWorkerSessionLocal
+
+            async with AsyncWorkerSessionLocal() as db:
+                await svc.send_email(
+                    db,
+                    user_id=event.user_id,
+                    event_type="refund_processed",
+                    recipient=event.customer_email,
+                    context={
+                        "order_number": event.order_number,
+                        "amount": event.amount,
+                        "frontend_url": settings.FRONTEND_URL,
+                    },
+                )
+
+        async def _handle_refund_failed(event: RefundFailedEvent) -> None:
+            # Admin alert — refund failures need human follow-up with Razorpay
+            # or the customer, they don't resolve themselves.
+            from app.core.database import AsyncWorkerSessionLocal
+
+            async with AsyncWorkerSessionLocal() as db:
+                await svc.send_email(
+                    db,
+                    user_id=None,
+                    event_type="refund_failed_admin_alert",
+                    recipient=settings.ADMIN_ALERT_EMAIL,
+                    context={
+                        "order_number": event.order_number,
+                        "refund_id": event.refund_id,
+                        "amount": event.amount,
+                        "reason": event.reason,
+                    },
+                )
+
         event_bus.on(UserRegisteredEvent, _handle_user_registered)
         event_bus.on(OrderCreatedEvent, _handle_order_created)
+        event_bus.on(PaymentCapturedEvent, _handle_payment_captured)
+        event_bus.on(PaymentFailedEvent, _handle_payment_failed)
+        event_bus.on(RefundCreatedEvent, _handle_refund_created)
+        event_bus.on(RefundProcessedEvent, _handle_refund_processed)
+        event_bus.on(RefundFailedEvent, _handle_refund_failed)
 
 
 def register_listeners() -> None:

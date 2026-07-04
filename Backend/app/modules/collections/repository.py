@@ -26,11 +26,14 @@ class CollectionRepository:
         )
         return result.scalar_one_or_none()
 
-    async def list_active(self, db: AsyncSession) -> list[Collection]:
+    async def list_active(
+        self, db: AsyncSession, *, limit: int = 100
+    ) -> list[Collection]:
         result = await db.execute(
             select(Collection)
             .where(Collection.is_active.is_(True), Collection.deleted_at.is_(None))
             .order_by(Collection.sort_order.asc(), Collection.name.asc())
+            .limit(limit)
         )
         return list(result.scalars().all())
 
@@ -185,13 +188,21 @@ class CollectionRepository:
         )
         base_order = max_order_result.scalar_one() + 1
 
-        for i, pid in enumerate(product_ids):
-            stmt = (
-                pg_insert(ProductCollection)
-                .values(product_id=pid, collection_id=col_id, sort_order=base_order + i)
-                .on_conflict_do_nothing()
+        stmt = (
+            pg_insert(ProductCollection)
+            .values(
+                [
+                    {
+                        "product_id": pid,
+                        "collection_id": col_id,
+                        "sort_order": base_order + i,
+                    }
+                    for i, pid in enumerate(product_ids)
+                ]
             )
-            await db.execute(stmt)
+            .on_conflict_do_nothing()
+        )
+        await db.execute(stmt)
 
     async def remove_product(
         self, db: AsyncSession, col_id: uuid.UUID, product_id: uuid.UUID
@@ -206,15 +217,22 @@ class CollectionRepository:
     async def reorder_products(
         self, db: AsyncSession, col_id: uuid.UUID, product_ids: list[uuid.UUID]
     ) -> None:
-        for i, pid in enumerate(product_ids):
-            await db.execute(
-                update(ProductCollection)
-                .where(
-                    ProductCollection.collection_id == col_id,
-                    ProductCollection.product_id == pid,
-                )
-                .values(sort_order=i)
+        if not product_ids:
+            return
+        from sqlalchemy import bindparam
+
+        stmt = (
+            update(ProductCollection)
+            .where(
+                ProductCollection.collection_id == col_id,
+                ProductCollection.product_id == bindparam("pid"),
             )
+            .values(sort_order=bindparam("new_sort_order"))
+        )
+        await db.execute(
+            stmt,
+            [{"pid": pid, "new_sort_order": i} for i, pid in enumerate(product_ids)],
+        )
 
     async def get_product_ids(
         self, db: AsyncSession, col_id: uuid.UUID
@@ -237,9 +255,14 @@ class CollectionRepository:
         """Return paginated products in a collection with sort_order."""
         from sqlalchemy import text
 
+        from app.modules.catalog.models import Product
+
         count_result = await db.execute(
-            select(func.count(ProductCollection.product_id)).where(
-                ProductCollection.collection_id == col_id
+            select(func.count(ProductCollection.product_id))
+            .join(Product, Product.id == ProductCollection.product_id)
+            .where(
+                ProductCollection.collection_id == col_id,
+                Product.deleted_at.is_(None),
             )
         )
         total = count_result.scalar_one()

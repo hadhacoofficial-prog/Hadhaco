@@ -1,5 +1,7 @@
+import json
 import uuid
 
+import redis.asyncio as aioredis
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -7,6 +9,12 @@ from app.common.response_codes import ResponseCode
 from app.common.responses import BaseSuccessResponse, deleted, ok
 from app.core.database import get_db
 from app.core.dependencies import require_admin
+from app.core.redis import (
+    get_redis,
+    safe_redis_delete,
+    safe_redis_get,
+    safe_redis_setex,
+)
 from app.modules.collections.schemas import (
     AddProductsToCollectionRequest,
     BulkActionRequest,
@@ -22,6 +30,13 @@ from app.modules.collections.service import CollectionService
 router = APIRouter()
 _service = CollectionService()
 
+_LIST_CACHE_KEY = "collections:list:v1"
+_LIST_CACHE_TTL = 15 * 60
+
+
+async def _bust_list_cache(redis: aioredis.Redis) -> None:
+    await safe_redis_delete(redis, _LIST_CACHE_KEY)
+
 
 # ── Public ──────────────────────────────────────────────────────────────────
 
@@ -29,8 +44,24 @@ _service = CollectionService()
 @router.get(
     "/collections", response_model=BaseSuccessResponse[list[CollectionResponse]]
 )
-async def list_collections(db: AsyncSession = Depends(get_db)):
+async def list_collections(
+    db: AsyncSession = Depends(get_db),
+    redis: aioredis.Redis = Depends(get_redis),
+):
+    cached = await safe_redis_get(redis, _LIST_CACHE_KEY)
+    if cached:
+        result = [CollectionResponse.model_validate(c) for c in json.loads(cached)]
+        return ok(
+            result, ResponseCode.COLLECTION_LISTED, "Collections listed successfully"
+        )
+
     result = await _service.list_active(db)
+    await safe_redis_setex(
+        redis,
+        _LIST_CACHE_KEY,
+        _LIST_CACHE_TTL,
+        json.dumps([c.model_dump(mode="json") for c in result]),
+    )
     return ok(result, ResponseCode.COLLECTION_LISTED, "Collections listed successfully")
 
 
@@ -98,10 +129,12 @@ async def admin_get_collection(col_id: uuid.UUID, db: AsyncSession = Depends(get
 async def create_collection(
     payload: CollectionCreateRequest,
     db: AsyncSession = Depends(get_db),
+    redis: aioredis.Redis = Depends(get_redis),
 ):
     from app.common.responses import created
 
     result = await _service.create(db, payload)
+    await _bust_list_cache(redis)
     return created(
         result, ResponseCode.COLLECTION_CREATED, "Collection created successfully"
     )
@@ -116,8 +149,10 @@ async def update_collection(
     col_id: uuid.UUID,
     payload: CollectionUpdateRequest,
     db: AsyncSession = Depends(get_db),
+    redis: aioredis.Redis = Depends(get_redis),
 ):
     result = await _service.update(db, col_id, payload)
+    await _bust_list_cache(redis)
     return ok(
         result, ResponseCode.COLLECTION_UPDATED, "Collection updated successfully"
     )
@@ -132,8 +167,10 @@ async def update_collection(
 async def delete_collection(
     col_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
+    redis: aioredis.Redis = Depends(get_redis),
 ):
     await _service.delete(db, col_id)
+    await _bust_list_cache(redis)
     return deleted(ResponseCode.COLLECTION_DELETED, "Collection deleted successfully")
 
 
@@ -145,8 +182,10 @@ async def delete_collection(
 async def bulk_action_collections(
     payload: BulkActionRequest,
     db: AsyncSession = Depends(get_db),
+    redis: aioredis.Redis = Depends(get_redis),
 ):
     await _service.bulk_action(db, payload)
+    await _bust_list_cache(redis)
     return ok(None, ResponseCode.COLLECTION_UPDATED, "Bulk action applied")
 
 

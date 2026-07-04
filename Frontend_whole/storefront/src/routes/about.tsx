@@ -58,7 +58,13 @@ function AboutPage() {
       </section>
 
       <section className="px-4 md:px-8 pb-20 max-w-6xl mx-auto grid md:grid-cols-2 gap-10 items-center">
-        <img src={hero} alt="Atelier" className="aspect-[4/5] w-full object-cover" />
+        <img
+          src={hero}
+          alt="Atelier"
+          loading="lazy"
+          decoding="async"
+          className="aspect-[4/5] w-full object-cover"
+        />
         <div>
           <p className="text-[11px] uppercase tracking-[0.3em] text-accent">Craft</p>
           <h2 className="font-display text-3xl md:text-4xl mt-3">

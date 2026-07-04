@@ -1,17 +1,7 @@
 ﻿import { useState, useEffect } from "react";
 import { createFileRoute } from "@tanstack/react-router";
 import { toast } from "sonner";
-import {
-  Save,
-  Settings2,
-  Building2,
-  Phone,
-  Globe,
-  Mail,
-  MapPin,
-  FileText,
-  Tag,
-} from "lucide-react";
+import { Save, Settings2, Phone, Globe, MapPin, FileText } from "lucide-react";
 import { useCompanyConfig, useUpdateCompanyConfig } from "@hadha/shared-api";
 import { FormSkeleton } from "@/components/loading/FormSkeleton";
 import type { CompanyConfigUpdate } from "@hadha/shared-types";

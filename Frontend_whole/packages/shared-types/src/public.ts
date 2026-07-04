@@ -7,9 +7,17 @@ export interface ProductImage {
   url: string;
   thumbnail_url: string | null;
   medium_url: string | null;
+  large_url: string | null;
   alt_text: string | null;
   is_primary: boolean;
   sort_order: number;
+  crop_x: number | null;
+  crop_y: number | null;
+  crop_width: number | null;
+  crop_height: number | null;
+  crop_zoom: number | null;
+  crop_rotation: number | null;
+  updated_at: string;
 }
 
 export interface ProductVariant {

@@ -136,6 +136,10 @@ class Coupon(Base):
             "status IN ('active','inactive','draft')",
             name="coupons_status_check",
         ),
+        CheckConstraint(
+            "coupon_type != 'percentage' OR value <= 100",
+            name="coupons_percentage_max",
+        ),
     )
 
 
@@ -154,7 +158,9 @@ class CouponUsage(Base):
         nullable=False,
     )
     order_id: Mapped[uuid.UUID | None] = mapped_column(
-        UUID(as_uuid=True), nullable=True
+        UUID(as_uuid=True),
+        ForeignKey("orders.id", ondelete="SET NULL"),
+        nullable=True,
     )
     discount: Mapped[float] = mapped_column(Numeric(12, 2), nullable=False)
     used_at: Mapped[datetime] = mapped_column(
@@ -164,5 +170,6 @@ class CouponUsage(Base):
     __table_args__ = (
         Index("idx_coupon_usages_coupon_id", "coupon_id"),
         Index("idx_coupon_usages_user_id", "user_id"),
+        Index("idx_coupon_usages_order_id", "order_id"),
         UniqueConstraint("coupon_id", "order_id", name="uq_coupon_usage_order"),
     )

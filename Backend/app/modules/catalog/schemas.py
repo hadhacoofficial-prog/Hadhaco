@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 # ---------- Sub-schemas ----------
 
@@ -14,16 +14,51 @@ class ProductCollectionRef(BaseModel):
     model_config = {"from_attributes": True}
 
 
+def cache_busted_url(url: str | None, updated_at: datetime) -> str | None:
+    """
+    Append a `?v=<updated_at>` query param to *url*.
+
+    Crop and replace overwrite the same R2 object key in place (by design,
+    so re-cropping and re-editing always work from a stable path), which
+    means the URL string never changes even though the underlying bytes
+    do. Browsers and CDNs cache by URL, so without this every crop/replace
+    would keep serving the stale, previously-cached image until a hard
+    refresh. Tagging the URL with the row's `updated_at` makes it change
+    exactly when the content does, with no effect on the stored object key.
+    """
+    if not url:
+        return url
+    version = int(updated_at.timestamp())
+    separator = "&" if "?" in url else "?"
+    return f"{url}{separator}v={version}"
+
+
 class ProductImageResponse(BaseModel):
     id: uuid.UUID
     url: str
     thumbnail_url: str | None
     medium_url: str | None
+    large_url: str | None = None
     alt_text: str | None
     is_primary: bool
     sort_order: int
+    crop_x: float | None = None
+    crop_y: float | None = None
+    crop_width: float | None = None
+    crop_height: float | None = None
+    crop_zoom: float | None = None
+    crop_rotation: float | None = None
+    updated_at: datetime
 
     model_config = {"from_attributes": True}
+
+    @model_validator(mode="after")
+    def _bust_cache(self) -> "ProductImageResponse":
+        self.url = cache_busted_url(self.url, self.updated_at) or self.url
+        self.thumbnail_url = cache_busted_url(self.thumbnail_url, self.updated_at)
+        self.medium_url = cache_busted_url(self.medium_url, self.updated_at)
+        self.large_url = cache_busted_url(self.large_url, self.updated_at)
+        return self
 
 
 class ProductVariantResponse(BaseModel):

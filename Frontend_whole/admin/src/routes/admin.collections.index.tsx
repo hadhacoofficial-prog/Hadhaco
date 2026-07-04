@@ -10,8 +10,6 @@ import {
   MoreHorizontal,
   Star,
   StarOff,
-  ToggleLeft,
-  ToggleRight,
   ImageIcon,
   ChevronLeft,
   ChevronRight,
@@ -36,6 +34,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { TableSkeleton } from "@/components/loading/TableSkeleton";
 import { ImageWithFallback } from "@/components/common/ImageWithFallback";
+import { useDebounce } from "@hadha/shared-ui/common/use-debounce";
 import { api } from "@/lib/api/client";
 import { queryKeys } from "@/lib/api/queryKeys";
 import { toUserMessage } from "@/lib/api/errors";
@@ -44,15 +43,6 @@ import type { CollectionListResponse } from "@/types/admin";
 export const Route = createFileRoute("/admin/collections/")({
   component: AdminCollections,
 });
-
-function useDebounce<T>(value: T, delay: number): T {
-  const [d, setD] = useState(value);
-  useMemo(() => {
-    const t = setTimeout(() => setD(value), delay);
-    return () => clearTimeout(t);
-  }, [value, delay]);
-  return d;
-}
 
 function AdminCollections() {
   const navigate = useNavigate();

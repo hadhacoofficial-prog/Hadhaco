@@ -49,7 +49,9 @@ class TestAuthGuards:
         assert resp.status_code == 401
 
     async def test_webhook_missing_signature_rejected(self, client):
-        resp = await client.post("/api/v1/webhooks/razorpay", json={"event": "x"})
+        resp = await client.post(
+            "/api/v1/payments/webhook/razorpay", json={"event": "x"}
+        )
         assert resp.status_code == 400
 
 

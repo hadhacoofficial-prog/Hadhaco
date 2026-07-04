@@ -2,6 +2,7 @@ import uuid
 from datetime import date, datetime
 
 from sqlalchemy import (
+    CheckConstraint,
     Date,
     DateTime,
     ForeignKey,
@@ -150,6 +151,34 @@ class Order(Base):
         Index("idx_orders_payment_status", "payment_status"),
         Index("idx_orders_fulfillment_status", "fulfillment_status"),
         Index("idx_orders_created_at", "created_at"),
+        Index("idx_orders_coupon_id", "coupon_id"),
+        CheckConstraint(
+            "status IN ("
+            "'pending','stock_reserved','payment_pending','confirmed',"
+            "'processing','packed','shipped','delivered','cancelled',"
+            "'payment_failed','payment_expired','return_requested','returned','refunded'"
+            ")",
+            name="orders_status_check",
+        ),
+        CheckConstraint(
+            "payment_status IN ('pending','paid','failed','refunded','partially_refunded')",
+            name="orders_payment_status_check",
+        ),
+        CheckConstraint(
+            "fulfillment_status IN ('pending', 'packing', 'label_generated', "
+            "'dispatched', 'in_transit', 'delivered', 'cancelled', 'returned', 'refunded')",
+            name="ck_orders_fulfillment_status",
+        ),
+        CheckConstraint(
+            "shipping_provider IS NULL OR shipping_provider IN "
+            "('india_post', 'dtdc', 'delhivery', 'blue_dart', 'xpressbees', 'shadowfax', 'ekart', 'other')",
+            name="ck_orders_shipping_provider",
+        ),
+        CheckConstraint("subtotal >= 0", name="orders_subtotal_check"),
+        CheckConstraint("tax_amount >= 0", name="orders_tax_amount_check"),
+        CheckConstraint("shipping_charge >= 0", name="orders_shipping_charge_check"),
+        CheckConstraint("discount >= 0", name="orders_discount_check"),
+        CheckConstraint("total >= 0", name="orders_total_check"),
     )
 
 
@@ -197,4 +226,8 @@ class OrderItem(Base):
     __table_args__ = (
         Index("idx_order_items_order_id", "order_id"),
         Index("idx_order_items_product_id", "product_id"),
+        CheckConstraint("quantity > 0", name="order_items_quantity_check"),
+        CheckConstraint("unit_price >= 0", name="order_items_unit_price_check"),
+        CheckConstraint("tax_amount >= 0", name="order_items_tax_amount_check"),
+        CheckConstraint("line_total >= 0", name="order_items_line_total_check"),
     )

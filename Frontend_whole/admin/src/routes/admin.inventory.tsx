@@ -1,3 +1,4 @@
+import { useMemo } from "react";
 import { createFileRoute } from "@tanstack/react-router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Minus, Plus, AlertTriangle } from "lucide-react";
@@ -43,7 +44,7 @@ function AdminInventory() {
   });
 
   const products = productsData?.items ?? [];
-  const lowStockIds = new Set((lowStockData ?? []).map((l) => l.id));
+  const lowStockIds = useMemo(() => new Set((lowStockData ?? []).map((l) => l.id)), [lowStockData]);
   const lowCount = lowStockData?.length ?? 0;
 
   return (
@@ -84,6 +85,8 @@ function AdminInventory() {
             <tbody className="divide-y divide-border">
               {products.map((p) => {
                 const isLow = lowStockIds.has(p.id);
+                const isRowPending =
+                  adjustMutation.isPending && adjustMutation.variables?.id === p.id;
                 return (
                   <tr key={p.id}>
                     <td className="px-4 py-3">
@@ -106,14 +109,14 @@ function AdminInventory() {
                       <div className="inline-flex gap-1">
                         <button
                           onClick={() => adjustMutation.mutate({ id: p.id, delta: -1 })}
-                          disabled={adjustMutation.isPending}
+                          disabled={isRowPending}
                           className="border border-border p-1 hover:bg-secondary disabled:opacity-50"
                         >
                           <Minus className="size-3.5" />
                         </button>
                         <button
                           onClick={() => adjustMutation.mutate({ id: p.id, delta: 1 })}
-                          disabled={adjustMutation.isPending}
+                          disabled={isRowPending}
                           className="border border-border p-1 hover:bg-secondary disabled:opacity-50"
                         >
                           <Plus className="size-3.5" />

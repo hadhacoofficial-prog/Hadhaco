@@ -9,6 +9,7 @@ from sqlalchemy import (
     CheckConstraint,
     DateTime,
     ForeignKey,
+    Index,
     Integer,
     SmallInteger,
     Text,
@@ -25,6 +26,11 @@ class Review(Base):
     __table_args__ = (
         CheckConstraint("rating BETWEEN 1 AND 5", name="ck_reviews_rating"),
         UniqueConstraint("product_id", "user_id", name="uq_reviews_product_user"),
+        Index("idx_reviews_product_id", "product_id"),
+        Index("idx_reviews_user_id", "user_id"),
+        Index("idx_reviews_rating", "rating"),
+        Index("idx_reviews_is_approved", "is_approved"),
+        Index("idx_reviews_deleted_at", "deleted_at"),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(
@@ -62,17 +68,26 @@ class Review(Base):
         DateTime(timezone=True), nullable=False, default=lambda: datetime.now(UTC)
     )
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False, default=lambda: datetime.now(UTC)
+        DateTime(timezone=True),
+        nullable=False,
+        default=lambda: datetime.now(UTC),
+        onupdate=lambda: datetime.now(UTC),
     )
     deleted_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True, default=None
     )
 
     images: Mapped[list[ReviewImage]] = relationship(
-        "ReviewImage", back_populates="review", lazy="selectin"
+        "ReviewImage",
+        back_populates="review",
+        lazy="selectin",
+        cascade="all, delete-orphan",
     )
     votes: Mapped[list[ReviewVote]] = relationship(
-        "ReviewVote", back_populates="review", lazy="selectin"
+        "ReviewVote",
+        back_populates="review",
+        lazy="selectin",
+        cascade="all, delete-orphan",
     )
 
 

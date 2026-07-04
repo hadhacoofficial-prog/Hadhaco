@@ -59,6 +59,7 @@ class InventoryMovement(Base):
         Index("idx_inventory_movements_movement_type", "movement_type"),
         Index("idx_inventory_movements_reference", "reference_type", "reference_id"),
         Index("idx_inventory_movements_created_at", "created_at"),
+        Index("idx_inventory_movements_created_by", "created_by"),
     )
 
 
@@ -130,6 +131,7 @@ class InventoryReservation(Base):
         Index("idx_inv_res_status", "status"),
         Index("idx_inv_res_expires_at", "expires_at"),
         Index("idx_inv_res_status_expires", "status", "expires_at"),
+        Index("idx_inv_res_variant_id", "variant_id"),
     )
 
 

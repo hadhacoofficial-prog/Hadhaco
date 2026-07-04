@@ -14,6 +14,18 @@ class CouponRepository:
         result = await db.execute(select(Coupon).where(Coupon.code == code.upper()))
         return result.scalar_one_or_none()
 
+    async def get_by_code_for_update(
+        self, db: AsyncSession, code: str
+    ) -> Coupon | None:
+        """Row-locked variant of get_by_code — used at the point a coupon's
+        usage is actually reserved (not the read-only validate() preview) so
+        concurrent checkouts against the same coupon serialize instead of
+        both reading a stale usage_count."""
+        result = await db.execute(
+            select(Coupon).where(Coupon.code == code.upper()).with_for_update()
+        )
+        return result.scalar_one_or_none()
+
     async def get_by_id(self, db: AsyncSession, coupon_id: uuid.UUID) -> Coupon | None:
         result = await db.execute(select(Coupon).where(Coupon.id == coupon_id))
         return result.scalar_one_or_none()
@@ -84,8 +96,11 @@ class CouponRepository:
         coupon_id: uuid.UUID,
         user_id: uuid.UUID,
         order_id: uuid.UUID,
-    ) -> None:
-        await db.execute(
+    ) -> int:
+        """Returns the number of rows updated, so callers can detect the
+        TOCTOU race in apply_and_reserve having left more than one pending
+        (order_id IS NULL) usage row for this coupon+user."""
+        result = await db.execute(
             update(CouponUsage)
             .where(
                 CouponUsage.coupon_id == coupon_id,
@@ -94,6 +109,7 @@ class CouponRepository:
             )
             .values(order_id=order_id)
         )
+        return result.rowcount
 
     async def get_user_completed_order_count(
         self, db: AsyncSession, user_id: uuid.UUID

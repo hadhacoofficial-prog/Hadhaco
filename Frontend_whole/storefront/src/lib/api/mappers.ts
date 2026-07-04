@@ -34,14 +34,19 @@ function parseGender(raw: string | null): Gender {
 export function toProductDetail(p: ProductDetail): Product {
   const primary = p.images.find((i) => i.is_primary) ?? p.images[0];
   const availableStock = p.available_stock ?? p.stock_quantity;
+  // Gallery/main image use the cropped medium size; zoom uses the cropped
+  // large size. original.jpg is never exposed to the storefront.
+  const mediumOf = (i: (typeof p.images)[number]) => i.medium_url ?? i.url;
+  const largeOf = (i: (typeof p.images)[number]) => i.large_url ?? i.medium_url ?? i.url;
   return {
     id: p.id,
     slug: p.slug,
     sku: p.sku,
     name: p.name,
-    image: primary?.url ?? "",
-    altImage: p.images[1]?.url,
-    gallery: p.images.length > 0 ? p.images.map((i) => i.url) : undefined,
+    image: primary ? mediumOf(primary) : "",
+    altImage: p.images[1] ? mediumOf(p.images[1]) : undefined,
+    gallery: p.images.length > 0 ? p.images.map(mediumOf) : undefined,
+    galleryLarge: p.images.length > 0 ? p.images.map(largeOf) : undefined,
     price: p.base_price,
     compareAt: p.compare_at_price ?? undefined,
     inStock: availableStock > 0,
