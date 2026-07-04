@@ -76,12 +76,12 @@ function Index() {
   const newsletter = useSection<NewsletterConfig>(sections, "newsletter");
 
   return (
-    <div className="min-h-screen flex flex-col bg-background text-foreground">
+    <div className="min-h-screen flex flex-col text-foreground">
       <AnnouncementBar config={announcement.config} items={announcement.items} />
       <Header />
       <main className="flex-1 pb-16 lg:pb-0">
         <Hero config={hero.config} items={hero.items} />
-        <div className="bg-background">
+        <div>
           <ShopByGender />
         </div>
         <div className="bg-card">
@@ -91,7 +91,7 @@ function Index() {
           <FeaturedProducts config={featuredProducts.config} />
         </div>
         <CraftsmanshipVideo config={craftsmanship.config} />
-        <div className="bg-background">
+        <div>
           <NewArrivals />
         </div>
         <div className="bg-card">
@@ -106,7 +106,7 @@ function Index() {
         <div className="bg-card">
           <Reviews items={reviews.items} />
         </div>
-        <div className="bg-background">
+        <div>
           <InstagramSection config={instagram.config} items={instagram.items} />
         </div>
         <Newsletter config={newsletter.config} />

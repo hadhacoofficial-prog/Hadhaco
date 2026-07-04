@@ -9,6 +9,7 @@ import {
 } from "@tanstack/react-router";
 import { useEffect, type ReactNode } from "react";
 import { CartDrawer } from "../components/site/CartDrawer";
+import { GlobalJewelleryBackground } from "../components/site/GlobalJewelleryBackground";
 
 import appCss from "../styles.css?url";
 import { reportLovableError } from "../lib/lovable-error-reporting";
@@ -173,6 +174,7 @@ function AppContent() {
 
   return (
     <>
+      <GlobalJewelleryBackground />
       <ProfileSyncer />
       <RouteTransition logoSrc={markAsset}>
         <ScrollProgress />

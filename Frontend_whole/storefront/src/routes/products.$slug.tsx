@@ -1191,10 +1191,16 @@ function ProductImageViewer({
     <div
       ref={containerRef}
       className="relative aspect-square bg-white overflow-hidden max-lg:order-1 select-none"
-      // touch-action:none tells the browser to hand ALL touch gestures to JS.
-      // Our non-passive handlers then selectively call preventDefault only when
-      // needed, so the rest of the page is unaffected.
-      style={{ touchAction: "none" }}
+      // touch-action is a browser-level directive evaluated before any JS runs —
+      // it is NOT just a hint that our preventDefault() calls can override.
+      // "none" would block native one-finger vertical scrolling outright, even
+      // though the handlers below never call preventDefault for a single,
+      // non-zoomed finger. So: default to "pan-y" (native vertical scroll stays
+      // smooth/immediate; pinch and horizontal gestures aren't in the allowed
+      // set, so the browser still hands those to our non-passive handlers).
+      // Only switch to "none" while actually zoomed in, so a one-finger drag
+      // pans the zoomed image instead of scrolling the page underneath it.
+      style={{ touchAction: isZoomedTouch ? "none" : "pan-y" }}
       onMouseEnter={handleMouseEnter}
       onMouseLeave={handleMouseLeave}
       onMouseMove={handleMouseMove}

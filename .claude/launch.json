@@ -24,6 +24,20 @@
       "runtimeExecutable": "npm",
       "runtimeArgs": ["--prefix", "Frontend_whole", "run", "dev:admin"],
       "port": 8081
-    }
+    },
+    {
+      "name": "storefront-verify",
+      "runtimeExecutable": "C:\\Program Files\\nodejs\\node.exe",
+      "runtimeArgs": [
+        "Frontend_whole/node_modules/vite/bin/vite.js",
+        "dev",
+        "Frontend_whole/storefront",
+        "--config",
+        "Frontend_whole/storefront/vite.config.ts",
+        "--port",
+        "8090"
+      ],
+      "port": 8090
+    },
   ]
 }

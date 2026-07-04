@@ -2,6 +2,7 @@ import { Link } from "@tanstack/react-router";
 import { Instagram, Youtube, Facebook, MapPin, Phone, Mail } from "lucide-react";
 import logoAsset from "@/assets/hadha-logo-w.png";
 import type { FooterConfig } from "@/types/cms";
+import { NavJewelleryBgMobile } from "@/components/site/NavJewelleryBgMobile";
 
 const DEFAULT_COLS = [
   {
@@ -37,8 +38,17 @@ export function Footer({ config }: FooterProps) {
   const logoUrl = c.logo_url;
 
   return (
-    <footer className="bg-foreground text-background pt-20 pb-8 px-6 md:px-12">
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-10 md:gap-12 max-w-7xl mx-auto">
+    <footer className="relative bg-foreground text-background pt-20 pb-8 px-6 md:px-12">
+      {/* Same jewellery line-art as the navbar, recolored to cream so it reads against the dark footer */}
+      <div
+        className="absolute inset-0 overflow-hidden pointer-events-none"
+        style={{ "--primary": "var(--background)" } as React.CSSProperties}
+        aria-hidden="true"
+      >
+        <NavJewelleryBgMobile />
+      </div>
+
+      <div className="relative z-10 grid grid-cols-2 md:grid-cols-4 gap-10 md:gap-12 max-w-7xl mx-auto">
         <div className="col-span-2">
           <a href="/" className="inline-flex items-center" aria-label="Hadha Silver Jewellery">
             {logoUrl ? (
@@ -135,7 +145,7 @@ export function Footer({ config }: FooterProps) {
         ))}
       </div>
 
-      <div className="max-w-7xl mx-auto mt-16 pt-6 border-t border-background/15 flex flex-col md:flex-row items-center justify-between gap-3 text-xs text-background/60">
+      <div className="relative z-10 max-w-7xl mx-auto mt-16 pt-6 border-t border-background/15 flex flex-col md:flex-row items-center justify-between gap-3 text-xs text-background/60">
         <p>
           © {new Date().getFullYear()} {c.copyright_name ?? "Hadha Silver Jewellery"}. All rights
           reserved.
