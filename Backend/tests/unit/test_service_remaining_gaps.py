@@ -569,7 +569,10 @@ class TestCatalogServiceExtra:
         mock_product = MagicMock()
         img = MagicMock()
         img.is_primary = False
+        img.sort_order = 0
         img.url = "https://cdn/first.jpg"
+        img.thumbnail_url = None
+        img.updated_at = datetime(2024, 1, 1, tzinfo=UTC)
         mock_product.images = [img]
         mock_product.id = uuid.uuid4()
         mock_product.sku = "SKU1"
@@ -597,7 +600,11 @@ class TestCatalogServiceExtra:
             ),
         ):
             result = await self.svc.list_products(db)
-        assert result.items[0].primary_image == "https://cdn/first.jpg"
+        expected_version = int(img.updated_at.timestamp())
+        assert (
+            result.items[0].primary_image
+            == f"https://cdn/first.jpg?v={expected_version}"
+        )
 
     async def test_create_with_active_status_sets_published_at(self):
         from app.modules.catalog.schemas import ProductCreateRequest, ProductResponse
