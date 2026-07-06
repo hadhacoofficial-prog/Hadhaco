@@ -26,6 +26,13 @@
       "port": 8081
     },
     {
+      "name": "backend",
+      "runtimeExecutable": "F:\\Work\\Hadha.co\\Project\\Backend\\hadha\\Scripts\\python.exe",
+      "runtimeArgs": ["-m", "uvicorn", "app.main:app", "--reload", "--port", "8000"],
+      "cwd": "F:\\Work\\Hadha.co\\Project\\Backend",
+      "port": 8000
+    },
+    {
       "name": "storefront-verify",
       "runtimeExecutable": "C:\\Program Files\\nodejs\\node.exe",
       "runtimeArgs": [

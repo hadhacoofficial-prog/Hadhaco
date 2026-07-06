@@ -571,6 +571,7 @@ class TestCatalogServiceExtra:
         img.is_primary = False
         img.sort_order = 0
         img.url = "https://cdn/first.jpg"
+        img.medium_url = None
         img.thumbnail_url = None
         img.updated_at = datetime(2024, 1, 1, tzinfo=UTC)
         mock_product.images = [img]

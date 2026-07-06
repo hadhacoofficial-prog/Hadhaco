@@ -1,6 +1,7 @@
 import math
 import uuid
 from datetime import UTC, datetime
+from typing import Literal
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -10,6 +11,7 @@ from app.core.exceptions import (
     NotFoundError,
     ValidationError,
 )
+from app.modules.catalog.models import ProductImage
 from app.modules.catalog.repository import ProductRepository
 from app.modules.catalog.schemas import (
     ProductAttributeCreateRequest,
@@ -28,6 +30,17 @@ from app.modules.inventory.reservation_service import ReservationService
 
 _repo = ProductRepository()
 _reservation_svc = ReservationService()
+
+
+def _pick_image_url(
+    image: ProductImage, variant: Literal["medium", "thumbnail"]
+) -> str:
+    """Resolve a list-item image URL for *variant*, falling back down the
+    chain to whichever size actually exists (medium -> thumbnail -> original,
+    or thumbnail -> medium -> original)."""
+    if variant == "thumbnail":
+        return image.thumbnail_url or image.medium_url or image.url
+    return image.medium_url or image.thumbnail_url or image.url
 
 
 class CatalogService:
@@ -72,6 +85,7 @@ class CatalogService:
         sort_dir: str = "desc",
         include_deleted: bool = False,
         include_collections: bool = True,
+        image_variant: Literal["medium", "thumbnail"] = "medium",
     ) -> ProductListResponse:
         items, total = await _repo.list_paginated(
             db,
@@ -111,18 +125,22 @@ class CatalogService:
                 primary = sorted_imgs[0]
             secondary_imgs = [img for img in sorted_imgs if img is not primary]
             secondary = secondary_imgs[0] if secondary_imgs else None
-            # Product listing (cards, wishlist, cart, checkout) always uses the
-            # generated thumbnail, never the full-resolution original.
+            # Storefront listing contexts (cards, collections, search,
+            # wishlist) default to the medium variant so grid cards aren't
+            # upscaled from the tiny 200x200 thumbnail; admin tables render
+            # much smaller previews and opt into thumbnail_url via
+            # image_variant="thumbnail". Either way, falls back down the
+            # chain to whichever variant actually exists.
             primary_img = (
                 cache_busted_url(
-                    primary.thumbnail_url or primary.url, primary.updated_at
+                    _pick_image_url(primary, image_variant), primary.updated_at
                 )
                 if primary
                 else None
             )
             secondary_img = (
                 cache_busted_url(
-                    secondary.thumbnail_url or secondary.url, secondary.updated_at
+                    _pick_image_url(secondary, image_variant), secondary.updated_at
                 )
                 if secondary
                 else None

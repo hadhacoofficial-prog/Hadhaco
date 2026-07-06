@@ -203,6 +203,7 @@ async def admin_list_products(
         search=search,
         sort_by=sort_by,
         sort_dir=sort_dir,
+        image_variant="thumbnail",
     )
     return ok(result, ResponseCode.PRODUCT_LISTED, "Products listed successfully")
 
