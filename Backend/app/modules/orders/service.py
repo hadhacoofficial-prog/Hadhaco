@@ -66,7 +66,7 @@ class OrderService:
             text(
                 "SELECT id, name, sku, base_price, tax_rate "
                 "FROM products "
-                "WHERE id = ANY(:pids::uuid[]) "
+                "WHERE id = ANY(CAST(:pids AS uuid[])) "
                 "  AND deleted_at IS NULL AND status = 'active'"
             ),
             {"pids": product_ids},
@@ -78,7 +78,7 @@ class OrderService:
             variant_rows = await db.execute(
                 text(
                     "SELECT id, name, price_adjustment "
-                    "FROM product_variants WHERE id = ANY(:vids::uuid[])"
+                    "FROM product_variants WHERE id = ANY(CAST(:vids AS uuid[]))"
                 ),
                 {"vids": variant_ids},
             )
@@ -88,7 +88,7 @@ class OrderService:
             text(
                 "SELECT DISTINCT ON (product_id) product_id, thumbnail_url "
                 "FROM product_images "
-                "WHERE product_id = ANY(:pids::uuid[]) "
+                "WHERE product_id = ANY(CAST(:pids AS uuid[])) "
                 "ORDER BY product_id, is_primary DESC, sort_order ASC"
             ),
             {"pids": product_ids},
