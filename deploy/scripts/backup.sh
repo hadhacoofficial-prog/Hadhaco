@@ -76,7 +76,13 @@ log_step "Step 2: Redis volume backup"
 REDIS_VOLUME=$(docker volume ls -q 2>/dev/null | grep -Fx "${REDIS_VOLUME_NAME}" | head -1 || echo "")
 if [[ -n "${REDIS_VOLUME}" ]]; then
   log "  Backing up volume: ${REDIS_VOLUME}"
+  # --user matches the container's writes to the deploy user's uid:gid, so
+  # redis_data.tar.gz isn't left root-owned (alpine's default user) inside a
+  # directory the deploy user needs to delete during rotation below — a
+  # root-owned leftover from a pre-fix backup is what broke rotation and
+  # aborted an entire deployment (see Step 6).
   if docker run --rm \
+      --user "$(id -u):$(id -g)" \
       -v "${REDIS_VOLUME}:/data:ro" \
       -v "${BACKUP_PATH}:/backup" \
       alpine:3.20 \
@@ -145,14 +151,29 @@ if (( BACKUP_COUNT > BACKUP_RETENTION )); then
   EXCESS=$(( BACKUP_COUNT - BACKUP_RETENTION ))
   log "  Removing ${EXCESS} old backup(s)..."
 
-  ls -dt "${BACKUP_DIR}"/[0-9]*/ 2>/dev/null \
-    | tail -n "+$(( BACKUP_RETENTION + 1 ))" \
-    | while read -r old_dir; do
-        TS=$(basename "${old_dir}")
-        rm -rf "${old_dir}"
-        rm -f "${BACKUP_DIR}/metadata_${TS}.json" 2>/dev/null || true
-        log "  Removed: ${TS}"
-      done
+  # Rotation is best-effort housekeeping, not a correctness requirement for
+  # *this* deployment's rollback capability (Steps 1-5 above already secured
+  # that). A directory that can't be deleted — e.g. a root-owned leftover
+  # from a backup taken before the Step 2 --user fix — must log a warning
+  # and move on, not abort the whole deploy via `set -e`. `rm -rf` is
+  # wrapped in an `if` so its failure doesn't trigger errexit, and the loop
+  # uses process substitution (not a pipe) so ROTATION_FAILURES survives
+  # outside the loop instead of being lost in a subshell.
+  ROTATION_FAILURES=0
+  while read -r old_dir; do
+    TS=$(basename "${old_dir}")
+    if rm -rf "${old_dir}" 2>>"${LOG_FILE}"; then
+      rm -f "${BACKUP_DIR}/metadata_${TS}.json" 2>/dev/null || true
+      log "  Removed: ${TS}"
+    else
+      log_warn "Could not remove ${TS} — leaving in place (needs manual/sudo cleanup)"
+      ROTATION_FAILURES=$(( ROTATION_FAILURES + 1 ))
+    fi
+  done < <(ls -dt "${BACKUP_DIR}"/[0-9]*/ 2>/dev/null | tail -n "+$(( BACKUP_RETENTION + 1 ))")
+
+  if (( ROTATION_FAILURES > 0 )); then
+    log_warn "${ROTATION_FAILURES} old backup(s) could not be removed — rotation incomplete, current backup unaffected"
+  fi
 fi
 
 FINAL_COUNT=$(find "${BACKUP_DIR}" -maxdepth 1 -name "[0-9]*" -type d 2>/dev/null | wc -l)
