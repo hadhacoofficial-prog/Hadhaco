@@ -1,4 +1,4 @@
-import { useCallback, useState, useEffect } from "react";
+import { useCallback, useRef, useState, useEffect } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { ArrowLeft, Loader2, Crop as CropIcon, Trash2 } from "lucide-react";
@@ -106,7 +106,14 @@ export function CollectionForm({ mode, collection }: CollectionFormProps) {
   const [imageId, setImageId] = useState<string | null>(collection?.primary_image_id ?? null);
   const [imageUrl, setImageUrl] = useState<string | null>(collection?.image_url ?? null);
   const [editorOpen, setEditorOpen] = useState(false);
-  const [imageSaving, setImageSaving] = useState(false);
+  // Covers both save (upload/crop) and remove — the two are mutually exclusive
+  // on this single-cover image slot, so one flag can gate both UI affordances.
+  const [imageBusy, setImageBusy] = useState(false);
+  // React state updates are async, so a `useState` check alone can't stop a
+  // second click fired in the same tick (before the disabled re-render lands)
+  // from re-entering these handlers and racing crop/remove against each
+  // other on the same image id. A ref is set synchronously, closing that gap.
+  const imageOpInFlight = useRef(false);
 
   const navigate = useNavigate();
   const queryClient = useQueryClient();
@@ -146,7 +153,9 @@ export function CollectionForm({ mode, collection }: CollectionFormProps) {
 
   const handleImageSave = useCallback(
     async ({ file, geometry }: UniversalImageEditorSaveResult) => {
-      setImageSaving(true);
+      if (imageOpInFlight.current) return;
+      imageOpInFlight.current = true;
+      setImageBusy(true);
       try {
         let raw: ImageOutRaw;
         if (file) {
@@ -170,14 +179,17 @@ export function CollectionForm({ mode, collection }: CollectionFormProps) {
       } catch (e) {
         toast.error(toUserMessage(e as Error));
       } finally {
-        setImageSaving(false);
+        imageOpInFlight.current = false;
+        setImageBusy(false);
       }
     },
     [collection?.id, imageId],
   );
 
   const handleRemoveImage = useCallback(async () => {
-    if (!imageId) return;
+    if (!imageId || imageOpInFlight.current) return;
+    imageOpInFlight.current = true;
+    setImageBusy(true);
     try {
       await deleteMediaImage(imageId);
       setImageId(null);
@@ -185,6 +197,9 @@ export function CollectionForm({ mode, collection }: CollectionFormProps) {
       toast.success("Image removed.");
     } catch (e) {
       toast.error(toUserMessage(e as Error));
+    } finally {
+      imageOpInFlight.current = false;
+      setImageBusy(false);
     }
   }, [imageId]);
 
@@ -403,7 +418,8 @@ export function CollectionForm({ mode, collection }: CollectionFormProps) {
                     <button
                       type="button"
                       onClick={() => setEditorOpen(true)}
-                      className="bg-background text-foreground text-xs px-3 py-1.5 hover:bg-secondary transition flex items-center gap-1.5"
+                      disabled={imageBusy}
+                      className="bg-background text-foreground text-xs px-3 py-1.5 hover:bg-secondary transition flex items-center gap-1.5 disabled:opacity-60"
                     >
                       <CropIcon className="size-3.5" />
                       Edit crop
@@ -413,7 +429,8 @@ export function CollectionForm({ mode, collection }: CollectionFormProps) {
                       onClick={() => {
                         if (confirm("Remove this image?")) handleRemoveImage();
                       }}
-                      className="bg-destructive text-destructive-foreground text-xs px-3 py-1.5 hover:opacity-90 transition flex items-center gap-1.5"
+                      disabled={imageBusy}
+                      className="bg-destructive text-destructive-foreground text-xs px-3 py-1.5 hover:opacity-90 transition flex items-center gap-1.5 disabled:opacity-60"
                     >
                       <Trash2 className="size-3.5" />
                       Remove
@@ -440,7 +457,7 @@ export function CollectionForm({ mode, collection }: CollectionFormProps) {
                   <UniversalImageEditor
                     preset={COLLECTION_PRESET}
                     existingImageSrc={imageUrl ?? undefined}
-                    saving={imageSaving}
+                    saving={imageBusy}
                     onCancel={() => setEditorOpen(false)}
                     onSave={handleImageSave}
                   />

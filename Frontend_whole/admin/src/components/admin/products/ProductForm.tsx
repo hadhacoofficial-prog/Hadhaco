@@ -1327,6 +1327,7 @@ function MediaSection({
   onEditCropPending,
   onEditCropSaved,
   onReplaceSaved,
+  busyImageIds,
   error,
 }: {
   productId?: string;
@@ -1340,6 +1341,7 @@ function MediaSection({
   onEditCropPending: (id: string) => void;
   onEditCropSaved: (id: string) => void;
   onReplaceSaved: (id: string, file: File) => void;
+  busyImageIds: Set<string>;
   error?: string;
 }) {
   const fileRef = useRef<HTMLInputElement>(null);
@@ -1425,66 +1427,73 @@ function MediaSection({
 
       {totalCount > 0 && (
         <div className="grid grid-cols-3 gap-3">
-          {savedImages.map((img, i) => (
-            <div
-              key={img.id}
-              className="relative group border border-border aspect-square overflow-hidden bg-secondary"
-            >
-              <img
-                src={img.thumbnail_url ?? img.url}
-                alt={img.alt_text ?? ""}
-                className="w-full h-full object-cover"
-              />
-              {img.is_primary && (
-                <span className="absolute top-1 left-1 bg-primary text-primary-foreground text-[9px] uppercase tracking-wider px-1.5 py-0.5">
-                  Primary
-                </span>
-              )}
-              {img.crop_x != null && (
-                <span className="absolute top-1 right-1 bg-background/90 text-foreground text-[9px] uppercase tracking-wider px-1.5 py-0.5">
-                  Cropped
-                </span>
-              )}
-              <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
-                {!img.is_primary && (
+          {savedImages.map((img, i) => {
+            const busy = busyImageIds.has(img.id);
+            return (
+              <div
+                key={img.id}
+                className="relative group border border-border aspect-square overflow-hidden bg-secondary"
+              >
+                <img
+                  src={img.thumbnail_url ?? img.url}
+                  alt={img.alt_text ?? ""}
+                  className="w-full h-full object-cover"
+                />
+                {img.is_primary && (
+                  <span className="absolute top-1 left-1 bg-primary text-primary-foreground text-[9px] uppercase tracking-wider px-1.5 py-0.5">
+                    Primary
+                  </span>
+                )}
+                {img.crop_x != null && (
+                  <span className="absolute top-1 right-1 bg-background/90 text-foreground text-[9px] uppercase tracking-wider px-1.5 py-0.5">
+                    Cropped
+                  </span>
+                )}
+                <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
+                  {!img.is_primary && (
+                    <button
+                      type="button"
+                      onClick={() => onSetPrimarySaved(img.id)}
+                      disabled={busy}
+                      className="bg-background/90 p-1.5 rounded-sm disabled:opacity-50"
+                      title="Set as primary"
+                    >
+                      <Star className="size-3.5" />
+                    </button>
+                  )}
                   <button
                     type="button"
-                    onClick={() => onSetPrimarySaved(img.id)}
-                    className="bg-background/90 p-1.5 rounded-sm"
-                    title="Set as primary"
+                    onClick={() => onEditCropSaved(img.id)}
+                    disabled={busy}
+                    className="bg-background/90 p-1.5 rounded-sm disabled:opacity-50"
+                    title="Edit crop"
                   >
-                    <Star className="size-3.5" />
+                    <CropIcon className="size-3.5" />
                   </button>
-                )}
-                <button
-                  type="button"
-                  onClick={() => onEditCropSaved(img.id)}
-                  className="bg-background/90 p-1.5 rounded-sm"
-                  title="Edit crop"
-                >
-                  <CropIcon className="size-3.5" />
-                </button>
-                <button
-                  type="button"
-                  onClick={() => triggerReplace(img.id)}
-                  className="bg-background/90 p-1.5 rounded-sm"
-                  title="Replace image"
-                >
-                  <ImagePlus className="size-3.5" />
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    if (confirm("Delete this image?")) onDeleteSaved(img.id);
-                  }}
-                  className="bg-destructive/90 text-destructive-foreground p-1.5 rounded-sm"
-                  title="Delete"
-                >
-                  <Trash2 className="size-3.5" />
-                </button>
+                  <button
+                    type="button"
+                    onClick={() => triggerReplace(img.id)}
+                    disabled={busy}
+                    className="bg-background/90 p-1.5 rounded-sm disabled:opacity-50"
+                    title="Replace image"
+                  >
+                    <ImagePlus className="size-3.5" />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (confirm("Delete this image?")) onDeleteSaved(img.id);
+                    }}
+                    disabled={busy}
+                    className="bg-destructive/90 text-destructive-foreground p-1.5 rounded-sm disabled:opacity-50"
+                    title="Delete"
+                  >
+                    <Trash2 className="size-3.5" />
+                  </button>
+                </div>
               </div>
-            </div>
-          ))}
+            );
+          })}
 
           {pendingImages.map((img, i) => (
             <div
@@ -2514,6 +2523,28 @@ export function ProductForm({ mode, initialProduct, initialCollectionIds }: Prod
     setCropQueue((prev) => prev.slice(1));
   }, []);
 
+  // Per-saved-image operation lock — delete/replace/set-primary/crop on a
+  // given saved image id must never overlap, or a slow request (e.g. replace)
+  // can lose a race against a fast one (e.g. delete) on the same row and
+  // leave the gallery pointing at a soft-deleted/stale image. The ref backs
+  // synchronous check-and-set (state updates land a render late, which is
+  // enough time for a second click to slip through); the state mirror drives
+  // the disabled UI.
+  const busyImageIdsRef = useRef<Set<string>>(new Set());
+  const [busyImageIds, setBusyImageIds] = useState<Set<string>>(new Set());
+
+  const tryBeginImageOp = useCallback((imageId: string): boolean => {
+    if (busyImageIdsRef.current.has(imageId)) return false;
+    busyImageIdsRef.current.add(imageId);
+    setBusyImageIds(new Set(busyImageIdsRef.current));
+    return true;
+  }, []);
+
+  const endImageOp = useCallback((imageId: string) => {
+    busyImageIdsRef.current.delete(imageId);
+    setBusyImageIds(new Set(busyImageIdsRef.current));
+  }, []);
+
   const addPendingImages = useCallback(
     (files: File[]) => {
       const newImgs: PendingImage[] = files.map((file) => ({
@@ -2542,36 +2573,41 @@ export function ProductForm({ mode, initialProduct, initialCollectionIds }: Prod
 
   const deleteSavedImage = useCallback(
     async (imageId: string) => {
-      if (!initialProduct) return;
+      if (!initialProduct || !tryBeginImageOp(imageId)) return;
       try {
         await deleteMediaImage(imageId);
         setSavedImages((prev) => prev.filter((i) => i.id !== imageId));
+        setCropQueue((prev) => prev.filter((t) => !(t.kind === "saved" && t.id === imageId)));
         queryClient.invalidateQueries({ queryKey: queryKeys.admin.product(initialProduct.id) });
         toast.success("Image deleted.");
       } catch (e) {
         toast.error(toUserMessage(e as Error));
+      } finally {
+        endImageOp(imageId);
       }
     },
-    [initialProduct?.id, queryClient],
+    [initialProduct?.id, queryClient, tryBeginImageOp, endImageOp],
   );
 
   const setPrimarySaved = useCallback(
     async (imageId: string) => {
-      if (!initialProduct) return;
+      if (!initialProduct || !tryBeginImageOp(imageId)) return;
       try {
         await setPrimaryImage(imageId);
         setSavedImages((prev) => prev.map((i) => ({ ...i, is_primary: i.id === imageId })));
         toast.success("Primary image updated.");
       } catch (e) {
         toast.error(toUserMessage(e as Error));
+      } finally {
+        endImageOp(imageId);
       }
     },
-    [initialProduct?.id],
+    [initialProduct?.id, tryBeginImageOp, endImageOp],
   );
 
   const replaceSavedImage = useCallback(
     async (imageId: string, file: File) => {
-      if (!initialProduct) return;
+      if (!initialProduct || !tryBeginImageOp(imageId)) return;
       try {
         const raw = await replaceImage(imageId, file);
         const updated = mapImageOutToProductImage(raw);
@@ -2582,9 +2618,11 @@ export function ProductForm({ mode, initialProduct, initialCollectionIds }: Prod
         toast.success("Image replaced. Crop the new image to update its display size.");
       } catch (e) {
         toast.error(toUserMessage(e as Error));
+      } finally {
+        endImageOp(imageId);
       }
     },
-    [initialProduct?.id, queryClient, enqueueCrop],
+    [initialProduct?.id, queryClient, enqueueCrop, tryBeginImageOp, endImageOp],
   );
 
   const editCropPending = useCallback(
@@ -2593,7 +2631,12 @@ export function ProductForm({ mode, initialProduct, initialCollectionIds }: Prod
   );
 
   const editCropSaved = useCallback(
-    (id: string) => enqueueCrop({ kind: "saved", id }),
+    (id: string) => {
+      // Don't queue a crop for an image that's mid delete/replace/set-primary
+      // — by the time its turn comes up it may already be gone or superseded.
+      if (busyImageIdsRef.current.has(id)) return;
+      enqueueCrop({ kind: "saved", id });
+    },
     [enqueueCrop],
   );
 
@@ -2648,11 +2691,13 @@ export function ProductForm({ mode, initialProduct, initialCollectionIds }: Prod
       }
 
       if (!initialProduct) return;
+      const targetId = activeCropTarget.id;
+      if (!tryBeginImageOp(targetId)) return;
       setCropSaving(true);
       try {
-        const raw = await cropImage(activeCropTarget.id, geometry);
+        const raw = await cropImage(targetId, geometry);
         const updated = mapImageOutToProductImage(raw);
-        setSavedImages((prev) => prev.map((i) => (i.id === activeCropTarget.id ? updated : i)));
+        setSavedImages((prev) => prev.map((i) => (i.id === targetId ? updated : i)));
         queryClient.invalidateQueries({ queryKey: queryKeys.admin.product(initialProduct.id) });
         queryClient.invalidateQueries({ queryKey: ["admin", "products"] });
         toast.success("Crop saved.");
@@ -2660,10 +2705,11 @@ export function ProductForm({ mode, initialProduct, initialCollectionIds }: Prod
       } catch (e) {
         toast.error(toUserMessage(e as Error));
       } finally {
+        endImageOp(targetId);
         setCropSaving(false);
       }
     },
-    [activeCropTarget, initialProduct, queryClient, dequeueCrop],
+    [activeCropTarget, initialProduct, queryClient, dequeueCrop, tryBeginImageOp, endImageOp],
   );
 
   // ── Inline category/collection creation ──────────────────────────────────────
@@ -3056,6 +3102,7 @@ export function ProductForm({ mode, initialProduct, initialCollectionIds }: Prod
               onEditCropPending={editCropPending}
               onEditCropSaved={editCropSaved}
               onReplaceSaved={replaceSavedImage}
+              busyImageIds={busyImageIds}
               error={formErrors.images}
             />
           </Section>

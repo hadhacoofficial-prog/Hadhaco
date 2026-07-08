@@ -121,6 +121,20 @@ async def generate_variants_for_breakpoints(
 
         await _repo.replace_variants(db, image, breakpoint.value, variant_rows)
 
+    # Re-check the image is still live before writing final status. Variant
+    # generation for one breakpoint can take long enough (large-artifact
+    # presets, background-task path) that the image gets soft-deleted out
+    # from under it mid-run; without this check the status write below would
+    # silently resurrect a row the user just removed.
+    current = await _repo.get_image(db, image.id)
+    if current is None:
+        logger.warning(
+            "generate_variants_for_breakpoints: image %s was deleted mid-run — "
+            "discarding final status update",
+            image.id,
+        )
+        return
+
     any_failed = any(v.status == "failed" for v in image.variants)
     await _repo.update_fields(
         db, image, {"status": "failed" if any_failed else "ready"}
@@ -141,7 +155,16 @@ async def generate_variants_task(
     async with AsyncWorkerSessionLocal() as db:
         image = await _repo.get_image(db, image_id)
         if image is None:
-            logger.error("generate_variants_task: image %s not found", image_id)
+            # Expected outcome of a legitimate race, not a bug: the image was
+            # soft-deleted (or never committed by an upload that itself
+            # failed) before this deferred task got to run. Nothing to
+            # generate variants for — log for visibility, not as an error
+            # that pages anyone.
+            logger.warning(
+                "generate_variants_task: image %s not found (likely deleted "
+                "before background generation ran)",
+                image_id,
+            )
             return
         original_bytes = storage.get_object_bytes(image.original_key)
         await generate_variants_for_breakpoints(
