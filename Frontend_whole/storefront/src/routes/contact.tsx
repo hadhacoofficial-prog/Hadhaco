@@ -18,6 +18,40 @@ export const Route = createFileRoute("/contact")({
   component: ContactPage,
 });
 
+const CONTACT_CARDS: { icon: React.ReactNode; t: string; s: string; n: string; href?: string }[] = [
+  {
+    icon: <Phone className="size-5" />,
+    t: "Phone",
+    s: "+91 60941 15885",
+    n: "Mon–Sat, 10am–7pm",
+  },
+  {
+    icon: <Mail className="size-5" />,
+    t: "Email",
+    s: "hello@hadha.co",
+    n: "Replies within 24 hours",
+  },
+  {
+    icon: <MessageCircle className="size-5" />,
+    t: "WhatsApp",
+    s: "+91 60941 15885",
+    n: "Fastest response",
+    href: "https://wa.me/916094115885",
+  },
+  {
+    icon: <MapPin className="size-5" />,
+    t: "Atelier",
+    s: "MVP Sector 1, MVP Colony",
+    n: "Visakhapatnam 530017",
+  },
+  {
+    icon: <Clock className="size-5" />,
+    t: "Store hours",
+    s: "10:00 AM – 8:00 PM",
+    n: "Open all days",
+  },
+];
+
 function ContactPage() {
   const [sent, setSent] = useState(false);
   return (
@@ -65,49 +99,27 @@ function ContactPage() {
           </form>
 
           <aside className="space-y-4">
-            {[
-              {
-                icon: <Phone className="size-5" />,
-                t: "Phone",
-                s: "+91 98765 43210",
-                n: "Mon–Sat, 10am–7pm",
-              },
-              {
-                icon: <Mail className="size-5" />,
-                t: "Email",
-                s: "hello@hadha.co",
-                n: "Replies within 24 hours",
-              },
-              {
-                icon: <MessageCircle className="size-5" />,
-                t: "WhatsApp",
-                s: "+91 98765 43210",
-                n: "Fastest response",
-              },
-              {
-                icon: <MapPin className="size-5" />,
-                t: "Atelier",
-                s: "MVP Sector 1, MVP Colony",
-                n: "Visakhapatnam 530017",
-              },
-              {
-                icon: <Clock className="size-5" />,
-                t: "Store hours",
-                s: "10:00 AM – 8:00 PM",
-                n: "Open all days",
-              },
-            ].map((c) => (
-              <div key={c.t} className="border border-border p-5 bg-card flex gap-4">
-                <span className="text-accent mt-0.5">{c.icon}</span>
-                <div>
-                  <p className="text-[11px] uppercase tracking-[0.22em] text-muted-foreground">
-                    {c.t}
-                  </p>
-                  <p className="font-display text-lg mt-0.5">{c.s}</p>
-                  <p className="text-xs text-muted-foreground">{c.n}</p>
-                </div>
-              </div>
-            ))}
+            {CONTACT_CARDS.map((c) => {
+              const Wrapper = c.href ? "a" : "div";
+              return (
+                <Wrapper
+                  key={c.t}
+                  {...(c.href
+                    ? { href: c.href, target: "_blank", rel: "noopener noreferrer" }
+                    : {})}
+                  className="border border-border p-5 bg-card flex gap-4"
+                >
+                  <span className="text-accent mt-0.5">{c.icon}</span>
+                  <div>
+                    <p className="text-[11px] uppercase tracking-[0.22em] text-muted-foreground">
+                      {c.t}
+                    </p>
+                    <p className="font-display text-lg mt-0.5">{c.s}</p>
+                    <p className="text-xs text-muted-foreground">{c.n}</p>
+                  </div>
+                </Wrapper>
+              );
+            })}
           </aside>
         </div>
       </div>

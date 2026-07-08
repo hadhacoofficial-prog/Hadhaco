@@ -9,8 +9,7 @@ REM ======================================
 REM Backend
 REM ======================================
 echo Starting Backend...
-start "Hadha Backend" cmd /k ^
-"cd /d F:\Work\Hadha.co\Project\Backend && call hadha\Scripts\activate.bat && uvicorn app.main:app --reload"
+start "Hadha Backend" cmd /k "cd /d F:\Work\Hadha.co\Project\Backend && call hadha\Scripts\activate.bat && uvicorn app.main:app --reload"
 
 timeout /t 3 >nul
 
@@ -18,8 +17,7 @@ REM ======================================
 REM Storefront
 REM ======================================
 echo Starting Storefront...
-start "Hadha Storefront" cmd /k ^
-"cd /d F:\Work\Hadha.co\Project\Frontend_whole && npm run dev:storefront"
+start "Hadha Storefront" cmd /k "cd /d F:\Work\Hadha.co\Project\Frontend_whole && npm run dev:storefront"
 
 timeout /t 2 >nul
 
@@ -27,8 +25,7 @@ REM ======================================
 REM Admin
 REM ======================================
 echo Starting Admin...
-start "Hadha Admin" cmd /k ^
-"cd /d F:\Work\Hadha.co\Project\Frontend_whole && npm run dev:admin"
+start "Hadha Admin" cmd /k "cd /d F:\Work\Hadha.co\Project\Frontend_whole && npm run dev:admin"
 
 timeout /t 2 >nul
 

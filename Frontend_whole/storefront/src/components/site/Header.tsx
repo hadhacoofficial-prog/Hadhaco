@@ -126,7 +126,7 @@ export function Header() {
             <img
               src={logoAsset}
               alt="Hadha Silver Jewellery"
-              className="h-18 md:h-16 w-auto max-w-[260px] md:max-w-[340px] object-contain"
+              className="h-20 md:h-20 w-auto max-w-[300px] md:max-w-[400px] object-contain"
             />
           </Link>
 

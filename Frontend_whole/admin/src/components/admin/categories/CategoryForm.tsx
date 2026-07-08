@@ -1,15 +1,40 @@
-import { useState, useEffect } from "react";
+import { useCallback, useState, useEffect } from "react";
 import { useNavigate, Link } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { ArrowLeft, Loader2 } from "lucide-react";
+import { ArrowLeft, Loader2, Crop as CropIcon, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { api } from "@/lib/api/client";
 import { queryKeys } from "@/lib/api/queryKeys";
 import { toUserMessage } from "@/lib/api/errors";
-import { ImageUpload } from "@/components/admin/ImageUpload";
+import {
+  UniversalImageEditor,
+  uploadImage,
+  cropImage,
+  attachImage,
+  setPrimaryImage,
+  deleteImage as deleteMediaImage,
+  type UniversalImageEditorSaveResult,
+  type ImageOutRaw,
+} from "@hadha/shared-media";
+import { PRESET_REGISTRY } from "@hadha/shared-types";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@hadha/shared-ui/ui/dialog";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import type { CategoryDetail, CategoryAdminListResponse } from "@/types/admin";
+
+const CATEGORY_PRESET = PRESET_REGISTRY.category;
+
+function pickPreviewUrl(raw: ImageOutRaw): string | null {
+  const ready = raw.variants.filter(
+    (v) => v.breakpoint === "desktop" && v.dpr === 1 && v.status === "ready",
+  );
+  return (
+    ready.find((v) => v.variant_name === "medium")?.url ??
+    ready.find((v) => v.variant_name === "large")?.url ??
+    ready[0]?.url ??
+    null
+  );
+}
 
 function toSlug(name: string) {
   return name
@@ -29,7 +54,6 @@ interface FormState {
   name: string;
   slug: string;
   description: string;
-  image_url: string;
   parent_id: string;
   sort_order: string;
   is_active: boolean;
@@ -42,7 +66,6 @@ function emptyForm(): FormState {
     name: "",
     slug: "",
     description: "",
-    image_url: "",
     parent_id: "",
     sort_order: "0",
     is_active: true,
@@ -56,7 +79,6 @@ function fromCategory(c: CategoryDetail): FormState {
     name: c.name,
     slug: c.slug,
     description: c.description ?? "",
-    image_url: c.image_url ?? "",
     parent_id: c.parent_id ?? "",
     sort_order: String(c.sort_order),
     is_active: c.is_active,
@@ -71,6 +93,11 @@ export function CategoryForm({ mode, category }: CategoryFormProps) {
   );
   const [slugManual, setSlugManual] = useState(mode === "edit");
   const [errors, setErrors] = useState<Record<string, string>>({});
+
+  const [imageId, setImageId] = useState<string | null>(category?.primary_image_id ?? null);
+  const [imageUrl, setImageUrl] = useState<string | null>(category?.image_url ?? null);
+  const [editorOpen, setEditorOpen] = useState(false);
+  const [imageSaving, setImageSaving] = useState(false);
 
   const navigate = useNavigate();
   const queryClient = useQueryClient();
@@ -95,10 +122,19 @@ export function CategoryForm({ mode, category }: CategoryFormProps) {
   }, [form.name, slugManual, mode]);
 
   const mutation = useMutation({
-    mutationFn: (data: Record<string, unknown>) =>
-      mode === "new"
-        ? api.post<CategoryDetail>("/admin/categories", { body: data })
-        : api.patch<CategoryDetail>(`/admin/categories/${category!.id}`, { body: data }),
+    mutationFn: async (data: Record<string, unknown>) => {
+      const result =
+        mode === "new"
+          ? await api.post<CategoryDetail>("/admin/categories", { body: data })
+          : await api.patch<CategoryDetail>(`/admin/categories/${category!.id}`, { body: data });
+      // New categories don't have an id yet when the image is uploaded, so
+      // it's uploaded unattached — attach it now that the owner id exists.
+      if (mode === "new" && imageId) {
+        await attachImage(imageId, "category", result.id);
+        await setPrimaryImage(imageId);
+      }
+      return result;
+    },
     onSuccess: (result) => {
       queryClient.invalidateQueries({ queryKey: queryKeys.admin.categories });
       if (mode === "edit") {
@@ -111,6 +147,50 @@ export function CategoryForm({ mode, category }: CategoryFormProps) {
     },
     onError: (e) => toast.error(toUserMessage(e)),
   });
+
+  const handleImageSave = useCallback(
+    async ({ file, geometry }: UniversalImageEditorSaveResult) => {
+      setImageSaving(true);
+      try {
+        let raw: ImageOutRaw;
+        if (file) {
+          raw = await uploadImage({
+            presetId: "category",
+            file,
+            ownerType: "category",
+            ownerId: category?.id,
+          });
+          raw = await cropImage(raw.id, geometry);
+          if (category?.id) await setPrimaryImage(raw.id);
+        } else if (imageId) {
+          raw = await cropImage(imageId, geometry);
+        } else {
+          return;
+        }
+        setImageId(raw.id);
+        setImageUrl(pickPreviewUrl(raw));
+        setEditorOpen(false);
+        toast.success("Image saved.");
+      } catch (e) {
+        toast.error(toUserMessage(e as Error));
+      } finally {
+        setImageSaving(false);
+      }
+    },
+    [category?.id, imageId],
+  );
+
+  const handleRemoveImage = useCallback(async () => {
+    if (!imageId) return;
+    try {
+      await deleteMediaImage(imageId);
+      setImageId(null);
+      setImageUrl(null);
+      toast.success("Image removed.");
+    } catch (e) {
+      toast.error(toUserMessage(e as Error));
+    }
+  }, [imageId]);
 
   function set(field: keyof FormState, value: unknown) {
     setForm((f) => ({ ...f, [field]: value }));
@@ -132,7 +212,6 @@ export function CategoryForm({ mode, category }: CategoryFormProps) {
       name: form.name.trim(),
       slug: form.slug.trim() || toSlug(form.name.trim()),
       description: form.description.trim() || null,
-      image_url: form.image_url.trim() || null,
       parent_id: form.parent_id || null,
       sort_order: parseInt(form.sort_order) || 0,
       is_active: form.is_active,
@@ -141,8 +220,6 @@ export function CategoryForm({ mode, category }: CategoryFormProps) {
     };
     mutation.mutate(payload);
   }
-
-  const uploadUrl = category ? `/admin/categories/${category.id}/image` : "";
 
   return (
     <div>
@@ -287,29 +364,61 @@ export function CategoryForm({ mode, category }: CategoryFormProps) {
               </div>
             </section>
 
-            <section className="bg-background border border-border p-6">
-              {mode === "new" ? (
-                <div className="space-y-2">
-                  <p className="text-[11px] uppercase tracking-[0.15em] text-muted-foreground">
-                    Image
-                  </p>
-                  <p className="text-xs text-muted-foreground">
-                    Save the category first, then upload an image from the detail page.
-                  </p>
+            <section className="bg-background border border-border p-6 space-y-3">
+              <p className="text-[11px] uppercase tracking-[0.15em] text-muted-foreground">
+                Category Image
+              </p>
+              {imageUrl ? (
+                <div className="relative group w-full aspect-video bg-secondary overflow-hidden border border-border">
+                  <img src={imageUrl} alt="" className="w-full h-full object-cover" />
+                  <div className="absolute inset-0 bg-foreground/0 group-hover:bg-foreground/40 transition-all flex items-center justify-center gap-2 opacity-0 group-hover:opacity-100">
+                    <button
+                      type="button"
+                      onClick={() => setEditorOpen(true)}
+                      className="bg-background text-foreground text-xs px-3 py-1.5 hover:bg-secondary transition flex items-center gap-1.5"
+                    >
+                      <CropIcon className="size-3.5" />
+                      Edit crop
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (confirm("Remove this image?")) handleRemoveImage();
+                      }}
+                      className="bg-destructive text-destructive-foreground text-xs px-3 py-1.5 hover:opacity-90 transition flex items-center gap-1.5"
+                    >
+                      <Trash2 className="size-3.5" />
+                      Remove
+                    </button>
+                  </div>
                 </div>
               ) : (
-                <ImageUpload
-                  uploadUrl={uploadUrl}
-                  currentImageUrl={form.image_url || null}
-                  label="Category Image"
-                  onUploaded={(url) => set("image_url", url)}
-                  onRemove={() => {
-                    set("image_url", "");
-                    api.delete(`/admin/categories/${category!.id}/image`).catch(() => {});
-                  }}
-                />
+                <button
+                  type="button"
+                  onClick={() => setEditorOpen(true)}
+                  className="w-full aspect-video border-2 border-dashed border-border bg-secondary/40 flex flex-col items-center justify-center gap-2 cursor-pointer hover:border-foreground/40 transition-colors"
+                >
+                  <p className="text-xs text-muted-foreground">Click to add an image</p>
+                </button>
               )}
             </section>
+
+            {editorOpen && (
+              <Dialog open onOpenChange={(open) => !open && setEditorOpen(false)}>
+                <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
+                  <DialogHeader>
+                    <DialogTitle>Category image</DialogTitle>
+                  </DialogHeader>
+                  <UniversalImageEditor
+                    preset={CATEGORY_PRESET}
+                    existingImageSrc={imageUrl ?? undefined}
+                    saving={imageSaving}
+                    onCancel={() => setEditorOpen(false)}
+                    onSave={handleImageSave}
+                  />
+                </DialogContent>
+              </Dialog>
+            )}
 
             <div className="flex gap-3">
               <button

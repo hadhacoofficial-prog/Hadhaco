@@ -70,7 +70,7 @@ class CategoryRepository:
         rows_result = await db.execute(
             text(f"""
                 SELECT
-                    c.id, c.parent_id, c.name, c.slug, c.image_url,
+                    c.id, c.parent_id, c.name, c.slug, c.primary_image_id,
                     c.sort_order, c.is_active, c.updated_at,
                     COALESCE(pc.product_count, 0) AS product_count,
                     COALESCE(cc.children_count, 0) AS children_count
@@ -216,8 +216,12 @@ class CategoryRepository:
                 SELECT
                     p.id, p.sku, p.name, p.slug,
                     p.base_price, p.stock_quantity, p.status, p.is_featured,
-                    (SELECT pi.url FROM product_images pi
-                     WHERE pi.product_id = p.id AND pi.is_primary = TRUE
+                    (SELECT iv.url FROM images i
+                     JOIN image_variants iv ON iv.image_id = i.id
+                     WHERE i.owner_type = 'product' AND i.owner_id = p.id
+                       AND i.is_primary = TRUE AND i.deleted_at IS NULL
+                       AND iv.variant_name = 'large' AND iv.breakpoint = 'desktop'
+                       AND iv.status = 'ready'
                      LIMIT 1) AS primary_image
                 FROM products p
                 WHERE p.category_id = :cid AND p.deleted_at IS NULL

@@ -1,4 +1,4 @@
-const PHONE = "919876543210"; // TODO: replace with real Hadha WhatsApp number
+const PHONE = "916094115885";
 const MESSAGE = "Hi Hadha, I'd like to know more about your silver jewellery.";
 
 export function WhatsAppFab() {

@@ -31,37 +31,17 @@ export const ProductCard = memo(function ProductCard({ p }: { p: Product }) {
       <Link
         to="/products/$slug"
         params={{ slug: p.slug }}
-        className="block relative aspect-square bg-white [perspective:900px]"
+        className="block relative aspect-square bg-white overflow-hidden"
         aria-label={`View ${p.name}${isSoldOut ? " — Sold Out" : ""}`}
       >
-        {/* 3-D flip container — only animates when a second image exists */}
-        <div
-          className={`absolute inset-0 [transform-style:preserve-3d] transition-transform duration-300 ease-out ${p.altImage ? "group-hover:[transform:rotateY(180deg)]" : ""}`}
-        >
-          {/* Front face */}
-          <div className="absolute inset-0 [backface-visibility:hidden]">
-            <img
-              src={p.image}
-              alt={p.name}
-              loading="lazy"
-              width={800}
-              height={800}
-              className={`w-full h-full object-contain ${isSoldOut ? "opacity-60" : ""}`}
-            />
-          </div>
-          {/* Back face */}
-          <div className="absolute inset-0 [backface-visibility:hidden] [transform:rotateY(180deg)]">
-            <img
-              src={p.altImage ?? p.image}
-              alt=""
-              aria-hidden
-              loading="lazy"
-              width={800}
-              height={800}
-              className={`w-full h-full object-contain ${isSoldOut ? "opacity-60" : ""}`}
-            />
-          </div>
-        </div>
+        <img
+          src={p.image}
+          alt={p.name}
+          loading="lazy"
+          width={800}
+          height={800}
+          className={`w-full h-full object-contain transition-transform duration-500 ease-out group-hover:scale-105 ${isSoldOut ? "opacity-60" : ""}`}
+        />
 
         {/* Sold-out overlay */}
         {isSoldOut && (

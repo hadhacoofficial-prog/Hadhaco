@@ -237,56 +237,12 @@ class TestProductRepository:
         await self.repo.soft_delete(db, uuid.uuid4())
         db.execute.assert_awaited_once()
 
-    async def test_add_image_adds_and_refreshes(self):
-        db = AsyncMock()
-        db.add = MagicMock()
-        await self.repo.add_image(
-            db,
-            {
-                "id": uuid.uuid4(),
-                "product_id": uuid.uuid4(),
-                "url": "https://cdn/img.jpg",
-                "sort_order": 0,
-            },
-        )
-        db.add.assert_called_once()
-
-    async def test_delete_image_returns_false_when_not_found(self):
-        db = _db(_scalar_one_or_none(None))
-        result = await self.repo.delete_image(db, uuid.uuid4())
-        assert result is False
-
-    async def test_delete_image_returns_true_when_found(self):
-        mock_img = MagicMock()
-        db = _db(_scalar_one_or_none(mock_img))
-        db.delete = AsyncMock()
-        result = await self.repo.delete_image(db, uuid.uuid4())
-        assert result is True
-        db.delete.assert_awaited_once_with(mock_img)
-
-    async def test_set_primary_image_executes_twice(self):
-        db = _db(MagicMock(), MagicMock())
-        await self.repo.set_primary_image(db, uuid.uuid4(), uuid.uuid4())
-        assert db.execute.await_count == 2
-
-    async def test_get_image_returns_image(self):
-        mock_img = MagicMock()
-        db = _db(_scalar_one_or_none(mock_img))
-        result = await self.repo.get_image(db, uuid.uuid4())
-        assert result is mock_img
-
-    async def test_get_image_returns_none(self):
-        db = _db(_scalar_one_or_none(None))
-        result = await self.repo.get_image(db, uuid.uuid4())
-        assert result is None
-
-    async def test_update_image_executes_and_refetches(self):
-        mock_img = MagicMock()
-        db = _db(MagicMock(), _scalar_one_or_none(mock_img))
-        result = await self.repo.update_image(
-            db, uuid.uuid4(), {"crop_x": 10.0, "crop_y": 5.0}
-        )
-        assert result is mock_img
+    # Product image CRUD (add_image/get_image/update_image/delete_image/
+    # set_primary_image) was removed from ProductRepository in the Phase 3
+    # cutover — all image operations now go through
+    # app.modules.media.repository.ImageRepository /
+    # app.modules.media.universal_service.UniversalImageService instead. See
+    # tests/unit/test_media_universal_service.py for equivalent coverage.
 
     async def test_add_variant_adds_and_refreshes(self):
         db = AsyncMock()

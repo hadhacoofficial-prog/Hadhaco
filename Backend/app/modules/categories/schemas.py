@@ -8,7 +8,6 @@ class CategoryBase(BaseModel):
     name: str = Field(max_length=200)
     slug: str = Field(max_length=200)
     description: str | None = None
-    image_url: str | None = None
     sort_order: int = 0
     is_active: bool = True
     seo_title: str | None = None
@@ -24,7 +23,6 @@ class CategoryUpdateRequest(BaseModel):
     name: str | None = Field(default=None, max_length=200)
     slug: str | None = Field(default=None, max_length=200)
     description: str | None = None
-    image_url: str | None = None
     sort_order: int | None = None
     is_active: bool | None = None
     seo_title: str | None = None
@@ -40,7 +38,8 @@ class CategoryResponse(BaseModel):
     name: str
     slug: str
     description: str | None
-    image_url: str | None
+    primary_image_id: uuid.UUID | None = None
+    image_url: str | None = None
     sort_order: int
     is_active: bool
     seo_title: str | None
@@ -61,7 +60,8 @@ class CategoryAdminListItem(BaseModel):
     parent_id: uuid.UUID | None
     name: str
     slug: str
-    image_url: str | None
+    primary_image_id: uuid.UUID | None = None
+    image_url: str | None = None
     sort_order: int
     is_active: bool
     product_count: int = 0

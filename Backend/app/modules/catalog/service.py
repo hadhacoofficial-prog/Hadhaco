@@ -11,12 +11,12 @@ from app.core.exceptions import (
     NotFoundError,
     ValidationError,
 )
-from app.modules.catalog.models import ProductImage
 from app.modules.catalog.repository import ProductRepository
 from app.modules.catalog.schemas import (
     ProductAttributeCreateRequest,
     ProductCollectionRef,
     ProductCreateRequest,
+    ProductImageResponse,
     ProductListItem,
     ProductListResponse,
     ProductResponse,
@@ -24,7 +24,6 @@ from app.modules.catalog.schemas import (
     ProductVariantCreateRequest,
     ProductVariantUpdateRequest,
     StockAdjustRequest,
-    cache_busted_url,
 )
 from app.modules.inventory.reservation_service import ReservationService
 
@@ -33,7 +32,7 @@ _reservation_svc = ReservationService()
 
 
 def _pick_image_url(
-    image: ProductImage, variant: Literal["medium", "thumbnail"]
+    image: ProductImageResponse, variant: Literal["medium", "thumbnail"]
 ) -> str:
     """Resolve a list-item image URL for *variant*, falling back down the
     chain to whichever size actually exists (medium -> thumbnail -> original,
@@ -119,7 +118,10 @@ class CatalogService:
 
         list_items = []
         for p in items:
-            sorted_imgs = sorted(p.images, key=lambda i: i.sort_order)
+            sorted_imgs = [
+                ProductImageResponse.from_image(img)
+                for img in sorted(p.images, key=lambda i: i.sort_order)
+            ]
             primary = next((img for img in sorted_imgs if img.is_primary), None)
             if primary is None and sorted_imgs:
                 primary = sorted_imgs[0]
@@ -130,20 +132,11 @@ class CatalogService:
             # upscaled from the tiny 200x200 thumbnail; admin tables render
             # much smaller previews and opt into thumbnail_url via
             # image_variant="thumbnail". Either way, falls back down the
-            # chain to whichever variant actually exists.
-            primary_img = (
-                cache_busted_url(
-                    _pick_image_url(primary, image_variant), primary.updated_at
-                )
-                if primary
-                else None
-            )
+            # chain to whichever variant actually exists. Cache-busting
+            # already happened inside ProductImageResponse.from_image().
+            primary_img = _pick_image_url(primary, image_variant) if primary else None
             secondary_img = (
-                cache_busted_url(
-                    _pick_image_url(secondary, image_variant), secondary.updated_at
-                )
-                if secondary
-                else None
+                _pick_image_url(secondary, image_variant) if secondary else None
             )
             cols = [
                 ProductCollectionRef.model_validate(c) for c in col_map.get(p.id, [])

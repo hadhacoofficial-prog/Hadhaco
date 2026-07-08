@@ -37,3 +37,6 @@ class SettingsService:
     async def is_feature_enabled(db: AsyncSession, key: str) -> bool:
         flag = await _repo.get_flag(db, key)
         return flag.value if flag else False
+
+    async def get_flag(self, db: AsyncSession, *, key: str) -> FeatureFlag | None:
+        return await _repo.get_flag(db, key)

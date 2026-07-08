@@ -22,6 +22,7 @@ from app.core.database import Base
 
 if TYPE_CHECKING:
     from app.modules.categories.models import Category
+    from app.modules.media.models import Image
 
 
 class Product(Base):
@@ -151,11 +152,18 @@ class Product(Base):
         cascade="all, delete-orphan",
         lazy="select",
     )
-    images: Mapped[list["ProductImage"]] = relationship(
-        "ProductImage",
-        back_populates="product",
-        cascade="all, delete-orphan",
-        order_by="ProductImage.sort_order",
+    # Polymorphic, read-only: the universal images table's owner_type='product'
+    # rows for this product. Writes go through ImageRepository/
+    # UniversalImageService (app.modules.media), not this relationship — see
+    # docs/architecture/Universal_Responsive_Image_System_Design.md §9.
+    images: Mapped[list["Image"]] = relationship(
+        "Image",
+        primaryjoin=(
+            "and_(foreign(Image.owner_id)==Product.id, "
+            "Image.owner_type=='product', Image.deleted_at==None)"
+        ),
+        order_by="Image.sort_order",
+        viewonly=True,
         lazy="select",
     )
     attributes: Mapped[list["ProductAttribute"]] = relationship(
@@ -268,54 +276,6 @@ class ProductVariant(Base):
     @property
     def available_stock(self) -> int:
         return max(self.stock_quantity - self.reserved_quantity - self.sold_quantity, 0)
-
-
-class ProductImage(Base):
-    __tablename__ = "product_images"
-
-    id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
-    )
-    product_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True),
-        ForeignKey("products.id", ondelete="CASCADE"),
-        nullable=False,
-    )
-    url: Mapped[str] = mapped_column(String(1024), nullable=False)
-    thumbnail_url: Mapped[str | None] = mapped_column(String(1024), nullable=True)
-    medium_url: Mapped[str | None] = mapped_column(String(1024), nullable=True)
-    large_url: Mapped[str | None] = mapped_column(String(1024), nullable=True)
-    alt_text: Mapped[str | None] = mapped_column(String(255), nullable=True)
-    is_primary: Mapped[bool] = mapped_column(
-        Boolean, nullable=False, server_default="false"
-    )
-    sort_order: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
-
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False, server_default=func.now()
-    )
-    # Bumped on every crop/replace so callers can cache-bust the (otherwise
-    # stable) thumbnail/medium/large URLs — see ProductImageResponse.
-    updated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True),
-        nullable=False,
-        server_default=func.now(),
-        onupdate=func.now(),
-    )
-
-    # Crop box in pixel coordinates of the untouched original image. NULL means
-    # no crop has been saved yet, so thumbnail_url/medium_url still point at the
-    # uncropped, normalized variants generated at upload time.
-    crop_x: Mapped[float | None] = mapped_column(Numeric(10, 2), nullable=True)
-    crop_y: Mapped[float | None] = mapped_column(Numeric(10, 2), nullable=True)
-    crop_width: Mapped[float | None] = mapped_column(Numeric(10, 2), nullable=True)
-    crop_height: Mapped[float | None] = mapped_column(Numeric(10, 2), nullable=True)
-    crop_zoom: Mapped[float | None] = mapped_column(Numeric(5, 2), nullable=True)
-    crop_rotation: Mapped[float | None] = mapped_column(Numeric(6, 2), nullable=True)
-
-    product: Mapped["Product"] = relationship("Product", back_populates="images")
-
-    __table_args__ = (Index("idx_product_images_product_id", "product_id"),)
 
 
 class ProductAttribute(Base):

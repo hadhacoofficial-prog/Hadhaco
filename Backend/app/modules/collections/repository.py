@@ -273,8 +273,12 @@ class CollectionRepository:
                     p.id, p.sku, p.name, p.slug, p.category_id,
                     p.base_price, p.stock_quantity, p.status, p.is_featured,
                     pc.sort_order,
-                    (SELECT pi.url FROM product_images pi
-                     WHERE pi.product_id = p.id AND pi.is_primary = TRUE
+                    (SELECT iv.url FROM images i
+                     JOIN image_variants iv ON iv.image_id = i.id
+                     WHERE i.owner_type = 'product' AND i.owner_id = p.id
+                       AND i.is_primary = TRUE AND i.deleted_at IS NULL
+                       AND iv.variant_name = 'large' AND iv.breakpoint = 'desktop'
+                       AND iv.status = 'ready'
                      LIMIT 1) AS primary_image
                 FROM product_collections pc
                 JOIN products p ON p.id = pc.product_id

@@ -54,7 +54,11 @@ def _parse_profile_from_cache(data: dict):
         email=data["email"],
         full_name=data.get("full_name"),
         phone=data.get("phone"),
-        avatar_url=data.get("avatar_url"),
+        primary_image_id=(
+            uuid.UUID(data["primary_image_id"])
+            if data.get("primary_image_id")
+            else None
+        ),
         role=data["role"],
         is_active=data["is_active"],
         is_verified=data["is_verified"],
@@ -83,7 +87,9 @@ async def _cache_profile(redis: aioredis.Redis, profile) -> None:
         "email": profile.email,
         "full_name": profile.full_name,
         "phone": profile.phone,
-        "avatar_url": profile.avatar_url,
+        "primary_image_id": (
+            str(profile.primary_image_id) if profile.primary_image_id else None
+        ),
         "role": profile.role,
         "is_active": profile.is_active,
         "is_verified": profile.is_verified,

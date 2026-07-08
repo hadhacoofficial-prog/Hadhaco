@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import uuid
 
-from fastapi import APIRouter, Depends, File, Form, Query, UploadFile
+from fastapi import APIRouter, BackgroundTasks, Depends, File, Form, Query, UploadFile
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.common.response_codes import ResponseCode
@@ -87,6 +87,7 @@ async def product_rating_summary(
 
 @router.post("", response_model=BaseSuccessResponse[ReviewOut], status_code=201)
 async def submit_review(
+    background_tasks: BackgroundTasks,
     product_id: uuid.UUID = Form(...),
     rating: int = Form(..., ge=1, le=5),
     body: str | None = Form(None),
@@ -111,6 +112,7 @@ async def submit_review(
         customer_name=getattr(user, "full_name", None),
         data=data,
         images=images or None,
+        background_tasks=background_tasks,
     )
     return created(
         result, ResponseCode.REVIEW_SUBMITTED, "Review submitted successfully"

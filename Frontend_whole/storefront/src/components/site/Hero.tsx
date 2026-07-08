@@ -124,8 +124,10 @@ export function Hero({ config, items = [] }: HeroProps) {
       {s.overlay && (
         <div className="absolute inset-0 bg-black" style={{ opacity: s.overlayOpacity }} />
       )}
-      <div className="absolute inset-0 bg-gradient-to-r from-background/85 via-background/30 to-transparent" />
-      <div className={`relative z-10 h-full flex items-center px-6 md:px-16 ${alignRow}`}>
+      <div
+        className={`relative z-10 h-full flex items-center px-6 md:px-16 ${alignRow}`}
+        style={{ textShadow: "0 2px 16px rgba(0,0,0,0.35)" }}
+      >
         <div className={`max-w-xl flex flex-col ${alignItems} ${alignText}`}>
           {s.eyebrow && (
             <p className="text-[11px] tracking-[0.3em] uppercase text-accent mb-5">{s.eyebrow}</p>

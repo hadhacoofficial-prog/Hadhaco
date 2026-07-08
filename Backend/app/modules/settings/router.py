@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import uuid
+from datetime import UTC, datetime
 
 from fastapi import APIRouter, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -13,6 +14,7 @@ from app.modules.settings.schemas import FeatureFlagOut, FeatureFlagUpdate
 from app.modules.settings.service import SettingsService
 
 router = APIRouter(prefix="/admin/settings", tags=["settings"])
+public_router = APIRouter(prefix="/settings", tags=["settings"])
 _svc = SettingsService()
 
 
@@ -36,4 +38,19 @@ async def set_flag(
     )
     return ok(
         result, ResponseCode.SETTINGS_FLAG_UPDATED, "Feature flag updated successfully"
+    )
+
+
+@public_router.get("/flags/{key}", response_model=BaseSuccessResponse[FeatureFlagOut])
+async def get_public_flag(key: str, db: AsyncSession = Depends(get_db)):
+    flag = await _svc.get_flag(db, key=key)
+    result = (
+        FeatureFlagOut.model_validate(flag)
+        if flag
+        else FeatureFlagOut(
+            key=key, value=False, description=None, updated_at=datetime.now(UTC)
+        )
+    )
+    return ok(
+        result, ResponseCode.SETTINGS_FLAGS_LISTED, "Feature flag fetched successfully"
     )

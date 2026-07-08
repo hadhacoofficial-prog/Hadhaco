@@ -1,4 +1,5 @@
 import uuid
+from collections.abc import Sequence
 
 from slugify import slugify
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -10,20 +11,41 @@ from app.modules.collections.schemas import (
     BulkActionRequest,
     CollectionCreateRequest,
     CollectionDetailResponse,
+    CollectionListItem,
     CollectionListResponse,
     CollectionProductItem,
     CollectionResponse,
     CollectionUpdateRequest,
     ReorderProductsRequest,
 )
+from app.modules.media.repository import ImageRepository
 
 _repo = CollectionRepository()
+_image_repo = ImageRepository()
+
+
+async def _attach_image_urls(
+    db: AsyncSession, items: Sequence[CollectionResponse | CollectionListItem]
+) -> None:
+    """Resolve each collection's primary image into a cache-busted `image_url`
+    — replaces the plain `image_url` column dropped in the Phase 3 cutover.
+    get_primary_variant_urls looks up by owner_id (the collection's own id),
+    not by primary_image_id (which is the Image row's id)."""
+    ids = [i.id for i in items if i.primary_image_id]
+    if not ids:
+        return
+    urls = await _image_repo.get_primary_variant_urls(db, "collection", ids)
+    for item in items:
+        if item.primary_image_id:
+            item.image_url = urls.get(item.id)
 
 
 class CollectionService:
     async def list_active(self, db: AsyncSession) -> list[CollectionResponse]:
         cols = await _repo.list_active(db)
-        return [CollectionResponse.model_validate(c) for c in cols]
+        results = [CollectionResponse.model_validate(c) for c in cols]
+        await _attach_image_urls(db, results)
+        return results
 
     async def list_admin(
         self,
@@ -47,9 +69,8 @@ class CollectionService:
             sort_by=sort_by,
             sort_dir=sort_dir,
         )
-        from app.modules.collections.schemas import CollectionListItem
-
         items = [CollectionListItem.model_validate(r) for r in rows]
+        await _attach_image_urls(db, items)
         return CollectionListResponse(
             items=items,
             total=total,
@@ -62,7 +83,9 @@ class CollectionService:
         col = await _repo.get_by_slug(db, slug)
         if not col:
             raise NotFoundError("Collection not found")
-        return CollectionResponse.model_validate(col)
+        result = CollectionResponse.model_validate(col)
+        await _attach_image_urls(db, [result])
+        return result
 
     async def get_detail(
         self, db: AsyncSession, col_id: uuid.UUID
@@ -73,6 +96,7 @@ class CollectionService:
         count = await _repo.get_product_count(db, col_id)
         data = CollectionDetailResponse.model_validate(col)
         data.product_count = count
+        await _attach_image_urls(db, [data])
         return data
 
     async def create(
@@ -113,6 +137,7 @@ class CollectionService:
         count = await _repo.get_product_count(db, col_id)
         result = CollectionDetailResponse.model_validate(col)
         result.product_count = count
+        await _attach_image_urls(db, [result])
         return result
 
     async def delete(self, db: AsyncSession, col_id: uuid.UUID) -> None:

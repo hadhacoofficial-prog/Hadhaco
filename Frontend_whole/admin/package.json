@@ -19,6 +19,7 @@
   },
   "dependencies": {
     "@hadha/shared-api": "^0.0.1",
+    "@hadha/shared-media": "^0.0.1",
     "@hadha/shared-types": "^0.0.1",
     "@hadha/shared-ui": "^0.0.1",
     "@hadha/shared-utils": "^0.0.1",

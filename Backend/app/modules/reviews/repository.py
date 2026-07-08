@@ -7,7 +7,7 @@ from sqlalchemy import delete, func, select, text, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.modules.catalog.models import Product
-from app.modules.reviews.models import Review, ReviewImage, ReviewVote
+from app.modules.reviews.models import Review, ReviewVote
 
 
 class ReviewRepository:
@@ -220,26 +220,10 @@ class ReviewRepository:
             return None
         return dict(r._mapping)
 
-    # ── Images ────────────────────────────────────────────────────────────────
-
-    async def add_image(
-        self,
-        db: AsyncSession,
-        *,
-        review_id: uuid.UUID,
-        url: str,
-        r2_key: str | None,
-        sort_order: int = 0,
-    ) -> ReviewImage:
-        img = ReviewImage(
-            review_id=review_id, url=url, r2_key=r2_key, sort_order=sort_order
-        )
-        db.add(img)
-        await db.flush()
-        return img
-
-    async def delete_images(self, db: AsyncSession, review_id: uuid.UUID) -> None:
-        await db.execute(delete(ReviewImage).where(ReviewImage.review_id == review_id))
+    # Image CRUD is no longer owned by this repository — review images go
+    # through UniversalImageService (app.modules.media), which owns the
+    # universal images/image_variants tables. `Review.images` remains
+    # available read-only for convenience.
 
     # ── Votes ─────────────────────────────────────────────────────────────────
 

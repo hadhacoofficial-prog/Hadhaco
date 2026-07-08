@@ -2,9 +2,9 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime
-from typing import Literal
+from typing import Any, Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 # ── Images ────────────────────────────────────────────────────────────────────
 
@@ -14,7 +14,16 @@ class ReviewImageOut(BaseModel):
     url: str
     sort_order: int
 
-    model_config = {"from_attributes": True}
+    @classmethod
+    def from_image(cls, image: Any) -> ReviewImageOut:
+        """Built from an app.modules.media.models.Image row (module='review_photo')
+        — review images are images/image_variants rows like every other module."""
+        ready = [v for v in image.variants if v.status == "ready"]
+        best = next((v for v in ready if v.variant_name == "medium"), None) or (
+            ready[0] if ready else None
+        )
+        url = f"{best.url}?v={image.version}" if best else image.original_key
+        return cls(id=image.id, url=url, sort_order=image.sort_order)
 
 
 # ── Submit / Edit ─────────────────────────────────────────────────────────────
@@ -58,6 +67,13 @@ class ReviewOut(BaseModel):
     created_at: datetime
     updated_at: datetime
     images: list[ReviewImageOut] = []
+
+    @field_validator("images", mode="before")
+    @classmethod
+    def _build_images(cls, v: Any) -> Any:
+        if v and hasattr(v[0], "variants") and hasattr(v[0], "metadata_"):
+            return [ReviewImageOut.from_image(img) for img in v]
+        return v
 
     @property
     def status(self) -> ReviewStatus:

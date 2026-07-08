@@ -4,11 +4,11 @@ import uuid
 from datetime import UTC, datetime
 from typing import Any
 
-from fastapi import HTTPException, UploadFile, status
+from fastapi import BackgroundTasks, HTTPException, UploadFile, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.events import ReviewRequestEvent, event_bus
-from app.modules.media.service import MediaService
+from app.modules.media.universal_service import UniversalImageService
 from app.modules.reviews.models import Review, ReviewVote
 from app.modules.reviews.repository import ReviewRepository
 from app.modules.reviews.schemas import AdminReviewOut, ReviewCreate, ReviewUpdate
@@ -17,7 +17,7 @@ from app.modules.reviews.schemas import AdminReviewOut, ReviewCreate, ReviewUpda
 class ReviewService:
     def __init__(self) -> None:
         self._repo = ReviewRepository()
-        self._media = MediaService()
+        self._images = UniversalImageService()
 
     # ── Submit ────────────────────────────────────────────────────────────────
 
@@ -29,6 +29,7 @@ class ReviewService:
         customer_name: str | None,
         data: ReviewCreate,
         images: list[UploadFile] | None = None,
+        background_tasks: BackgroundTasks | None = None,
     ) -> Review:
         existing = await self._repo.get_by_product_user(
             db, product_id=data.product_id, user_id=user_id
@@ -57,7 +58,19 @@ class ReviewService:
         )
 
         if images:
-            await self._attach_images(db, review_id=review.id, images=images)
+            from app.modules.media.universal_service import UniversalImageServiceError
+
+            try:
+                await self._attach_images(
+                    db,
+                    review_id=review.id,
+                    images=images,
+                    background_tasks=background_tasks or BackgroundTasks(),
+                )
+            except UniversalImageServiceError as exc:
+                raise HTTPException(
+                    status.HTTP_422_UNPROCESSABLE_ENTITY, str(exc)
+                ) from exc
 
         await db.commit()
         await db.refresh(review)
@@ -279,13 +292,19 @@ class ReviewService:
         *,
         review_id: uuid.UUID,
         images: list[UploadFile],
+        background_tasks: BackgroundTasks,
     ) -> None:
         for i, upload in enumerate(images[:5]):  # max 5 images
             content = await upload.read()
-            key = f"reviews/{review_id}/{i}_{upload.filename}"
-            url = self._media.upload_bytes(
-                content, key=key, content_type=upload.content_type or "image/jpeg"
+            image = await self._images.upload(
+                db,
+                preset_id="review_photo",
+                file_bytes=content,
+                filename=upload.filename or "review.jpg",
+                content_type=upload.content_type or "image/jpeg",
+                owner_type="review",
+                owner_id=review_id,
+                uploaded_by=None,
+                background_tasks=background_tasks,
             )
-            await self._repo.add_image(
-                db, review_id=review_id, url=url, r2_key=key, sort_order=i
-            )
+            await self._images.reorder(db, [(image.id, i)])

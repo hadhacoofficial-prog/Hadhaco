@@ -35,10 +35,10 @@ export function MobileBottomNav() {
   return (
     <nav
       aria-label="Primary mobile navigation"
-      className="fixed bottom-0 left-0 right-0 z-40 lg:hidden bg-background/95 backdrop-blur border-t border-border"
+      className="fixed bottom-3 left-3 right-3 z-40 lg:hidden"
       style={{ paddingBottom: "env(safe-area-inset-bottom)" }}
     >
-      <ul className="grid grid-cols-5">
+      <ul className="grid grid-cols-5 rounded-2xl bg-background/95 backdrop-blur border border-border/60 shadow-[0_-4px_24px_rgba(0,0,0,0.08)] px-1 py-1.5">
         {items.map((it) => {
           const active = it.match(path);
           const Icon = it.icon;
@@ -46,19 +46,28 @@ export function MobileBottomNav() {
             <li key={it.label}>
               <Link
                 to={it.to}
-                className={`flex flex-col items-center justify-center gap-1 py-2.5 text-[10px] tracking-[0.14em] uppercase transition ${
-                  active ? "text-primary" : "text-muted-foreground"
-                }`}
+                className="relative flex flex-col items-center justify-center gap-1 py-2 rounded-xl text-[10px] tracking-[0.14em] uppercase transition-colors"
               >
-                <span className="relative">
-                  <Icon className="size-5" />
+                {active && (
+                  <span className="absolute inset-0 rounded-xl bg-primary/10 transition-all duration-300" />
+                )}
+                <span
+                  className={`relative flex items-center justify-center transition-transform duration-300 ${active ? "scale-110" : ""}`}
+                >
+                  <Icon
+                    className={`size-5 transition-colors ${active ? "text-primary" : "text-muted-foreground"}`}
+                  />
                   {"badge" in it && it.badge ? (
                     <span className="absolute -top-1.5 -right-2 bg-accent text-accent-foreground text-[9px] font-medium rounded-full size-4 flex items-center justify-center">
                       {it.badge}
                     </span>
                   ) : null}
                 </span>
-                {it.label}
+                <span
+                  className={`relative transition-colors ${active ? "text-primary" : "text-muted-foreground"}`}
+                >
+                  {it.label}
+                </span>
               </Link>
             </li>
           );

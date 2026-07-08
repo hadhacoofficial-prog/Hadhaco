@@ -32,7 +32,7 @@ class Settings(BaseSettings):
     SECRET_KEY: str
     ENCRYPTION_KEY: str
     ALLOWED_ORIGINS: str = (
-        "http://localhost:3000,http://localhost:5173,http://localhost:8080,http://localhost:8081,http://www.localhost:3000,http://www.localhost:5173,http://www.localhost:8080,http://www.localhost:8081"
+        "http://localhost:8081,http://127.0.0.1:8081,http://localhost:3000,http://localhost:5173,http://localhost:8080,http://localhost:8081,http://www.localhost:3000,http://www.localhost:5173,http://www.localhost:8080,http://www.localhost:8081"
     )
     ALLOWED_HOSTS: str = "localhost,127.0.0.1"
 

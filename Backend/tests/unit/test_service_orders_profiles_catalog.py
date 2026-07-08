@@ -399,6 +399,7 @@ class TestProfileService:
         mock_profile.email = "test@example.com"
         mock_profile.full_name = "Test User"
         mock_profile.phone = None
+        mock_profile.primary_image_id = None
         mock_profile.avatar_url = None
         mock_profile.role = "customer"
         mock_profile.is_active = True

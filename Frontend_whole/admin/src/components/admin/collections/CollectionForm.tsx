@@ -1,15 +1,40 @@
-import { useState, useEffect } from "react";
+import { useCallback, useState, useEffect } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { ArrowLeft, Loader2 } from "lucide-react";
+import { ArrowLeft, Loader2, Crop as CropIcon, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { api } from "@/lib/api/client";
 import { queryKeys } from "@/lib/api/queryKeys";
 import { toUserMessage } from "@/lib/api/errors";
-import { ImageUpload } from "@/components/admin/ImageUpload";
+import {
+  UniversalImageEditor,
+  uploadImage,
+  cropImage,
+  attachImage,
+  setPrimaryImage,
+  deleteImage as deleteMediaImage,
+  type UniversalImageEditorSaveResult,
+  type ImageOutRaw,
+} from "@hadha/shared-media";
+import { PRESET_REGISTRY } from "@hadha/shared-types";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@hadha/shared-ui/ui/dialog";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import type { CollectionDetail } from "@/types/admin";
+
+const COLLECTION_PRESET = PRESET_REGISTRY.collection;
+
+function pickPreviewUrl(raw: ImageOutRaw): string | null {
+  const ready = raw.variants.filter(
+    (v) => v.breakpoint === "desktop" && v.dpr === 1 && v.status === "ready",
+  );
+  return (
+    ready.find((v) => v.variant_name === "medium")?.url ??
+    ready.find((v) => v.variant_name === "large")?.url ??
+    ready[0]?.url ??
+    null
+  );
+}
 
 function toSlug(name: string) {
   return name
@@ -29,7 +54,6 @@ interface FormState {
   name: string;
   slug: string;
   description: string;
-  image_url: string;
   is_active: boolean;
   is_featured: boolean;
   sort_order: string;
@@ -44,7 +68,6 @@ function emptyForm(): FormState {
     name: "",
     slug: "",
     description: "",
-    image_url: "",
     is_active: true,
     is_featured: false,
     sort_order: "0",
@@ -60,7 +83,6 @@ function fromCollection(c: CollectionDetail): FormState {
     name: c.name,
     slug: c.slug,
     description: c.description ?? "",
-    image_url: c.image_url ?? "",
     is_active: c.is_active,
     is_featured: c.is_featured,
     sort_order: String(c.sort_order),
@@ -78,6 +100,14 @@ export function CollectionForm({ mode, collection }: CollectionFormProps) {
   const [slugManual, setSlugManual] = useState(mode === "edit");
   const [errors, setErrors] = useState<Record<string, string>>({});
 
+  // Image state — independent of the rest of the form since it's persisted
+  // to the media API immediately on crop-save, not deferred to form submit
+  // (mirrors ProductForm's pattern, minus the multi-image gallery).
+  const [imageId, setImageId] = useState<string | null>(collection?.primary_image_id ?? null);
+  const [imageUrl, setImageUrl] = useState<string | null>(collection?.image_url ?? null);
+  const [editorOpen, setEditorOpen] = useState(false);
+  const [imageSaving, setImageSaving] = useState(false);
+
   const navigate = useNavigate();
   const queryClient = useQueryClient();
 
@@ -88,10 +118,21 @@ export function CollectionForm({ mode, collection }: CollectionFormProps) {
   }, [form.name, slugManual, mode]);
 
   const mutation = useMutation({
-    mutationFn: (data: Record<string, unknown>) =>
-      mode === "new"
-        ? api.post<CollectionDetail>("/admin/collections", { body: data })
-        : api.patch<CollectionDetail>(`/admin/collections/${collection!.id}`, { body: data }),
+    mutationFn: async (data: Record<string, unknown>) => {
+      const result =
+        mode === "new"
+          ? await api.post<CollectionDetail>("/admin/collections", { body: data })
+          : await api.patch<CollectionDetail>(`/admin/collections/${collection!.id}`, {
+              body: data,
+            });
+      // New collections don't have an id yet when the image is uploaded, so
+      // it's uploaded unattached — attach it now that the owner id exists.
+      if (mode === "new" && imageId) {
+        await attachImage(imageId, "collection", result.id);
+        await setPrimaryImage(imageId);
+      }
+      return result;
+    },
     onSuccess: (result) => {
       queryClient.invalidateQueries({ queryKey: queryKeys.admin.collections });
       if (mode === "edit") {
@@ -102,6 +143,50 @@ export function CollectionForm({ mode, collection }: CollectionFormProps) {
     },
     onError: (e) => toast.error(toUserMessage(e)),
   });
+
+  const handleImageSave = useCallback(
+    async ({ file, geometry }: UniversalImageEditorSaveResult) => {
+      setImageSaving(true);
+      try {
+        let raw: ImageOutRaw;
+        if (file) {
+          raw = await uploadImage({
+            presetId: "collection",
+            file,
+            ownerType: "collection",
+            ownerId: collection?.id,
+          });
+          raw = await cropImage(raw.id, geometry);
+          if (collection?.id) await setPrimaryImage(raw.id);
+        } else if (imageId) {
+          raw = await cropImage(imageId, geometry);
+        } else {
+          return;
+        }
+        setImageId(raw.id);
+        setImageUrl(pickPreviewUrl(raw));
+        setEditorOpen(false);
+        toast.success("Image saved.");
+      } catch (e) {
+        toast.error(toUserMessage(e as Error));
+      } finally {
+        setImageSaving(false);
+      }
+    },
+    [collection?.id, imageId],
+  );
+
+  const handleRemoveImage = useCallback(async () => {
+    if (!imageId) return;
+    try {
+      await deleteMediaImage(imageId);
+      setImageId(null);
+      setImageUrl(null);
+      toast.success("Image removed.");
+    } catch (e) {
+      toast.error(toUserMessage(e as Error));
+    }
+  }, [imageId]);
 
   function set(field: keyof FormState, value: unknown) {
     setForm((f) => ({ ...f, [field]: value }));
@@ -124,7 +209,6 @@ export function CollectionForm({ mode, collection }: CollectionFormProps) {
       name: form.name.trim(),
       slug: form.slug.trim(),
       description: form.description.trim() || null,
-      image_url: form.image_url.trim() || null,
       is_active: form.is_active,
       is_featured: form.is_featured,
       sort_order: parseInt(form.sort_order) || 0,
@@ -135,8 +219,6 @@ export function CollectionForm({ mode, collection }: CollectionFormProps) {
     };
     mutation.mutate(payload);
   }
-
-  const uploadUrl = collection ? `/admin/collections/${collection.id}/image` : "";
 
   return (
     <div>
@@ -310,29 +392,61 @@ export function CollectionForm({ mode, collection }: CollectionFormProps) {
             </section>
 
             {/* Image */}
-            <section className="bg-background border border-border p-6">
-              {mode === "new" ? (
-                <div className="space-y-2">
-                  <p className="text-[11px] uppercase tracking-[0.15em] text-muted-foreground">
-                    Image
-                  </p>
-                  <p className="text-xs text-muted-foreground">
-                    Save the collection first, then upload an image from the detail page.
-                  </p>
+            <section className="bg-background border border-border p-6 space-y-3">
+              <p className="text-[11px] uppercase tracking-[0.15em] text-muted-foreground">
+                Collection Image
+              </p>
+              {imageUrl ? (
+                <div className="relative group w-full aspect-video bg-secondary overflow-hidden border border-border">
+                  <img src={imageUrl} alt="" className="w-full h-full object-cover" />
+                  <div className="absolute inset-0 bg-foreground/0 group-hover:bg-foreground/40 transition-all flex items-center justify-center gap-2 opacity-0 group-hover:opacity-100">
+                    <button
+                      type="button"
+                      onClick={() => setEditorOpen(true)}
+                      className="bg-background text-foreground text-xs px-3 py-1.5 hover:bg-secondary transition flex items-center gap-1.5"
+                    >
+                      <CropIcon className="size-3.5" />
+                      Edit crop
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (confirm("Remove this image?")) handleRemoveImage();
+                      }}
+                      className="bg-destructive text-destructive-foreground text-xs px-3 py-1.5 hover:opacity-90 transition flex items-center gap-1.5"
+                    >
+                      <Trash2 className="size-3.5" />
+                      Remove
+                    </button>
+                  </div>
                 </div>
               ) : (
-                <ImageUpload
-                  uploadUrl={uploadUrl}
-                  currentImageUrl={form.image_url || null}
-                  label="Collection Image"
-                  onUploaded={(url) => set("image_url", url)}
-                  onRemove={() => {
-                    set("image_url", "");
-                    api.delete(`/admin/collections/${collection!.id}/image`).catch(() => {});
-                  }}
-                />
+                <button
+                  type="button"
+                  onClick={() => setEditorOpen(true)}
+                  className="w-full aspect-video border-2 border-dashed border-border bg-secondary/40 flex flex-col items-center justify-center gap-2 cursor-pointer hover:border-foreground/40 transition-colors"
+                >
+                  <p className="text-xs text-muted-foreground">Click to add an image</p>
+                </button>
               )}
             </section>
+
+            {editorOpen && (
+              <Dialog open onOpenChange={(open) => !open && setEditorOpen(false)}>
+                <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
+                  <DialogHeader>
+                    <DialogTitle>Collection image</DialogTitle>
+                  </DialogHeader>
+                  <UniversalImageEditor
+                    preset={COLLECTION_PRESET}
+                    existingImageSrc={imageUrl ?? undefined}
+                    saving={imageSaving}
+                    onCancel={() => setEditorOpen(false)}
+                    onSave={handleImageSave}
+                  />
+                </DialogContent>
+              </Dialog>
+            )}
 
             {/* Actions */}
             <div className="flex gap-3">

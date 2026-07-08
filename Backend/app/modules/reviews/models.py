@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import UTC, datetime
+from typing import TYPE_CHECKING
 
 from sqlalchemy import (
     VARCHAR,
@@ -19,6 +20,9 @@ from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.database import Base
+
+if TYPE_CHECKING:
+    from app.modules.media.models import Image
 
 
 class Review(Base):
@@ -77,11 +81,18 @@ class Review(Base):
         DateTime(timezone=True), nullable=True, default=None
     )
 
-    images: Mapped[list[ReviewImage]] = relationship(
-        "ReviewImage",
-        back_populates="review",
+    # Polymorphic, read-only: the universal images table's owner_type='review'
+    # rows for this review. Writes go through UniversalImageService, not this
+    # relationship — see app.modules.media.
+    images: Mapped[list[Image]] = relationship(
+        "Image",
+        primaryjoin=(
+            "and_(foreign(Image.owner_id)==Review.id, "
+            "Image.owner_type=='review', Image.deleted_at==None)"
+        ),
+        order_by="Image.sort_order",
+        viewonly=True,
         lazy="selectin",
-        cascade="all, delete-orphan",
     )
     votes: Mapped[list[ReviewVote]] = relationship(
         "ReviewVote",
@@ -89,25 +100,6 @@ class Review(Base):
         lazy="selectin",
         cascade="all, delete-orphan",
     )
-
-
-class ReviewImage(Base):
-    __tablename__ = "review_images"
-
-    id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
-    )
-    review_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("reviews.id", ondelete="CASCADE"), nullable=False
-    )
-    url: Mapped[str] = mapped_column(Text, nullable=False)
-    r2_key: Mapped[str | None] = mapped_column(VARCHAR(512), nullable=True)
-    sort_order: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), nullable=False, default=lambda: datetime.now(UTC)
-    )
-
-    review: Mapped[Review] = relationship("Review", back_populates="images")
 
 
 class ReviewVote(Base):

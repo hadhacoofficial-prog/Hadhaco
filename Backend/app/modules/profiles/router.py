@@ -1,7 +1,15 @@
 from typing import Annotated
 
 import redis.asyncio as aioredis
-from fastapi import APIRouter, Depends, File, Query, UploadFile
+from fastapi import (
+    APIRouter,
+    BackgroundTasks,
+    Depends,
+    File,
+    HTTPException,
+    Query,
+    UploadFile,
+)
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.common.response_codes import ResponseCode
@@ -14,7 +22,11 @@ from app.core.dependencies import (
     require_super_admin,
 )
 from app.core.redis import get_redis, safe_redis_delete
-from app.modules.media.service import MediaService
+from app.modules.media.repository import ImageRepository
+from app.modules.media.universal_service import (
+    UniversalImageService,
+    UniversalImageServiceError,
+)
 from app.modules.profiles.models import Profile
 from app.modules.profiles.schemas import (
     AdminUserListResponse,
@@ -27,11 +39,28 @@ from app.modules.profiles.service import ProfileService
 
 router = APIRouter()
 _svc = ProfileService()
-_media_svc = MediaService()
+_universal = UniversalImageService()
+_image_repo = ImageRepository()
 
 
 async def _invalidate(redis: aioredis.Redis, user_id: str) -> None:
     await safe_redis_delete(redis, profile_cache_key(user_id))
+
+
+async def _to_profile_response(db: AsyncSession, profile: Profile) -> ProfileResponse:
+    result = ProfileResponse.model_validate(profile)
+    if result.primary_image_id:
+        # get_primary_variant_urls looks up by owner_id (the profile's own
+        # id), not by primary_image_id (the Image row's own id).
+        urls = await _image_repo.get_primary_variant_urls(
+            db,
+            "user",
+            [result.id],
+            variant_name="avatar",
+            breakpoint="all",
+        )
+        result.avatar_url = urls.get(result.id)
+    return result
 
 
 # ── Customer profile endpoints ────────────────────────────────────────────────
@@ -40,9 +69,10 @@ async def _invalidate(redis: aioredis.Redis, user_id: str) -> None:
 @router.get("/me", response_model=BaseSuccessResponse[ProfileResponse])
 async def get_my_profile(
     current_user: Profile = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
 ) -> BaseSuccessResponse[ProfileResponse]:
     return ok(
-        ProfileResponse.model_validate(current_user),
+        await _to_profile_response(db, current_user),
         ResponseCode.USER_PROFILE_FETCHED,
         "Profile fetched successfully",
     )
@@ -58,7 +88,7 @@ async def update_my_profile(
     profile = await _svc.update_profile(db, current_user.id, data)
     await _invalidate(redis, str(current_user.id))
     return ok(
-        ProfileResponse.model_validate(profile),
+        await _to_profile_response(db, profile),
         ResponseCode.USER_PROFILE_UPDATED,
         "Profile updated successfully",
     )
@@ -66,17 +96,31 @@ async def update_my_profile(
 
 @router.patch("/me/avatar", response_model=BaseSuccessResponse[ProfileResponse])
 async def update_avatar(
+    background_tasks: BackgroundTasks,
     file: UploadFile = File(...),
     current_user: Profile = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
     redis: aioredis.Redis = Depends(get_redis),
 ) -> BaseSuccessResponse[ProfileResponse]:
     file_bytes = await file.read()
-    avatar_url = _media_svc.upload_avatar(file_bytes, str(current_user.id))
-    profile = await _svc.update_avatar(db, current_user.id, avatar_url)
+    try:
+        image = await _universal.upload(
+            db,
+            preset_id="avatar",
+            file_bytes=file_bytes,
+            filename=file.filename or "avatar.jpg",
+            content_type=file.content_type or "image/jpeg",
+            owner_type="user",
+            owner_id=current_user.id,
+            uploaded_by=current_user.id,
+            background_tasks=background_tasks,
+        )
+    except UniversalImageServiceError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    profile = await _svc.update_avatar(db, current_user.id, image.id)
     await _invalidate(redis, str(current_user.id))
     return ok(
-        ProfileResponse.model_validate(profile),
+        await _to_profile_response(db, profile),
         ResponseCode.USER_AVATAR_UPDATED,
         "Avatar updated successfully",
     )
@@ -126,7 +170,7 @@ async def change_user_role(
     profile = await _svc.change_role(db, user_id, data.role, current_user.id)
     await _invalidate(redis, user_id)
     return ok(
-        ProfileResponse.model_validate(profile),
+        await _to_profile_response(db, profile),
         ResponseCode.USER_ROLE_CHANGED,
         "User role updated successfully",
     )
@@ -145,7 +189,7 @@ async def set_user_status(
     profile = await _svc.set_status(db, user_id, data.is_active, current_user.id)
     await _invalidate(redis, user_id)
     return ok(
-        ProfileResponse.model_validate(profile),
+        await _to_profile_response(db, profile),
         ResponseCode.USER_STATUS_CHANGED,
         "User status updated successfully",
     )

@@ -22,6 +22,9 @@ from app.modules.categories.schemas import (
     NavCategoryItem,
     NavigationCategoriesResponse,
 )
+from app.modules.media.repository import ImageRepository
+
+_image_repo = ImageRepository()
 
 _GENDER_SLUG_MAP: dict[str, str] = {
     "shop-women": "women",
@@ -37,11 +40,13 @@ class CategoryService:
 
     async def get_tree(self, db: AsyncSession) -> list[CategoryTreeNode]:
         all_cats = await self._repo.list_all_active(db)
-        return _build_tree(all_cats, parent_id=None)
+        url_map = await self._image_urls(db, all_cats)
+        return _build_tree(all_cats, parent_id=None, url_map=url_map)
 
     async def get_navbar(self, db: AsyncSession) -> NavbarCategoriesResponse:
         all_cats = await self._repo.list_all_active(db)
-        tree = _build_tree(all_cats, parent_id=None)
+        url_map = await self._image_urls(db, all_cats)
+        tree = _build_tree(all_cats, parent_id=None, url_map=url_map)
 
         buckets: dict[str, list[CategoryTreeNode]] = {
             "women": [],
@@ -58,7 +63,8 @@ class CategoryService:
 
     async def get_navigation(self, db: AsyncSession) -> NavigationCategoriesResponse:
         all_cats = await self._repo.list_all_active(db)
-        tree = _build_tree(all_cats, parent_id=None)
+        url_map = await self._image_urls(db, all_cats)
+        tree = _build_tree(all_cats, parent_id=None, url_map=url_map)
 
         buckets: dict[str, list[NavCategoryItem]] = {
             "women": [],
@@ -96,6 +102,15 @@ class CategoryService:
             raise NotFoundError(f"Category '{slug}' not found")
         return cat
 
+    @staticmethod
+    async def _image_urls(
+        db: AsyncSession, cats: list[Category]
+    ) -> dict[uuid.UUID, str]:
+        """Keyed by each category's own id (Image.owner_id), not by
+        primary_image_id (which is the Image row's own id)."""
+        ids = [c.id for c in cats if c.primary_image_id]
+        return await _image_repo.get_primary_variant_urls(db, "category", ids)
+
     async def get_detail(
         self, db: AsyncSession, cat_id: str | uuid.UUID
     ) -> CategoryDetailResponse:
@@ -107,6 +122,9 @@ class CategoryService:
         result = CategoryDetailResponse.model_validate(cat)
         result.product_count = product_count
         result.children_count = children_count
+        if cat.primary_image_id:
+            urls = await self._image_urls(db, [cat])
+            result.image_url = urls.get(cat.id)
         return result
 
     async def list_admin(
@@ -128,6 +146,11 @@ class CategoryService:
             is_active=is_active,
         )
         items = [CategoryAdminListItem.model_validate(dict(r)) for r in rows]
+        ids = [i.id for i in items if i.primary_image_id]
+        urls = await _image_repo.get_primary_variant_urls(db, "category", ids)
+        for item in items:
+            if item.primary_image_id:
+                item.image_url = urls.get(item.id)
         return CategoryAdminListResponse(
             items=items,
             total=total,
@@ -217,8 +240,11 @@ class CategoryService:
 
 
 def _build_tree(
-    cats: list[Category], parent_id: uuid.UUID | None
+    cats: list[Category],
+    parent_id: uuid.UUID | None,
+    url_map: dict[uuid.UUID, str] | None = None,
 ) -> list[CategoryTreeNode]:
+    url_map = url_map or {}
     nodes = []
     for c in cats:
         if c.parent_id == parent_id:
@@ -227,9 +253,9 @@ def _build_tree(
                 parent_id=c.parent_id,
                 name=c.name,
                 slug=c.slug,
-                image_url=c.image_url,
+                image_url=(url_map.get(c.id) if c.primary_image_id else None),
                 sort_order=c.sort_order,
             )
-            node.children = _build_tree(cats, parent_id=c.id)
+            node.children = _build_tree(cats, parent_id=c.id, url_map=url_map)
             nodes.append(node)
     return sorted(nodes, key=lambda n: n.sort_order)

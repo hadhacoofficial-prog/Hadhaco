@@ -568,12 +568,20 @@ class TestCatalogServiceExtra:
         db = AsyncMock()
         mock_product = MagicMock()
         img = MagicMock()
+        img.id = uuid.uuid4()
         img.is_primary = False
         img.sort_order = 0
-        img.url = "https://cdn/first.jpg"
-        img.medium_url = None
-        img.thumbnail_url = None
+        img.alt_text = None
+        img.metadata_ = {}
+        img.original_key = "products/p/i/original.jpg"
         img.updated_at = datetime(2024, 1, 1, tzinfo=UTC)
+        large_variant = MagicMock()
+        large_variant.variant_name = "large"
+        large_variant.breakpoint = "desktop"
+        large_variant.dpr = 1
+        large_variant.status = "ready"
+        large_variant.url = "https://cdn/first.jpg"
+        img.variants = [large_variant]
         mock_product.images = [img]
         mock_product.id = uuid.uuid4()
         mock_product.sku = "SKU1"

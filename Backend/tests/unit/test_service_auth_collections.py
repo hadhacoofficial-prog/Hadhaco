@@ -17,6 +17,8 @@ class TestCollectionServiceSuccessPaths:
     async def test_get_by_slug_returns_validated_response(self):
         db = AsyncMock()
         mock_col = MagicMock()
+        validated = MagicMock()
+        validated.primary_image_id = None
         with (
             patch(
                 "app.modules.collections.service._repo.get_by_slug",
@@ -24,7 +26,7 @@ class TestCollectionServiceSuccessPaths:
             ),
             patch(
                 "app.modules.collections.service.CollectionResponse.model_validate",
-                return_value=MagicMock(),
+                return_value=validated,
             ) as mock_mv,
         ):
             await self.svc.get_by_slug(db, "silver-rings")
@@ -61,6 +63,8 @@ class TestCollectionServiceSuccessPaths:
         mock_existing = MagicMock()
         mock_existing.slug = "old-slug"
         mock_updated = MagicMock()
+        validated = MagicMock()
+        validated.primary_image_id = None
         with (
             patch(
                 "app.modules.collections.service._repo.get_by_id",
@@ -76,7 +80,7 @@ class TestCollectionServiceSuccessPaths:
             ),
             patch(
                 "app.modules.collections.service.CollectionResponse.model_validate",
-                return_value=MagicMock(),
+                return_value=validated,
             ),
         ):
             await self.svc.update(
@@ -189,6 +193,8 @@ class TestCollectionServiceSuccessPaths:
     async def test_list_active_returns_validated_list(self):
         db = AsyncMock()
         mock_col = MagicMock()
+        validated = MagicMock()
+        validated.primary_image_id = None
         with (
             patch(
                 "app.modules.collections.service._repo.list_active",
@@ -196,7 +202,7 @@ class TestCollectionServiceSuccessPaths:
             ),
             patch(
                 "app.modules.collections.service.CollectionResponse.model_validate",
-                return_value=MagicMock(),
+                return_value=validated,
             ),
         ):
             result = await self.svc.list_active(db)

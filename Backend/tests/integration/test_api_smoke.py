@@ -32,6 +32,36 @@ class TestAppWiring:
         for fragment in expected_fragments:
             assert fragment in joined, f"missing route: {fragment}"
 
+    async def test_openapi_lists_universal_media_routes(self, app):
+        """The Universal Image System is now the only image pipeline for
+        products/collections/categories/avatars/reviews — the Phase 3
+        cutover deleted MediaService and every legacy per-module image
+        endpoint. See docs/architecture/
+        Universal_Responsive_Image_System_Design.md §17."""
+        schema = app.openapi()
+        paths = schema["paths"].keys()
+        expected_fragments = [
+            "/api/v1/admin/media/presets",
+            "/api/v1/admin/media/{preset_id}/upload",
+            "/api/v1/admin/media/{image_id}/crop",
+            "/api/v1/admin/media/{image_id}/replace",
+            "/api/v1/admin/media/{image_id}/attach",
+            "/api/v1/admin/media/reorder",
+            "/api/v1/admin/media/{image_id}/regenerate",
+        ]
+        joined = " ".join(paths)
+        for fragment in expected_fragments:
+            assert fragment in joined, f"missing route: {fragment}"
+
+        # Legacy per-module endpoints are gone, not just deprecated.
+        removed_fragments = [
+            "/api/v1/admin/products/{product_id}/images",
+            "/api/v1/admin/collections/{col_id}/image",
+            "/api/v1/admin/categories/{cat_id}/image",
+        ]
+        for fragment in removed_fragments:
+            assert fragment not in joined, f"legacy route should be removed: {fragment}"
+
 
 class TestAuthGuards:
     async def test_me_requires_token(self, client):
@@ -45,6 +75,21 @@ class TestAuthGuards:
     async def test_invalid_bearer_rejected(self, client):
         resp = await client.get(
             "/api/v1/me", headers={"Authorization": "Bearer not-a-real-token"}
+        )
+        assert resp.status_code == 401
+
+    async def test_universal_media_presets_requires_token(self, client):
+        resp = await client.get("/api/v1/admin/media/presets")
+        assert resp.status_code == 401
+
+    async def test_universal_media_reorder_requires_token(self, client):
+        resp = await client.patch(
+            "/api/v1/admin/media/reorder",
+            json={
+                "owner_type": "product",
+                "owner_id": "00000000-0000-0000-0000-000000000000",
+                "items": [],
+            },
         )
         assert resp.status_code == 401
 

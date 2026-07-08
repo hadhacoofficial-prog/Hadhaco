@@ -8,15 +8,15 @@ from sqlalchemy.orm import selectinload
 from app.modules.catalog.models import (
     Product,
     ProductAttribute,
-    ProductImage,
     ProductVariant,
 )
+from app.modules.media.models import Image
 
 
 class ProductRepository:
     def _base_query(self, include_deleted: bool = False):
         q = select(Product).options(
-            selectinload(Product.images),
+            selectinload(Product.images).selectinload(Image.variants),
             selectinload(Product.variants),
             selectinload(Product.attributes),
         )
@@ -160,7 +160,10 @@ class ProductRepository:
         order = sort_col.desc() if sort_dir == "desc" else sort_col.asc()
 
         list_q = (
-            base_q.options(selectinload(Product.images), selectinload(Product.variants))
+            base_q.options(
+                selectinload(Product.images).selectinload(Image.variants),
+                selectinload(Product.variants),
+            )
             .order_by(order)
             .offset((page - 1) * page_size)
             .limit(page_size)
@@ -190,56 +193,12 @@ class ProductRepository:
             .values(deleted_at=datetime.now(UTC), status="archived")
         )
 
-    # ---------- Images ----------
-
-    async def add_image(self, db: AsyncSession, data: dict[str, Any]) -> ProductImage:
-        img = ProductImage(**data)
-        db.add(img)
-        await db.flush()
-        await db.refresh(img)
-        return img
-
-    async def get_image(
-        self, db: AsyncSession, image_id: uuid.UUID
-    ) -> ProductImage | None:
-        result = await db.execute(
-            select(ProductImage).where(ProductImage.id == image_id)
-        )
-        return result.scalar_one_or_none()
-
-    async def update_image(
-        self, db: AsyncSession, image_id: uuid.UUID, data: dict[str, Any]
-    ) -> ProductImage | None:
-        await db.execute(
-            update(ProductImage).where(ProductImage.id == image_id).values(**data)
-        )
-        return await self.get_image(db, image_id)
-
-    async def delete_image(self, db: AsyncSession, image_id: uuid.UUID) -> bool:
-        result = await db.execute(
-            select(ProductImage).where(ProductImage.id == image_id)
-        )
-        img = result.scalar_one_or_none()
-        if not img:
-            return False
-        await db.delete(img)
-        return True
-
-    async def set_primary_image(
-        self, db: AsyncSession, product_id: uuid.UUID, image_id: uuid.UUID
-    ) -> None:
-        # Clear all
-        await db.execute(
-            update(ProductImage)
-            .where(ProductImage.product_id == product_id)
-            .values(is_primary=False)
-        )
-        # Set new primary
-        await db.execute(
-            update(ProductImage)
-            .where(ProductImage.id == image_id)
-            .values(is_primary=True)
-        )
+    # Image CRUD is no longer owned by this repository — every image
+    # operation (upload/crop/replace/reorder/delete/set-primary) goes
+    # through ImageRepository / UniversalImageService
+    # (app.modules.media), which own the universal images/image_variants
+    # tables. `Product.images` above remains available read-only for
+    # convenience in list/detail queries.
 
     # ---------- Variants ----------
 

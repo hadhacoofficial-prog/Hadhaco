@@ -21,7 +21,19 @@ import { api } from "@/lib/api/client";
 import { queryKeys } from "@/lib/api/queryKeys";
 import { toUserMessage } from "@/lib/api/errors";
 import { formatINR } from "@/lib/format";
-import { ImageCropModal, type SavedCrop } from "./ImageCropModal";
+import {
+  UniversalImageEditor,
+  uploadImage,
+  cropImage,
+  replaceImage,
+  deleteImage as deleteMediaImage,
+  setPrimaryImage,
+  type ImageOutRaw,
+  type UniversalImageEditorSaveResult,
+} from "@hadha/shared-media";
+import { PRESET_REGISTRY } from "@hadha/shared-types";
+import type { Breakpoint, BreakpointCropGeometry, CropGeometry } from "@hadha/shared-types";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@hadha/shared-ui/ui/dialog";
 import type {
   CategoryTreeNode,
   CollectionDetail,
@@ -32,6 +44,46 @@ import type {
   ProductImage,
   ProductVariant,
 } from "@/types/admin";
+
+const PRODUCT_PRESET = PRESET_REGISTRY.product;
+
+/** Converts the media API's ImageOut shape into the flat ProductImage shape
+ * the rest of this form (and the storefront) expects — mirrors exactly what
+ * Backend/app/modules/catalog/schemas.py's ProductImageResponse.from_image()
+ * does server-side, since the universal media endpoints return ImageOut,
+ * not ProductImageResponse. */
+function mapImageOutToProductImage(raw: ImageOutRaw): ProductImage {
+  const ready = raw.variants.filter(
+    (v) => v.breakpoint === "desktop" && v.dpr === 1 && v.status === "ready",
+  );
+  const byName = (name: string) => ready.find((v) => v.variant_name === name)?.url ?? null;
+  const cropDesktop = raw.metadata.crops?.desktop as
+    | {
+        box: { x: number; y: number; width: number; height: number };
+        zoom: number;
+        rotation: number;
+      }
+    | undefined;
+  const large = byName("large");
+  const medium = byName("medium");
+  return {
+    id: raw.id,
+    url: large ?? medium ?? byName("thumbnail") ?? "",
+    thumbnail_url: byName("thumbnail"),
+    medium_url: medium,
+    large_url: large,
+    alt_text: raw.alt_text,
+    is_primary: raw.is_primary,
+    sort_order: raw.sort_order,
+    crop_x: cropDesktop?.box.x ?? null,
+    crop_y: cropDesktop?.box.y ?? null,
+    crop_width: cropDesktop?.box.width ?? null,
+    crop_height: cropDesktop?.box.height ?? null,
+    crop_zoom: cropDesktop?.zoom ?? null,
+    crop_rotation: cropDesktop?.rotation ?? null,
+    updated_at: raw.updated_at,
+  };
+}
 
 // ─── Local types ──────────────────────────────────────────────────────────────
 
@@ -66,7 +118,7 @@ interface PendingImage {
   /** Set once the admin has cropped this image in the editor; applied right
    * after the file is uploaded. NULL means "upload as-is" (backward
    * compatible with the pre-cropping flow). */
-  crop: SavedCrop | null;
+  crop: CropGeometry | null;
 }
 
 /** Which image is currently open in the crop editor, and where its bytes
@@ -2492,7 +2544,7 @@ export function ProductForm({ mode, initialProduct, initialCollectionIds }: Prod
     async (imageId: string) => {
       if (!initialProduct) return;
       try {
-        await api.delete(`/admin/products/${initialProduct.id}/images/${imageId}`);
+        await deleteMediaImage(imageId);
         setSavedImages((prev) => prev.filter((i) => i.id !== imageId));
         queryClient.invalidateQueries({ queryKey: queryKeys.admin.product(initialProduct.id) });
         toast.success("Image deleted.");
@@ -2507,7 +2559,7 @@ export function ProductForm({ mode, initialProduct, initialCollectionIds }: Prod
     async (imageId: string) => {
       if (!initialProduct) return;
       try {
-        await api.patch(`/admin/products/${initialProduct.id}/images/${imageId}/primary`);
+        await setPrimaryImage(imageId);
         setSavedImages((prev) => prev.map((i) => ({ ...i, is_primary: i.id === imageId })));
         toast.success("Primary image updated.");
       } catch (e) {
@@ -2521,12 +2573,8 @@ export function ProductForm({ mode, initialProduct, initialCollectionIds }: Prod
     async (imageId: string, file: File) => {
       if (!initialProduct) return;
       try {
-        const fd = new FormData();
-        fd.append("file", file);
-        const updated = await api.put<ProductImage>(
-          `/admin/products/${initialProduct.id}/images/${imageId}/replace`,
-          { body: fd },
-        );
+        const raw = await replaceImage(imageId, file);
+        const updated = mapImageOutToProductImage(raw);
         setSavedImages((prev) => prev.map((i) => (i.id === imageId ? updated : i)));
         queryClient.invalidateQueries({ queryKey: queryKeys.admin.product(initialProduct.id) });
         // The new original has no crop applied yet — open the editor for it.
@@ -2553,22 +2601,32 @@ export function ProductForm({ mode, initialProduct, initialCollectionIds }: Prod
     if (!activeCropTarget) return null;
     if (activeCropTarget.kind === "pending") {
       const img = pendingImages.find((i) => i.id === activeCropTarget.id);
-      return img ? { src: img.preview, crop: img.crop } : null;
+      if (!img) return null;
+      const initialCrops = img.crop
+        ? (img.crop.crops as Partial<Record<Breakpoint, BreakpointCropGeometry>>)
+        : undefined;
+      return { src: img.preview, initialCrops };
     }
     const img = savedImages.find((i) => i.id === activeCropTarget.id);
     if (!img) return null;
-    const crop: SavedCrop | null =
+    const initialCrops: Partial<Record<Breakpoint, BreakpointCropGeometry>> | undefined =
       img.crop_x != null && img.crop_y != null && img.crop_width != null && img.crop_height != null
         ? {
-            x: img.crop_x,
-            y: img.crop_y,
-            width: img.crop_width,
-            height: img.crop_height,
-            zoom: img.crop_zoom ?? 1,
-            rotation: img.crop_rotation ?? 0,
+            desktop: {
+              aspectRatio: PRODUCT_PRESET.aspectRatio.desktop ?? null,
+              box: {
+                x: img.crop_x,
+                y: img.crop_y,
+                width: img.crop_width,
+                height: img.crop_height,
+              },
+              zoom: img.crop_zoom ?? 1,
+              pan: { x: 0, y: 0 },
+              rotation: img.crop_rotation ?? 0,
+            },
           }
-        : null;
-    return { src: img.url, crop };
+        : undefined;
+    return { src: img.url, initialCrops };
   }, [activeCropTarget, pendingImages, savedImages]);
 
   const handleCropCancel = useCallback(() => {
@@ -2576,14 +2634,14 @@ export function ProductForm({ mode, initialProduct, initialCollectionIds }: Prod
   }, [dequeueCrop]);
 
   const handleCropSave = useCallback(
-    async (crop: SavedCrop) => {
+    async ({ geometry }: UniversalImageEditorSaveResult) => {
       if (!activeCropTarget) return;
 
       if (activeCropTarget.kind === "pending") {
         // Not uploaded yet — just remember the crop, it's applied right
         // after this image's own upload call during Save.
         setPendingImages((prev) =>
-          prev.map((i) => (i.id === activeCropTarget.id ? { ...i, crop } : i)),
+          prev.map((i) => (i.id === activeCropTarget.id ? { ...i, crop: geometry } : i)),
         );
         dequeueCrop();
         return;
@@ -2592,19 +2650,8 @@ export function ProductForm({ mode, initialProduct, initialCollectionIds }: Prod
       if (!initialProduct) return;
       setCropSaving(true);
       try {
-        const updated = await api.patch<ProductImage>(
-          `/admin/products/${initialProduct.id}/images/${activeCropTarget.id}/crop`,
-          {
-            body: {
-              crop_x: crop.x,
-              crop_y: crop.y,
-              crop_width: crop.width,
-              crop_height: crop.height,
-              crop_zoom: crop.zoom,
-              crop_rotation: crop.rotation,
-            },
-          },
-        );
+        const raw = await cropImage(activeCropTarget.id, geometry);
+        const updated = mapImageOutToProductImage(raw);
         setSavedImages((prev) => prev.map((i) => (i.id === activeCropTarget.id ? updated : i)));
         queryClient.invalidateQueries({ queryKey: queryKeys.admin.product(initialProduct.id) });
         queryClient.invalidateQueries({ queryKey: ["admin", "products"] });
@@ -2708,21 +2755,12 @@ export function ProductForm({ mode, initialProduct, initialCollectionIds }: Prod
   // can put the final, correctly-cropped row into `savedImages` directly,
   // rather than the pre-crop upload response.
   async function applyPendingCrop(
-    productId: string,
     imageId: string,
-    crop: SavedCrop | null,
+    crop: CropGeometry | null,
   ): Promise<ProductImage | null> {
     if (!crop) return null;
-    return api.patch<ProductImage>(`/admin/products/${productId}/images/${imageId}/crop`, {
-      body: {
-        crop_x: crop.x,
-        crop_y: crop.y,
-        crop_width: crop.width,
-        crop_height: crop.height,
-        crop_zoom: crop.zoom,
-        crop_rotation: crop.rotation,
-      },
-    });
+    const raw = await cropImage(imageId, crop);
+    return mapImageOutToProductImage(raw);
   }
 
   async function handleCreate(publishNow: boolean) {
@@ -2744,14 +2782,16 @@ export function ProductForm({ mode, initialProduct, initialCollectionIds }: Prod
 
       for (let i = 0; i < pendingImages.length; i++) {
         const img = pendingImages[i];
-        const fd = new FormData();
-        fd.append("file", img.file);
-        const created = await api.post<ProductImage>(
-          `/admin/products/${product.id}/images?is_primary=${i === 0}`,
-          { body: fd },
-        );
-        const cropped = await applyPendingCrop(product.id, created.id, img.crop);
-        setSavedImages((prev) => [...prev, cropped ?? created]);
+        const raw = await uploadImage({
+          presetId: "product",
+          file: img.file,
+          ownerType: "product",
+          ownerId: product.id,
+        });
+        if (i === 0) await setPrimaryImage(raw.id);
+        const cropped = await applyPendingCrop(raw.id, img.crop);
+        const final = cropped ?? mapImageOutToProductImage(raw);
+        setSavedImages((prev) => [...prev, i === 0 ? { ...final, is_primary: true } : final]);
       }
       setPendingImages([]);
 
@@ -2791,20 +2831,22 @@ export function ProductForm({ mode, initialProduct, initialCollectionIds }: Prod
       // Upload new images
       for (let i = 0; i < pendingImages.length; i++) {
         const img = pendingImages[i];
-        const fd = new FormData();
-        fd.append("file", img.file);
         const isPrimary = savedImages.length === 0 && i === 0;
-        const created = await api.post<ProductImage>(
-          `/admin/products/${pid}/images?is_primary=${isPrimary}`,
-          { body: fd },
-        );
-        const cropped = await applyPendingCrop(pid, created.id, img.crop);
+        const raw = await uploadImage({
+          presetId: "product",
+          file: img.file,
+          ownerType: "product",
+          ownerId: pid,
+        });
+        if (isPrimary) await setPrimaryImage(raw.id);
+        const cropped = await applyPendingCrop(raw.id, img.crop);
+        const final = cropped ?? mapImageOutToProductImage(raw);
         // Put the final (post-crop, if any) row straight into local state —
         // don't wait on the query invalidation below to repopulate it, since
         // that only refetches in the background and won't re-sync this
         // form's local `savedImages` (see the initialProduct?.id-keyed sync
         // effect above, which intentionally doesn't re-run on every refetch).
-        setSavedImages((prev) => [...prev, cropped ?? created]);
+        setSavedImages((prev) => [...prev, isPrimary ? { ...final, is_primary: true } : final]);
       }
       setPendingImages([]);
 
@@ -3019,14 +3061,21 @@ export function ProductForm({ mode, initialProduct, initialCollectionIds }: Prod
           </Section>
 
           {activeCropImage && (
-            <ImageCropModal
-              open
-              imageSrc={activeCropImage.src}
-              initialCrop={activeCropImage.crop}
-              saving={cropSaving}
-              onCancel={handleCropCancel}
-              onSave={handleCropSave}
-            />
+            <Dialog open onOpenChange={(open) => !open && handleCropCancel()}>
+              <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
+                <DialogHeader>
+                  <DialogTitle>Crop image</DialogTitle>
+                </DialogHeader>
+                <UniversalImageEditor
+                  preset={PRODUCT_PRESET}
+                  existingImageSrc={activeCropImage.src}
+                  initialCrops={activeCropImage.initialCrops}
+                  saving={cropSaving}
+                  onCancel={handleCropCancel}
+                  onSave={handleCropSave}
+                />
+              </DialogContent>
+            </Dialog>
           )}
 
           <Section title="Variants" defaultOpen={false}>

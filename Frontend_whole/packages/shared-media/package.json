@@ -1,0 +1,25 @@
+{
+  "name": "@hadha/shared-media",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "test": "vitest run"
+  },
+  "devDependencies": {
+    "jsdom": "^26.1.0",
+    "vitest": "^3.2.6"
+  },
+  "peerDependencies": {
+    "@hadha/shared-api": "^0.0.1",
+    "@hadha/shared-types": "^0.0.1",
+    "@hadha/shared-ui": "^0.0.1",
+    "@hadha/shared-utils": "^0.0.1",
+    "react": "^19.2.0",
+    "react-dom": "^19.2.0",
+    "react-easy-crop": "^6.1.0"
+  }
+}

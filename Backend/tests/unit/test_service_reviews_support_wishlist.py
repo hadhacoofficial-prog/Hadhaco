@@ -4,6 +4,7 @@ import uuid
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from fastapi import BackgroundTasks
 
 import app.modules.addresses.models  # noqa: F401
 import app.modules.cart.models  # noqa: F401
@@ -67,21 +68,10 @@ class TestReviewRepositoryVotes:
 
         self.repo = ReviewRepository()
 
-    async def test_add_image(self):
-        db = _db()
-        await self.repo.add_image(
-            db,
-            review_id=uuid.uuid4(),
-            url="https://cdn/img.jpg",
-            r2_key="reviews/abc/0.jpg",
-            sort_order=0,
-        )
-        db.add.assert_called_once()
-
-    async def test_delete_images(self):
-        db = _db(MagicMock())
-        await self.repo.delete_images(db, uuid.uuid4())
-        db.execute.assert_awaited_once()
+    # add_image/delete_images were removed from ReviewRepository in the
+    # Phase 3 cutover — review images now go through
+    # UniversalImageService.upload(preset_id="review_photo"), covered by
+    # tests/unit/test_media_universal_service.py.
 
     async def test_get_vote_returns_none(self):
         db = _db(_sone(None))
@@ -726,7 +716,7 @@ class TestReviewServiceImages:
         self.svc = ReviewService()
         self.repo_cls = ReviewRepository
 
-    async def test_attach_images_calls_upload_and_add_image(self):
+    async def test_attach_images_calls_upload_and_reorder(self):
         db = AsyncMock()
         review_id = uuid.uuid4()
         mock_upload = AsyncMock()
@@ -734,13 +724,21 @@ class TestReviewServiceImages:
         mock_upload.filename = "test.jpg"
         mock_upload.content_type = "image/jpeg"
 
-        self.svc._media = MagicMock()
-        self.svc._media.upload_bytes = MagicMock(return_value="https://cdn/img.jpg")
-        with patch.object(self.repo_cls, "add_image", AsyncMock()) as mock_add:
-            await self.svc._attach_images(db, review_id=review_id, images=[mock_upload])
+        mock_image = MagicMock()
+        mock_image.id = uuid.uuid4()
+        self.svc._images = MagicMock()
+        self.svc._images.upload = AsyncMock(return_value=mock_image)
+        self.svc._images.reorder = AsyncMock()
 
-        self.svc._media.upload_bytes.assert_called_once()
-        mock_add.assert_awaited_once()
+        await self.svc._attach_images(
+            db,
+            review_id=review_id,
+            images=[mock_upload],
+            background_tasks=BackgroundTasks(),
+        )
+
+        self.svc._images.upload.assert_awaited_once()
+        self.svc._images.reorder.assert_awaited_once_with(db, [(mock_image.id, 0)])
 
     async def test_attach_images_caps_at_five(self):
         db = AsyncMock()
@@ -754,13 +752,17 @@ class TestReviewServiceImages:
             return u
 
         uploads = [_make_upload(f"{i}.jpg") for i in range(8)]
-        self.svc._media = MagicMock()
-        self.svc._media.upload_bytes = MagicMock(return_value="https://cdn/x.jpg")
+        self.svc._images = MagicMock()
+        self.svc._images.upload = AsyncMock(
+            side_effect=lambda *args, **kwargs: MagicMock(id=uuid.uuid4())
+        )
+        self.svc._images.reorder = AsyncMock()
 
-        with patch.object(self.repo_cls, "add_image", AsyncMock()) as mock_add:
-            await self.svc._attach_images(db, review_id=review_id, images=uploads)
+        await self.svc._attach_images(
+            db, review_id=review_id, images=uploads, background_tasks=BackgroundTasks()
+        )
 
-        assert mock_add.await_count == 5  # max 5
+        assert self.svc._images.upload.await_count == 5  # max 5
 
     async def test_submit_review_with_images_calls_attach(self):
         from app.modules.reviews.schemas import ReviewCreate
@@ -777,8 +779,11 @@ class TestReviewServiceImages:
         mock_upload.filename = "photo.jpg"
         mock_upload.content_type = "image/jpeg"
 
-        self.svc._media = MagicMock()
-        self.svc._media.upload_bytes = MagicMock(return_value="https://cdn/img.jpg")
+        mock_image = MagicMock()
+        mock_image.id = uuid.uuid4()
+        self.svc._images = MagicMock()
+        self.svc._images.upload = AsyncMock(return_value=mock_image)
+        self.svc._images.reorder = AsyncMock()
         with (
             patch.object(
                 self.repo_cls, "get_by_product_user", AsyncMock(return_value=None)
@@ -787,7 +792,6 @@ class TestReviewServiceImages:
                 self.repo_cls, "has_delivered_order_item", AsyncMock(return_value=True)
             ),
             patch.object(self.repo_cls, "create", AsyncMock(return_value=mock_review)),
-            patch.object(self.repo_cls, "add_image", AsyncMock()) as mock_add,
         ):
             result = await self.svc.submit_review(
                 db,
@@ -802,7 +806,7 @@ class TestReviewServiceImages:
                 images=[mock_upload],
             )
 
-        mock_add.assert_awaited_once()
+        self.svc._images.upload.assert_awaited_once()
         assert result is mock_review
 
     async def test_register_review_request_listener(self):

@@ -21,6 +21,19 @@ export interface CompanyConfig {
 
 export type CompanyConfigUpdate = Partial<CompanyConfig>;
 
+// ── Feature flags / store settings ──────────────────────────────────────────
+export interface FeatureFlagOut {
+  key: string;
+  value: boolean;
+  description: string | null;
+  updated_at: string;
+}
+
+export interface FeatureFlagUpdate {
+  value: boolean;
+  description?: string | null;
+}
+
 // ── Admin dashboard ──────────────────────────────────────────────────────────
 export interface KPIStats {
   today_orders: number;
@@ -38,6 +51,7 @@ export interface CategoryAdminListItem {
   parent_id: string | null;
   name: string;
   slug: string;
+  primary_image_id: string | null;
   image_url: string | null;
   sort_order: number;
   is_active: boolean;
@@ -60,6 +74,7 @@ export interface CategoryDetail {
   name: string;
   slug: string;
   description: string | null;
+  primary_image_id: string | null;
   image_url: string | null;
   sort_order: number;
   is_active: boolean;
@@ -97,6 +112,7 @@ export interface CollectionListItem {
   name: string;
   slug: string;
   description: string | null;
+  primary_image_id: string | null;
   image_url: string | null;
   is_active: boolean;
   is_featured: boolean;
@@ -118,6 +134,7 @@ export interface CollectionDetail {
   name: string;
   slug: string;
   description: string | null;
+  primary_image_id: string | null;
   image_url: string | null;
   is_active: boolean;
   is_featured: boolean;

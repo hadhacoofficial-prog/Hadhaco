@@ -1,6 +1,7 @@
 import type { ProductListItem } from "@/types/admin";
 import type { ProductDetail, CollectionDto, PublicReview } from "@/types/public";
 import type { Product, Collection, Review, Gender } from "@/types/shop";
+import { formatPurity } from "@/lib/format";
 
 export function toProduct(p: ProductListItem): Product {
   const availableStock = p.available_stock ?? p.stock_quantity;
@@ -64,14 +65,14 @@ export function toProductDetail(p: ProductDetail): Product {
     specifications: (() => {
       const specs: { label: string; value: string }[] = [];
       if (p.metal_type) specs.push({ label: "Metal", value: p.metal_type });
-      if (p.purity) specs.push({ label: "Purity", value: p.purity });
+      if (p.purity) specs.push({ label: "Purity", value: formatPurity(p.purity) });
       if (p.weight_grams != null) specs.push({ label: "Weight", value: `${p.weight_grams}g` });
       for (const a of p.attributes) specs.push({ label: a.name, value: a.value });
       return specs.length > 0 ? specs : undefined;
     })(),
     attributes: {
       metal: p.metal_type ?? undefined,
-      purity: p.purity ?? undefined,
+      purity: p.purity ? formatPurity(p.purity) : undefined,
       weight: p.weight_grams != null ? `${p.weight_grams}g` : undefined,
     },
     variants: p.variants.filter((v) => v.is_active).sort((a, b) => a.sort_order - b.sort_order),

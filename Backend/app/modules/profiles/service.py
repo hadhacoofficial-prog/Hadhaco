@@ -5,6 +5,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.constants import UserRole
 from app.core.exceptions import NotFoundError
+from app.modules.media.repository import ImageRepository
 from app.modules.profiles.models import Profile
 from app.modules.profiles.repository import ProfileRepository
 from app.modules.profiles.schemas import (
@@ -12,6 +13,8 @@ from app.modules.profiles.schemas import (
     AdminUserListResponse,
     ProfileUpdateRequest,
 )
+
+_image_repo = ImageRepository()
 
 
 class ProfileService:
@@ -42,9 +45,9 @@ class ProfileService:
         self,
         db: AsyncSession,
         user_id: str | uuid.UUID,
-        avatar_url: str,
+        image_id: uuid.UUID,
     ) -> Profile:
-        profile = await self._repo.update(db, user_id, {"avatar_url": avatar_url})
+        profile = await self._repo.update(db, user_id, {"primary_image_id": image_id})
         if not profile:
             raise NotFoundError("Profile not found")
         return profile
@@ -72,8 +75,18 @@ class ProfileService:
             sort_dir=sort_dir,
         )
         total_pages = math.ceil(total / page_size) if page_size else 1
+        list_items = [AdminUserListItem.model_validate(p) for p in items]
+        # get_primary_variant_urls looks up by owner_id (the profile's own
+        # id), not by primary_image_id (the Image row's own id).
+        ids = [i.id for i in list_items if i.primary_image_id]
+        urls = await _image_repo.get_primary_variant_urls(
+            db, "user", ids, variant_name="avatar", breakpoint="all"
+        )
+        for item in list_items:
+            if item.primary_image_id:
+                item.avatar_url = urls.get(item.id)
         return AdminUserListResponse(
-            items=[AdminUserListItem.model_validate(p) for p in items],
+            items=list_items,
             total=total,
             page=page,
             page_size=page_size,

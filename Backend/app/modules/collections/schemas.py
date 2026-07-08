@@ -8,7 +8,6 @@ class CollectionCreateRequest(BaseModel):
     name: str = Field(max_length=200)
     slug: str | None = Field(default=None, max_length=200)
     description: str | None = None
-    image_url: str | None = None
     is_active: bool = True
     is_featured: bool = False
     sort_order: int = 0
@@ -22,7 +21,6 @@ class CollectionUpdateRequest(BaseModel):
     name: str | None = Field(default=None, max_length=200)
     slug: str | None = Field(default=None, max_length=200)
     description: str | None = None
-    image_url: str | None = None
     is_active: bool | None = None
     is_featured: bool | None = None
     sort_order: int | None = None
@@ -39,7 +37,8 @@ class CollectionResponse(BaseModel):
     name: str
     slug: str
     description: str | None
-    image_url: str | None
+    primary_image_id: uuid.UUID | None = None
+    image_url: str | None = None
     is_active: bool
     is_featured: bool
     sort_order: int
@@ -62,7 +61,8 @@ class CollectionListItem(BaseModel):
     name: str
     slug: str
     description: str | None
-    image_url: str | None
+    primary_image_id: uuid.UUID | None = None
+    image_url: str | None = None
     is_active: bool
     is_featured: bool
     sort_order: int

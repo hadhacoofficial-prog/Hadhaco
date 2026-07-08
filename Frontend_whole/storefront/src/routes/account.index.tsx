@@ -38,6 +38,7 @@ import { queryKeys } from "@/lib/api/queryKeys";
 import { getSession } from "@/lib/supabase/session";
 import { supabase } from "@/lib/supabase/client";
 import { useAuthContext } from "@/providers/auth-context";
+import { Field, PhoneField, isValidIndianMobile } from "@/components/common/FormField";
 import { useWishlist } from "@/stores/wishlist";
 import { formatINR } from "@/lib/format";
 import { useProfile } from "@/hooks/auth/useProfile";
@@ -886,6 +887,10 @@ function OrdersTab() {
 function AddressesTab() {
   const queryClient = useQueryClient();
   const [adding, setAdding] = useState(false);
+  const [phone, setPhone] = useState("");
+  const [altPhone, setAltPhone] = useState("");
+  const [phoneError, setPhoneError] = useState<string | undefined>();
+  const [altPhoneError, setAltPhoneError] = useState<string | undefined>();
 
   const { data: addresses = [], isLoading } = useQuery({
     queryKey: queryKeys.addresses.all,
@@ -898,6 +903,8 @@ function AddressesTab() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.addresses.all });
       setAdding(false);
+      setPhone("");
+      setAltPhone("");
       toast.success("Address saved");
     },
     onError: (e) => toast.error(toUserMessage(e)),
@@ -917,21 +924,21 @@ function AddressesTab() {
 
   const submit = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
+    const phoneValid = isValidIndianMobile(phone);
+    const altPhoneValid = altPhone === "" || isValidIndianMobile(altPhone);
+    setPhoneError(phoneValid ? undefined : "Enter a valid 10-digit mobile number");
+    setAltPhoneError(altPhoneValid ? undefined : "Enter a valid 10-digit mobile number");
+    if (!phoneValid || !altPhoneValid) return;
+
     const f = new FormData(e.currentTarget);
     const body: AddressCreateRequest = {
       type: "shipping",
       full_name: String(f.get("name") ?? ""),
-      phone: (() => {
-        const p = String(f.get("phone") ?? "").replace(/\s+/g, "");
-        return p ? (p.startsWith("+") ? p : `+91${p.replace(/^0+/, "")}`) : "";
-      })(),
+      phone: `+91${phone}`,
       line1: String(f.get("line1") ?? ""),
       line2: String(f.get("line2") ?? "") || null,
       landmark: String(f.get("landmark") ?? "") || null,
-      alternate_phone: (() => {
-        const p = String(f.get("alternate_phone") ?? "").replace(/\s+/g, "");
-        return p ? (p.startsWith("+") ? p : `+91${p.replace(/^0+/, "")}`) : null;
-      })(),
+      alternate_phone: altPhone ? `+91${altPhone}` : null,
       city: String(f.get("city") ?? ""),
       state: String(f.get("state") ?? ""),
       postal_code: String(f.get("pincode") ?? ""),
@@ -959,19 +966,39 @@ function AddressesTab() {
           onSubmit={submit}
           className="bg-card border border-border rounded-2xl p-6 grid sm:grid-cols-2 gap-4 mb-6 shadow-sm"
         >
-          <Field name="name" placeholder="Full name" required className="sm:col-span-2" />
-          <Field name="line1" placeholder="Address line 1" required className="sm:col-span-2" />
-          <Field name="line2" placeholder="Address line 2 (optional)" className="sm:col-span-2" />
+          <Field label="Full name" name="name" required className="sm:col-span-2" />
+          <Field label="Address line 1" name="line1" required className="sm:col-span-2" />
+          <Field label="Address line 2 (optional)" name="line2" className="sm:col-span-2" />
           <Field
+            label="Landmark (optional)"
             name="landmark"
-            placeholder="Landmark (optional) — Near SBI Bank, Opposite Temple"
+            placeholder="Near SBI Bank, Opposite Temple"
             className="sm:col-span-2"
           />
-          <Field name="city" placeholder="City" required />
-          <Field name="state" placeholder="State" required />
-          <Field name="pincode" placeholder="Pincode" required />
-          <Field name="phone" placeholder="Phone" required />
-          <Field name="alternate_phone" placeholder="Alternative phone (optional)" />
+          <Field label="City" name="city" required />
+          <Field label="State" name="state" required />
+          <Field label="Pincode" name="pincode" required />
+          <PhoneField
+            label="Phone"
+            name="phone"
+            required
+            value={phone}
+            onValueChange={(digits) => {
+              setPhone(digits);
+              setPhoneError(undefined);
+            }}
+            error={phoneError}
+          />
+          <PhoneField
+            label="Alternative phone (optional)"
+            name="alternate_phone"
+            value={altPhone}
+            onValueChange={(digits) => {
+              setAltPhone(digits);
+              setAltPhoneError(undefined);
+            }}
+            error={altPhoneError}
+          />
           <label className="sm:col-span-2 inline-flex items-center gap-2 text-sm">
             <input type="checkbox" name="isDefault" className="rounded" />
             Set as default address
@@ -1531,16 +1558,5 @@ function SecurityTab() {
         </button>
       </form>
     </div>
-  );
-}
-
-// ── Shared input ───────────────────────────────────────────────────────────────
-
-function Field({ className = "", ...rest }: React.InputHTMLAttributes<HTMLInputElement>) {
-  return (
-    <input
-      {...rest}
-      className={`w-full bg-background border border-border rounded-xl px-4 py-3 text-sm outline-none focus:border-foreground focus:ring-2 focus:ring-foreground/10 transition ${className}`}
-    />
   );
 }

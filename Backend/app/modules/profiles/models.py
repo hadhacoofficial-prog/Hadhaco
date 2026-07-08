@@ -18,7 +18,11 @@ class Profile(Base):
     email: Mapped[str] = mapped_column(String, nullable=False, unique=True)
     full_name: Mapped[str | None] = mapped_column(Text, nullable=True)
     phone: Mapped[str | None] = mapped_column(String(20), nullable=True)
-    avatar_url: Mapped[str | None] = mapped_column(Text, nullable=True)
+    primary_image_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("images.id", ondelete="SET NULL"),
+        nullable=True,
+    )
     role: Mapped[str] = mapped_column(
         String(20), nullable=False, default=UserRole.CUSTOMER
     )

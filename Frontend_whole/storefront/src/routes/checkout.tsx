@@ -9,6 +9,7 @@ import {
   ReservationCountdown,
   ReservationExpiredModal,
 } from "@/components/site/ReservationCountdown";
+import { Field, PhoneField, isValidIndianMobile } from "@/components/common/FormField";
 import { useCart } from "@/stores/cart";
 import { api } from "@/lib/api/client";
 import { queryKeys } from "@/lib/api/queryKeys";
@@ -72,6 +73,10 @@ function CheckoutPage() {
   const [shippingMethod, setShippingMethod] = useState<"standard" | "express">("standard");
   const [billingSame, setBillingSame] = useState(true);
   const [selectedAddressId, setSelectedAddressId] = useState<string | "new">("new");
+  const [phone, setPhone] = useState("");
+  const [altPhone, setAltPhone] = useState("");
+  const [phoneError, setPhoneError] = useState<string | undefined>();
+  const [altPhoneError, setAltPhoneError] = useState<string | undefined>();
   const [couponCode, setCouponCode] = useState("");
   const [appliedCoupon, setAppliedCoupon] = useState<{
     code: string;
@@ -97,6 +102,12 @@ function CheckoutPage() {
   const { data: addresses = [] } = useQuery({
     queryKey: queryKeys.addresses.all,
     queryFn: () => api.get<AddressResponse[]>("/me/addresses"),
+  });
+
+  const { data: giftFlag } = useQuery({
+    queryKey: ["settings", "flags", "complimentary_gift_enabled"] as const,
+    queryFn: () => api.get<{ value: boolean }>("/settings/flags/complimentary_gift_enabled"),
+    staleTime: 60_000,
   });
 
   const addressInitialized = useRef(false);
@@ -190,7 +201,7 @@ function CheckoutPage() {
 
       const destination = { orderId: result.order_id, orderNumber: result.order_number };
       // Check eligibility using the total captured at render time
-      if (total >= GIFT_ELIGIBILITY_THRESHOLD) {
+      if (giftFlag?.value && total >= GIFT_ELIGIBILITY_THRESHOLD) {
         pendingNavigationRef.current = destination;
         setSelectedGift(null);
         setGiftPopup(destination);
@@ -258,26 +269,29 @@ function CheckoutPage() {
   const placeOrder = async (e: React.FormEvent) => {
     e.preventDefault();
     if (lines.length === 0) return;
-    setCheckoutState("reserving");
 
     let shippingAddressId = selectedAddressId !== "new" ? selectedAddressId : null;
+
+    if (!shippingAddressId) {
+      const phoneValid = isValidIndianMobile(phone);
+      const altPhoneValid = altPhone === "" || isValidIndianMobile(altPhone);
+      setPhoneError(phoneValid ? undefined : "Enter a valid 10-digit mobile number");
+      setAltPhoneError(altPhoneValid ? undefined : "Enter a valid 10-digit mobile number");
+      if (!phoneValid || !altPhoneValid) return;
+    }
+
+    setCheckoutState("reserving");
 
     if (!shippingAddressId) {
       const fd = new FormData(e.currentTarget as HTMLFormElement);
       const newAddress: AddressCreateRequest = {
         type: "shipping",
         full_name: `${fd.get("firstName") ?? ""} ${fd.get("lastName") ?? ""}`.trim(),
-        phone: (() => {
-          const p = String(fd.get("phone") ?? "").replace(/\s+/g, "");
-          return p ? (p.startsWith("+") ? p : `+91${p.replace(/^0+/, "")}`) : "";
-        })(),
+        phone: `+91${phone}`,
         line1: String(fd.get("address") ?? ""),
         line2: String(fd.get("apt") ?? "") || null,
         landmark: String(fd.get("landmark") ?? "") || null,
-        alternate_phone: (() => {
-          const p = String(fd.get("alternate_phone") ?? "").replace(/\s+/g, "");
-          return p ? (p.startsWith("+") ? p : `+91${p.replace(/^0+/, "")}`) : null;
-        })(),
+        alternate_phone: altPhone ? `+91${altPhone}` : null,
         city: String(fd.get("city") ?? ""),
         state: String(fd.get("state") ?? ""),
         postal_code: String(fd.get("pincode") ?? ""),
@@ -542,12 +556,27 @@ function CheckoutPage() {
                     <div className="grid md:grid-cols-2 gap-4">
                       <Field label="First name" name="firstName" required />
                       <Field label="Last name" name="lastName" required />
-                      <Field label="Phone" name="phone" type="tel" required />
-                      <Field
+                      <PhoneField
+                        label="Phone"
+                        name="phone"
+                        required
+                        value={phone}
+                        onValueChange={(digits) => {
+                          setPhone(digits);
+                          setPhoneError(undefined);
+                        }}
+                        error={phoneError}
+                      />
+                      <PhoneField
                         label="Alternative phone (optional)"
                         name="alternate_phone"
-                        type="tel"
                         placeholder="Alternative contact number"
+                        value={altPhone}
+                        onValueChange={(digits) => {
+                          setAltPhone(digits);
+                          setAltPhoneError(undefined);
+                        }}
+                        error={altPhoneError}
                       />
                       <Field label="Address" name="address" className="md:col-span-2" required />
                       <Field
@@ -749,22 +778,6 @@ function Section({ title, children }: { title: string; children: React.ReactNode
       <h2 className="font-display text-2xl mb-5 pb-3 border-b border-border">{title}</h2>
       {children}
     </section>
-  );
-}
-
-function Field({
-  label,
-  className = "",
-  ...rest
-}: { label: string; className?: string } & React.InputHTMLAttributes<HTMLInputElement>) {
-  return (
-    <label className={`block ${className}`}>
-      <span className="text-[11px] uppercase tracking-[0.18em] text-muted-foreground">{label}</span>
-      <input
-        {...rest}
-        className="mt-1.5 w-full bg-background border border-border px-3 py-2.5 text-sm outline-none focus:border-foreground transition"
-      />
-    </label>
   );
 }
 

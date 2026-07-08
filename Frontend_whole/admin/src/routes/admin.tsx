@@ -86,7 +86,8 @@ type NavTo =
   | "/admin/coupons"
   | "/admin/cms"
   | "/admin/reports"
-  | "/admin/templates";
+  | "/admin/templates"
+  | "/admin/settings";
 
 type NavItem = { to: NavTo; label: string; icon: React.ReactNode; exact?: boolean };
 
@@ -103,6 +104,7 @@ const nav: NavItem[] = [
   { to: "/admin/cms", label: "Homepage CMS", icon: <LayoutTemplate className="size-4" /> },
   { to: "/admin/reports", label: "Reports", icon: <BarChart3 className="size-4" /> },
   { to: "/admin/templates", label: "Templates", icon: <Settings2 className="size-4" /> },
+  { to: "/admin/settings", label: "Store Settings", icon: <Settings2 className="size-4" /> },
 ];
 
 // ─── Component-level auth gate ──────────────────────────────────────────────

@@ -21,6 +21,7 @@
       "@hadha/shared-types": ["../packages/shared-types/src"],
       "@hadha/shared-utils": ["../packages/shared-utils/src"],
       "@hadha/shared-api": ["../packages/shared-api/src"],
+      "@hadha/shared-media": ["../packages/shared-media/src"],
       "@hadha/shared-ui": ["../packages/shared-ui/src"],
       "@hadha/shared-ui/ui/*": ["../packages/shared-ui/src/ui/*"],
       "@hadha/shared-ui/loading/*": ["../packages/shared-ui/src/loading/*"],

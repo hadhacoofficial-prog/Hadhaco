@@ -34,6 +34,7 @@ from app.modules.orders.schemas import (
     VerifyOrderPaymentRequest,
     VerifyOrderPaymentResponse,
 )
+from app.modules.settings.service import SettingsService
 
 log = structlog.get_logger(__name__)
 
@@ -86,16 +87,19 @@ class OrderService:
 
         image_rows = await db.execute(
             text(
-                "SELECT DISTINCT ON (product_id) product_id, thumbnail_url "
-                "FROM product_images "
-                "WHERE product_id = ANY(CAST(:pids AS uuid[])) "
-                "ORDER BY product_id, is_primary DESC, sort_order ASC"
+                "SELECT DISTINCT ON (i.owner_id) i.owner_id AS product_id, iv.url "
+                "FROM images i "
+                "JOIN image_variants iv ON iv.image_id = i.id "
+                "WHERE i.owner_type = 'product' "
+                "  AND i.owner_id = ANY(CAST(:pids AS uuid[])) "
+                "  AND i.deleted_at IS NULL "
+                "  AND iv.variant_name = 'thumbnail' AND iv.breakpoint = 'desktop' "
+                "  AND iv.status = 'ready' "
+                "ORDER BY i.owner_id, i.is_primary DESC, i.sort_order ASC"
             ),
             {"pids": product_ids},
         )
-        images_by_product = {
-            r.product_id: r.thumbnail_url for r in image_rows.fetchall()
-        }
+        images_by_product = {r.product_id: r.url for r in image_rows.fetchall()}
 
         line_items = []
         for ci in cart_items:
@@ -670,6 +674,10 @@ class OrderService:
         user_id: uuid.UUID,
         payload: SetComplimentaryGiftRequest,
     ) -> OrderResponse:
+        if not await SettingsService.is_feature_enabled(
+            db, "complimentary_gift_enabled"
+        ):
+            raise ValidationError("Complimentary gift is currently unavailable")
         order = await _repo.get_by_id(db, order_id)
         if not order or order.user_id != user_id:
             raise NotFoundError("Order not found")

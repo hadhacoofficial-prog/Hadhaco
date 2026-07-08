@@ -18,10 +18,12 @@ from app.modules.auth.schemas import (
     VerifyTokenResponse,
 )
 from app.modules.auth.service import AuthService
+from app.modules.media.repository import ImageRepository
 from app.modules.profiles.models import Profile
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 _svc = AuthService()
+_image_repo = ImageRepository()
 
 
 @router.post(
@@ -31,7 +33,20 @@ _svc = AuthService()
 )
 async def verify_token(
     current_user: Profile = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
 ) -> BaseSuccessResponse[VerifyTokenResponse]:
+    avatar_url = None
+    if current_user.primary_image_id:
+        # get_primary_variant_urls looks up by owner_id (the profile's own
+        # id), not by primary_image_id (the Image row's own id).
+        urls = await _image_repo.get_primary_variant_urls(
+            db,
+            "user",
+            [current_user.id],
+            variant_name="avatar",
+            breakpoint="all",
+        )
+        avatar_url = urls.get(current_user.id)
     return ok(
         VerifyTokenResponse(
             id=current_user.id,
@@ -39,7 +54,7 @@ async def verify_token(
             full_name=current_user.full_name,
             role=current_user.role,
             is_active=current_user.is_active,
-            avatar_url=current_user.avatar_url,
+            avatar_url=avatar_url,
         ),
         ResponseCode.AUTH_TOKEN_VERIFIED,
         "Token verified successfully",

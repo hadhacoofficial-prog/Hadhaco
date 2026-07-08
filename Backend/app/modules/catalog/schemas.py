@@ -1,7 +1,8 @@
 import uuid
 from datetime import datetime
+from typing import Any
 
-from pydantic import BaseModel, Field, field_validator, model_validator
+from pydantic import BaseModel, Field, field_validator
 
 # ---------- Sub-schemas ----------
 
@@ -34,6 +35,13 @@ def cache_busted_url(url: str | None, updated_at: datetime) -> str | None:
 
 
 class ProductImageResponse(BaseModel):
+    """
+    Built from an app.modules.media.models.Image row (module='product') plus
+    its variants — product images are no longer a bespoke table, they're
+    `images`/`image_variants` rows like every other module. See
+    docs/architecture/Universal_Responsive_Image_System_Design.md §9.
+    """
+
     id: uuid.UUID
     url: str
     thumbnail_url: str | None
@@ -50,15 +58,46 @@ class ProductImageResponse(BaseModel):
     crop_rotation: float | None = None
     updated_at: datetime
 
-    model_config = {"from_attributes": True}
+    @classmethod
+    def from_image(cls, image: Any) -> "ProductImageResponse":
+        variants_by_name = {
+            v.variant_name: v
+            for v in image.variants
+            if v.breakpoint == "desktop" and v.dpr == 1 and v.status == "ready"
+        }
+        original_variant = variants_by_name.get("large") or variants_by_name.get(
+            "medium"
+        )
+        url = original_variant.url if original_variant else image.original_key
+        thumbnail = variants_by_name.get("thumbnail")
+        medium = variants_by_name.get("medium")
+        large = variants_by_name.get("large")
 
-    @model_validator(mode="after")
-    def _bust_cache(self) -> "ProductImageResponse":
-        self.url = cache_busted_url(self.url, self.updated_at) or self.url
-        self.thumbnail_url = cache_busted_url(self.thumbnail_url, self.updated_at)
-        self.medium_url = cache_busted_url(self.medium_url, self.updated_at)
-        self.large_url = cache_busted_url(self.large_url, self.updated_at)
-        return self
+        crop_box = (
+            image.metadata_.get("crops", {}).get("desktop") if image.metadata_ else None
+        )
+
+        return cls(
+            id=image.id,
+            url=cache_busted_url(url, image.updated_at) or url,
+            thumbnail_url=(
+                cache_busted_url(thumbnail.url, image.updated_at) if thumbnail else None
+            ),
+            medium_url=(
+                cache_busted_url(medium.url, image.updated_at) if medium else None
+            ),
+            large_url=cache_busted_url(large.url, image.updated_at) if large else None,
+            alt_text=image.alt_text,
+            is_primary=image.is_primary,
+            sort_order=image.sort_order,
+            crop_x=crop_box["box"]["x"] if crop_box else None,
+            crop_y=crop_box["box"]["y"] if crop_box else None,
+            crop_width=crop_box["box"]["width"] if crop_box else None,
+            crop_height=crop_box["box"]["height"] if crop_box else None,
+            crop_zoom=crop_box["zoom"] if crop_box else None,
+            crop_rotation=crop_box["rotation"] if crop_box else None,
+            updated_at=image.updated_at,
+        )
 
 
 class ProductVariantResponse(BaseModel):
@@ -284,6 +323,21 @@ class ProductResponse(BaseModel):
     collections: list[ProductCollectionRef] = []
 
     model_config = {"from_attributes": True}
+
+    @field_validator("images", mode="before")
+    @classmethod
+    def _build_images(cls, v: Any) -> Any:
+        """
+        `Product.images` (the ORM relationship) yields raw
+        app.modules.media.models.Image rows, not dicts/ProductImageResponse
+        instances — convert via from_image() before pydantic's normal
+        from_attributes coercion runs, since Image's shape doesn't match
+        ProductImageResponse's flat fields directly (variants live in a
+        separate `variants` relationship, crop data in `metadata_` JSONB).
+        """
+        if v and hasattr(v[0], "variants") and hasattr(v[0], "metadata_"):
+            return [ProductImageResponse.from_image(img) for img in v]
+        return v
 
 
 class ProductListItem(BaseModel):

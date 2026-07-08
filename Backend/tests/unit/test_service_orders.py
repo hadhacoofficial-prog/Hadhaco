@@ -7,7 +7,11 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from app.modules.orders.schemas import CancelOrderRequest, UpdateOrderStatusRequest
+from app.modules.orders.schemas import (
+    CancelOrderRequest,
+    SetComplimentaryGiftRequest,
+    UpdateOrderStatusRequest,
+)
 
 
 class TestOrderServiceGetOrder:
@@ -290,3 +294,62 @@ class TestOrderServiceUpdateStatus:
             )
         assert "cancelled_at" in captured_data
         assert captured_data["status"] == "cancelled"
+
+
+class TestOrderServiceComplimentaryGift:
+    def setup_method(self):
+        from app.modules.orders.service import OrderService
+
+        self.svc = OrderService()
+
+    async def test_rejects_when_feature_flag_disabled(self):
+        from app.core.exceptions import ValidationError
+
+        db = AsyncMock()
+        user_id = uuid.uuid4()
+        with patch(
+            "app.modules.orders.service.SettingsService.is_feature_enabled",
+            AsyncMock(return_value=False),
+        ):
+            with pytest.raises(ValidationError, match="currently unavailable"):
+                await self.svc.set_complimentary_gift(
+                    db,
+                    uuid.uuid4(),
+                    user_id,
+                    SetComplimentaryGiftRequest(gift="Traditional Sweet"),
+                )
+
+    async def test_allows_when_feature_flag_enabled_and_eligible(self):
+        db = AsyncMock()
+        user_id = uuid.uuid4()
+        order_id = uuid.uuid4()
+        mock_order = MagicMock()
+        mock_order.user_id = user_id
+        mock_order.payment_status = "paid"
+        mock_order.total = Decimal("2500.00")
+        mock_order.complimentary_gift = None
+
+        with (
+            patch(
+                "app.modules.orders.service.SettingsService.is_feature_enabled",
+                AsyncMock(return_value=True),
+            ),
+            patch(
+                "app.modules.orders.service._repo.get_by_id",
+                AsyncMock(return_value=mock_order),
+            ),
+            patch(
+                "app.modules.orders.service._repo.update",
+                AsyncMock(return_value=MagicMock()),
+            ),
+            patch(
+                "app.modules.orders.schemas.OrderResponse.model_validate",
+                return_value=MagicMock(),
+            ),
+        ):
+            await self.svc.set_complimentary_gift(
+                db,
+                order_id,
+                user_id,
+                SetComplimentaryGiftRequest(gift="Traditional Sweet"),
+            )

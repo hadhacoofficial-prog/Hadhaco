@@ -17,7 +17,8 @@ class ProfileResponse(BaseModel):
     email: EmailStr
     full_name: str | None
     phone: str | None
-    avatar_url: str | None
+    primary_image_id: uuid.UUID | None = None
+    avatar_url: str | None = None
     role: str
     is_active: bool
     is_verified: bool
@@ -46,7 +47,8 @@ class AdminUserListItem(BaseModel):
     email: EmailStr
     full_name: str | None
     phone: str | None
-    avatar_url: str | None
+    primary_image_id: uuid.UUID | None = None
+    avatar_url: str | None = None
     role: str
     is_active: bool
     is_verified: bool
