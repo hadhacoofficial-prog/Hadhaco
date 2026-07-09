@@ -71,7 +71,7 @@ class TestQueueService:
             q = build_queue()
             assert isinstance(q, QueueService)
 
-    def test_build_queue_registers_exactly_three_workers(self):
+    def test_build_queue_registers_exactly_four_workers(self):
         from app.workers.queue import QueueService, build_queue
 
         interval_ids = []
@@ -89,7 +89,10 @@ class TestQueueService:
         ):
             build_queue()
 
-        assert len(interval_ids) + len(cron_ids) == 3
+        assert len(interval_ids) + len(cron_ids) == 4
         assert "reservation_expiry" in interval_ids
         assert "cms_publish" in interval_ids
+        # Registered in CB-1 Phase 2 — the crash-recovery/retry poller for
+        # image variant generation (app/workers/media_generation.py).
+        assert "media_generation" in interval_ids
         assert "partition_manager" in cron_ids

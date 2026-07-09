@@ -9,6 +9,7 @@ from app.modules.media.preset_registry import PRESET_REGISTRY
 from app.modules.media.validation import (
     ImageValidationError,
     resolve_extension,
+    sanitize_svg,
     validate_upload,
 )
 
@@ -55,3 +56,46 @@ class TestResolveExtension:
 
     def test_falls_back_to_content_type(self):
         assert resolve_extension("noextension", "image/webp") == "webp"
+
+
+class TestSanitizeSvg:
+    def test_strips_script_tag(self):
+        svg = (
+            b"<svg xmlns='http://www.w3.org/2000/svg'>"
+            b"<script>alert(1)</script><rect width='10' height='10'/></svg>"
+        )
+        cleaned = sanitize_svg(svg)
+        assert b"script" not in cleaned
+        assert b"rect" in cleaned
+
+    def test_strips_on_event_attributes(self):
+        svg = (
+            b"<svg xmlns='http://www.w3.org/2000/svg'>"
+            b"<rect onclick='alert(1)' width='10' height='10'/></svg>"
+        )
+        cleaned = sanitize_svg(svg)
+        assert b"onclick" not in cleaned
+        assert b"rect" in cleaned
+
+    def test_strips_javascript_href(self):
+        svg = (
+            b"<svg xmlns='http://www.w3.org/2000/svg' "
+            b"xmlns:xlink='http://www.w3.org/1999/xlink'>"
+            b"<a xlink:href='javascript:alert(1)'><rect width='10' height='10'/></a>"
+            b"</svg>"
+        )
+        cleaned = sanitize_svg(svg)
+        assert b"javascript:" not in cleaned
+
+    def test_preserves_safe_presentation_content(self):
+        svg = (
+            b"<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 10 10'>"
+            b"<circle cx='5' cy='5' r='4' fill='#000'/></svg>"
+        )
+        cleaned = sanitize_svg(svg)
+        assert b"circle" in cleaned
+        assert b'fill="#000"' in cleaned or b"fill='#000'" in cleaned
+
+    def test_rejects_unparseable_input(self):
+        with pytest.raises(ImageValidationError):
+            sanitize_svg(b"not xml at all <<<")

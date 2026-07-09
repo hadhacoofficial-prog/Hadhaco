@@ -106,9 +106,15 @@ class CategoryService:
     async def _image_urls(
         db: AsyncSession, cats: list[Category]
     ) -> dict[uuid.UUID, str]:
-        """Keyed by each category's own id (Image.owner_id), not by
-        primary_image_id (which is the Image row's own id)."""
-        ids = [c.id for c in cats if c.primary_image_id]
+        """Keyed by each category's own id (Image.owner_id).
+
+        Deliberately does NOT gate on `c.primary_image_id`: that's a
+        denormalized column on the `categories` row itself, and nothing in
+        the universal media attach/crop/set-primary/upload flow (which only
+        touches the `images` table) ever writes it — gating on it here made
+        every successfully-attached image invisible.
+        """
+        ids = [c.id for c in cats]
         return await _image_repo.get_primary_variant_urls(db, "category", ids)
 
     async def get_detail(
@@ -122,8 +128,11 @@ class CategoryService:
         result = CategoryDetailResponse.model_validate(cat)
         result.product_count = product_count
         result.children_count = children_count
-        if cat.primary_image_id:
+        image_ids = await _image_repo.get_primary_image_ids(db, "category", [cat.id])
+        primary_id = image_ids.get(cat.id)
+        if primary_id:
             urls = await self._image_urls(db, [cat])
+            result.primary_image_id = primary_id
             result.image_url = urls.get(cat.id)
         return result
 
@@ -146,10 +155,13 @@ class CategoryService:
             is_active=is_active,
         )
         items = [CategoryAdminListItem.model_validate(dict(r)) for r in rows]
-        ids = [i.id for i in items if i.primary_image_id]
+        ids = [i.id for i in items]
+        image_ids = await _image_repo.get_primary_image_ids(db, "category", ids)
         urls = await _image_repo.get_primary_variant_urls(db, "category", ids)
         for item in items:
-            if item.primary_image_id:
+            primary_id = image_ids.get(item.id)
+            if primary_id:
+                item.primary_image_id = primary_id
                 item.image_url = urls.get(item.id)
         return CategoryAdminListResponse(
             items=items,
@@ -253,7 +265,7 @@ def _build_tree(
                 parent_id=c.parent_id,
                 name=c.name,
                 slug=c.slug,
-                image_url=(url_map.get(c.id) if c.primary_image_id else None),
+                image_url=url_map.get(c.id),
                 sort_order=c.sort_order,
             )
             node.children = _build_tree(cats, parent_id=c.id, url_map=url_map)

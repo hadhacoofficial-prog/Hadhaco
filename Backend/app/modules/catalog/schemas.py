@@ -4,6 +4,9 @@ from typing import Any
 
 from pydantic import BaseModel, Field, field_validator
 
+from app.modules.media import storage
+from app.modules.media.schemas import ImageVariantOut
+
 # ---------- Sub-schemas ----------
 
 
@@ -44,6 +47,10 @@ class ProductImageResponse(BaseModel):
 
     id: uuid.UUID
     url: str
+    # The untouched original upload — the crop editor must reopen against
+    # this, never a generated variant (closes the "Edit Crop shows the
+    # already-cropped image" bug).
+    original_url: str
     thumbnail_url: str | None
     medium_url: str | None
     large_url: str | None = None
@@ -57,6 +64,13 @@ class ProductImageResponse(BaseModel):
     crop_zoom: float | None = None
     crop_rotation: float | None = None
     updated_at: datetime
+    # Every ready variant across every breakpoint (not just desktop) — lets
+    # the storefront render a real responsive <picture>/srcset instead of
+    # always downloading the desktop `large` file regardless of viewport.
+    # `product.images` is already fully relationship-loaded per product
+    # (see CatalogService.list_products), so this costs no extra query.
+    variants: list[ImageVariantOut] = Field(default_factory=list)
+    focus_point: dict[str, float] | None = None
 
     @classmethod
     def from_image(cls, image: Any) -> "ProductImageResponse":
@@ -68,7 +82,11 @@ class ProductImageResponse(BaseModel):
         original_variant = variants_by_name.get("large") or variants_by_name.get(
             "medium"
         )
-        url = original_variant.url if original_variant else image.original_key
+        url = (
+            original_variant.url
+            if original_variant
+            else storage.public_url(image.original_key)
+        )
         thumbnail = variants_by_name.get("thumbnail")
         medium = variants_by_name.get("medium")
         large = variants_by_name.get("large")
@@ -76,10 +94,12 @@ class ProductImageResponse(BaseModel):
         crop_box = (
             image.metadata_.get("crops", {}).get("desktop") if image.metadata_ else None
         )
+        focus_point = image.metadata_.get("focus_point") if image.metadata_ else None
 
         return cls(
             id=image.id,
             url=cache_busted_url(url, image.updated_at) or url,
+            original_url=storage.public_url(image.original_key),
             thumbnail_url=(
                 cache_busted_url(thumbnail.url, image.updated_at) if thumbnail else None
             ),
@@ -97,6 +117,23 @@ class ProductImageResponse(BaseModel):
             crop_zoom=crop_box["zoom"] if crop_box else None,
             crop_rotation=crop_box["rotation"] if crop_box else None,
             updated_at=image.updated_at,
+            variants=[
+                ImageVariantOut(
+                    id=v.id,
+                    breakpoint=v.breakpoint,
+                    variant_name=v.variant_name,
+                    dpr=v.dpr,
+                    format=v.format,
+                    url=cache_busted_url(v.url, image.updated_at) or v.url,
+                    width=v.width,
+                    height=v.height,
+                    status=v.status,
+                    error_message=v.error_message,
+                )
+                for v in image.variants
+                if v.status == "ready"
+            ],
+            focus_point=focus_point,
         )
 
 
@@ -359,6 +396,13 @@ class ProductListItem(BaseModel):
     created_at: datetime
     primary_image: str | None = None
     secondary_image: str | None = None
+    # Full responsive variant set (every breakpoint) for the primary image —
+    # additive alongside `primary_image` (kept for any other existing
+    # consumer) so the storefront grid can render a real srcset instead of
+    # always downloading the desktop `large` file on every viewport
+    # (docs audit HP-4/MP-1).
+    primary_image_variants: list[ImageVariantOut] = Field(default_factory=list)
+    primary_image_focus_point: dict[str, float] | None = None
     average_rating: float | None = None
     review_count: int = 0
     collections: list[ProductCollectionRef] = []

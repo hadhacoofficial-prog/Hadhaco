@@ -1,4 +1,5 @@
 import type { ProductVariant } from "./public";
+import type { ImageBundle } from "./media";
 export type { ProductVariant };
 
 export type Money = number; // INR rupees
@@ -26,6 +27,10 @@ export interface Product {
   name: string;
   image: string;
   altImage?: string;
+  /** Responsive variant set for `image`, when the API supplied one — lets
+   * ProductCard render a real srcset instead of the flat desktop URL
+   * (docs audit HP-4/MP-1). Undefined for legacy/incomplete responses. */
+  imageBundle?: ImageBundle;
   gallery?: string[];
   /** Same order as `gallery`, but the large (1200x1200) crop — used only for zoom. */
   galleryLarge?: string[];

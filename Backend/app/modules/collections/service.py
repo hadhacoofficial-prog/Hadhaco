@@ -29,14 +29,24 @@ async def _attach_image_urls(
 ) -> None:
     """Resolve each collection's primary image into a cache-busted `image_url`
     — replaces the plain `image_url` column dropped in the Phase 3 cutover.
-    get_primary_variant_urls looks up by owner_id (the collection's own id),
-    not by primary_image_id (which is the Image row's id)."""
-    ids = [i.id for i in items if i.primary_image_id]
+    get_primary_variant_urls looks up by owner_id (the collection's own id).
+
+    Deliberately does NOT gate on `item.primary_image_id`: that's a
+    denormalized column on the `collections` row itself, and nothing in the
+    universal media attach/crop/set-primary/upload flow (which only touches
+    the `images` table) ever writes it — gating on it here made every
+    successfully-attached image invisible. `primary_image_id` is populated
+    below from the same live lookup, not trusted from the row.
+    """
+    ids = [i.id for i in items]
     if not ids:
         return
+    image_ids = await _image_repo.get_primary_image_ids(db, "collection", ids)
     urls = await _image_repo.get_primary_variant_urls(db, "collection", ids)
     for item in items:
-        if item.primary_image_id:
+        primary_id = image_ids.get(item.id)
+        if primary_id:
+            item.primary_image_id = primary_id
             item.image_url = urls.get(item.id)
 
 

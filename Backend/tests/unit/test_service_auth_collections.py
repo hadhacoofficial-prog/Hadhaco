@@ -18,6 +18,7 @@ class TestCollectionServiceSuccessPaths:
         db = AsyncMock()
         mock_col = MagicMock()
         validated = MagicMock()
+        validated.id = uuid.uuid4()
         validated.primary_image_id = None
         with (
             patch(
@@ -64,6 +65,7 @@ class TestCollectionServiceSuccessPaths:
         mock_existing.slug = "old-slug"
         mock_updated = MagicMock()
         validated = MagicMock()
+        validated.id = uuid.uuid4()
         validated.primary_image_id = None
         with (
             patch(
@@ -194,6 +196,7 @@ class TestCollectionServiceSuccessPaths:
         db = AsyncMock()
         mock_col = MagicMock()
         validated = MagicMock()
+        validated.id = uuid.uuid4()
         validated.primary_image_id = None
         with (
             patch(
@@ -207,6 +210,49 @@ class TestCollectionServiceSuccessPaths:
         ):
             result = await self.svc.list_active(db)
         assert len(result) == 1
+
+    async def test_list_active_resolves_image_despite_stale_primary_image_id_column(
+        self,
+    ):
+        """Regression guard: `collections.primary_image_id` is a
+        denormalized column the universal media attach/crop/set-primary flow
+        never writes (it only touches the `images` table) — resolving
+        image_url must not gate on that column being set, or every
+        successfully-attached image silently disappears everywhere a
+        collection is listed."""
+        from app.modules.media.repository import ImageRepository
+
+        db = AsyncMock()
+        mock_col = MagicMock()
+        validated = MagicMock()
+        validated.id = uuid.uuid4()
+        validated.primary_image_id = None  # stale/never-written, as in production
+        image_id = uuid.uuid4()
+
+        with (
+            patch(
+                "app.modules.collections.service._repo.list_active",
+                AsyncMock(return_value=[mock_col]),
+            ),
+            patch(
+                "app.modules.collections.service.CollectionResponse.model_validate",
+                return_value=validated,
+            ),
+            patch.object(
+                ImageRepository,
+                "get_primary_image_ids",
+                AsyncMock(return_value={validated.id: image_id}),
+            ),
+            patch.object(
+                ImageRepository,
+                "get_primary_variant_urls",
+                AsyncMock(return_value={validated.id: "https://cdn/women.webp?v=1"}),
+            ),
+        ):
+            result = await self.svc.list_active(db)
+
+        assert result[0].primary_image_id == image_id
+        assert result[0].image_url == "https://cdn/women.webp?v=1"
 
 
 # ─── AuthService 2FA tests ────────────────────────────────────────────────────

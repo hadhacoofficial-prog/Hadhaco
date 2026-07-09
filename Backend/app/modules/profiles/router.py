@@ -3,7 +3,6 @@ from typing import Annotated
 import redis.asyncio as aioredis
 from fastapi import (
     APIRouter,
-    BackgroundTasks,
     Depends,
     File,
     HTTPException,
@@ -96,7 +95,6 @@ async def update_my_profile(
 
 @router.patch("/me/avatar", response_model=BaseSuccessResponse[ProfileResponse])
 async def update_avatar(
-    background_tasks: BackgroundTasks,
     file: UploadFile = File(...),
     current_user: Profile = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
@@ -113,7 +111,6 @@ async def update_avatar(
             owner_type="user",
             owner_id=current_user.id,
             uploaded_by=current_user.id,
-            background_tasks=background_tasks,
         )
     except UniversalImageServiceError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc

@@ -161,6 +161,10 @@ class CatalogService:
                     created_at=p.created_at,
                     primary_image=primary_img,
                     secondary_image=secondary_img,
+                    primary_image_variants=primary.variants if primary else [],
+                    primary_image_focus_point=(
+                        primary.focus_point if primary else None
+                    ),
                     collections=cols,
                 )
             )

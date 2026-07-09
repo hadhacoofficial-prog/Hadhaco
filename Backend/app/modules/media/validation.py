@@ -10,7 +10,10 @@ See docs/architecture/Universal_Responsive_Image_System_Design.md §5, §6.
 from __future__ import annotations
 
 import io
+import xml.etree.ElementTree as ET
 
+import defusedxml.ElementTree as SafeET
+from defusedxml import DefusedXmlException
 from PIL import Image
 
 from app.modules.media.preset_registry import Breakpoint, CropPreset
@@ -18,6 +21,48 @@ from app.modules.media.preset_registry import Breakpoint, CropPreset
 
 class ImageValidationError(ValueError):
     pass
+
+
+# Elements/attributes an uploaded SVG could use to run script in whatever
+# origin it's later served from (the R2 public domain) — stripped before the
+# file is ever written to storage. Presentation elements (rect/path/use/...)
+# are untouched. See docs audit MP-8.
+_SVG_DANGEROUS_TAGS = {"script", "foreignObject", "iframe", "embed", "object"}
+_SVG_DANGEROUS_URI_SCHEMES = ("javascript:", "data:text/html", "vbscript:")
+_SVG_HREF_ATTRS = {"href", "{http://www.w3.org/1999/xlink}href"}
+
+
+def sanitize_svg(file_bytes: bytes) -> bytes:
+    """Parse with defusedxml (guards against XXE/entity-expansion on
+    untrusted input), strip script-capable elements/attributes, and
+    re-serialize. Raises ImageValidationError if the file isn't parseable
+    XML at all."""
+    try:
+        root = SafeET.fromstring(file_bytes)
+    except (ET.ParseError, DefusedXmlException) as exc:
+        raise ImageValidationError(f"File is not a valid SVG: {exc}") from exc
+
+    parent_map = {child: parent for parent in root.iter() for child in parent}
+    for el in list(root.iter()):
+        local_tag = el.tag.rsplit("}", 1)[-1]
+        if local_tag in _SVG_DANGEROUS_TAGS:
+            parent = parent_map.get(el)
+            if parent is not None:
+                parent.remove(el)
+            continue
+        for attr, value in list(el.attrib.items()):
+            local_attr = attr.rsplit("}", 1)[-1]
+            if local_attr.lower().startswith("on"):
+                del el.attrib[attr]
+            elif attr in _SVG_HREF_ATTRS and value.strip().lower().startswith(
+                _SVG_DANGEROUS_URI_SCHEMES
+            ):
+                del el.attrib[attr]
+
+    # Re-serialize with the stdlib module — safe here because we're writing
+    # bytes we just parsed and cleaned ourselves, not parsing untrusted
+    # input (the XXE risk defusedxml guards against is parse-time only).
+    return ET.tostring(root, encoding="utf-8", xml_declaration=True)
 
 
 def validate_upload(
@@ -104,5 +149,6 @@ __all__ = [
     "ImageValidationError",
     "validate_upload",
     "resolve_extension",
+    "sanitize_svg",
     "Breakpoint",
 ]

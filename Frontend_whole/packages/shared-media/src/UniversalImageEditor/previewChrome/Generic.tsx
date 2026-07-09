@@ -1,3 +1,4 @@
+import { CroppedImageView } from "../CroppedImageView";
 import type { PreviewChromeProps } from "./types";
 
 /**
@@ -7,11 +8,23 @@ import type { PreviewChromeProps } from "./types";
  * renders something useful immediately; a bespoke chrome is a later
  * refinement, not a blocker.
  */
-export function GenericChrome({ imageSrc }: PreviewChromeProps) {
+export function GenericChrome({
+  imageSrc,
+  naturalWidth,
+  naturalHeight,
+  geometry,
+  fit = "cover",
+}: PreviewChromeProps & { fit?: "cover" | "contain" }) {
   return (
-    <div className="w-full max-w-40 aspect-square rounded-md border bg-secondary overflow-hidden">
-      {imageSrc && (
-        <img src={imageSrc} alt="" className="w-full h-full object-contain" draggable={false} />
+    <div className="w-full aspect-square rounded-md border bg-secondary overflow-hidden">
+      {imageSrc && geometry && (
+        <CroppedImageView
+          imageSrc={imageSrc}
+          naturalWidth={naturalWidth}
+          naturalHeight={naturalHeight}
+          geometry={geometry}
+          fit={fit}
+        />
       )}
     </div>
   );

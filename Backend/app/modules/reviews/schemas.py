@@ -6,6 +6,8 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, Field, field_validator
 
+from app.modules.media import storage
+
 # ── Images ────────────────────────────────────────────────────────────────────
 
 
@@ -22,7 +24,11 @@ class ReviewImageOut(BaseModel):
         best = next((v for v in ready if v.variant_name == "medium"), None) or (
             ready[0] if ready else None
         )
-        url = f"{best.url}?v={image.version}" if best else image.original_key
+        url = (
+            f"{best.url}?v={image.version}"
+            if best
+            else storage.public_url(image.original_key)
+        )
         return cls(id=image.id, url=url, sort_order=image.sort_order)
 
 

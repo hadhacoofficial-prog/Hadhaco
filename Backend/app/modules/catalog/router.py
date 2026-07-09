@@ -10,7 +10,12 @@ from app.common.response_codes import ResponseCode
 from app.common.responses import BaseSuccessResponse, deleted, ok
 from app.core.database import get_db
 from app.core.dependencies import require_admin
-from app.core.redis import get_redis, safe_redis_get, safe_redis_setex
+from app.core.redis import (
+    bust_product_list_cache,
+    get_redis,
+    safe_redis_get,
+    safe_redis_setex,
+)
 from app.modules.catalog.schemas import (
     ProductAttributeCreateRequest,
     ProductCreateRequest,
@@ -35,32 +40,6 @@ def _product_list_cache_key(**params) -> str:
         json.dumps(params, sort_keys=True, default=str).encode()
     ).hexdigest()[:12]
     return f"products:list:v1:{h}"
-
-
-async def _bust_product_list_cache(redis: aioredis.Redis) -> None:
-    """Delete all cached product list pages after any catalog mutation."""
-    from app.core.redis import redis_available
-
-    if not redis_available():
-        return
-    try:
-        import asyncio
-
-        async def _collect() -> list[str]:
-            return [
-                str(key)
-                async for key in redis.scan_iter(match="products:list:v1:*", count=500)
-            ]
-
-        keys = await asyncio.wait_for(_collect(), timeout=1.0)
-        if keys:
-            from app.core.redis import safe_redis_delete
-
-            await safe_redis_delete(redis, *keys)
-    except Exception:
-        from app.core.redis import mark_redis_error
-
-        mark_redis_error()
 
 
 # ---------- Public ----------
@@ -222,7 +201,7 @@ async def create_product(
     from app.common.responses import created
 
     result = await _service.create(db, payload)
-    await _bust_product_list_cache(redis)
+    await bust_product_list_cache(redis)
     return created(result, ResponseCode.PRODUCT_CREATED, "Product created successfully")
 
 
@@ -271,7 +250,7 @@ async def update_product(
     redis: aioredis.Redis = Depends(get_redis),
 ):
     result = await _service.update(db, product_id, payload)
-    await _bust_product_list_cache(redis)
+    await bust_product_list_cache(redis)
     return ok(result, ResponseCode.PRODUCT_UPDATED, "Product updated successfully")
 
 
@@ -287,7 +266,7 @@ async def delete_product(
     redis: aioredis.Redis = Depends(get_redis),
 ):
     await _service.delete(db, product_id)
-    await _bust_product_list_cache(redis)
+    await bust_product_list_cache(redis)
     return deleted(ResponseCode.PRODUCT_DELETED, "Product deleted successfully")
 
 
@@ -309,7 +288,7 @@ async def add_variant(
     from app.common.responses import created
 
     variant = await _service.add_variant(db, product_id, payload)
-    await _bust_product_list_cache(redis)
+    await bust_product_list_cache(redis)
     return created(
         ProductVariantResponse.model_validate(variant),
         ResponseCode.PRODUCT_VARIANT_CREATED,
@@ -329,7 +308,7 @@ async def update_variant(
     redis: aioredis.Redis = Depends(get_redis),
 ):
     variant = await _service.update_variant(db, variant_id, payload)
-    await _bust_product_list_cache(redis)
+    await bust_product_list_cache(redis)
     return ok(
         ProductVariantResponse.model_validate(variant),
         ResponseCode.PRODUCT_VARIANT_UPDATED,
@@ -349,7 +328,7 @@ async def delete_variant(
     redis: aioredis.Redis = Depends(get_redis),
 ):
     await _service.delete_variant(db, variant_id)
-    await _bust_product_list_cache(redis)
+    await bust_product_list_cache(redis)
     return deleted(ResponseCode.PRODUCT_VARIANT_DELETED, "Variant deleted successfully")
 
 

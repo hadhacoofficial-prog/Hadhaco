@@ -5,6 +5,9 @@
 export interface ProductImage {
   id: string;
   url: string;
+  /** The untouched original upload — always what the crop editor should
+   * re-open against, never a generated variant. */
+  original_url: string;
   thumbnail_url: string | null;
   medium_url: string | null;
   large_url: string | null;

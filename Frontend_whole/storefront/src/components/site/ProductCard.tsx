@@ -1,11 +1,14 @@
 import { memo } from "react";
 import { Eye, Heart, ShoppingBag, Star, Bell } from "lucide-react";
 import { Link } from "@tanstack/react-router";
+import { ResponsiveImage } from "@hadha/shared-media";
 import type { Product } from "@/types/shop";
 import { useCart } from "@/stores/cart";
 import { useWishlist } from "@/stores/wishlist";
 import { formatINR } from "@/lib/format";
 import { StockPill } from "@/components/site/InventoryBadge";
+
+const CARD_IMAGE_SIZES = "(min-width: 1280px) 25vw, (min-width: 768px) 33vw, 50vw";
 
 export const ProductCard = memo(function ProductCard({ p }: { p: Product }) {
   const add = useCart((s) => s.add);
@@ -34,14 +37,23 @@ export const ProductCard = memo(function ProductCard({ p }: { p: Product }) {
         className="block relative aspect-square bg-white overflow-hidden"
         aria-label={`View ${p.name}${isSoldOut ? " — Sold Out" : ""}`}
       >
-        <img
-          src={p.image}
-          alt={p.name}
-          loading="lazy"
-          width={800}
-          height={800}
-          className={`w-full h-full object-contain transition-transform duration-500 ease-out group-hover:scale-105 ${isSoldOut ? "opacity-60" : ""}`}
-        />
+        {p.imageBundle ? (
+          <ResponsiveImage
+            bundle={p.imageBundle}
+            sizes={CARD_IMAGE_SIZES}
+            className="w-full h-full"
+            imgClassName={`w-full h-full object-contain transition-transform duration-500 ease-out group-hover:scale-105 ${isSoldOut ? "opacity-60" : ""}`}
+          />
+        ) : (
+          <img
+            src={p.image}
+            alt={p.name}
+            loading="lazy"
+            width={800}
+            height={800}
+            className={`w-full h-full object-contain transition-transform duration-500 ease-out group-hover:scale-105 ${isSoldOut ? "opacity-60" : ""}`}
+          />
+        )}
 
         {/* Sold-out overlay */}
         {isSoldOut && (

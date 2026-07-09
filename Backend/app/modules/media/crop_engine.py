@@ -8,6 +8,7 @@ See docs/architecture/Universal_Responsive_Image_System_Design.md §4.
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass
 
 from PIL import Image
@@ -73,7 +74,7 @@ def rotate(image: Image.Image, degrees: float) -> Image.Image:
 
 
 def validate_and_clamp_crop_box(
-    box: CropBox, image_width: int, image_height: int, *, strict_bounds: bool
+    box: CropBox, image_width: float, image_height: float, *, strict_bounds: bool
 ) -> CropBox:
     """
     Recompute *box* against the real pixel bounds of the (already rotated)
@@ -108,6 +109,49 @@ def validate_and_clamp_crop_box(
         width=max(0.0, clamped_right - clamped_left),
         height=max(0.0, clamped_bottom - clamped_top),
     )
+
+
+def _rotated_bounds(width: int, height: int, degrees: float) -> tuple[float, float]:
+    """Analytic axis-aligned bounding box size after a `rotate(expand=True)`
+    — mirrors PIL's own sizing for that operation without needing the
+    actual pixel data, so callers can validate geometry using only stored
+    width/height (see validate_crop_request)."""
+    if not degrees:
+        return float(width), float(height)
+    rad = math.radians(degrees)
+    return (
+        abs(width * math.cos(rad)) + abs(height * math.sin(rad)),
+        abs(width * math.sin(rad)) + abs(height * math.cos(rad)),
+    )
+
+
+def validate_crop_request(
+    preset: CropPreset,
+    original_width: int,
+    original_height: int,
+    box: CropBox,
+    rotation_degrees: float,
+) -> None:
+    """
+    Lightweight, request-time-safe validation of one breakpoint's crop
+    geometry against the original's *stored* dimensions — no image bytes
+    needed. Raises CropGeometryError for the same conditions
+    `apply_geometry` would eventually hit when the background worker
+    actually generates the variants (docs audit CB-1 Phase 2 moved that
+    work off the request), so a bad crop request still gets an immediate
+    422 (docs audit HP-3) instead of only failing minutes later in the
+    worker with no request left to report it to. Only strict_bounds is
+    enforced here; non-strict presets clamp silently in the worker, same
+    as before this call existed.
+    """
+    if preset.rotation.allowed == RotationMode.NONE and rotation_degrees:
+        raise CropGeometryError(f"Preset {preset.id!r} does not allow rotation")
+    if not preset.storage_rules.strict_bounds:
+        return
+    rotated_width, rotated_height = _rotated_bounds(
+        original_width, original_height, rotation_degrees
+    )
+    validate_and_clamp_crop_box(box, rotated_width, rotated_height, strict_bounds=True)
 
 
 def crop_to_box(image: Image.Image, box: CropBox) -> Image.Image:

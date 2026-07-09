@@ -1,10 +1,12 @@
 """Tests for app.modules.media.background — variant generation orchestration.
 
 Covers the soft-delete race guarded against in generate_variants_for_breakpoints
-(image removed mid-run must not have its status resurrected) and the
-not-found path in generate_variants_task (image removed/never committed
-before the deferred task ran)."""
+(image removed mid-run must not have its status resurrected), and the CB-1
+performance fix (parallel R2 uploads via asyncio.gather instead of one
+await-per-variant in a nested for loop)."""
 
+import asyncio
+import time
 import uuid
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -39,6 +41,7 @@ def _mock_image() -> MagicMock:
     image.owner_type = "user"
     image.owner_id = None
     image.variants = []
+    image.version = 1
     return image
 
 
@@ -96,7 +99,11 @@ class TestGenerateVariantsForBreakpoints:
 
         update_fields.assert_awaited_once()
         assert update_fields.call_args.args[1] is image
-        assert update_fields.call_args.args[2] == {"status": "ready"}
+        # version is bumped again on completion — not just when crop()/
+        # upload() first persist the request — so the `?v=` cache-buster on
+        # variant URLs points at a URL the browser has never cached stale
+        # content under (docs audit CB-1 Phase 2 cache-busting fix).
+        assert update_fields.call_args.args[2] == {"status": "ready", "version": 2}
 
     async def test_skips_status_write_when_image_deleted_mid_run(self, caplog):
         """If the image was soft-deleted while variant generation for its
@@ -159,73 +166,158 @@ class TestGenerateVariantsForBreakpoints:
         assert "deleted mid-run" in caplog.text
 
 
-class TestGenerateVariantsTask:
-    async def test_missing_image_logs_warning_and_noops(self, caplog):
-        """The image being gone by the time the deferred task runs is an
-        expected race (soft-deleted, or an upload whose request never
-        committed) — not an application error, so it must warn, not error,
-        and must not touch storage or attempt generation."""
-        preset = PRESET_REGISTRY["hero"]
-        image_id = uuid.uuid4()
-        db = _mock_db()
+def _generated_variants_for(preset) -> dict[Breakpoint, list[GeneratedVariant]]:
+    return {
+        bp: [
+            GeneratedVariant(
+                variant_name=spec.name,
+                breakpoint=bp,
+                dpr=1,
+                format="webp",
+                width=spec.width,
+                height=spec.height,
+                content=b"x",
+            )
+            for spec in preset.output_variants
+        ]
+        for bp in preset.breakpoints
+    }
 
-        session_cm = MagicMock()
-        session_cm.__aenter__ = AsyncMock(return_value=db)
-        session_cm.__aexit__ = AsyncMock(return_value=False)
 
-        with (
-            patch("app.core.database.AsyncWorkerSessionLocal", return_value=session_cm),
-            patch.object(
-                background._repo, "get_image", new=AsyncMock(return_value=None)
-            ),
-            patch("app.modules.media.background.storage.get_object_bytes") as get_bytes,
-            patch(
-                "app.modules.media.background.generate_variants_for_breakpoints",
-                new=AsyncMock(),
-            ) as gen,
-        ):
-            with caplog.at_level("WARNING", logger="app.modules.media.background"):
-                await background.generate_variants_task(
-                    image_id, preset, _crops_for(preset.breakpoints), preset.breakpoints
-                )
+class TestGenerateVariantsForBreakpointsPerformance:
+    """Proves the CB-1 Phase 1 fix: uploads across every breakpoint's
+    artifacts now run concurrently (asyncio.gather), not one `await` at a
+    time in a nested for loop. Uses the real `category` preset — 2
+    breakpoints x 3 variants x 1 dpr = 6 artifacts, matching the shape of
+    the crop request observed taking 12-27s in production before this fix.
+    An artificial per-upload delay stands in for real R2 network latency so
+    the test is deterministic and fast regardless of live infra."""
 
-        get_bytes.assert_not_called()
-        gen.assert_not_awaited()
-        assert "not found" in caplog.text
-        assert not any(r.levelname == "ERROR" for r in caplog.records)
+    UPLOAD_DELAY_S = 0.2
 
-    async def test_existing_image_runs_generation(self):
-        preset = PRESET_REGISTRY["hero"]
-        image_id = uuid.uuid4()
+    async def test_uploads_run_concurrently_not_sequentially(self):
+        preset = PRESET_REGISTRY["category"]
         image = _mock_image()
-        image.id = image_id
-        image.original_key = "images/hero/banner/none/x/original.jpg"
         db = _mock_db()
+        generated_by_breakpoint = _generated_variants_for(preset)
+        artifact_count = sum(len(v) for v in generated_by_breakpoint.values())
+        assert artifact_count == 6  # 2 breakpoints x 3 variants x 1 dpr
 
-        session_cm = MagicMock()
-        session_cm.__aenter__ = AsyncMock(return_value=db)
-        session_cm.__aexit__ = AsyncMock(return_value=False)
+        async def _slow_put_variant(key, content, *, fmt):
+            await asyncio.sleep(self.UPLOAD_DELAY_S)
 
         with (
-            patch("app.core.database.AsyncWorkerSessionLocal", return_value=session_cm),
+            patch("app.modules.media.background.PILImage.open") as pil_open,
+            patch(
+                "app.modules.media.background.apply_geometry", return_value=MagicMock()
+            ),
+            patch(
+                "app.modules.media.background.generate_variants_for_breakpoint",
+                side_effect=lambda cropped, specs, bp: generated_by_breakpoint[bp],
+            ),
+            patch(
+                "app.modules.media.background.storage.build_variant_key",
+                return_value="images/category/category/none/x/desktop/thumbnail.webp",
+            ),
+            patch(
+                "app.modules.media.background.storage.put_variant",
+                new=AsyncMock(side_effect=_slow_put_variant),
+            ),
+            patch(
+                "app.modules.media.background.storage.public_url",
+                return_value="https://cdn/x.webp",
+            ),
+            patch.object(background._repo, "replace_variants", new=AsyncMock()),
             patch.object(
                 background._repo, "get_image", new=AsyncMock(return_value=image)
             ),
-            patch(
-                "app.modules.media.background.storage.get_object_bytes",
-                return_value=b"orig-bytes",
-            ) as get_bytes,
-            patch(
-                "app.modules.media.background.generate_variants_for_breakpoints",
-                new=AsyncMock(),
-            ) as gen,
+            patch.object(background._repo, "update_fields", new=AsyncMock()),
         ):
-            crops = _crops_for(preset.breakpoints)
-            await background.generate_variants_task(
-                image_id, preset, crops, preset.breakpoints
+            pil_open.return_value.load = MagicMock()
+            t0 = time.perf_counter()
+            await background.generate_variants_for_breakpoints(
+                db,
+                image,
+                preset,
+                b"orig",
+                _crops_for(preset.breakpoints),
+                preset.breakpoints,
+            )
+            elapsed = time.perf_counter() - t0
+
+        sequential_baseline = artifact_count * self.UPLOAD_DELAY_S  # "before": 1.2s
+        # "after": one round of concurrent uploads (~0.2s) plus scheduling
+        # overhead — generously bounded well under half the old sequential
+        # cost, so this fails loudly if the gather-based fan-out regresses
+        # back to a sequential await-per-artifact loop.
+        assert elapsed < sequential_baseline / 2, (
+            f"expected concurrent uploads (~{self.UPLOAD_DELAY_S}s) to beat "
+            f"the sequential baseline ({sequential_baseline}s) by 2x+, got {elapsed:.3f}s"
+        )
+        assert elapsed < self.UPLOAD_DELAY_S * 2
+
+    async def test_all_variant_rows_persisted_correctly_when_parallelized(self):
+        """Parallelizing uploads must not scramble which row lands on which
+        breakpoint, or drop/duplicate any artifact."""
+        preset = PRESET_REGISTRY["category"]
+        image = _mock_image()
+        db = _mock_db()
+        generated_by_breakpoint = _generated_variants_for(preset)
+
+        async def _fast_put_variant(key, content, *, fmt):
+            return None
+
+        with (
+            patch("app.modules.media.background.PILImage.open") as pil_open,
+            patch(
+                "app.modules.media.background.apply_geometry", return_value=MagicMock()
+            ),
+            patch(
+                "app.modules.media.background.generate_variants_for_breakpoint",
+                side_effect=lambda cropped, specs, bp: generated_by_breakpoint[bp],
+            ),
+            patch(
+                "app.modules.media.background.storage.build_variant_key",
+                return_value="images/category/category/none/x/desktop/thumbnail.webp",
+            ),
+            patch(
+                "app.modules.media.background.storage.put_variant",
+                new=AsyncMock(side_effect=_fast_put_variant),
+            ),
+            patch(
+                "app.modules.media.background.storage.public_url",
+                return_value="https://cdn/x.webp",
+            ),
+            patch.object(
+                background._repo, "replace_variants", new=AsyncMock()
+            ) as replace_variants,
+            patch.object(
+                background._repo, "get_image", new=AsyncMock(return_value=image)
+            ),
+            patch.object(background._repo, "update_fields", new=AsyncMock()),
+        ):
+            pil_open.return_value.load = MagicMock()
+            await background.generate_variants_for_breakpoints(
+                db,
+                image,
+                preset,
+                b"orig",
+                _crops_for(preset.breakpoints),
+                preset.breakpoints,
             )
 
-        get_bytes.assert_called_once_with("images/hero/banner/none/x/original.jpg")
-        gen.assert_awaited_once_with(
-            db, image, preset, b"orig-bytes", crops, preset.breakpoints
-        )
+        # replace_variants called once per breakpoint, each with exactly its
+        # own 3 variant rows, all status='ready'.
+        assert replace_variants.await_count == len(preset.breakpoints)
+        calls_by_breakpoint = {
+            c.args[2]: c.args[3] for c in replace_variants.await_args_list
+        }
+        assert set(calls_by_breakpoint) == {bp.value for bp in preset.breakpoints}
+        for bp in preset.breakpoints:
+            rows = calls_by_breakpoint[bp.value]
+            assert len(rows) == 3
+            assert {r["breakpoint"] for r in rows} == {bp.value}
+            assert all(r["status"] == "ready" for r in rows)
+            assert {r["variant_name"] for r in rows} == {
+                spec.name for spec in preset.output_variants
+            }

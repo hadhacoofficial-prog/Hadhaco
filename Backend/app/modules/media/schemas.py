@@ -2,11 +2,32 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
+from app.modules.media import storage
 from app.modules.media.preset_registry import Breakpoint, CropPreset
+
+# Every owner_type the media module is ever attached to or will be once the
+# remaining presets (hero/banner/CMS/company/SEO) get an upload surface —
+# kept here as the single allow-list so an admin can't attach/upload/reorder
+# against a typo'd owner_type that silently skips cache invalidation
+# (`router._bust_cache_for` only special-cases known types) or creates an
+# orphaned, unreachable image row. Docs audit MP-5.
+OwnerType = Literal[
+    "unattached",
+    "product",
+    "collection",
+    "category",
+    "user",
+    "review",
+    "hero",
+    "banner",
+    "cms_section_item",
+    "company_config",
+    "seo_page",
+]
 
 
 class PresetOut(BaseModel):
@@ -48,8 +69,15 @@ class PresetOut(BaseModel):
 
 
 class CropBoxIn(BaseModel):
-    x: float = Field(ge=0)
-    y: float = Field(ge=0)
+    # x/y are intentionally unbounded (not ge=0): a box can legitimately
+    # start before the original's top-left corner — e.g. a small zoom/pan
+    # rounding overshoot, or a deliberate letterboxed frame — and
+    # crop_engine.validate_and_clamp_crop_box already clamps these back into
+    # bounds for every non-strict_bounds preset. Rejecting negative
+    # coordinates here at the schema layer short-circuited that clamp
+    # entirely, turning an ordinary editor interaction into a hard 422.
+    x: float
+    y: float
     width: float = Field(gt=0)
     height: float = Field(gt=0)
 
@@ -74,7 +102,7 @@ class CropGeometryIn(BaseModel):
 
 
 class AttachIn(BaseModel):
-    owner_type: str
+    owner_type: OwnerType
     owner_id: uuid.UUID
 
 
@@ -84,9 +112,13 @@ class ReorderItem(BaseModel):
 
 
 class ReorderIn(BaseModel):
-    owner_type: str
+    owner_type: OwnerType
     owner_id: uuid.UUID
     items: list[ReorderItem]
+
+
+class AltTextIn(BaseModel):
+    alt_text: str | None = Field(default=None, max_length=500)
 
 
 class ImageVariantOut(BaseModel):
@@ -113,6 +145,10 @@ class ImageOut(BaseModel):
     original_ext: str
     original_width: int
     original_height: int
+    # The untouched original upload — the crop editor must always re-open
+    # against this, never a generated variant, or repositioning a crop loses
+    # whatever the previous crop already discarded (architecture doc §4/§9).
+    original_url: str
     alt_text: str | None
     status: str
     version: int
@@ -141,6 +177,7 @@ class ImageOut(BaseModel):
             original_ext=image.original_ext,
             original_width=image.original_width,
             original_height=image.original_height,
+            original_url=storage.public_url(image.original_key, version=image.version),
             alt_text=image.alt_text,
             status=image.status,
             version=image.version,

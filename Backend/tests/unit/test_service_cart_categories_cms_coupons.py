@@ -351,6 +351,80 @@ class TestCategoryService:
             result = await self.svc.get_by_slug(db, "rings")
         assert result is mock_cat
 
+    async def test_get_tree_resolves_image_despite_stale_primary_image_id_column(self):
+        """Regression guard: `categories.primary_image_id` is a denormalized
+        column the universal media attach/crop/set-primary flow never writes
+        (it only touches the `images` table) — the tree builder must resolve
+        each category's image from the live images table, not gate on that
+        column being set, or every successfully-attached image silently
+        disappears from the storefront nav."""
+        from app.modules.media.repository import ImageRepository
+
+        db = AsyncMock()
+        cat = MagicMock()
+        cat.id = uuid.uuid4()
+        cat.parent_id = None
+        cat.name = "Rings"
+        cat.slug = "rings"
+        cat.sort_order = 1
+        cat.primary_image_id = None  # stale/never-written, as in production
+
+        with (
+            patch.object(
+                CategoryRepository, "list_all_active", AsyncMock(return_value=[cat])
+            ),
+            patch.object(
+                ImageRepository,
+                "get_primary_variant_urls",
+                AsyncMock(return_value={cat.id: "https://cdn/rings.webp?v=1"}),
+            ),
+        ):
+            result = await self.svc.get_tree(db)
+
+        assert result[0].image_url == "https://cdn/rings.webp?v=1"
+
+    async def test_get_detail_populates_primary_image_id_from_live_lookup(self):
+        from app.modules.categories.schemas import CategoryDetailResponse
+        from app.modules.media.repository import ImageRepository
+
+        db = AsyncMock()
+        cat = MagicMock()
+        cat.id = uuid.uuid4()
+        cat.primary_image_id = None  # stale/never-written, as in production
+        image_id = uuid.uuid4()
+
+        validated = MagicMock()
+        validated.id = cat.id
+        validated.primary_image_id = None
+        validated.image_url = None
+
+        with (
+            patch.object(CategoryRepository, "get_by_id", AsyncMock(return_value=cat)),
+            patch.object(
+                CategoryRepository, "get_product_count", AsyncMock(return_value=0)
+            ),
+            patch.object(
+                CategoryRepository, "get_children_count", AsyncMock(return_value=0)
+            ),
+            patch.object(
+                CategoryDetailResponse, "model_validate", return_value=validated
+            ),
+            patch.object(
+                ImageRepository,
+                "get_primary_image_ids",
+                AsyncMock(return_value={cat.id: image_id}),
+            ),
+            patch.object(
+                ImageRepository,
+                "get_primary_variant_urls",
+                AsyncMock(return_value={cat.id: "https://cdn/rings.webp?v=1"}),
+            ),
+        ):
+            result = await self.svc.get_detail(db, cat.id)
+
+        assert result.primary_image_id == image_id
+        assert result.image_url == "https://cdn/rings.webp?v=1"
+
     async def test_create_raises_conflict_for_existing_slug(self):
         from app.core.exceptions import ConflictError
         from app.modules.categories.schemas import CategoryCreateRequest
@@ -680,6 +754,94 @@ class TestCMSService:
             with pytest.raises(HTTPException) as exc:
                 await self.svc.update_page(db, uuid.uuid4(), CmsPageUpdate())
         assert exc.value.status_code == 404
+
+    async def test_delete_media_purges_r2_before_db_row(self):
+        """MP-3 regression guard: deleting a cms_media row used to leave its
+        R2 object(s) orphaned forever — the delete must call R2 cleanup
+        before the row disappears."""
+        from app.modules.cms.media_service import CmsMediaService
+
+        db = AsyncMock()
+        media = MagicMock()
+        media_id = uuid.uuid4()
+
+        with (
+            patch.object(CMSRepository, "get_media", AsyncMock(return_value=media)),
+            patch.object(CMSRepository, "delete_media", AsyncMock()) as delete_media,
+            patch.object(CmsMediaService, "delete_r2_objects") as delete_r2,
+        ):
+            await self.svc.delete_media(db, media_id)
+
+        delete_r2.assert_called_once_with(media)
+        delete_media.assert_awaited_once_with(db, media)
+        db.commit.assert_awaited_once()
+
+    async def test_delete_media_raises_404_when_not_found(self):
+        from fastapi import HTTPException
+
+        db = AsyncMock()
+        with patch.object(CMSRepository, "get_media", AsyncMock(return_value=None)):
+            with pytest.raises(HTTPException) as exc:
+                await self.svc.delete_media(db, uuid.uuid4())
+        assert exc.value.status_code == 404
+
+
+# ─── CmsMediaService ────────────────────────────────────────────────────────
+
+
+class TestCmsMediaServiceDeleteR2Objects:
+    def test_deletes_main_object_only_when_no_thumbnail(self):
+        from app.modules.cms.media_service import CmsMediaService
+
+        svc = CmsMediaService()
+        media = MagicMock()
+        media.filename = "cms/abc.jpg"
+        media.thumbnail_url = None
+
+        mock_client = MagicMock()
+        with patch("app.modules.cms.media_service._r2", return_value=mock_client):
+            svc.delete_r2_objects(media)
+
+        deleted_keys = [
+            o["Key"]
+            for o in mock_client.delete_objects.call_args.kwargs["Delete"]["Objects"]
+        ]
+        assert deleted_keys == ["cms/abc.jpg"]
+
+    def test_deletes_thumbnail_key_derived_from_filename(self):
+        from app.modules.cms.media_service import CmsMediaService
+
+        svc = CmsMediaService()
+        media = MagicMock()
+        media.filename = "cms/abc.jpg"
+        media.thumbnail_url = "https://cdn.example/cms/abc_thumb.webp"
+
+        mock_client = MagicMock()
+        with patch("app.modules.cms.media_service._r2", return_value=mock_client):
+            svc.delete_r2_objects(media)
+
+        deleted_keys = {
+            o["Key"]
+            for o in mock_client.delete_objects.call_args.kwargs["Delete"]["Objects"]
+        }
+        assert deleted_keys == {"cms/abc.jpg", "cms/abc_thumb.webp"}
+
+    def test_swallows_client_error(self):
+        from botocore.exceptions import ClientError
+
+        from app.modules.cms.media_service import CmsMediaService
+
+        svc = CmsMediaService()
+        media = MagicMock()
+        media.filename = "cms/abc.jpg"
+        media.thumbnail_url = None
+
+        mock_client = MagicMock()
+        mock_client.delete_objects.side_effect = ClientError(
+            {"Error": {"Code": "500", "Message": "boom"}}, "DeleteObjects"
+        )
+        with patch("app.modules.cms.media_service._r2", return_value=mock_client):
+            svc.delete_r2_objects(media)  # must not raise
 
 
 # ─── CartService ──────────────────────────────────────────────────────────────

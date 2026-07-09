@@ -61,7 +61,12 @@ class QueueService:
 
 def build_queue() -> QueueService:
     """Register periodic workers with their configured intervals."""
-    from app.workers import cms_publish, partition_manager, reservation_expiry
+    from app.workers import (
+        cms_publish,
+        media_generation,
+        partition_manager,
+        reservation_expiry,
+    )
 
     queue = QueueService()
     # Reservation expiry runs every 60s — must fire quickly to free stock
@@ -70,6 +75,14 @@ def build_queue() -> QueueService:
         reservation_expiry.run, seconds=60, job_id="reservation_expiry"
     )
     queue.add_interval_job(cms_publish.run, seconds=60, job_id="cms_publish")
+    # Every 5s — the crash-recovery/retry net for image variant generation
+    # (docs audit CB-1 Phase 2). The common case is already handled by the
+    # asyncio.create_task fast path fired from `_enqueue_generation`; this
+    # tick is what catches anything that task never finished (process
+    # restart, exception before claim) and is the *only* path in a
+    # multi-process deployment. Short interval since an admin waiting on
+    # "Generating…" in the editor is the worst case this recovers.
+    queue.add_interval_job(media_generation.run, seconds=5, job_id="media_generation")
     # First day of each month, 00:10 UTC — create next month's DB partitions.
     queue.add_cron_job(
         partition_manager.run, cron="10 0 1 * *", job_id="partition_manager"

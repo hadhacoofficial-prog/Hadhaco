@@ -576,11 +576,16 @@ class TestCatalogServiceExtra:
         img.original_key = "products/p/i/original.jpg"
         img.updated_at = datetime(2024, 1, 1, tzinfo=UTC)
         large_variant = MagicMock()
+        large_variant.id = uuid.uuid4()
         large_variant.variant_name = "large"
         large_variant.breakpoint = "desktop"
         large_variant.dpr = 1
+        large_variant.format = "webp"
         large_variant.status = "ready"
         large_variant.url = "https://cdn/first.jpg"
+        large_variant.width = 1200
+        large_variant.height = 1200
+        large_variant.error_message = None
         img.variants = [large_variant]
         mock_product.images = [img]
         mock_product.id = uuid.uuid4()

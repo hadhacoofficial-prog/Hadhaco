@@ -9,6 +9,7 @@ from fastapi import HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.redis import safe_redis_delete, safe_redis_get, safe_redis_setex
+from app.modules.cms.media_service import CmsMediaService
 from app.modules.cms.models import Banner, CmsMedia, CmsPage, LandingSection
 from app.modules.cms.repository import CMSRepository
 from app.modules.cms.schemas import (
@@ -38,6 +39,7 @@ _UNMANAGED_SECTION_KEYS = frozenset({"navbar", "shop_by_gender", "shop_by_catego
 class CMSService:
     def __init__(self) -> None:
         self._repo = CMSRepository()
+        self._media = CmsMediaService()
 
     # ── Public homepage ────────────────────────────────────────────────────────
 
@@ -397,6 +399,11 @@ class CMSService:
         m = await self._repo.get_media(db, media_id)
         if not m:
             raise HTTPException(status.HTTP_404_NOT_FOUND, "Media not found")
+        # R2 cleanup before the DB row goes away — best-effort (logged, not
+        # raised) so a transient R2 error can't block the admin delete, but
+        # previously this step didn't exist at all and every CMS delete
+        # orphaned its object(s) permanently. Docs audit MP-3.
+        self._media.delete_r2_objects(m)
         await self._repo.delete_media(db, m)
         await db.commit()
 

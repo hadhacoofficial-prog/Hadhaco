@@ -24,6 +24,7 @@
     "@hadha/shared-utils": "^0.0.1",
     "@hadha/shared-api": "^0.0.1",
     "@hadha/shared-ui": "^0.0.1",
+    "@hadha/shared-media": "^0.0.1",
     "@supabase/supabase-js": "^2.107.0",
     "@tailwindcss/vite": "^4.2.1",
     "@tanstack/react-query": "^5.83.0",

@@ -13,11 +13,17 @@ import {
   attachImage,
   setPrimaryImage,
   deleteImage as deleteMediaImage,
+  getImage,
+  pollImageUntilReady,
+  bustCacheUrl,
+  regenerateImage,
+  updateImageAltText,
+  type SaveIntent,
   type UniversalImageEditorSaveResult,
   type ImageOutRaw,
 } from "@hadha/shared-media";
-import { PRESET_REGISTRY } from "@hadha/shared-types";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@hadha/shared-ui/ui/dialog";
+import { PRESET_REGISTRY, type Breakpoint, type BreakpointCropGeometry } from "@hadha/shared-types";
+import { Dialog, DialogContent, DialogTitle } from "@hadha/shared-ui/ui/dialog";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import type { CollectionDetail } from "@/types/admin";
@@ -34,6 +40,38 @@ function pickPreviewUrl(raw: ImageOutRaw): string | null {
     ready[0]?.url ??
     null
   );
+}
+
+/** Parses ImageOutRaw's metadata.crops back into the shape UniversalImageEditor
+ * seeds itself from — mirrors ProductForm's equivalent single-breakpoint
+ * parse, generalized to every breakpoint the preset defines. */
+function parseStoredCrops(
+  raw: ImageOutRaw,
+): Partial<Record<Breakpoint, BreakpointCropGeometry>> | undefined {
+  const crops = raw.metadata.crops as
+    | Record<
+        string,
+        {
+          box: { x: number; y: number; width: number; height: number };
+          zoom: number;
+          rotation: number;
+        }
+      >
+    | undefined;
+  if (!crops) return undefined;
+  const result: Partial<Record<Breakpoint, BreakpointCropGeometry>> = {};
+  for (const bp of COLLECTION_PRESET.breakpoints) {
+    const c = crops[bp];
+    if (!c) continue;
+    result[bp] = {
+      aspectRatio: COLLECTION_PRESET.aspectRatio[bp] ?? null,
+      box: c.box,
+      zoom: c.zoom,
+      pan: { x: 0, y: 0 },
+      rotation: c.rotation,
+    };
+  }
+  return Object.keys(result).length > 0 ? result : undefined;
 }
 
 function toSlug(name: string) {
@@ -105,10 +143,33 @@ export function CollectionForm({ mode, collection }: CollectionFormProps) {
   // (mirrors ProductForm's pattern, minus the multi-image gallery).
   const [imageId, setImageId] = useState<string | null>(collection?.primary_image_id ?? null);
   const [imageUrl, setImageUrl] = useState<string | null>(collection?.image_url ?? null);
+  // Lets awaitGeneration's async poll check, once it resolves, whether the
+  // image it was waiting on is still the one in play — the admin could have
+  // removed/replaced it while generation was still running in the background.
+  const imageIdRef = useRef(imageId);
+  useEffect(() => {
+    imageIdRef.current = imageId;
+  }, [imageId]);
+  // The untouched original + its previously-saved crop geometry — fetched
+  // fresh each time the editor opens on an existing image (see the effect
+  // below) rather than trusting `imageUrl`, which is a generated variant
+  // and must never be handed to the crop editor.
+  const [editorOriginalUrl, setEditorOriginalUrl] = useState<string | null>(null);
+  const [editorInitialCrops, setEditorInitialCrops] = useState<
+    Partial<Record<Breakpoint, BreakpointCropGeometry>> | undefined
+  >(undefined);
+  const [editorAltText, setEditorAltText] = useState<string | null>(null);
+  const [editorLoading, setEditorLoading] = useState(false);
   const [editorOpen, setEditorOpen] = useState(false);
   // Covers both save (upload/crop) and remove — the two are mutually exclusive
   // on this single-cover image slot, so one flag can gate both UI affordances.
   const [imageBusy, setImageBusy] = useState(false);
+  // True while the background worker is still generating this image's
+  // variants (docs audit CB-1 Phase 2 — crop/upload now return with
+  // status='pending' almost immediately, well before real variants exist).
+  // Purely informational: the thumbnail keeps showing the pre-edit image
+  // until this resolves and swaps it for the freshly-generated one.
+  const [imageGenerating, setImageGenerating] = useState(false);
   // React state updates are async, so a `useState` check alone can't stop a
   // second click fired in the same tick (before the disabled re-render lands)
   // from re-entering these handlers and racing crop/remove against each
@@ -123,6 +184,84 @@ export function CollectionForm({ mode, collection }: CollectionFormProps) {
       setForm((f) => ({ ...f, slug: toSlug(f.name) }));
     }
   }, [form.name, slugManual, mode]);
+
+  // Re-fetch the image's true original + saved crop geometry every time the
+  // editor opens on an existing image, rather than trusting local state —
+  // guarantees "Edit Crop" always operates on the untouched original.
+  useEffect(() => {
+    if (!editorOpen || !imageId) return;
+    let cancelled = false;
+    setEditorLoading(true);
+    getImage(imageId)
+      .then((raw) => {
+        if (cancelled) return;
+        setEditorOriginalUrl(raw.original_url);
+        setEditorInitialCrops(parseStoredCrops(raw));
+        setEditorAltText(raw.alt_text);
+      })
+      .catch((e) => {
+        if (cancelled) return;
+        toast.error(toUserMessage(e as Error));
+        setEditorOpen(false);
+      })
+      .finally(() => {
+        if (!cancelled) setEditorLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [editorOpen, imageId]);
+
+  const handleAltTextCommit = useCallback(
+    async (value: string) => {
+      if (!imageId) return;
+      try {
+        await updateImageAltText(imageId, value.trim() || null);
+      } catch (e) {
+        toast.error(toUserMessage(e as Error));
+      }
+    },
+    [imageId],
+  );
+
+  const handleRegenerate = useCallback(async () => {
+    if (!imageId) return;
+    setImageBusy(true);
+    try {
+      const raw = await regenerateImage(imageId);
+      setImageUrl(pickPreviewUrl(raw));
+      toast.success("Variants regenerated.");
+    } catch (e) {
+      toast.error(toUserMessage(e as Error));
+    } finally {
+      setImageBusy(false);
+    }
+  }, [imageId]);
+
+  // Fire-and-forget: waits for the background worker to actually finish
+  // generating variants, then swaps in the real thumbnail. Never blocks the
+  // save flow — crop/upload already returned and the dialog/toast have
+  // moved on by the time this resolves (docs audit CB-1 Phase 2).
+  const awaitGeneration = useCallback(
+    async (targetImageId: string) => {
+      setImageGenerating(true);
+      try {
+        const fresh = await pollImageUntilReady(targetImageId);
+        if (targetImageId !== imageIdRef.current) return; // superseded meanwhile
+        const url = pickPreviewUrl(fresh);
+        setImageUrl(url ? bustCacheUrl(url) : url);
+        if (collection?.id) {
+          queryClient.invalidateQueries({ queryKey: queryKeys.admin.collections });
+          queryClient.invalidateQueries({ queryKey: queryKeys.admin.collection(collection.id) });
+        }
+      } catch (e) {
+        toast.error(toUserMessage(e as Error) || "Image processing failed — try again.");
+      } finally {
+        setImageGenerating(false);
+      }
+    },
+    [collection?.id, queryClient],
+  );
 
   const mutation = useMutation({
     mutationFn: async (data: Record<string, unknown>) => {
@@ -152,7 +291,7 @@ export function CollectionForm({ mode, collection }: CollectionFormProps) {
   });
 
   const handleImageSave = useCallback(
-    async ({ file, geometry }: UniversalImageEditorSaveResult) => {
+    async ({ file, geometry }: UniversalImageEditorSaveResult, intent: SaveIntent) => {
       if (imageOpInFlight.current) return;
       imageOpInFlight.current = true;
       setImageBusy(true);
@@ -174,8 +313,30 @@ export function CollectionForm({ mode, collection }: CollectionFormProps) {
         }
         setImageId(raw.id);
         setImageUrl(pickPreviewUrl(raw));
-        setEditorOpen(false);
-        toast.success("Image saved.");
+        setEditorOriginalUrl(raw.original_url);
+        setEditorInitialCrops(parseStoredCrops(raw));
+        setEditorAltText(raw.alt_text);
+        // Crop/upload here persists to the media API immediately, independent
+        // of the form's own submit — without this, the collections list and
+        // this collection's detail query keep serving the pre-edit thumbnail
+        // until an unrelated form submit happens to refetch them (docs audit
+        // MP-11/LP-5). A brand-new collection has no id yet, so there's
+        // nothing cached to invalidate.
+        if (collection?.id) {
+          queryClient.invalidateQueries({ queryKey: queryKeys.admin.collections });
+          queryClient.invalidateQueries({ queryKey: queryKeys.admin.collection(collection.id) });
+        }
+        if (intent === "save") {
+          setEditorOpen(false);
+          toast.success("Image saved.");
+        } else {
+          toast.success("Crop saved.");
+        }
+        // Real variants aren't ready yet (raw.status === 'pending') — the
+        // background worker is still generating them (docs audit CB-1
+        // Phase 2). Swap in the fresh thumbnail once it finishes, without
+        // blocking the save flow above.
+        if (raw.status !== "ready") void awaitGeneration(raw.id);
       } catch (e) {
         toast.error(toUserMessage(e as Error));
       } finally {
@@ -183,7 +344,7 @@ export function CollectionForm({ mode, collection }: CollectionFormProps) {
         setImageBusy(false);
       }
     },
-    [collection?.id, imageId],
+    [collection?.id, imageId, queryClient, awaitGeneration],
   );
 
   const handleRemoveImage = useCallback(async () => {
@@ -194,6 +355,13 @@ export function CollectionForm({ mode, collection }: CollectionFormProps) {
       await deleteMediaImage(imageId);
       setImageId(null);
       setImageUrl(null);
+      setEditorOriginalUrl(null);
+      setEditorInitialCrops(undefined);
+      setEditorAltText(null);
+      if (collection?.id) {
+        queryClient.invalidateQueries({ queryKey: queryKeys.admin.collections });
+        queryClient.invalidateQueries({ queryKey: queryKeys.admin.collection(collection.id) });
+      }
       toast.success("Image removed.");
     } catch (e) {
       toast.error(toUserMessage(e as Error));
@@ -201,7 +369,14 @@ export function CollectionForm({ mode, collection }: CollectionFormProps) {
       imageOpInFlight.current = false;
       setImageBusy(false);
     }
-  }, [imageId]);
+  }, [imageId, collection?.id, queryClient]);
+
+  const handleDeleteFromEditor = useCallback(() => {
+    if (!imageId) return;
+    if (!confirm("Remove this image?")) return;
+    setEditorOpen(false);
+    void handleRemoveImage();
+  }, [imageId, handleRemoveImage]);
 
   function set(field: keyof FormState, value: unknown) {
     setForm((f) => ({ ...f, [field]: value }));
@@ -414,6 +589,12 @@ export function CollectionForm({ mode, collection }: CollectionFormProps) {
               {imageUrl ? (
                 <div className="relative group w-full aspect-video bg-secondary overflow-hidden border border-border">
                   <img src={imageUrl} alt="" className="w-full h-full object-cover" />
+                  {imageGenerating && (
+                    <div className="absolute bottom-2 right-2 flex items-center gap-1.5 bg-background/90 text-foreground text-[11px] px-2 py-1 rounded-sm shadow-sm">
+                      <Loader2 className="size-3 animate-spin" />
+                      Generating variants…
+                    </div>
+                  )}
                   <div className="absolute inset-0 bg-foreground/0 group-hover:bg-foreground/40 transition-all flex items-center justify-center gap-2 opacity-0 group-hover:opacity-100">
                     <button
                       type="button"
@@ -448,22 +629,37 @@ export function CollectionForm({ mode, collection }: CollectionFormProps) {
               )}
             </section>
 
-            {editorOpen && (
+            {editorOpen && editorLoading && (
               <Dialog open onOpenChange={(open) => !open && setEditorOpen(false)}>
-                <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
-                  <DialogHeader>
-                    <DialogTitle>Collection image</DialogTitle>
-                  </DialogHeader>
-                  <UniversalImageEditor
-                    preset={COLLECTION_PRESET}
-                    existingImageSrc={imageUrl ?? undefined}
-                    saving={imageBusy}
-                    onCancel={() => setEditorOpen(false)}
-                    onSave={handleImageSave}
-                  />
+                <DialogContent>
+                  <DialogTitle className="sr-only">Loading image</DialogTitle>
+                  <div className="flex items-center justify-center gap-2 py-16 text-sm text-muted-foreground">
+                    <Loader2 className="size-4 animate-spin" />
+                    Loading original image…
+                  </div>
                 </DialogContent>
               </Dialog>
             )}
+            <UniversalImageEditor
+              open={editorOpen && !editorLoading}
+              onOpenChange={(open) => !open && setEditorOpen(false)}
+              preset={COLLECTION_PRESET}
+              // Re-editing an existing image must always operate on the
+              // untouched original (editorOriginalUrl, fetched fresh above)
+              // — never `imageUrl`, which is a generated variant. A
+              // brand-new image (no imageId yet) has no original to fetch,
+              // so it's undefined.
+              existingImageSrc={imageId ? (editorOriginalUrl ?? undefined) : undefined}
+              initialCrops={imageId ? editorInitialCrops : undefined}
+              saving={imageBusy}
+              onCancel={() => setEditorOpen(false)}
+              onSave={handleImageSave}
+              onDelete={imageId ? handleDeleteFromEditor : undefined}
+              initialAltText={editorAltText}
+              onAltTextCommit={imageId ? handleAltTextCommit : undefined}
+              onRegenerate={imageId ? handleRegenerate : undefined}
+              regenerating={imageBusy}
+            />
 
             {/* Actions */}
             <div className="flex gap-3">

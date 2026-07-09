@@ -4,7 +4,7 @@ import uuid
 from datetime import UTC, datetime
 from typing import Any
 
-from fastapi import BackgroundTasks, HTTPException, UploadFile, status
+from fastapi import HTTPException, UploadFile, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.events import ReviewRequestEvent, event_bus
@@ -29,7 +29,6 @@ class ReviewService:
         customer_name: str | None,
         data: ReviewCreate,
         images: list[UploadFile] | None = None,
-        background_tasks: BackgroundTasks | None = None,
     ) -> Review:
         existing = await self._repo.get_by_product_user(
             db, product_id=data.product_id, user_id=user_id
@@ -65,7 +64,6 @@ class ReviewService:
                     db,
                     review_id=review.id,
                     images=images,
-                    background_tasks=background_tasks or BackgroundTasks(),
                 )
             except UniversalImageServiceError as exc:
                 raise HTTPException(
@@ -292,7 +290,6 @@ class ReviewService:
         *,
         review_id: uuid.UUID,
         images: list[UploadFile],
-        background_tasks: BackgroundTasks,
     ) -> None:
         for i, upload in enumerate(images[:5]):  # max 5 images
             content = await upload.read()
@@ -305,6 +302,5 @@ class ReviewService:
                 owner_type="review",
                 owner_id=review_id,
                 uploaded_by=None,
-                background_tasks=background_tasks,
             )
             await self._images.reorder(db, [(image.id, i)])

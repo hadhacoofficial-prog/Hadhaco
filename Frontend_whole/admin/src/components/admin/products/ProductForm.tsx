@@ -15,6 +15,7 @@ import {
   Sparkles,
   Crop as CropIcon,
   ImagePlus,
+  Loader2,
 } from "lucide-react";
 import { toast } from "sonner";
 import { api } from "@/lib/api/client";
@@ -28,7 +29,15 @@ import {
   replaceImage,
   deleteImage as deleteMediaImage,
   setPrimaryImage,
+  getImage,
+  pollImageUntilReady,
+  bustCacheUrl,
+  regenerateImage,
+  reorderImages,
+  updateImageAltText,
+  validateFileResolution,
   type ImageOutRaw,
+  type SaveIntent,
   type UniversalImageEditorSaveResult,
 } from "@hadha/shared-media";
 import { PRESET_REGISTRY } from "@hadha/shared-types";
@@ -69,6 +78,7 @@ function mapImageOutToProductImage(raw: ImageOutRaw): ProductImage {
   return {
     id: raw.id,
     url: large ?? medium ?? byName("thumbnail") ?? "",
+    original_url: raw.original_url,
     thumbnail_url: byName("thumbnail"),
     medium_url: medium,
     large_url: large,
@@ -83,6 +93,42 @@ function mapImageOutToProductImage(raw: ImageOutRaw): ProductImage {
     crop_rotation: cropDesktop?.rotation ?? null,
     updated_at: raw.updated_at,
   };
+}
+
+/** Parses ImageOutRaw's metadata.crops back into the shape UniversalImageEditor
+ * seeds itself from, across every breakpoint the product preset defines —
+ * mirrors CollectionForm/CategoryForm's equivalent. `ProductImage` (the flat
+ * shape used elsewhere in this form) only carries desktop crop columns, so
+ * re-editing an existing image must go through this + a fresh `getImage`
+ * fetch rather than `mapImageOutToProductImage`, or tablet/mobile framing
+ * gets silently reset to centered defaults and overwritten on save. */
+function parseStoredCrops(
+  raw: ImageOutRaw,
+): Partial<Record<Breakpoint, BreakpointCropGeometry>> | undefined {
+  const crops = raw.metadata.crops as
+    | Record<
+        string,
+        {
+          box: { x: number; y: number; width: number; height: number };
+          zoom: number;
+          rotation: number;
+        }
+      >
+    | undefined;
+  if (!crops) return undefined;
+  const result: Partial<Record<Breakpoint, BreakpointCropGeometry>> = {};
+  for (const bp of PRODUCT_PRESET.breakpoints) {
+    const c = crops[bp];
+    if (!c) continue;
+    result[bp] = {
+      aspectRatio: PRODUCT_PRESET.aspectRatio[bp] ?? null,
+      box: c.box,
+      zoom: c.zoom,
+      pan: { x: 0, y: 0 },
+      rotation: c.rotation,
+    };
+  }
+  return Object.keys(result).length > 0 ? result : undefined;
 }
 
 // ─── Local types ──────────────────────────────────────────────────────────────
@@ -1327,7 +1373,9 @@ function MediaSection({
   onEditCropPending,
   onEditCropSaved,
   onReplaceSaved,
+  onMoveSaved,
   busyImageIds,
+  generatingImageIds,
   error,
 }: {
   productId?: string;
@@ -1341,25 +1389,53 @@ function MediaSection({
   onEditCropPending: (id: string) => void;
   onEditCropSaved: (id: string) => void;
   onReplaceSaved: (id: string, file: File) => void;
+  onMoveSaved: (id: string, direction: "up" | "down") => void;
   busyImageIds: Set<string>;
+  generatingImageIds: Set<string>;
   error?: string;
 }) {
   const fileRef = useRef<HTMLInputElement>(null);
   const replaceFileRef = useRef<HTMLInputElement>(null);
   const replaceTargetRef = useRef<string | null>(null);
   const [dragging, setDragging] = useState(false);
+  // Files rejected by the client-side resolution pre-check — shown inline,
+  // right where they were dropped/picked, instead of only surfacing as a
+  // 422 after a wasted upload round-trip (mirrors validation.py's message
+  // exactly via validateFileResolution).
+  const [rejectedFiles, setRejectedFiles] = useState<{ id: string; message: string }[]>([]);
+
+  const validateAndAddPending = useCallback(
+    async (files: File[]) => {
+      // Each new add attempt starts clean — a rejection from a previous,
+      // unrelated drop shouldn't keep showing once the admin has moved on.
+      setRejectedFiles([]);
+      const valid: File[] = [];
+      const rejected: { id: string; message: string }[] = [];
+      for (const file of files) {
+        const problem = await validateFileResolution(file, PRODUCT_PRESET);
+        if (problem) {
+          rejected.push({ id: uid(), message: `${file.name}: ${problem}` });
+        } else {
+          valid.push(file);
+        }
+      }
+      if (rejected.length) setRejectedFiles(rejected);
+      if (valid.length) onAddPending(valid);
+    },
+    [onAddPending],
+  );
 
   const handleDrop = (e: React.DragEvent) => {
     e.preventDefault();
     setDragging(false);
     const files = Array.from(e.dataTransfer.files).filter((f) => f.type.startsWith("image/"));
-    if (files.length) onAddPending(files);
+    if (files.length) void validateAndAddPending(files);
   };
 
   const handleFiles = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files ?? []);
-    if (files.length) onAddPending(files);
     e.target.value = "";
+    if (files.length) void validateAndAddPending(files);
   };
 
   const triggerReplace = (imageId: string) => {
@@ -1367,12 +1443,21 @@ function MediaSection({
     replaceFileRef.current?.click();
   };
 
-  const handleReplaceFile = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleReplaceFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     const targetId = replaceTargetRef.current;
     e.target.value = "";
-    if (file && targetId) onReplaceSaved(targetId, file);
     replaceTargetRef.current = null;
+    if (!file || !targetId) return;
+    // Same reasoning as validateAndAddPending: this attempt's outcome
+    // replaces whatever was left over from a previous, unrelated one.
+    setRejectedFiles([]);
+    const problem = await validateFileResolution(file, PRODUCT_PRESET);
+    if (problem) {
+      setRejectedFiles([{ id: uid(), message: `${file.name}: ${problem}` }]);
+      return;
+    }
+    onReplaceSaved(targetId, file);
   };
 
   const totalCount = savedImages.length + pendingImages.length;
@@ -1385,6 +1470,23 @@ function MediaSection({
           {error}
         </p>
       )}
+      {rejectedFiles.map((r) => (
+        <div
+          key={r.id}
+          className="flex items-start gap-2 rounded-sm border border-destructive/40 bg-destructive/10 px-3 py-2 text-xs text-destructive"
+        >
+          <AlertCircle className="mt-0.5 size-3.5 shrink-0" />
+          <span className="flex-1">{r.message}</span>
+          <button
+            type="button"
+            aria-label="Dismiss"
+            onClick={() => setRejectedFiles((prev) => prev.filter((x) => x.id !== r.id))}
+            className="shrink-0 opacity-70 hover:opacity-100"
+          >
+            <X className="size-3.5" />
+          </button>
+        </div>
+      ))}
 
       <div
         className={`border-2 border-dashed rounded-none p-8 text-center transition-colors cursor-pointer ${
@@ -1429,6 +1531,7 @@ function MediaSection({
         <div className="grid grid-cols-3 gap-3">
           {savedImages.map((img, i) => {
             const busy = busyImageIds.has(img.id);
+            const generating = generatingImageIds.has(img.id);
             return (
               <div
                 key={img.id}
@@ -1439,6 +1542,12 @@ function MediaSection({
                   alt={img.alt_text ?? ""}
                   className="w-full h-full object-cover"
                 />
+                {generating && (
+                  <div className="absolute bottom-1 right-1 flex items-center gap-1 bg-background/90 text-foreground text-[9px] px-1.5 py-0.5 rounded-sm shadow-sm">
+                    <RefreshCw className="size-2.5 animate-spin" />
+                    Generating…
+                  </div>
+                )}
                 {img.is_primary && (
                   <span className="absolute top-1 left-1 bg-primary text-primary-foreground text-[9px] uppercase tracking-wider px-1.5 py-0.5">
                     Primary
@@ -1450,6 +1559,28 @@ function MediaSection({
                   </span>
                 )}
                 <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
+                  {i > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => onMoveSaved(img.id, "up")}
+                      disabled={busy}
+                      className="bg-background/90 p-1.5 rounded-sm disabled:opacity-50"
+                      title="Move earlier"
+                    >
+                      <ChevronUp className="size-3.5" />
+                    </button>
+                  )}
+                  {i < savedImages.length - 1 && (
+                    <button
+                      type="button"
+                      onClick={() => onMoveSaved(img.id, "down")}
+                      disabled={busy}
+                      className="bg-background/90 p-1.5 rounded-sm disabled:opacity-50"
+                      title="Move later"
+                    >
+                      <ChevronDown className="size-3.5" />
+                    </button>
+                  )}
                   {!img.is_primary && (
                     <button
                       type="button"
@@ -2515,6 +2646,53 @@ export function ProductForm({ mode, initialProduct, initialCollectionIds }: Prod
   const [cropSaving, setCropSaving] = useState(false);
   const activeCropTarget = cropQueue[0] ?? null;
 
+  // Re-editing a *saved* image must operate on the untouched original plus
+  // its previously-saved crop geometry for every breakpoint, not the
+  // desktop-only fields cached on `ProductImage` — so each time the queue's
+  // active target becomes a saved image, its true current state is fetched
+  // fresh via `getImage` (mirrors Collection/Category; see docs audit
+  // CB-2/HP-6). `id` guards against a stale response landing after the
+  // queue has already moved on to a different image.
+  const [savedCropFetch, setSavedCropFetch] = useState<{
+    id: string;
+    originalUrl: string;
+    initialCrops: Partial<Record<Breakpoint, BreakpointCropGeometry>> | undefined;
+    altText: string | null;
+  } | null>(null);
+  const [savedCropFetchLoading, setSavedCropFetchLoading] = useState(false);
+
+  useEffect(() => {
+    if (!activeCropTarget || activeCropTarget.kind !== "saved") {
+      setSavedCropFetch(null);
+      setSavedCropFetchLoading(false);
+      return;
+    }
+    const id = activeCropTarget.id;
+    let cancelled = false;
+    setSavedCropFetchLoading(true);
+    getImage(id)
+      .then((raw) => {
+        if (cancelled) return;
+        setSavedCropFetch({
+          id,
+          originalUrl: raw.original_url,
+          initialCrops: parseStoredCrops(raw),
+          altText: raw.alt_text,
+        });
+      })
+      .catch((e) => {
+        if (cancelled) return;
+        toast.error(toUserMessage(e as Error));
+        setCropQueue((prev) => prev.filter((t) => !(t.kind === "saved" && t.id === id)));
+      })
+      .finally(() => {
+        if (!cancelled) setSavedCropFetchLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [activeCropTarget]);
+
   const enqueueCrop = useCallback((target: CropTarget) => {
     setCropQueue((prev) => [...prev, target]);
   }, []);
@@ -2544,6 +2722,86 @@ export function ProductForm({ mode, initialProduct, initialCollectionIds }: Prod
     busyImageIdsRef.current.delete(imageId);
     setBusyImageIds(new Set(busyImageIdsRef.current));
   }, []);
+
+  // Separate from busyImageIds: an image can be "done" (unlocked, editor
+  // closed) while its variants are still generating in the background
+  // (docs audit CB-1 Phase 2) — this only drives the "Generating…" badge,
+  // never the disabled/locked UI busyImageIds controls.
+  const [generatingImageIds, setGeneratingImageIds] = useState<Set<string>>(new Set());
+
+  // Fire-and-forget: waits for the background worker to actually finish
+  // generating variants for one saved image, then swaps in the real
+  // thumbnail. Never blocks the crop/replace flow that called it.
+  const awaitGeneration = useCallback(
+    (imageId: string) => {
+      setGeneratingImageIds((prev) => new Set(prev).add(imageId));
+      pollImageUntilReady(imageId)
+        .then((fresh) => {
+          const updated = mapImageOutToProductImage(fresh);
+          // Belt-and-suspenders against any intermediate cache (CDN, proxy)
+          // that might still serve bytes cached under an earlier `?v=`
+          // during the pending->ready window — see bustCacheUrl.
+          updated.url = updated.url ? bustCacheUrl(updated.url) : updated.url;
+          updated.thumbnail_url = updated.thumbnail_url
+            ? bustCacheUrl(updated.thumbnail_url)
+            : updated.thumbnail_url;
+          updated.medium_url = updated.medium_url
+            ? bustCacheUrl(updated.medium_url)
+            : updated.medium_url;
+          updated.large_url = updated.large_url
+            ? bustCacheUrl(updated.large_url)
+            : updated.large_url;
+          setSavedImages((prev) => prev.map((i) => (i.id === imageId ? updated : i)));
+          if (initialProduct) {
+            queryClient.invalidateQueries({ queryKey: queryKeys.admin.product(initialProduct.id) });
+            queryClient.invalidateQueries({ queryKey: ["admin", "products"] });
+          }
+        })
+        .catch((e) => {
+          toast.error(toUserMessage(e as Error) || "Image processing failed — try again.");
+        })
+        .finally(() => {
+          setGeneratingImageIds((prev) => {
+            const next = new Set(prev);
+            next.delete(imageId);
+            return next;
+          });
+        });
+    },
+    [initialProduct, queryClient],
+  );
+
+  const handleAltTextCommit = useCallback(
+    async (value: string) => {
+      if (!activeCropTarget || activeCropTarget.kind !== "saved") return;
+      const targetId = activeCropTarget.id;
+      try {
+        await updateImageAltText(targetId, value.trim() || null);
+        setSavedImages((prev) =>
+          prev.map((i) => (i.id === targetId ? { ...i, alt_text: value.trim() || null } : i)),
+        );
+      } catch (e) {
+        toast.error(toUserMessage(e as Error));
+      }
+    },
+    [activeCropTarget],
+  );
+
+  const handleRegenerate = useCallback(async () => {
+    if (!activeCropTarget || activeCropTarget.kind !== "saved") return;
+    const targetId = activeCropTarget.id;
+    if (!tryBeginImageOp(targetId)) return;
+    try {
+      const raw = await regenerateImage(targetId);
+      const updated = mapImageOutToProductImage(raw);
+      setSavedImages((prev) => prev.map((i) => (i.id === targetId ? updated : i)));
+      toast.success("Variants regenerated.");
+    } catch (e) {
+      toast.error(toUserMessage(e as Error));
+    } finally {
+      endImageOp(targetId);
+    }
+  }, [activeCropTarget, tryBeginImageOp, endImageOp]);
 
   const addPendingImages = useCallback(
     (files: File[]) => {
@@ -2579,6 +2837,7 @@ export function ProductForm({ mode, initialProduct, initialCollectionIds }: Prod
         setSavedImages((prev) => prev.filter((i) => i.id !== imageId));
         setCropQueue((prev) => prev.filter((t) => !(t.kind === "saved" && t.id === imageId)));
         queryClient.invalidateQueries({ queryKey: queryKeys.admin.product(initialProduct.id) });
+        queryClient.invalidateQueries({ queryKey: ["admin", "products"] });
         toast.success("Image deleted.");
       } catch (e) {
         toast.error(toUserMessage(e as Error));
@@ -2595,6 +2854,12 @@ export function ProductForm({ mode, initialProduct, initialCollectionIds }: Prod
       try {
         await setPrimaryImage(imageId);
         setSavedImages((prev) => prev.map((i) => ({ ...i, is_primary: i.id === imageId })));
+        // Primary image drives the flat `primary_image` thumbnail every
+        // products-list card renders — without this, the list keeps
+        // showing the old primary until an unrelated refetch happens
+        // (docs audit MP-11/LP-5).
+        queryClient.invalidateQueries({ queryKey: queryKeys.admin.product(initialProduct.id) });
+        queryClient.invalidateQueries({ queryKey: ["admin", "products"] });
         toast.success("Primary image updated.");
       } catch (e) {
         toast.error(toUserMessage(e as Error));
@@ -2602,7 +2867,7 @@ export function ProductForm({ mode, initialProduct, initialCollectionIds }: Prod
         endImageOp(imageId);
       }
     },
-    [initialProduct?.id, tryBeginImageOp, endImageOp],
+    [initialProduct?.id, queryClient, tryBeginImageOp, endImageOp],
   );
 
   const replaceSavedImage = useCallback(
@@ -2613,16 +2878,58 @@ export function ProductForm({ mode, initialProduct, initialCollectionIds }: Prod
         const updated = mapImageOutToProductImage(raw);
         setSavedImages((prev) => prev.map((i) => (i.id === imageId ? updated : i)));
         queryClient.invalidateQueries({ queryKey: queryKeys.admin.product(initialProduct.id) });
+        queryClient.invalidateQueries({ queryKey: ["admin", "products"] });
         // The new original has no crop applied yet — open the editor for it.
         enqueueCrop({ kind: "saved", id: imageId });
         toast.success("Image replaced. Crop the new image to update its display size.");
+        if (raw.status !== "ready") awaitGeneration(raw.id);
       } catch (e) {
         toast.error(toUserMessage(e as Error));
       } finally {
         endImageOp(imageId);
       }
     },
-    [initialProduct?.id, queryClient, enqueueCrop, tryBeginImageOp, endImageOp],
+    [initialProduct?.id, queryClient, enqueueCrop, tryBeginImageOp, endImageOp, awaitGeneration],
+  );
+
+  // Swaps a saved image's gallery position with its neighbor — the API
+  // (`reorderImages`) already supports arbitrary sort orders, this just
+  // wasn't surfaced anywhere in the UI (docs audit MF-3).
+  const moveSavedImage = useCallback(
+    async (imageId: string, direction: "up" | "down") => {
+      if (!initialProduct) return;
+      const idx = savedImages.findIndex((i) => i.id === imageId);
+      if (idx === -1) return;
+      const targetIdx = direction === "up" ? idx - 1 : idx + 1;
+      if (targetIdx < 0 || targetIdx >= savedImages.length) return;
+      const a = savedImages[idx];
+      const b = savedImages[targetIdx];
+      if (busyImageIdsRef.current.has(a.id) || busyImageIdsRef.current.has(b.id)) return;
+      tryBeginImageOp(a.id);
+      tryBeginImageOp(b.id);
+      const swap = () =>
+        setSavedImages((prev) => {
+          const next = [...prev];
+          [next[idx], next[targetIdx]] = [next[targetIdx], next[idx]];
+          return next;
+        });
+      swap();
+      try {
+        await reorderImages("product", initialProduct.id, [
+          { imageId: a.id, sortOrder: targetIdx },
+          { imageId: b.id, sortOrder: idx },
+        ]);
+        queryClient.invalidateQueries({ queryKey: queryKeys.admin.product(initialProduct.id) });
+        queryClient.invalidateQueries({ queryKey: ["admin", "products"] });
+      } catch (e) {
+        toast.error(toUserMessage(e as Error));
+        swap();
+      } finally {
+        endImageOp(a.id);
+        endImageOp(b.id);
+      }
+    },
+    [savedImages, initialProduct, queryClient, tryBeginImageOp, endImageOp],
   );
 
   const editCropPending = useCallback(
@@ -2648,36 +2955,34 @@ export function ProductForm({ mode, initialProduct, initialCollectionIds }: Prod
       const initialCrops = img.crop
         ? (img.crop.crops as Partial<Record<Breakpoint, BreakpointCropGeometry>>)
         : undefined;
-      return { src: img.preview, initialCrops };
+      return { src: img.preview, initialCrops, altText: undefined as string | null | undefined };
     }
-    const img = savedImages.find((i) => i.id === activeCropTarget.id);
-    if (!img) return null;
-    const initialCrops: Partial<Record<Breakpoint, BreakpointCropGeometry>> | undefined =
-      img.crop_x != null && img.crop_y != null && img.crop_width != null && img.crop_height != null
-        ? {
-            desktop: {
-              aspectRatio: PRODUCT_PRESET.aspectRatio.desktop ?? null,
-              box: {
-                x: img.crop_x,
-                y: img.crop_y,
-                width: img.crop_width,
-                height: img.crop_height,
-              },
-              zoom: img.crop_zoom ?? 1,
-              pan: { x: 0, y: 0 },
-              rotation: img.crop_rotation ?? 0,
-            },
-          }
-        : undefined;
-    return { src: img.url, initialCrops };
-  }, [activeCropTarget, pendingImages, savedImages]);
+    // Saved images: wait for the fresh `getImage` fetch (savedCropFetch)
+    // rather than the desktop-only fields cached on `ProductImage` — using
+    // those would silently reset tablet/mobile framing to centered
+    // defaults, which then overwrite the stored crops on save (docs audit
+    // CB-2/HP-6). Returning null while the fetch is in flight keeps the
+    // editor dialog closed; a separate loading dialog covers that gap (see
+    // savedCropFetchLoading below).
+    if (!savedCropFetch || savedCropFetch.id !== activeCropTarget.id) return null;
+    // Always re-open the crop editor against the untouched original, never
+    // a generated variant (img.url/large_url/etc) — those are already
+    // cropped and resized, so their pixel coordinates don't even line up
+    // with the stored crop box, let alone let the admin reposition into
+    // parts of the image the previous crop discarded.
+    return {
+      src: savedCropFetch.originalUrl,
+      initialCrops: savedCropFetch.initialCrops,
+      altText: savedCropFetch.altText,
+    };
+  }, [activeCropTarget, pendingImages, savedCropFetch]);
 
   const handleCropCancel = useCallback(() => {
     dequeueCrop();
   }, [dequeueCrop]);
 
   const handleCropSave = useCallback(
-    async ({ geometry }: UniversalImageEditorSaveResult) => {
+    async ({ geometry }: UniversalImageEditorSaveResult, intent: SaveIntent) => {
       if (!activeCropTarget) return;
 
       if (activeCropTarget.kind === "pending") {
@@ -2686,7 +2991,9 @@ export function ProductForm({ mode, initialProduct, initialCollectionIds }: Prod
         setPendingImages((prev) =>
           prev.map((i) => (i.id === activeCropTarget.id ? { ...i, crop: geometry } : i)),
         );
-        dequeueCrop();
+        // "Save & Continue" keeps this image's editor open (e.g. to refine
+        // another breakpoint) instead of advancing the crop queue.
+        if (intent === "save") dequeueCrop();
         return;
       }
 
@@ -2698,10 +3005,23 @@ export function ProductForm({ mode, initialProduct, initialCollectionIds }: Prod
         const raw = await cropImage(targetId, geometry);
         const updated = mapImageOutToProductImage(raw);
         setSavedImages((prev) => prev.map((i) => (i.id === targetId ? updated : i)));
+        // Keep the in-flight editor state (all breakpoints) in sync with
+        // what was just persisted, so "Save & Continue" doesn't re-show
+        // pre-save geometry for the next edit in this same session.
+        setSavedCropFetch({
+          id: targetId,
+          originalUrl: raw.original_url,
+          initialCrops: parseStoredCrops(raw),
+          altText: raw.alt_text,
+        });
         queryClient.invalidateQueries({ queryKey: queryKeys.admin.product(initialProduct.id) });
         queryClient.invalidateQueries({ queryKey: ["admin", "products"] });
         toast.success("Crop saved.");
-        dequeueCrop();
+        if (intent === "save") dequeueCrop();
+        // Real variants aren't ready yet (raw.status === 'pending') — the
+        // background worker is still generating them (docs audit CB-1
+        // Phase 2). Swap in the fresh thumbnail once it finishes.
+        if (raw.status !== "ready") awaitGeneration(targetId);
       } catch (e) {
         toast.error(toUserMessage(e as Error));
       } finally {
@@ -2709,7 +3029,15 @@ export function ProductForm({ mode, initialProduct, initialCollectionIds }: Prod
         setCropSaving(false);
       }
     },
-    [activeCropTarget, initialProduct, queryClient, dequeueCrop, tryBeginImageOp, endImageOp],
+    [
+      activeCropTarget,
+      initialProduct,
+      queryClient,
+      dequeueCrop,
+      tryBeginImageOp,
+      endImageOp,
+      awaitGeneration,
+    ],
   );
 
   // ── Inline category/collection creation ──────────────────────────────────────
@@ -3102,27 +3430,44 @@ export function ProductForm({ mode, initialProduct, initialCollectionIds }: Prod
               onEditCropPending={editCropPending}
               onEditCropSaved={editCropSaved}
               onReplaceSaved={replaceSavedImage}
+              onMoveSaved={moveSavedImage}
               busyImageIds={busyImageIds}
+              generatingImageIds={generatingImageIds}
               error={formErrors.images}
             />
           </Section>
 
-          {activeCropImage && (
+          {activeCropTarget?.kind === "saved" && savedCropFetchLoading && (
             <Dialog open onOpenChange={(open) => !open && handleCropCancel()}>
-              <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
-                <DialogHeader>
-                  <DialogTitle>Crop image</DialogTitle>
-                </DialogHeader>
-                <UniversalImageEditor
-                  preset={PRODUCT_PRESET}
-                  existingImageSrc={activeCropImage.src}
-                  initialCrops={activeCropImage.initialCrops}
-                  saving={cropSaving}
-                  onCancel={handleCropCancel}
-                  onSave={handleCropSave}
-                />
+              <DialogContent>
+                <DialogTitle className="sr-only">Loading image</DialogTitle>
+                <div className="flex items-center justify-center gap-2 py-16 text-sm text-muted-foreground">
+                  <Loader2 className="size-4 animate-spin" />
+                  Loading original image…
+                </div>
               </DialogContent>
             </Dialog>
+          )}
+
+          {activeCropImage && (
+            <UniversalImageEditor
+              open
+              onOpenChange={(open) => !open && handleCropCancel()}
+              preset={PRODUCT_PRESET}
+              existingImageSrc={activeCropImage.src}
+              initialCrops={activeCropImage.initialCrops}
+              saving={cropSaving}
+              onCancel={handleCropCancel}
+              onSave={handleCropSave}
+              initialAltText={
+                activeCropTarget?.kind === "saved" ? activeCropImage.altText : undefined
+              }
+              onAltTextCommit={activeCropTarget?.kind === "saved" ? handleAltTextCommit : undefined}
+              onRegenerate={activeCropTarget?.kind === "saved" ? handleRegenerate : undefined}
+              regenerating={
+                activeCropTarget?.kind === "saved" && busyImageIds.has(activeCropTarget.id)
+              }
+            />
           )}
 
           <Section title="Variants" defaultOpen={false}>

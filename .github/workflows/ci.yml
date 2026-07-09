@@ -43,13 +43,15 @@ jobs:
         with:
           python-version: ${{ env.PYTHON_VERSION }}
           cache: pip
-          cache-dependency-path: Backend/requirements.txt
+          cache-dependency-path: |
+            Backend/requirements.txt
+            Backend/requirements-dev.txt
 
       - name: Install dependencies
         run: |
           pip install --upgrade pip
           pip install --no-cache-dir -r requirements.txt
-          pip install ruff black mypy bandit pip-audit
+          pip install --no-cache-dir -r requirements-dev.txt
 
       - name: Ruff lint
         run: ruff check .

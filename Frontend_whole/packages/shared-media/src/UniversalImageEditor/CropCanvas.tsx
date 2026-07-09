@@ -1,8 +1,10 @@
 import { useMemo } from "react";
+import type { Ref } from "react";
 import Cropper from "react-easy-crop";
 import type { Area } from "react-easy-crop";
-import { Slider } from "@hadha/shared-ui/ui/slider";
 import type { BreakpointCropGeometry, CropPreset } from "@hadha/shared-types";
+import { MiniNavigator } from "./MiniNavigator";
+import { SafeAreaOverlay } from "./SafeAreaOverlay";
 import { ShapeMaskOverlay } from "./ShapeMaskOverlay";
 
 interface CropCanvasProps {
@@ -10,15 +12,37 @@ interface CropCanvasProps {
   preset: CropPreset;
   aspect: number | undefined;
   geometry: BreakpointCropGeometry;
+  imageNaturalWidth: number;
+  imageNaturalHeight: number;
   onChange: (geometry: BreakpointCropGeometry) => void;
+  onInteractionEnd: () => void;
+  showGrid: boolean;
+  showSafeArea: boolean;
+  containerRef: Ref<HTMLDivElement>;
 }
 
 /**
- * The interactive crop/zoom/pan/rotate surface for a single breakpoint.
- * Wraps react-easy-crop (the library already exercised by the pre-Universal
- * ProductForm/ImageCropModal flow) and layers a shape mask preview on top.
+ * The primary workspace — a maximized interactive crop/zoom/pan/rotate
+ * surface for a single breakpoint, edge to edge with no surrounding chrome.
+ * Wraps react-easy-crop (drag-to-pan and wheel-to-zoom are built in) and
+ * layers the shape mask, optional safe-area guide, and a corner navigator
+ * once zoomed in. Every other control (grid/safe-area toggles, zoom,
+ * rotation, fit/100%, undo/redo, save) lives in the single sticky bottom
+ * toolbar, not scattered around the canvas.
  */
-export function CropCanvas({ imageSrc, preset, aspect, geometry, onChange }: CropCanvasProps) {
+export function CropCanvas({
+  imageSrc,
+  preset,
+  aspect,
+  geometry,
+  imageNaturalWidth,
+  imageNaturalHeight,
+  onChange,
+  onInteractionEnd,
+  showGrid,
+  showSafeArea,
+  containerRef,
+}: CropCanvasProps) {
   const initialAreaPixels = useMemo<Area | undefined>(() => {
     if (!geometry.box.width || !geometry.box.height) return undefined;
     return {
@@ -29,63 +53,47 @@ export function CropCanvas({ imageSrc, preset, aspect, geometry, onChange }: Cro
     };
   }, [geometry.box.x, geometry.box.y, geometry.box.width, geometry.box.height]);
 
-  const rotationAllowed = preset.rotation.allowed !== "none";
-
   return (
-    <div className="flex flex-col gap-3">
-      <div className="relative w-full aspect-square bg-secondary overflow-hidden rounded-sm">
-        <Cropper
-          image={imageSrc}
-          crop={geometry.pan}
-          zoom={geometry.zoom}
-          rotation={geometry.rotation}
-          aspect={aspect}
-          objectFit="contain"
-          zoomWithScroll
-          restrictPosition={false}
-          initialCroppedAreaPixels={initialAreaPixels}
-          onCropChange={(pan) => onChange({ ...geometry, pan })}
-          onZoomChange={(zoom) => onChange({ ...geometry, zoom })}
-          onRotationChange={(rotation) => onChange({ ...geometry, rotation })}
-          onCropComplete={(_area, areaPixels) =>
-            onChange({
-              ...geometry,
-              box: {
-                x: areaPixels.x,
-                y: areaPixels.y,
-                width: areaPixels.width,
-                height: areaPixels.height,
-              },
-            })
-          }
+    <div ref={containerRef} className="relative h-full min-h-[420px] w-full bg-neutral-950">
+      <Cropper
+        image={imageSrc}
+        crop={geometry.pan}
+        zoom={geometry.zoom}
+        minZoom={1}
+        maxZoom={preset.maxZoom}
+        rotation={geometry.rotation}
+        aspect={aspect}
+        objectFit="contain"
+        zoomWithScroll
+        showGrid={showGrid}
+        restrictPosition={false}
+        initialCroppedAreaPixels={initialAreaPixels}
+        onCropChange={(pan) => onChange({ ...geometry, pan })}
+        onZoomChange={(zoom) => onChange({ ...geometry, zoom })}
+        onRotationChange={(rotation) => onChange({ ...geometry, rotation })}
+        onInteractionEnd={onInteractionEnd}
+        onCropComplete={(_area, areaPixels) =>
+          onChange({
+            ...geometry,
+            box: {
+              x: areaPixels.x,
+              y: areaPixels.y,
+              width: areaPixels.width,
+              height: areaPixels.height,
+            },
+          })
+        }
+      />
+      <ShapeMaskOverlay shape={preset.shape} />
+      {showSafeArea && <SafeAreaOverlay safeArea={preset.safeArea} />}
+      {geometry.zoom > 1.01 && (
+        <MiniNavigator
+          imageSrc={imageSrc}
+          naturalWidth={imageNaturalWidth}
+          naturalHeight={imageNaturalHeight}
+          box={geometry.box}
         />
-        <ShapeMaskOverlay shape={preset.shape} />
-      </div>
-
-      <div className="flex flex-col gap-3">
-        <div className="flex items-center gap-3">
-          <span className="text-xs text-muted-foreground w-14 shrink-0">Zoom</span>
-          <Slider
-            min={1}
-            max={preset.maxZoom}
-            step={0.05}
-            value={[geometry.zoom]}
-            onValueChange={([v]) => onChange({ ...geometry, zoom: v })}
-          />
-        </div>
-        {rotationAllowed && (
-          <div className="flex items-center gap-3">
-            <span className="text-xs text-muted-foreground w-14 shrink-0">Rotate</span>
-            <Slider
-              min={preset.rotation.minDegrees}
-              max={preset.rotation.maxDegrees}
-              step={preset.rotation.stepDegrees}
-              value={[geometry.rotation]}
-              onValueChange={([v]) => onChange({ ...geometry, rotation: v })}
-            />
-          </div>
-        )}
-      </div>
+      )}
     </div>
   );
 }

@@ -1,0 +1,13 @@
+# Dev/CI tooling — pinned so local `hadha` venvs and GitHub Actions always
+# lint/format/type-check against the identical versions. Before this file
+# existed, CI installed these unpinned (`pip install ruff black mypy ...`),
+# so a new release picked up by CI mid-day but not yet in a dev's local venv
+# could flag (or silently stop flagging) things local runs didn't agree
+# with — e.g. an import-sort rule that passed locally and failed in CI on
+# the same commit. Bump these deliberately, verifying `ruff check .` /
+# `black --check .` / `mypy app/` / `bandit -r app/` all still pass first.
+ruff==0.15.20
+black==26.5.1
+mypy==2.1.0
+bandit==1.9.4
+pip-audit==2.10.1

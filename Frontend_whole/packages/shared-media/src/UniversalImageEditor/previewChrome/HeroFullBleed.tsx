@@ -1,4 +1,5 @@
 import type { Breakpoint } from "@hadha/shared-types";
+import { CroppedImageView } from "../CroppedImageView";
 import type { PreviewChromeProps } from "./types";
 
 /** Miniature replica of the storefront's full-bleed hero slide, including
@@ -6,6 +7,9 @@ import type { PreviewChromeProps } from "./types";
  * up with content that will actually sit on top of the image. */
 export function HeroFullBleedChrome({
   imageSrc,
+  naturalWidth,
+  naturalHeight,
+  geometry,
   breakpoint,
 }: PreviewChromeProps & { breakpoint: Breakpoint }) {
   const isMobile = breakpoint === "mobile";
@@ -13,12 +17,17 @@ export function HeroFullBleedChrome({
     <div
       className={
         isMobile
-          ? "relative w-32 aspect-[390/600] rounded-md overflow-hidden border bg-secondary"
+          ? "relative w-full aspect-[390/600] rounded-md overflow-hidden border bg-secondary"
           : "relative w-full aspect-[1920/700] rounded-md overflow-hidden border bg-secondary"
       }
     >
-      {imageSrc && (
-        <img src={imageSrc} alt="" className="w-full h-full object-cover" draggable={false} />
+      {imageSrc && geometry && (
+        <CroppedImageView
+          imageSrc={imageSrc}
+          naturalWidth={naturalWidth}
+          naturalHeight={naturalHeight}
+          geometry={geometry}
+        />
       )}
       <div
         className={

@@ -177,6 +177,21 @@ export interface ProductCollectionRef {
   slug: string;
 }
 
+/** Mirrors media.schemas.ImageVariantOut — the raw per-breakpoint/dpr
+ * variant record, as exposed on ProductListItem.primary_image_variants. */
+export interface ProductListImageVariant {
+  id: string;
+  breakpoint: string;
+  variant_name: string;
+  dpr: number;
+  format: string;
+  url: string;
+  width: number;
+  height: number;
+  status: string;
+  error_message: string | null;
+}
+
 export interface ProductListItem {
   id: string;
   sku: string;
@@ -196,6 +211,11 @@ export interface ProductListItem {
   created_at: string;
   primary_image: string | null;
   secondary_image: string | null;
+  /** Full responsive variant set for the primary image, across every
+   * breakpoint — additive alongside `primary_image` so the storefront grid
+   * can render a real srcset (docs audit HP-4/MP-1). */
+  primary_image_variants: ProductListImageVariant[];
+  primary_image_focus_point: { x: number; y: number } | null;
   average_rating: number | null;
   review_count: number;
   collections: ProductCollectionRef[];

@@ -1,6 +1,22 @@
 import { api } from "@hadha/shared-api";
 import type { Breakpoint, CropGeometry, ImageBundle } from "@hadha/shared-types";
 
+/**
+ * Appends a one-off nonce to *url* so the browser treats it as a resource
+ * it has never seen, regardless of the server's own `?v=` cache-buster.
+ * Used specifically when swapping in a thumbnail right after the
+ * background worker finishes generating it (`pollImageUntilReady`
+ * resolved) — belt-and-suspenders against any intermediate cache (a CDN
+ * configured to ignore query strings, a proxy, etc.) that might otherwise
+ * still serve bytes cached under an earlier `?v=` during the brief window
+ * between "pending" and "ready" (docs audit CB-1 Phase 2 cache-busting fix).
+ * Never persisted — only applied to the URL handed to an `<img src>` for
+ * this one render.
+ */
+export function bustCacheUrl(url: string): string {
+  return `${url}${url.includes("?") ? "&" : "?"}cb=${Date.now()}`;
+}
+
 /** Raw shape of Backend/app/modules/media/schemas.py's ImageVariantOut/ImageOut (snake_case). */
 interface ImageVariantOutRaw {
   id: string;
@@ -24,6 +40,9 @@ export interface ImageOutRaw {
   original_ext: string;
   original_width: number;
   original_height: number;
+  /** The untouched original upload — always what the crop editor should
+   * re-open against, never a generated variant. */
+  original_url: string;
   alt_text: string | null;
   status: string;
   version: number;
@@ -54,6 +73,52 @@ export function toImageBundle(image: ImageOutRaw): ImageBundle {
         height: v.height,
       })),
   };
+}
+
+/** GET /admin/media/{image_id} — full current state (original_url, crop
+ * metadata, variants) for one image. The "Edit Crop" flow calls this to
+ * always re-open the editor against the untouched original plus the
+ * previously-saved crop geometry, instead of trusting a variant URL that
+ * happens to be cached in the caller's local UI state. */
+export async function getImage(imageId: string): Promise<ImageOutRaw> {
+  return api.get<ImageOutRaw>(`/admin/media/${imageId}`);
+}
+
+export class ImageGenerationFailedError extends Error {
+  constructor(imageId: string) {
+    super(`Variant generation failed for image ${imageId}`);
+    this.name = "ImageGenerationFailedError";
+  }
+}
+
+export class ImageGenerationTimeoutError extends Error {
+  constructor(imageId: string) {
+    super(`Timed out waiting for variant generation for image ${imageId}`);
+    this.name = "ImageGenerationTimeoutError";
+  }
+}
+
+/**
+ * Polls GET /admin/media/{id} until the background variant-generation
+ * worker (docs audit CB-1 Phase 2) finishes. crop/upload/replace/regenerate
+ * now return as soon as the "pending" status + crop metadata are persisted
+ * — well before real variants exist — so any caller that needs to know
+ * when generation has actually *finished* (to refresh a stale thumbnail, or
+ * show a "Generating…" indicator) polls this instead of trusting the
+ * initial response's variant list.
+ */
+export async function pollImageUntilReady(
+  imageId: string,
+  { intervalMs = 1500, timeoutMs = 30_000 }: { intervalMs?: number; timeoutMs?: number } = {},
+): Promise<ImageOutRaw> {
+  const deadline = Date.now() + timeoutMs;
+  for (;;) {
+    const raw = await getImage(imageId);
+    if (raw.status === "ready") return raw;
+    if (raw.status === "failed") throw new ImageGenerationFailedError(imageId);
+    if (Date.now() >= deadline) throw new ImageGenerationTimeoutError(imageId);
+    await new Promise((resolve) => setTimeout(resolve, intervalMs));
+  }
 }
 
 /** POST /admin/media/{preset_id}/upload */
@@ -134,4 +199,14 @@ export async function deleteImage(imageId: string): Promise<void> {
 /** POST /admin/media/{image_id}/regenerate */
 export async function regenerateImage(imageId: string): Promise<ImageOutRaw> {
   return api.post<ImageOutRaw>(`/admin/media/${imageId}/regenerate`);
+}
+
+/** PATCH /admin/media/{image_id}/alt-text */
+export async function updateImageAltText(
+  imageId: string,
+  altText: string | null,
+): Promise<ImageOutRaw> {
+  return api.patch<ImageOutRaw>(`/admin/media/${imageId}/alt-text`, {
+    body: { alt_text: altText },
+  });
 }

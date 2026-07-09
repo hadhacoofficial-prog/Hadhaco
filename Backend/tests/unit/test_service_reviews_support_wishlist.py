@@ -4,7 +4,6 @@ import uuid
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-from fastapi import BackgroundTasks
 
 import app.modules.addresses.models  # noqa: F401
 import app.modules.cart.models  # noqa: F401
@@ -734,7 +733,6 @@ class TestReviewServiceImages:
             db,
             review_id=review_id,
             images=[mock_upload],
-            background_tasks=BackgroundTasks(),
         )
 
         self.svc._images.upload.assert_awaited_once()
@@ -758,9 +756,7 @@ class TestReviewServiceImages:
         )
         self.svc._images.reorder = AsyncMock()
 
-        await self.svc._attach_images(
-            db, review_id=review_id, images=uploads, background_tasks=BackgroundTasks()
-        )
+        await self.svc._attach_images(db, review_id=review_id, images=uploads)
 
         assert self.svc._images.upload.await_count == 5  # max 5
 

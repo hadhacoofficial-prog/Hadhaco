@@ -1,7 +1,25 @@
 import type { ProductListItem } from "@/types/admin";
 import type { ProductDetail, CollectionDto, PublicReview } from "@/types/public";
-import type { Product, Collection, Review, Gender } from "@/types/shop";
+import type { Product, Collection, Review, Gender, ImageBundle } from "@/types/shop";
 import { formatPurity } from "@/lib/format";
+
+function toPrimaryImageBundle(p: ProductListItem): ImageBundle | undefined {
+  if (!p.primary_image_variants.length) return undefined;
+  return {
+    imageId: p.id,
+    altText: p.name,
+    focusPoint: p.primary_image_focus_point ?? { x: 0.5, y: 0.5 },
+    variants: p.primary_image_variants
+      .filter((v) => v.status === "ready")
+      .map((v) => ({
+        breakpoint: v.breakpoint as ImageBundle["variants"][number]["breakpoint"],
+        dpr: v.dpr,
+        url: v.url,
+        width: v.width,
+        height: v.height,
+      })),
+  };
+}
 
 export function toProduct(p: ProductListItem): Product {
   const availableStock = p.available_stock ?? p.stock_quantity;
@@ -12,6 +30,7 @@ export function toProduct(p: ProductListItem): Product {
     name: p.name,
     image: p.primary_image ?? "",
     altImage: p.secondary_image ?? undefined,
+    imageBundle: toPrimaryImageBundle(p),
     price: p.base_price,
     compareAt: p.compare_at_price ?? undefined,
     inStock: availableStock > 0,

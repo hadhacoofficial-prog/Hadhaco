@@ -78,6 +78,32 @@ async def safe_redis_delete(redis: aioredis.Redis, *keys: str) -> None:
         mark_redis_error()
 
 
+async def bust_product_list_cache(redis: aioredis.Redis) -> None:
+    """Delete all cached storefront product-list pages (`products:list:v1:*`).
+
+    Called after any mutation that changes what a product listing renders —
+    not just catalog field edits, but also product image crop/replace/
+    set-primary/delete/upload via the media module, since those change the
+    thumbnail a `ProductListItem` serves without touching the `products`
+    table row itself.
+    """
+    if not redis_available():
+        return
+    try:
+
+        async def _collect() -> list[str]:
+            return [
+                str(key)
+                async for key in redis.scan_iter(match="products:list:v1:*", count=500)
+            ]
+
+        keys = await asyncio.wait_for(_collect(), timeout=1.0)
+        if keys:
+            await safe_redis_delete(redis, *keys)
+    except Exception:
+        mark_redis_error()
+
+
 def get_redis_pool() -> aioredis.Redis:
     global _redis_pool
     if _redis_pool is None:
@@ -133,7 +159,13 @@ class RedisCache:
         await self._redis.delete(key)
 
     async def delete_pattern(self, pattern: str) -> int:
-        keys = await self._redis.keys(pattern)
+        # KEYS blocks the whole Redis event loop for the duration of the
+        # scan on a large keyspace — SCAN (via scan_iter) walks it
+        # incrementally instead, same tradeoff bust_product_list_cache
+        # already makes above. Docs audit LP-10.
+        keys = [
+            str(key) async for key in self._redis.scan_iter(match=pattern, count=500)
+        ]
         if keys:
             return await self._redis.delete(*keys)
         return 0
