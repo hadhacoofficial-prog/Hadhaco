@@ -35,10 +35,14 @@ export function MobileBottomNav() {
   return (
     <nav
       aria-label="Primary mobile navigation"
-      className="fixed bottom-3 left-3 right-3 z-40 lg:hidden"
+      // Flush against the bottom edge and full-width — not a floating
+      // inset pill — with the background/border/shadow on this element
+      // (not the <ul>) so the safe-area padding zone below the icons is
+      // solid, not a transparent gap before the physical screen edge.
+      className="fixed bottom-0 left-0 right-0 z-40 lg:hidden bg-background/95 backdrop-blur border-t border-border/60 shadow-[0_-4px_24px_rgba(0,0,0,0.08)]"
       style={{ paddingBottom: "env(safe-area-inset-bottom)" }}
     >
-      <ul className="grid grid-cols-5 rounded-2xl bg-background/95 backdrop-blur border border-border/60 shadow-[0_-4px_24px_rgba(0,0,0,0.08)] px-1 py-1.5">
+      <ul className="grid grid-cols-5 px-1 py-1">
         {items.map((it) => {
           const active = it.match(path);
           const Icon = it.icon;
@@ -46,7 +50,7 @@ export function MobileBottomNav() {
             <li key={it.label}>
               <Link
                 to={it.to}
-                className="relative flex flex-col items-center justify-center gap-1 py-2 rounded-xl text-[10px] tracking-[0.14em] uppercase transition-colors"
+                className="relative flex flex-col items-center justify-center gap-1 py-1.5 rounded-xl text-[10px] tracking-[0.14em] uppercase transition-colors"
               >
                 {active && (
                   <span className="absolute inset-0 rounded-xl bg-primary/10 transition-all duration-300" />

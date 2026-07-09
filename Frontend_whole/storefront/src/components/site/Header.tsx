@@ -112,8 +112,10 @@ export function Header() {
           </p>
         </div>
 
-        {/* Main bar */}
-        <div className="relative z-10 flex items-center justify-between px-4 md:px-8 py-4 border-t border-border/60">
+        {/* Main bar — shorter on mobile (py-2 + a directly-sized logo)
+            than md+ (py-4 + the oversized-but-margin-clawed-back logo),
+            since there's no room to spare for a tall bar on small screens. */}
+        <div className="relative z-10 flex items-center justify-between px-4 md:px-8 py-2 md:py-4 border-t border-border/60">
           <button
             onClick={() => setMobileOpen(true)}
             className="lg:hidden p-2 -ml-2"
@@ -123,15 +125,15 @@ export function Header() {
           </button>
 
           <Link to="/" className="flex items-center shrink-0" aria-label="Hadha Silver Jewellery">
-            {/* Rendered larger than its allotted row height and pulled back
-                with an equal negative margin, so the logo reads bigger
-                without the header bar itself growing — the margin box
-                (h-32 - 2*my-4 = h-24, h-28 - 2*my-3 = h-22) matches the old
-                image size exactly, only the visible artwork is larger. */}
+            {/* md+: rendered larger than its allotted row height and pulled
+                back with an equal negative margin, so the logo reads bigger
+                without the header bar itself growing (h-28 - 2*my-3 = h-22
+                margin box). Mobile: sized directly, no overflow trick, to
+                keep the bar itself compact. */}
             <img
               src={logoAsset}
               alt="Hadha Silver Jewellery"
-              className="h-32 md:h-28 -my-4 md:-my-3 w-auto max-w-[340px] md:max-w-[440px] object-contain"
+              className="h-16 md:h-28 md:-my-3 w-auto max-w-[220px] md:max-w-[440px] object-contain"
             />
           </Link>
 
