@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import uuid
 from datetime import UTC, datetime
 
 from fastapi import APIRouter, Depends
@@ -33,9 +32,7 @@ async def set_flag(
     db: AsyncSession = Depends(get_db),
     admin=Depends(require_admin),
 ):
-    result = await _svc.set_flag(
-        db, key=key, data=data, updated_by=uuid.UUID(admin["sub"])
-    )
+    result = await _svc.set_flag(db, key=key, data=data, updated_by=admin.id)
     return ok(
         result, ResponseCode.SETTINGS_FLAG_UPDATED, "Feature flag updated successfully"
     )
