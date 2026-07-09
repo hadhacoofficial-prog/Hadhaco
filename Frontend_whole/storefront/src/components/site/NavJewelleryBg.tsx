@@ -63,6 +63,28 @@ export function NavJewelleryBg() {
           })}
         </g>
 
+        {/* ── STUD EARRING — far left ───────────────────────────────────── */}
+        {/* md+ only: at mobile widths the header's shorter box (utility bar
+            collapses to 0 height) rescales this coordinate space enough that
+            an unmasked element out here reads as a random floating circle
+            near the menu button instead of a background accent. */}
+        <g transform="translate(58,34)" className="njb-md">
+          <circle r="9" />
+          <circle r="4" />
+          {Array.from({ length: 6 }).map((_, i) => {
+            const a = (i * 60 * Math.PI) / 180;
+            return (
+              <line
+                key={i}
+                x1={Math.cos(a) * 4}
+                y1={Math.sin(a) * 4}
+                x2={Math.cos(a) * 9}
+                y2={Math.sin(a) * 9}
+              />
+            );
+          })}
+        </g>
+
         {/* ── DIAMOND SOLITAIRE — round brilliant, sits behind logo ────── */}
         {/* Always visible so mobile gets at least one jewellery element */}
         <g transform="translate(165,62)">
@@ -102,6 +124,26 @@ export function NavJewelleryBg() {
           <line x1="-6" y1="0" x2="6" y2="0" />
           <line x1="-3" y1="-3" x2="3" y2="3" />
           <line x1="3" y1="-3" x2="-3" y2="3" />
+        </g>
+
+        {/* ── FLOURISH — small flanking curves, fills the gap before the
+             pendant so tablet-width views (where the illustration's right
+             half gets cropped by the `slice` scaling) aren't left sparse ── */}
+        <g transform="translate(248,42)" className="njb-md">
+          <path d="M-12,4 C-4,-4 4,-4 12,4" />
+          <path d="M-9,10 C-3,6 3,6 9,10" />
+        </g>
+
+        {/* ── BANGLE — small nested-circle band, before the pendant ────── */}
+        <g transform="translate(398,66)" className="njb-md">
+          <circle r="13" />
+          <circle r="8.5" />
+        </g>
+
+        {/* ── SPARKLE — small accent right at the tablet crop edge ─────── */}
+        <g transform="translate(608,58)" className="njb-md">
+          <line x1="0" y1="-4" x2="0" y2="4" />
+          <line x1="-4" y1="0" x2="4" y2="0" />
         </g>
 
         {/* ── MARQUISE CUT GEM — centre-left ───────────────────────────── */}

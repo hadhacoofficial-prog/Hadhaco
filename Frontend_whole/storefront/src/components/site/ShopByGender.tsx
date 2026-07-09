@@ -30,23 +30,15 @@ export function ShopByGender() {
     <section className="relative px-4 md:px-12 py-20 md:py-28 overflow-hidden">
       <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_80%_60%_at_50%_0%,oklch(0.94_0.012_80)_0%,transparent_60%),radial-gradient(ellipse_60%_50%_at_50%_100%,oklch(0.92_0.015_80)_0%,transparent_70%)]" />
       <div className="relative">
-        <div className="text-center mb-12 md:mb-14">
-          <p className="text-[11px] tracking-[0.32em] uppercase text-accent mb-3 font-cinzel">
-            Shop by Collection
-          </p>
-          <h2 className="font-cinzel text-3xl md:text-5xl">Crafted for everyone in your story.</h2>
-          <p className="mt-4 text-muted-foreground max-w-xl mx-auto font-cormorant text-lg md:text-xl">
-            Choose a chapter — silver pieces designed for women, men, unisex and little ones.
-          </p>
-        </div>
-
-        {/* Gender selector circles */}
-        <div className="flex items-center justify-center gap-6 md:gap-14 mb-14 flex-wrap">
+        {/* Gender selector circles — always exactly 4 across, even on
+            mobile, rather than wrapping to 2x2 (which forced the circles
+            larger than the row could comfortably hold two of). */}
+        <div className="grid grid-cols-4 gap-2 sm:gap-4 md:gap-16 justify-items-center mb-14">
           {isLoading
             ? GENDER_KEYS.map((k) => (
-                <div key={k} className="flex flex-col items-center gap-3">
-                  <Skeleton className="size-24 md:size-44 rounded-full" />
-                  <Skeleton className="h-3 w-16" />
+                <div key={k} className="flex flex-col items-center gap-2 md:gap-3">
+                  <Skeleton className="size-16 sm:size-24 md:size-56 rounded-full" />
+                  <Skeleton className="h-3 w-12 md:w-16" />
                 </div>
               ))
             : tabs.map((t) => {
@@ -56,15 +48,15 @@ export function ShopByGender() {
                     key={t.id}
                     onMouseEnter={() => setActive(t.id)}
                     onClick={() => setActive(t.id)}
-                    className="group flex flex-col items-center gap-3"
+                    className="group flex flex-col items-center gap-2 md:gap-3"
                   >
                     <motion.span
                       whileHover={{ scale: 1.04 }}
                       transition={{ type: "spring", stiffness: 220, damping: 18 }}
-                      className={`relative size-24 md:size-44 rounded-full overflow-hidden transition-shadow duration-500 ${
+                      className={`relative size-16 sm:size-24 md:size-56 rounded-full overflow-hidden transition-shadow duration-500 ${
                         isActive
-                          ? "ring-2 ring-primary ring-offset-4 ring-offset-background shadow-[0_24px_60px_-24px_oklch(0.32_0.055_258/0.55)]"
-                          : "ring-1 ring-border ring-offset-2 ring-offset-background opacity-75 hover:opacity-100"
+                          ? "ring-2 ring-primary ring-offset-2 md:ring-offset-4 ring-offset-background shadow-[0_24px_60px_-24px_oklch(0.32_0.055_258/0.55)]"
+                          : "ring-1 ring-border ring-offset-1 md:ring-offset-2 ring-offset-background opacity-75 hover:opacity-100"
                       }`}
                     >
                       <img
@@ -81,7 +73,7 @@ export function ShopByGender() {
                       />
                     </motion.span>
                     <span
-                      className={`font-cinzel text-xs md:text-base tracking-[0.24em] uppercase transition-colors ${isActive ? "text-primary" : "text-foreground/70"}`}
+                      className={`font-cinzel text-[9px] sm:text-xs md:text-base tracking-[0.14em] md:tracking-[0.24em] uppercase text-center transition-colors ${isActive ? "text-primary" : "text-foreground/70"}`}
                     >
                       {t.label}
                     </span>

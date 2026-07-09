@@ -8,6 +8,7 @@ COPY packages/shared-types/package.json ./packages/shared-types/
 COPY packages/shared-utils/package.json ./packages/shared-utils/
 COPY packages/shared-api/package.json   ./packages/shared-api/
 COPY packages/shared-ui/package.json    ./packages/shared-ui/
+COPY packages/shared-media/package.json ./packages/shared-media/
 COPY admin/package.json                 ./admin/
 
 RUN npm ci --legacy-peer-deps
@@ -44,6 +45,7 @@ COPY packages/shared-types/package.json ./packages/shared-types/
 COPY packages/shared-utils/package.json ./packages/shared-utils/
 COPY packages/shared-api/package.json   ./packages/shared-api/
 COPY packages/shared-ui/package.json    ./packages/shared-ui/
+COPY packages/shared-media/package.json ./packages/shared-media/
 COPY admin/package.json                 ./admin/
 
 RUN npm ci --legacy-peer-deps

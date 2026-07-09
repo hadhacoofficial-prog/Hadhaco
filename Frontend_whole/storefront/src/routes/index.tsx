@@ -84,7 +84,7 @@ function Index() {
         <div>
           <ShopByGender />
         </div>
-        <div className="bg-card">
+        <div className="hidden md:block bg-card">
           <FeaturedCollection items={featuredCollection.items} />
         </div>
         <div className="bg-muted">

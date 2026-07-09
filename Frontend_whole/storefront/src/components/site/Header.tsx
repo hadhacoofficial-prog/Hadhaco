@@ -123,10 +123,15 @@ export function Header() {
           </button>
 
           <Link to="/" className="flex items-center shrink-0" aria-label="Hadha Silver Jewellery">
+            {/* Rendered larger than its allotted row height and pulled back
+                with an equal negative margin, so the logo reads bigger
+                without the header bar itself growing — the margin box
+                (h-32 - 2*my-4 = h-24, h-28 - 2*my-3 = h-22) matches the old
+                image size exactly, only the visible artwork is larger. */}
             <img
               src={logoAsset}
               alt="Hadha Silver Jewellery"
-              className="h-20 md:h-20 w-auto max-w-[300px] md:max-w-[400px] object-contain"
+              className="h-32 md:h-28 -my-4 md:-my-3 w-auto max-w-[340px] md:max-w-[440px] object-contain"
             />
           </Link>
 
