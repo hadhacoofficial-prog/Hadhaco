@@ -50,3 +50,6 @@ Backend/.env.local
 # OS
 .DS_Store
 Thumbs.db
+
+
+node_modules/
