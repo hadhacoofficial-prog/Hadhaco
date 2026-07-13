@@ -111,9 +111,13 @@ class OrderService:
             price_adj = float(variant.price_adjustment) if variant else 0.0
             unit_price = float(prod.base_price) + price_adj
             tax_rate = float(prod.tax_rate)
-            pre_tax = round(unit_price * ci.quantity, 2)
-            tax_amt = round(pre_tax * tax_rate / 100, 2)
-            line_total = round(pre_tax + tax_amt, 2)
+            # unit_price is the listed, GST-inclusive price (what the customer
+            # sees on the storefront) — tax is a component already contained
+            # within it, not an additional charge. line_total therefore equals
+            # the plain price × quantity; tax_amt is only extracted for GST
+            # invoicing (CGST/SGST/IGST breakdown), never added on top.
+            line_total = round(unit_price * ci.quantity, 2)
+            tax_amt = round(line_total * tax_rate / (100 + tax_rate), 2)
 
             line_items.append(
                 {
@@ -270,7 +274,9 @@ class OrderService:
         subtotal, total_tax, shipping_charge, discount, coupon_id, coupon_code = (
             await self._compute_totals(db, line_items, payload.coupon_code, user_id)
         )
-        total = round(max(subtotal + total_tax + shipping_charge - discount, 0), 2)
+        # subtotal is already GST-inclusive (see _resolve_line_items) — total_tax
+        # is only the informational tax component within it, not added again.
+        total = round(max(subtotal + shipping_charge - discount, 0), 2)
 
         # ── Create DB order ───────────────────────────────────────────────────
         order_number = await _repo.generate_order_number(db)

@@ -8,6 +8,7 @@ from fastapi import HTTPException, UploadFile, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.events import ReviewRequestEvent, event_bus
+from app.core.exceptions import HTTP_422
 from app.modules.media.universal_service import UniversalImageService
 from app.modules.reviews.models import Review, ReviewVote
 from app.modules.reviews.repository import ReviewRepository
@@ -66,9 +67,7 @@ class ReviewService:
                     images=images,
                 )
             except UniversalImageServiceError as exc:
-                raise HTTPException(
-                    status.HTTP_422_UNPROCESSABLE_CONTENT, str(exc)
-                ) from exc
+                raise HTTPException(HTTP_422, str(exc)) from exc
 
         await db.commit()
         await db.refresh(review)

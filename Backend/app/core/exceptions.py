@@ -2,6 +2,15 @@ from fastapi import FastAPI, Request, status
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 
+# starlette renamed HTTP_422_UNPROCESSABLE_ENTITY to HTTP_422_UNPROCESSABLE_CONTENT;
+# the old name is deprecated on newer starlette but doesn't exist at all on older
+# ones still satisfying requirements.txt's `starlette>=1.3.1` floor. Resolve
+# whichever name this installed version actually provides.
+HTTP_422 = (
+    getattr(status, "HTTP_422_UNPROCESSABLE_CONTENT", None)
+    or status.HTTP_422_UNPROCESSABLE_ENTITY
+)
+
 # ── Domain exception hierarchy ────────────────────────────────────────────────
 
 
@@ -23,7 +32,7 @@ class ConflictError(HadhaException):
 
 
 class ValidationError(HadhaException):
-    status_code = status.HTTP_422_UNPROCESSABLE_CONTENT
+    status_code = HTTP_422
 
 
 class AuthenticationError(HadhaException):
@@ -99,7 +108,7 @@ def register_exception_handlers(app: FastAPI) -> None:
             field = ".".join(str(loc) for loc in error["loc"] if loc != "body")
             errors.append({"field": field, "message": error["msg"]})
         return _error_response(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=HTTP_422,
             message="Validation failed",
             code="VALIDATION_ERROR",
             detail=errors,

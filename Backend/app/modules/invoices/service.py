@@ -141,7 +141,11 @@ def _build_pdf(order, invoice_number: str) -> bytes:
     from app.modules.tax.service import tax_service
 
     gst = tax_service.split_total_tax(order.tax_amount, order.shipping_state)
-    totals = [["Subtotal", f"₹{float(order.subtotal):,.2f}"]]
+    # order.subtotal is GST-inclusive; the printed breakdown must show the net
+    # taxable value (subtotal minus the tax already contained within it) so
+    # Taxable Value + GST + Shipping - Discount sums to order.total, not more.
+    taxable_value = float(order.subtotal) - float(order.tax_amount)
+    totals = [["Taxable Value", f"₹{taxable_value:,.2f}"]]
     if gst.is_interstate:
         totals.append(
             [f"IGST ({float(gst.igst_rate):g}%)", f"₹{float(gst.igst_amount):,.2f}"]

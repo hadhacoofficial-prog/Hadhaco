@@ -191,7 +191,7 @@ function OrderDetailPage() {
               </div>
               {order.tax_amount > 0 && (
                 <div className="flex justify-between text-sm">
-                  <span className="text-muted-foreground">Tax</span>
+                  <span className="text-muted-foreground">Tax (GST, included in price)</span>
                   <span>{formatCurrency(order.tax_amount)}</span>
                 </div>
               )}

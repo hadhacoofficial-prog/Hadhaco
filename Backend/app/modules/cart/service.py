@@ -21,9 +21,13 @@ _DEFAULT_TAX_RATE = 0.03  # 3% GST fallback; per-item rates used at order creati
 def _build_summary(cart: Cart) -> CartSummary:
     items = [CartItemResponse.from_orm_with_total(i) for i in cart.items]
     subtotal = round(sum(i.line_total for i in items), 2)
-    tax = round(subtotal * _DEFAULT_TAX_RATE, 2)
+    # subtotal is GST-inclusive (prices already include tax) — tax_amount is
+    # only the informational component within it, extracted for display, and
+    # must not be added again when computing total. Matches _resolve_line_items'
+    # extraction formula in orders/service.py, applied here at the flat cart rate.
+    tax = round(subtotal * _DEFAULT_TAX_RATE / (1 + _DEFAULT_TAX_RATE), 2)
     discount = float(cart.discount)
-    total = round(max(subtotal + tax - discount, 0), 2)
+    total = round(max(subtotal - discount, 0), 2)
     return CartSummary(
         id=cart.id,
         items=items,

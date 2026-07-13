@@ -24,6 +24,7 @@ from PIL import Image
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
+from app.core.exceptions import HTTP_422
 from app.modules.cms.models import CmsMedia
 from app.modules.cms.repository import CMSRepository
 
@@ -92,7 +93,7 @@ class CmsMediaService:
 
         if not (is_image or is_video):
             raise HTTPException(
-                status.HTTP_422_UNPROCESSABLE_CONTENT,
+                HTTP_422,
                 f"Unsupported file type: {content_type}",
             )
 
