@@ -23,7 +23,7 @@ class ConflictError(HadhaException):
 
 
 class ValidationError(HadhaException):
-    status_code = status.HTTP_422_UNPROCESSABLE_ENTITY
+    status_code = status.HTTP_422_UNPROCESSABLE_CONTENT
 
 
 class AuthenticationError(HadhaException):

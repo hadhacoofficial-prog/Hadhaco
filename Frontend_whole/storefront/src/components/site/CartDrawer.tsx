@@ -74,7 +74,7 @@ export function CartDrawer() {
                         {line.snapshot.variantName}
                       </p>
                     )}
-                    <div className="mt-1 font-display">
+                    <div className="mt-1 font-sans font-bold">
                       {line.snapshot ? formatINR(line.snapshot.price) : "—"}
                     </div>
                     <div className="mt-2 flex items-center justify-between">
@@ -97,7 +97,7 @@ export function CartDrawer() {
             <div className="relative z-10 border-t border-border px-6 py-5 space-y-4">
               <div className="flex justify-between text-sm">
                 <span className="text-muted-foreground">Subtotal</span>
-                <span className="font-display text-lg">{formatINR(subtotal())}</span>
+                <span className="font-sans font-bold text-lg">{formatINR(subtotal())}</span>
               </div>
               <p className="text-[11px] text-muted-foreground uppercase tracking-[0.16em]">
                 Shipping calculated at checkout

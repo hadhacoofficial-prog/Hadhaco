@@ -361,7 +361,7 @@ function SuccessContent({ order }: { order: CustomerOrderResponse }) {
                   )}
                 </p>
               </div>
-              <p className="font-display shrink-0">{formatINR(item.line_total)}</p>
+              <p className="font-sans font-bold shrink-0">{formatINR(item.line_total)}</p>
             </div>
           ))}
         </div>
@@ -473,7 +473,7 @@ function TotalRow({
   accent?: boolean;
 }) {
   return (
-    <div className={`flex justify-between ${bold ? "font-display text-base" : ""}`}>
+    <div className={`flex justify-between ${bold ? "font-sans font-bold text-base" : ""}`}>
       <span className={accent ? "text-accent" : "text-muted-foreground"}>{label}</span>
       <span className={accent ? "text-accent" : ""}>{value}</span>
     </div>

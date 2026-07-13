@@ -67,7 +67,7 @@ class ReviewService:
                 )
             except UniversalImageServiceError as exc:
                 raise HTTPException(
-                    status.HTTP_422_UNPROCESSABLE_ENTITY, str(exc)
+                    status.HTTP_422_UNPROCESSABLE_CONTENT, str(exc)
                 ) from exc
 
         await db.commit()

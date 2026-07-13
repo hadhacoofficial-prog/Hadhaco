@@ -32,6 +32,7 @@ from __future__ import annotations
 import asyncio
 import uuid
 
+import asyncpg
 import structlog
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -43,6 +44,13 @@ from app.modules.media.repository import ImageRepository
 log = structlog.get_logger(__name__)
 
 _repo = ImageRepository()
+
+# DNS blips (OSError/socket.gaierror is a subclass) and Postgres-side
+# connection rejections (e.g. Supabase's EMAXCONNSESSION pooler cap) are
+# expected to happen occasionally and self-resolve on the next 5s tick —
+# log them as a quiet warning, not a full stack trace, so real bugs still
+# stand out in this worker's logs.
+_TRANSIENT_DB_ERRORS = (OSError, asyncpg.exceptions.PostgresError)
 
 MAX_ATTEMPTS = 3
 # A worker process crashing/redeploying mid-generation leaves an image
@@ -77,14 +85,22 @@ async def run() -> None:
             await db.commit()
             if reclaimed:
                 log.warning("media_generation_reclaimed_stale", count=reclaimed)
+        except _TRANSIENT_DB_ERRORS as exc:
+            await db.rollback()
+            log.warning("media_generation_db_unavailable", error=str(exc))
+            return
         except Exception:
             await db.rollback()
             log.exception("media_generation_reclaim_failed")
             return
 
-    async with AsyncWorkerSessionLocal() as db:
-        pending = await _repo.list_pending_images(db, limit=POLL_BATCH_LIMIT)
-        pending_ids = [image.id for image in pending]
+    try:
+        async with AsyncWorkerSessionLocal() as db:
+            pending = await _repo.list_pending_images(db, limit=POLL_BATCH_LIMIT)
+            pending_ids = [image.id for image in pending]
+    except _TRANSIENT_DB_ERRORS as exc:
+        log.warning("media_generation_db_unavailable", error=str(exc))
+        return
 
     for image_id in pending_ids:
         await process_one(image_id)
@@ -99,15 +115,24 @@ async def process_one(image_id: uuid.UUID) -> None:
     gives up after MAX_ATTEMPTS, recording the error.
     """
     async with AsyncWorkerSessionLocal() as db:
-        image = await _repo.try_claim_pending(db, image_id)
-        if image is None:
+        try:
+            image = await _repo.try_claim_pending(db, image_id)
+            if image is None:
+                await db.commit()
+                return
+            # Durably record the claim + attempt count *before* attempting the
+            # risky work below — if generation fails and this transaction rolls
+            # back, the claim (and this attempt's count) must still stand, or
+            # the retry-limit check below would never see it and retry forever.
             await db.commit()
+        except _TRANSIENT_DB_ERRORS as exc:
+            await db.rollback()
+            log.warning(
+                "media_generation_db_unavailable",
+                image_id=str(image_id),
+                error=str(exc),
+            )
             return
-        # Durably record the claim + attempt count *before* attempting the
-        # risky work below — if generation fails and this transaction rolls
-        # back, the claim (and this attempt's count) must still stand, or
-        # the retry-limit check below would never see it and retry forever.
-        await db.commit()
 
         try:
             preset = get_preset(image.preset_id)

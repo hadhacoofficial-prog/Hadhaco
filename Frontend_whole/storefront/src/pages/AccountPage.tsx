@@ -314,7 +314,7 @@ function OverviewTab({
             </div>
             <div className="flex items-center gap-3">
               <FulfillmentStatusBadge status={latestOrder.fulfillment_status} />
-              <span className="font-display text-lg">{formatINR(latestOrder.total)}</span>
+              <span className="font-sans font-bold text-lg">{formatINR(latestOrder.total)}</span>
             </div>
           </div>
         </div>
@@ -393,7 +393,7 @@ function OverviewTab({
                   />
                 </div>
                 <p className="text-xs mt-2 line-clamp-1">{item.name}</p>
-                <p className="font-display text-sm mt-0.5">{formatINR(item.price)}</p>
+                <p className="font-sans font-bold text-sm mt-0.5">{formatINR(item.price)}</p>
               </Link>
             ))}
           </div>
@@ -425,7 +425,7 @@ function MiniOrderCard({ order }: { order: OrderListResponse["items"][number] })
       </div>
       <div className="flex items-center gap-3 shrink-0">
         <FulfillmentStatusBadge status={order.fulfillment_status} />
-        <span className="font-display text-base">{formatINR(order.total)}</span>
+        <span className="font-sans font-bold text-base">{formatINR(order.total)}</span>
       </div>
     </div>
   );
@@ -765,7 +765,7 @@ function OrderCard({
         <div className="flex flex-wrap items-center gap-2">
           <OrderStatusBadge status={order.status} />
           <FulfillmentStatusBadge status={order.fulfillment_status} />
-          <span className="font-display text-xl ml-1">{formatINR(order.total)}</span>
+          <span className="font-sans font-bold text-xl ml-1">{formatINR(order.total)}</span>
         </div>
       </div>
 
@@ -1127,7 +1127,7 @@ function WishlistTab() {
               {item.variantName && (
                 <p className="text-[11px] text-muted-foreground mt-0.5">{item.variantName}</p>
               )}
-              <p className="font-display mt-1">{formatINR(item.price)}</p>
+              <p className="font-sans font-bold mt-1">{formatINR(item.price)}</p>
             </Link>
             <button
               onClick={() => remove(item.id, item.variantId)}

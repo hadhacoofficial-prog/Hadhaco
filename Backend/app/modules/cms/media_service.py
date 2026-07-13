@@ -92,7 +92,7 @@ class CmsMediaService:
 
         if not (is_image or is_video):
             raise HTTPException(
-                status.HTTP_422_UNPROCESSABLE_ENTITY,
+                status.HTTP_422_UNPROCESSABLE_CONTENT,
                 f"Unsupported file type: {content_type}",
             )
 

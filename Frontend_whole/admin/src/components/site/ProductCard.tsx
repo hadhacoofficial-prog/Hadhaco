@@ -136,7 +136,7 @@ export const ProductCard = memo(function ProductCard({ p }: { p: Product }) {
         </h3>
         <div className="mt-2 flex items-baseline gap-2">
           <span
-            className={`font-cinzel text-base ${isSoldOut ? "text-muted-foreground" : "text-foreground"}`}
+            className={`font-sans font-bold text-base ${isSoldOut ? "text-muted-foreground" : "text-foreground"}`}
           >
             {formatINR(p.price)}
           </span>

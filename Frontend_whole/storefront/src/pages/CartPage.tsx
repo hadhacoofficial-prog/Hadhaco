@@ -231,7 +231,7 @@ export default function CartPage() {
                           </p>
                         )}
 
-                        <p className="font-display mt-1 md:hidden">
+                        <p className="font-sans font-bold mt-1 md:hidden">
                           {line.snapshot ? formatINR(line.snapshot.price) : "—"}
                         </p>
                         <div className="mt-3 md:hidden flex items-center justify-between">
@@ -270,7 +270,7 @@ export default function CartPage() {
                         )}
                       </div>
 
-                      <div className="hidden md:block text-right font-display">
+                      <div className="hidden md:block text-right font-sans font-bold">
                         {line.snapshot ? formatINR(line.snapshot.price * line.qty) : "—"}
                       </div>
 
@@ -314,7 +314,7 @@ export default function CartPage() {
                   <span className="text-xs uppercase tracking-[0.22em] text-muted-foreground">
                     Total
                   </span>
-                  <span className="font-display text-2xl">{formatINR(total)}</span>
+                  <span className="font-sans font-bold text-2xl">{formatINR(total)}</span>
                 </div>
 
                 {hasStockIssues ? (

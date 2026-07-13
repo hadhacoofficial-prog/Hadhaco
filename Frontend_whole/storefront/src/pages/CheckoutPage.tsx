@@ -629,7 +629,7 @@ export default function CheckoutPage() {
                           <p className="text-sm">{opt.label}</p>
                           <p className="text-xs text-muted-foreground">{opt.note}</p>
                         </div>
-                        <span className="font-display">
+                        <span className="font-sans font-bold">
                           {opt.price === 0 ? "Free" : formatINR(opt.price)}
                         </span>
                       </label>
@@ -690,7 +690,7 @@ export default function CheckoutPage() {
                           </p>
                         )}
                       </div>
-                      <span className="text-sm font-display whitespace-nowrap">
+                      <span className="text-sm font-sans font-bold whitespace-nowrap">
                         {line.snapshot ? formatINR(line.snapshot.price * line.qty) : "—"}
                       </span>
                     </div>
@@ -727,7 +727,7 @@ export default function CheckoutPage() {
                     <span className="text-xs uppercase tracking-[0.22em] text-muted-foreground">
                       Total
                     </span>
-                    <span className="font-display text-2xl">{formatINR(total)}</span>
+                    <span className="font-sans font-bold text-2xl">{formatINR(total)}</span>
                   </div>
                   {appliedCoupon && couponDiscount > 0 && (
                     <p className="text-[11px] text-green-700 dark:text-green-400 text-right">

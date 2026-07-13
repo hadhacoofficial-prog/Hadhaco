@@ -67,7 +67,7 @@ function WishlistPage() {
                     {item.name}
                   </Link>
                 </h3>
-                <div className="font-display mt-1">{formatINR(item.price)}</div>
+                <div className="font-sans font-bold mt-1">{formatINR(item.price)}</div>
                 <div className="grid grid-cols-[1fr_auto] gap-2 mt-3">
                   <button
                     onClick={() => {

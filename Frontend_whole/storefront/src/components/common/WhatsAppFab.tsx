@@ -1,8 +1,36 @@
-const PHONE = "916094115885";
+import { useHomepage } from "@/hooks/cms/useHomepage";
+import type { FooterConfig } from "@/types/cms";
+
 const MESSAGE = "Hi Hadha, I'd like to know more about your silver jewellery.";
 
+/**
+ * Accepts either a raw phone number (with or without country code / punctuation)
+ * or a full wa.me / api.whatsapp.com URL, since the CMS field accepts both.
+ */
+function buildWhatsAppUrl(rawNumber: string, message: string): string {
+  const trimmed = rawNumber.trim();
+
+  if (/^https?:\/\//i.test(trimmed)) {
+    const url = new URL(trimmed);
+    if (!url.searchParams.has("text")) {
+      url.searchParams.set("text", message);
+    }
+    return url.toString();
+  }
+
+  const digits = trimmed.replace(/\D/g, "");
+  return `https://wa.me/${digits}?text=${encodeURIComponent(message)}`;
+}
+
 export function WhatsAppFab() {
-  const href = `https://wa.me/${PHONE}?text=${encodeURIComponent(MESSAGE)}`;
+  const { data: homepage } = useHomepage();
+  const footerConfig = homepage?.sections["footer"]?.config as Partial<FooterConfig> | undefined;
+  const whatsappNumber = footerConfig?.whatsapp?.trim();
+
+  if (!whatsappNumber) return null;
+
+  const href = buildWhatsAppUrl(whatsappNumber, MESSAGE);
+
   return (
     <a
       href={href}

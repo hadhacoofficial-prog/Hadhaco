@@ -19,6 +19,7 @@ import { OrnamentalDivider } from "@/components/common/OrnamentalDivider";
 import { useHomepage } from "@/hooks/cms/useHomepage";
 import type {
   AnnouncementConfig,
+  FooterConfig,
   HeroCarouselConfig,
   ImageBannerConfig,
   InstagramGalleryConfig,
@@ -74,6 +75,7 @@ function Index() {
   const reviews = useSection(sections, "reviews");
   const instagram = useSection<InstagramGalleryConfig>(sections, "instagram_gallery");
   const newsletter = useSection<NewsletterConfig>(sections, "newsletter");
+  const footer = useSection<FooterConfig>(sections, "footer");
 
   return (
     <div className="min-h-screen flex flex-col text-foreground">
@@ -111,7 +113,7 @@ function Index() {
         </div>
         <Newsletter config={newsletter.config} />
       </main>
-      <Footer />
+      <Footer config={footer.config} />
     </div>
   );
 }

@@ -1,7 +1,20 @@
+import warnings
 from functools import lru_cache
 
 from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+# razorpay 1.4.2 imports pkg_resources at module load time; upgrading to 2.x
+# is a breaking change we haven't vetted for the payment flows, so silence
+# this one known, third-party deprecation warning instead. config.py is the
+# first app module main.py imports, well before anything (orders/service.py,
+# payments/service.py) transitively imports razorpay during router setup.
+warnings.filterwarnings(
+    "ignore",
+    message="pkg_resources is deprecated as an API",
+    category=UserWarning,
+    module=r"razorpay\.client",
+)
 
 
 class Settings(BaseSettings):

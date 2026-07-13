@@ -16,7 +16,7 @@ export function useHomepage() {
     staleTime: 5 * 60 * 1000, // 5 minutes â€” backend caches 24 h
     gcTime: 30 * 60 * 1000,
     retry: 1,
-    refetchOnWindowFocus: false,
+    refetchOnWindowFocus: true,
     placeholderData: HOMEPAGE_PLACEHOLDER,
   });
 }

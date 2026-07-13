@@ -236,7 +236,7 @@ export function SearchOverlay() {
                           </p>
                           <p className="text-xs text-muted-foreground">{p.sku}</p>
                         </div>
-                        <span className="font-display text-sm">{formatINR(p.price)}</span>
+                        <span className="font-sans font-bold text-sm">{formatINR(p.price)}</span>
                       </Link>
                     </li>
                   ))}

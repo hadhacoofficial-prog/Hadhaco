@@ -294,7 +294,7 @@ export default function ProductPage() {
           </button>
 
           <div className="flex items-baseline gap-3 mt-5">
-            <span className="font-display text-3xl">{formatINR(displayPrice)}</span>
+            <span className="font-sans font-bold text-3xl">{formatINR(displayPrice)}</span>
             {displayCompareAt && (
               <span className="text-muted-foreground line-through">
                 {formatINR(displayCompareAt)}
