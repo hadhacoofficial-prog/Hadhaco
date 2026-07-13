@@ -376,10 +376,7 @@ function SuccessContent({ order }: { order: CustomerOrderResponse }) {
               accent
             />
           )}
-          <TotalRow
-            label="Tax (GST, included in price)"
-            value={formatINR(order.tax_amount)}
-          />
+          <TotalRow label="Tax (GST, included in price)" value={formatINR(order.tax_amount)} />
           <TotalRow
             label="Shipping"
             value={order.shipping_charge === 0 ? "Free" : formatINR(order.shipping_charge)}
