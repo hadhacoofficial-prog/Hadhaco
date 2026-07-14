@@ -49,9 +49,17 @@ _SLOW_MS = 500
 
 
 def _client_ip(request: Request) -> str:
+    # Prefer X-Real-IP (set by Nginx via $remote_addr — not spoofable).
+    real_ip = request.headers.get("X-Real-IP", "").strip()
+    if real_ip:
+        return real_ip
+    # Fall back to X-Forwarded-For — take the rightmost entry (closest to
+    # the internet), which is the true client IP set by Nginx.
     forwarded = request.headers.get("X-Forwarded-For", "")
     if forwarded:
-        return forwarded.split(",")[0].strip()
+        parts = [p.strip() for p in forwarded.split(",") if p.strip()]
+        if parts:
+            return parts[-1]
     return getattr(request.client, "host", "unknown")
 
 

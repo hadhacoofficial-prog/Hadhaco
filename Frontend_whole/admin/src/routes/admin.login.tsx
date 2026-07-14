@@ -1,5 +1,6 @@
 import { createFileRoute, redirect, useNavigate } from "@tanstack/react-router";
 import { useState } from "react";
+import { sanitizeRedirect } from "@hadha/shared-utils";
 import { useAuthContext } from "@/providers/auth-context";
 import { api } from "@/lib/api/client";
 import { queryKeys } from "@/lib/api/queryKeys";
@@ -35,8 +36,8 @@ export const Route = createFileRoute("/admin/login")({
       const normalizedRole =
         role === "customer" || role === "admin" || role === "super_admin" ? role : null;
       if (roleSatisfies(normalizedRole, "admin")) {
-        // Already an admin — bounce to the target or dashboard
-        throw redirect({ to: search.redirect ?? "/admin" });
+        // Already an admin — bounce to the sanitized target or dashboard
+        throw redirect({ to: sanitizeRedirect(search.redirect, "/admin") });
       }
     } catch (e) {
       // Re-throw TanStack Router redirects
@@ -95,7 +96,7 @@ function AdminLoginPage() {
       }
 
       // 4. Navigate to the originally requested admin page (or dashboard)
-      const target = redirectTo && redirectTo !== "/admin/login" ? redirectTo : "/admin";
+      const target = sanitizeRedirect(redirectTo, "/admin");
       navigate({ to: target });
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : "Login failed. Please try again.";

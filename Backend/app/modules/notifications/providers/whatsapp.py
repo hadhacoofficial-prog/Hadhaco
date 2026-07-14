@@ -101,7 +101,6 @@ class WhatsAppProvider(_WhatsAppProviderABC):
             log.error(
                 "whatsapp_http_error",
                 status_code=exc.response.status_code,
-                response_body=exc.response.text[:500],
                 to=recipient,
             )
             raise

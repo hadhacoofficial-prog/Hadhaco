@@ -300,6 +300,92 @@ def validate_required_settings(s: Settings) -> None:
             )
 
 
+def validate_production_safety(s: Settings) -> None:
+    """
+    Called at startup AFTER validate_required_settings.
+    Blocks the server from starting in production with known-insecure
+    configurations.  Called only when APP_ENV == "production".
+    """
+    violations: list[str] = []
+
+    # Dev auth must be disabled in production.
+    if s.ENABLE_DEV_AUTH:
+        violations.append(
+            "ENABLE_DEV_AUTH=true in production — dev login endpoint would be accessible. "
+            "Set ENABLE_DEV_AUTH=false."
+        )
+
+    # Debug mode must be off in production.
+    if s.APP_DEBUG:
+        violations.append(
+            "APP_DEBUG=true in production — exposes stack traces and debug info. "
+            "Set APP_DEBUG=false."
+        )
+
+    # SQL logging must be off in production.
+    if s.LOG_SQL:
+        violations.append(
+            "LOG_SQL=true in production — logs full SQL including parameter values. "
+            "Set LOG_SQL=false."
+        )
+
+    # Wildcard origin is insecure.
+    if "*" in s.allowed_origins_list:
+        violations.append(
+            "ALLOWED_ORIGINS contains '*' — any site can make cross-origin requests. "
+            "Set ALLOWED_ORIGINS to your actual domain(s)."
+        )
+
+    # Wildcard host is insecure.
+    if "*" in s.allowed_hosts_list:
+        violations.append(
+            "ALLOWED_HOSTS contains '*' — accepts any Host header. "
+            "Set ALLOWED_HOSTS to your actual domain(s)."
+        )
+
+    # JWT issuer / JWKS URL must resolve — a misconfigured Supabase URL means
+    # every JWT verification silently fails or hits the wrong server.
+    if not s.SUPABASE_URL.startswith("https://"):
+        violations.append(
+            f"SUPABASE_URL='{s.SUPABASE_URL}' does not start with 'https://'. "
+            "JWT verification requires a valid Supabase project URL."
+        )
+
+    # Secret keys must not use obvious placeholder/default values.
+    _placeholder_secrets = {
+        "your-secret-key-here",
+        "change-me",
+        "changeme",
+        "super-secret-key",
+        "secret",
+        "password",
+        "test",
+        "dummy",
+    }
+    for field_name in ("SECRET_KEY", "ENCRYPTION_KEY"):
+        val = getattr(s, field_name, "")
+        if val.lower() in _placeholder_secrets:
+            violations.append(
+                f"{field_name} appears to be a placeholder/default value. "
+                f'Generate a real secret with: python -c "import secrets; print(secrets.token_urlsafe(64))"'
+            )
+
+    # Razorpay keys must not be test keys in production.
+    if s.RAZORPAY_KEY_ID and s.RAZORPAY_KEY_ID.startswith("rzp_test_"):
+        violations.append(
+            "RAZORPAY_KEY_ID is a test key (rzp_test_*) in production. "
+            "Set RAZORPAY_KEY_ID to your live Razorpay key."
+        )
+
+    if violations:
+        header = (
+            "\n[Hadha.co] REFUSING TO START — production safety checks failed.\n\n"
+            "The following issues would create a security risk in production:\n"
+        )
+        body = "\n".join(f"  • {v}" for v in violations)
+        raise SystemExit(f"{header}\n{body}\n")
+
+
 @lru_cache
 def get_settings() -> Settings:
     return Settings()  # type: ignore[call-arg]

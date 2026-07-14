@@ -8,7 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.common.response_codes import ResponseCode
 from app.common.responses import BaseSuccessResponse, ok
 from app.core.database import get_db
-from app.core.dependencies import require_admin
+from app.core.dependencies import require_2fa_verified, require_admin
 from app.modules.settings.schemas import (
     FeatureFlagOut,
     FeatureFlagUpdate,
@@ -45,7 +45,7 @@ async def set_flag(
     key: str,
     data: FeatureFlagUpdate,
     db: AsyncSession = Depends(get_db),
-    admin=Depends(require_admin),
+    admin=Depends(require_2fa_verified),
 ):
     result = await _svc.set_flag(db, key=key, data=data, updated_by=admin.id)
     return ok(
@@ -79,7 +79,7 @@ async def update_provider_settings(
     provider: str,
     data: ProviderSettingsUpdate,
     db: AsyncSession = Depends(get_db),
-    admin=Depends(require_admin),
+    admin=Depends(require_2fa_verified),
 ):
     _validate_provider(provider)
     values = await _svc.update_provider_settings(

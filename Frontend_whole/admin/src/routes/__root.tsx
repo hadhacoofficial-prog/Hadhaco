@@ -122,7 +122,7 @@ function RootComponent() {
 
   return (
     <QueryClientProvider client={queryClient}>
-      <AuthProvider>
+      <AuthProvider queryClient={queryClient}>
         <Toaster />
         <AppContent />
       </AuthProvider>

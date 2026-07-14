@@ -4,6 +4,7 @@ import { useMutation } from "@tanstack/react-query";
 import { z } from "zod";
 import { Lock, Mail } from "lucide-react";
 import { toast } from "sonner";
+import { sanitizeRedirect } from "@hadha/shared-utils";
 
 import { SiteLayout } from "@/components/site/SiteLayout";
 import { GoogleAuthButton } from "@/components/common/GoogleAuthButton";
@@ -27,6 +28,8 @@ function LoginPage() {
   const navigate = useNavigate();
   const { login, initialized, isAuthenticated } = useAuthContext();
 
+  const safeRedirect = sanitizeRedirect(redirectTo as string | undefined);
+
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
 
@@ -35,14 +38,14 @@ function LoginPage() {
   // Once the client restores the session (initialized=true), bounce back.
   useEffect(() => {
     if (initialized && isAuthenticated) {
-      navigate({ to: (redirectTo as string) ?? "/account", replace: true });
+      navigate({ to: safeRedirect, replace: true });
     }
-  }, [initialized, isAuthenticated, navigate, redirectTo]);
+  }, [initialized, isAuthenticated, navigate, safeRedirect]);
 
   const loginMutation = useMutation({
     mutationFn: () => login(email, password),
     onSuccess: () => {
-      navigate({ to: (redirectTo as string) ?? "/account" });
+      navigate({ to: safeRedirect });
     },
     onError: (e) => {
       toast.error(toUserMessage(e));

@@ -7,3 +7,4 @@ export { STORAGE_KEYS } from "./constants/storage";
 export { BRAND } from "./config/brand";
 export type { Brand } from "./config/brand";
 export { SITE } from "./config/site";
+export { sanitizeRedirect } from "./auth";

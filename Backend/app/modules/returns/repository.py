@@ -58,15 +58,16 @@ class ReturnRepository:
         return ret
 
     async def is_within_return_window(
-        self, db: AsyncSession, order_id: uuid.UUID
+        self, db: AsyncSession, order_id: uuid.UUID, customer_id: uuid.UUID
     ) -> bool:
         result = await db.execute(
             text("""
                 SELECT 1 FROM orders
                 WHERE id = :order_id
+                  AND user_id = :customer_id
                   AND status = 'delivered'
                   AND delivered_at >= NOW() - INTERVAL '7 days'
             """),
-            {"order_id": order_id},
+            {"order_id": order_id, "customer_id": customer_id},
         )
         return result.fetchone() is not None

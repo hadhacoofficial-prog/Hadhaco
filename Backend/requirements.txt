@@ -47,6 +47,9 @@ Pillow==12.2.0
 defusedxml==0.7.1
 
 # ── Payments ─────────────────────────────────────────────────────────────────
+# razorpay 2.x is a breaking change (new SDK API, no pkg_resources).
+# Upgrading requires rewriting payments/service.py and testing Razorpay
+# checkout flows end-to-end.  Defer until next sprint.
 razorpay==1.4.2
 
 # ── PDF Generation ───────────────────────────────────────────────────────────
@@ -87,4 +90,4 @@ pytest-cov==6.0.0
 factory-boy==3.3.1
 
 
-setuptools==80.9.0
+setuptools==83.0.0

@@ -9,6 +9,14 @@ from app.core.dependencies import (
     require_admin,
     require_super_admin,
 )
+from app.middleware.rate_limit import (
+    rate_limit_2fa_setup,
+    rate_limit_2fa_validate,
+    rate_limit_2fa_verify,
+    rate_limit_force_logout,
+    rate_limit_logout,
+    rate_limit_verify_token,
+)
 from app.modules.auth.schemas import (
     Setup2FAResponse,
     Validate2FARequest,
@@ -30,6 +38,7 @@ _image_repo = ImageRepository()
     "/verify-token",
     response_model=BaseSuccessResponse[VerifyTokenResponse],
     summary="Validate a Supabase JWT and return the profile",
+    dependencies=[Depends(rate_limit_verify_token)],
 )
 async def verify_token(
     current_user: Profile = Depends(get_current_user),
@@ -65,6 +74,7 @@ async def verify_token(
     "/logout",
     response_model=BaseSuccessResponse[None],
     summary="Revoke the current Supabase session",
+    dependencies=[Depends(rate_limit_logout)],
 )
 async def logout(
     current_user: Profile = Depends(get_current_user),
@@ -78,6 +88,7 @@ async def logout(
     "/force-logout/{user_id}",
     response_model=BaseSuccessResponse[None],
     summary="Force logout any user (super_admin only)",
+    dependencies=[Depends(rate_limit_force_logout)],
 )
 async def force_logout(
     user_id: str,
@@ -97,6 +108,7 @@ async def force_logout(
     "/admin/2fa/setup",
     response_model=BaseSuccessResponse[Setup2FAResponse],
     summary="Generate TOTP secret and QR code for admin 2FA setup",
+    dependencies=[Depends(rate_limit_2fa_setup)],
 )
 async def setup_2fa(
     current_user: Profile = Depends(require_admin),
@@ -112,6 +124,7 @@ async def setup_2fa(
     "/admin/2fa/verify",
     response_model=BaseSuccessResponse[Verify2FAResponse],
     summary="Verify TOTP code and activate 2FA",
+    dependencies=[Depends(rate_limit_2fa_verify)],
 )
 async def verify_2fa(
     body: Verify2FARequest,
@@ -135,6 +148,7 @@ async def verify_2fa(
     "/admin/2fa/validate",
     response_model=BaseSuccessResponse[Validate2FAResponse],
     summary="Validate TOTP code on admin login",
+    dependencies=[Depends(rate_limit_2fa_validate)],
 )
 async def validate_2fa(
     body: Validate2FARequest,

@@ -99,9 +99,7 @@ class DevAuthService:
             raise AuthenticationError("Invalid email or password")
 
         if resp.status_code != 200:
-            log.error(
-                "dev_auth_supabase_error", status=resp.status_code, body=resp.text
-            )
+            log.error("dev_auth_supabase_error", status=resp.status_code)
             raise AuthenticationError("Authentication service error")
 
         return resp.json()

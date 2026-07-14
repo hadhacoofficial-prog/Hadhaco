@@ -1,3 +1,4 @@
+import DOMPurify from "dompurify";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Button } from "@/components/ui/button";
 import { RotateCcw } from "lucide-react";
@@ -75,7 +76,9 @@ export function NotificationDetailDrawer({
                   <p className="text-xs text-muted-foreground mb-1">Body</p>
                   <div
                     className="text-xs bg-secondary/40 rounded-md p-3 mb-3 max-h-40 overflow-y-auto prose prose-xs max-w-none"
-                    dangerouslySetInnerHTML={{ __html: log.rendered_body }}
+                    dangerouslySetInnerHTML={{
+                      __html: DOMPurify.sanitize(log.rendered_body),
+                    }}
                   />
                 </>
               )}

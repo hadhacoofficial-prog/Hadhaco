@@ -17,8 +17,8 @@ from app.core.database import get_db
 from app.core.dependencies import (
     get_current_user,
     profile_cache_key,
+    require_2fa_verified,
     require_admin,
-    require_super_admin,
 )
 from app.core.redis import get_redis, safe_redis_delete
 from app.modules.media.repository import ImageRepository
@@ -160,7 +160,7 @@ async def list_users(
 async def change_user_role(
     user_id: str,
     data: AdminUserRoleUpdateRequest,
-    current_user: Profile = Depends(require_super_admin),
+    current_user: Profile = Depends(require_2fa_verified),
     db: AsyncSession = Depends(get_db),
     redis: aioredis.Redis = Depends(get_redis),
 ) -> BaseSuccessResponse[ProfileResponse]:

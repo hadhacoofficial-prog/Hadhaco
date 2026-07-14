@@ -4,7 +4,11 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
 
-from app.core.config import settings, validate_required_settings
+from app.core.config import (
+    settings,
+    validate_production_safety,
+    validate_required_settings,
+)
 from app.core.exceptions import register_exception_handlers
 from app.core.logging import configure_logging
 from app.core.redis import close_redis, get_redis_pool
@@ -17,6 +21,8 @@ from app.middleware.security_headers import SecurityHeadersMiddleware
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     validate_required_settings(settings)
+    if settings.is_production:
+        validate_production_safety(settings)
     configure_logging(debug=settings.APP_DEBUG, log_sql=settings.LOG_SQL)
 
     import structlog as _structlog
@@ -114,8 +120,8 @@ def create_app() -> FastAPI:
         CORSMiddleware,
         allow_origins=settings.allowed_origins_list,
         allow_credentials=True,
-        allow_methods=["*"],
-        allow_headers=["*"],
+        allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+        allow_headers=["Authorization", "Content-Type", "X-Request-ID"],
         expose_headers=["X-Request-ID"],
     )
 

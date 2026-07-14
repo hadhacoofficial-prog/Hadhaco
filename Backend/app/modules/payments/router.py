@@ -6,7 +6,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.common.response_codes import ResponseCode
 from app.common.responses import BaseSuccessResponse, ok
 from app.core.database import get_db
-from app.core.dependencies import get_current_user, require_admin, require_customer
+from app.core.dependencies import (
+    get_current_user,
+    require_2fa_verified,
+    require_admin,
+    require_customer,
+)
 from app.modules.payments.schemas import (
     CreatePaymentOrderRequest,
     PaymentOrderResponse,
@@ -72,7 +77,7 @@ async def get_order_payment(
 @router.post(
     "/admin/orders/{order_id}/refund",
     response_model=BaseSuccessResponse[RefundResponse],
-    dependencies=[Depends(require_admin)],
+    dependencies=[Depends(require_2fa_verified)],
 )
 async def initiate_refund(
     order_id: uuid.UUID,

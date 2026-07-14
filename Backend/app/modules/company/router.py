@@ -6,7 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.common.response_codes import ResponseCode
 from app.common.responses import BaseSuccessResponse, ok
 from app.core.database import get_db
-from app.core.dependencies import require_admin
+from app.core.dependencies import require_2fa_verified, require_admin
 from app.modules.company.repository import CompanyConfigRepository
 from app.modules.company.schemas import CompanyConfigOut, CompanyConfigUpdate
 
@@ -30,7 +30,7 @@ async def get_company_config(
 async def update_company_config(
     data: CompanyConfigUpdate,
     db: AsyncSession = Depends(get_db),
-    _=Depends(require_admin),
+    _=Depends(require_2fa_verified),
 ):
     payload = {k: v for k, v in data.model_dump().items() if v is not None}
     config = await _repo.update(db, payload)

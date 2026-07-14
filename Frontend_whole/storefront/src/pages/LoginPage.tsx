@@ -3,29 +3,12 @@ import { useNavigate, Link } from "@tanstack/react-router";
 import { useMutation } from "@tanstack/react-query";
 import { Lock, Mail } from "lucide-react";
 import { toast } from "sonner";
+import { sanitizeRedirect } from "@hadha/shared-utils";
 
 import { SiteLayout } from "@/components/site/SiteLayout";
 import { GoogleAuthButton } from "@/components/common/GoogleAuthButton";
 import { toUserMessage } from "@/lib/api/errors";
 import { useAuthContext } from "@/providers/auth-context";
-
-const SAFE_REDIRECT_PATHS = [
-  "/account",
-  "/account/orders",
-  "/cart",
-  "/checkout",
-  "/wishlist",
-  "/search",
-];
-
-function sanitizeRedirect(path: string | undefined): string {
-  if (!path) return "/account";
-  // Only allow paths that start with / and don't contain // (protocol-relative)
-  if (!path.startsWith("/") || path.startsWith("//")) return "/account";
-  // Check against whitelist for known safe paths
-  const matched = SAFE_REDIRECT_PATHS.find((p) => path === p || path.startsWith(p + "/"));
-  return matched ? path : "/account";
-}
 
 export default function LoginPage({ redirectTo }: { redirectTo?: string }) {
   const safeRedirect = sanitizeRedirect(redirectTo);

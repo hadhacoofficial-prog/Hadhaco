@@ -71,7 +71,6 @@ class ResendProvider(EmailProvider):
             log.error(
                 "resend_http_error",
                 status_code=exc.response.status_code,
-                response_body=exc.response.text[:500],
                 to=to,
                 subject=subject,
             )

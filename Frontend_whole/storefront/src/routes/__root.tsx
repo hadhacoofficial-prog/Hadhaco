@@ -145,7 +145,7 @@ function RootComponent() {
 
   return (
     <QueryClientProvider client={queryClient}>
-      <AuthProvider>
+      <AuthProvider queryClient={queryClient}>
         {/* Toaster is always mounted so alerts can appear even during auth loading. */}
         <Toaster />
         <AppContent />

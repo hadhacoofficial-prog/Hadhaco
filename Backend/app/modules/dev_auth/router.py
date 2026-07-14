@@ -10,6 +10,7 @@ from app.core.config import settings
 from app.core.database import get_db
 from app.core.dependencies import get_current_user
 from app.core.exceptions import NotFoundError
+from app.middleware.rate_limit import rate_limit_dev_login
 from app.modules.dev_auth.schemas import (
     DevLoginRequest,
     DevLoginResponse,
@@ -76,6 +77,7 @@ def _check_dev_enabled() -> None:
         "in the application database. Returns the full session payload suitable "
         "for use with Postman collection variables."
     ),
+    dependencies=[Depends(rate_limit_dev_login)],
 )
 async def dev_login(
     body: DevLoginRequest,

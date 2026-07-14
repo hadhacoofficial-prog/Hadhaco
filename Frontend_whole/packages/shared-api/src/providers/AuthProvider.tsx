@@ -1,15 +1,18 @@
 ﻿/**
- * AuthProvider â€” the single source of truth for authentication state.
+ * AuthProvider — the single source of truth for authentication state.
  *
  * Flow (per integration spec):
- *   App start â†’ restore Supabase session â†’ listen for changes â†’ expose
+ *   App start → restore Supabase session → listen for changes → expose
  *   session/user/role + auth actions to the whole app.
  *
- * The access token itself is never stored here; it always lives in the
- * Supabase session and is read fresh by the HTTP client per request. Role and
- * full profile are layered on in Phase 1 (backend `/me`) via `setRole`.
+ * Cross-tab session synchronization:
+ *   - BroadcastChannel posts "logout" events so other tabs clear state
+ *     immediately when the user logs out in one tab.
+ *   - An optional QueryClient reference is accepted so that logout clears
+ *     all cached API data (prevents stale auth-gated queries).
  */
 import type { Session, User } from "@supabase/supabase-js";
+import type { QueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 
 import {
@@ -26,6 +29,8 @@ import type { AppRole } from "@hadha/shared-types";
 
 import { AuthContext, type AuthContextValue } from "./auth-context";
 
+const SYNC_CHANNEL_NAME = "hadha:auth";
+
 /** Provisional role read from Supabase metadata before the backend profile loads. */
 function metadataRole(user: User | null): AppRole | null {
   const raw = (user?.app_metadata?.role ?? user?.user_metadata?.role) as string | undefined;
@@ -33,12 +38,49 @@ function metadataRole(user: User | null): AppRole | null {
   return null;
 }
 
-export function AuthProvider({ children }: { children: ReactNode }) {
+export interface AuthProviderProps {
+  children: ReactNode;
+  /**
+   * Optional QueryClient reference.
+   * When provided, logout will call queryClient.clear() so all cached API
+   * data is wiped and no stale auth-gated queries are served.
+   */
+  queryClient?: QueryClient;
+}
+
+export function AuthProvider({ children, queryClient }: AuthProviderProps) {
   const [session, setSession] = useState<Session | null>(null);
   const [status, setStatus] = useState<AuthContextValue["status"]>("loading");
   const [role, setRole] = useState<AppRole | null>(null);
   const [initialized, setInitialized] = useState(false);
   const mounted = useRef(true);
+  const queryClientRef = useRef(queryClient);
+  queryClientRef.current = queryClient;
+  const channelRef = useRef<BroadcastChannel | null>(null);
+
+  // ── Cross-tab synchronization ──────────────────────────────────────────────
+  useEffect(() => {
+    try {
+      channelRef.current = new BroadcastChannel(SYNC_CHANNEL_NAME);
+      channelRef.current.onmessage = (event) => {
+        if (event.data === "logout") {
+          setSession(null);
+          setRole(null);
+          setStatus("unauthenticated");
+          queryClientRef.current?.clear();
+        }
+      };
+    } catch {
+      // BroadcastChannel not supported (Safari < 15.4) — graceful degradation.
+      // The user will see stale data until they refresh, but no errors.
+    }
+
+    return () => {
+      channelRef.current?.close();
+      channelRef.current = null;
+    };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   useEffect(() => {
     mounted.current = true;
@@ -71,6 +113,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       mounted.current = false;
       unsubscribe();
     };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const value = useMemo<AuthContextValue>(
@@ -97,6 +140,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           setRole(null);
           setStatus("unauthenticated");
         }
+        // ── Centralized React Query cleanup ──────────────────────────────────
+        // clear() removes all cached data AND cancels all in-flight queries
+        // AND removes all pending mutations AND resets all observer state.
+        // This prevents stale auth-gated data from being served and stops
+        // any background polling (notifications, inventory, reservations).
+        queryClientRef.current?.clear();
+        // Notify other tabs to clear their auth state too.
+        try {
+          channelRef.current?.postMessage("logout");
+        } catch {
+          // BroadcastChannel unavailable; graceful degradation.
+        }
       },
       requestPasswordReset: async (email) => {
         await resetPasswordForEmail(email);
@@ -106,6 +161,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       },
       setRole,
     }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     [initialized, status, session, role],
   );
 

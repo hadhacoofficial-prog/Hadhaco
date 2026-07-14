@@ -193,10 +193,9 @@ export function TemplateEditor({ template }: { template: NotificationTemplateOut
               )}
               <div
                 className="text-sm prose-sm max-w-none"
-                // Preview-only rendering of the template's own HTML with example
-                // values substituted in — same trust boundary as the editor
-                // textarea it comes from, not user-submitted content.
-                dangerouslySetInnerHTML={{ __html: renderPreview(body, VARIABLE_EXAMPLES) }}
+                dangerouslySetInnerHTML={{
+                  __html: renderPreview(body, VARIABLE_EXAMPLES),
+                }}
               />
             </div>
           </div>
