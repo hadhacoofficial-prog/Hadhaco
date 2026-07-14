@@ -101,14 +101,14 @@ services:
       - ./Frontend_whole:/app
       - admin_node_modules:/app/node_modules
     ports:
-      - "8081:8080"
+      - "8081:8081"
     depends_on:
       backend:
         condition: service_healthy
     networks:
       - hadha-network
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8080"]
+      test: ["CMD", "curl", "-f", "http://localhost:8081"]
       interval: 30s
       timeout: 10s
       retries: 3

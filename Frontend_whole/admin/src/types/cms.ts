@@ -1,1 +1,1 @@
-﻿export type * from "@hadha/shared-types";
+﻿export * from "@hadha/shared-types";

@@ -56,14 +56,18 @@ function withTimeout(
   cancel: () => void;
 } {
   const controller = new AbortController();
-  const onAbort = () => controller.abort((signal as AbortSignal & { reason?: unknown })?.reason);
+  const onAbort = () =>
+    controller.abort((signal as AbortSignal & { reason?: unknown })?.reason);
   if (signal) {
     if (signal.aborted) controller.abort();
     else signal.addEventListener("abort", onAbort, { once: true });
   }
   const timer =
     timeoutMs > 0
-      ? setTimeout(() => controller.abort(new DOMException("Timeout", "TimeoutError")), timeoutMs)
+      ? setTimeout(
+          () => controller.abort(new DOMException("Timeout", "TimeoutError")),
+          timeoutMs,
+        )
       : undefined;
   return {
     signal: controller.signal,
@@ -74,7 +78,11 @@ function withTimeout(
   };
 }
 
-async function parseEnvelope<T>(res: Response, method: string, url: string): Promise<T> {
+async function parseEnvelope<T>(
+  res: Response,
+  method: string,
+  url: string,
+): Promise<T> {
   const text = await res.text();
   let payload: ApiEnvelope<T> | undefined;
 
@@ -95,13 +103,29 @@ async function parseEnvelope<T>(res: Response, method: string, url: string): Pro
   }
 
   if (!res.ok) {
-    throw new ApiError(payload?.message || res.statusText || `Request failed (${res.status})`, {
-      kind: "http",
-      status: res.status,
-      code: payload?.code,
-      details: payload?.data ?? undefined,
-      request: { method, url },
-    });
+    // FastAPI may return { detail: { message, errors, warnings } } instead of our envelope.
+    const fastapiDetail =
+      payload && typeof payload === "object" && "detail" in payload
+        ? (payload as Record<string, unknown>).detail
+        : undefined;
+    const fastapiMsg =
+      fastapiDetail && typeof fastapiDetail === "object"
+        ? (fastapiDetail as Record<string, unknown>).message
+        : undefined;
+
+    throw new ApiError(
+      (fastapiMsg as string) ||
+        payload?.message ||
+        res.statusText ||
+        `Request failed (${res.status})`,
+      {
+        kind: "http",
+        status: res.status,
+        code: payload?.code,
+        details: payload?.data ?? fastapiDetail ?? undefined,
+        request: { method, url },
+      },
+    );
   }
 
   // 204 No Content / empty body on success.
@@ -131,7 +155,10 @@ async function request<T>(
   const maxRetries = options.retries ?? (method === "GET" ? 2 : 0);
   const timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
 
-  const baseHeaders: Record<string, string> = { Accept: "application/json", ...options.headers };
+  const baseHeaders: Record<string, string> = {
+    Accept: "application/json",
+    ...options.headers,
+  };
   const auth = options.skipAuth ? {} : await authHeader();
 
   let body: BodyInit | undefined;
@@ -152,7 +179,12 @@ async function request<T>(
     const { signal, cancel } = withTimeout(options.signal, timeoutMs);
     logRequest(method, url, tag);
     try {
-      const res = await fetch(url, { method, headers: { ...baseHeaders, ...auth }, body, signal });
+      const res = await fetch(url, {
+        method,
+        headers: { ...baseHeaders, ...auth },
+        body,
+        signal,
+      });
       logResponse(method, url, res.status, tag);
 
       // 401 silent-refresh: if the access token just expired, ask Supabase to
@@ -194,7 +226,10 @@ function normalizeThrown(
 ): ApiError {
   if (err instanceof ApiError) return err;
   // Abort: distinguish caller-cancel from our timeout.
-  if (err instanceof DOMException && (err.name === "AbortError" || err.name === "TimeoutError")) {
+  if (
+    err instanceof DOMException &&
+    (err.name === "AbortError" || err.name === "TimeoutError")
+  ) {
     if (callerSignal?.aborted && err.name === "AbortError") {
       return new ApiError("Request was cancelled.", {
         kind: "timeout",
@@ -216,14 +251,22 @@ function normalizeThrown(
 }
 
 export const api = {
-  get: <T>(path: string, options?: RequestOptions) => request<T>("GET", path, options),
-  post: <T>(path: string, options?: RequestOptions) => request<T>("POST", path, options),
-  patch: <T>(path: string, options?: RequestOptions) => request<T>("PATCH", path, options),
-  put: <T>(path: string, options?: RequestOptions) => request<T>("PUT", path, options),
-  delete: <T>(path: string, options?: RequestOptions) => request<T>("DELETE", path, options),
+  get: <T>(path: string, options?: RequestOptions) =>
+    request<T>("GET", path, options),
+  post: <T>(path: string, options?: RequestOptions) =>
+    request<T>("POST", path, options),
+  patch: <T>(path: string, options?: RequestOptions) =>
+    request<T>("PATCH", path, options),
+  put: <T>(path: string, options?: RequestOptions) =>
+    request<T>("PUT", path, options),
+  delete: <T>(path: string, options?: RequestOptions) =>
+    request<T>("DELETE", path, options),
   /** Multipart helper â€” pass a FormData body; Content-Type is set by the browser. */
-  upload: <T>(path: string, form: FormData, options?: Omit<RequestOptions, "body">) =>
-    request<T>("POST", path, { ...options, body: form }),
+  upload: <T>(
+    path: string,
+    form: FormData,
+    options?: Omit<RequestOptions, "body">,
+  ) => request<T>("POST", path, { ...options, body: form }),
 } as const;
 
 export type ApiClient = typeof api;

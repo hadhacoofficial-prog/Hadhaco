@@ -1,188 +1,377 @@
-import { useEffect, useState } from "react";
-import { ArrowRight, ChevronLeft, ChevronRight } from "lucide-react";
-import { Link } from "@tanstack/react-router";
-import heroBg from "@/assets/hero.jpg";
-import bannerBg from "@/assets/banner.jpg";
-import nakshiBg from "@/assets/cat-nakshi.jpg";
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { ArrowRight, ChevronLeft, ChevronRight, Pause, Play } from "lucide-react";
 import type { HeroCarouselConfig, HeroSlideConfig, SectionItem } from "@/types/cms";
+import {
+  resolveSlide,
+  migrateSlideConfig,
+  migrateSectionConfig,
+  resolveHeight,
+  resolveTransition,
+} from "@/types/cms";
+import type { ResolvedSlide } from "@/types/cms";
+import { useReducedMotion } from "@/hooks/useReducedMotion";
+import { useBreakpoint } from "@/hooks/useBreakpoint";
 
-interface Slide {
-  image: string;
-  eyebrow?: string;
-  title: string;
-  sub?: string;
-  cta?: string;
-  href: string;
-  alignment: "left" | "center" | "right";
-  overlay: boolean;
-  overlayOpacity: number;
-}
+// ── Fallback slides ───────────────────────────────────────────────────────────
 
-const FALLBACK_SLIDES: Slide[] = [
+const FALLBACK_SLIDES: HeroSlideConfig[] = [
   {
-    image: heroBg,
-    eyebrow: "New Season · 92.5 Silver",
-    title: "Quiet luxury,\nhandcrafted for you.",
-    sub: "Sterling silver pieces shaped by artisans in Visakhapatnam.",
-    cta: "Shop collection",
-    href: "/collections",
-    alignment: "left",
-    overlay: false,
-    overlayOpacity: 0.5,
-  },
-  {
-    image: bannerBg,
-    eyebrow: "Featured · Minimal Gifting",
-    title: "Little gestures,\nlasting memories.",
-    sub: "Gift-ready pieces, hand-finished and packaged with care.",
-    cta: "Explore gifting",
-    href: "/collections",
-    alignment: "left",
-    overlay: false,
-    overlayOpacity: 0.5,
-  },
-  {
-    image: nakshiBg,
-    eyebrow: "Heritage · Temple Series",
-    title: "Stories cast\nin sterling silver.",
-    sub: "Temple-inspired motifs reimagined for the modern wardrobe.",
-    cta: "Discover temple",
-    href: "/collections/nakshi-mala",
-    alignment: "left",
-    overlay: false,
-    overlayOpacity: 0.5,
+    media: { desktop_image_url: "" },
+    content: {
+      eyebrow: "New Season · 92.5 Silver",
+      headline: "Quiet luxury,\nhandcrafted for you.",
+      subheading: "Sterling silver pieces shaped by artisans in Visakhapatnam.",
+      primary_btn_text: "Shop collection",
+      primary_btn_url: "/collections",
+      secondary_btn_text: "Our story",
+      secondary_btn_url: "/about",
+    },
+    typography: {},
+    colors: {},
+    layout: { preset: "classic-left" },
+    buttons: {},
   },
 ];
 
-function cmsItemToSlide(item: SectionItem): Slide {
-  const c = item.config as unknown as HeroSlideConfig;
-  return {
-    image: c.desktop_image_url || heroBg,
-    eyebrow: c.eyebrow,
-    title: c.headline || "Hadha Silver",
-    sub: c.subheading,
-    cta: c.primary_btn_text,
-    href: c.primary_btn_url || "/collections",
-    alignment: c.alignment ?? "left",
-    overlay: c.overlay ?? true,
-    overlayOpacity: c.overlay_opacity ?? 0.5,
-  };
+// ── Helpers ───────────────────────────────────────────────────────────────────
+
+function parseSlideItems(items: SectionItem[]): HeroSlideConfig[] {
+  const enabled = items.filter((i) => i.is_enabled).sort((a, b) => a.sort_order - b.sort_order);
+  if (enabled.length === 0) return [];
+  return enabled.map((item) => migrateSlideConfig(item.config as Record<string, unknown>));
 }
+
+// ── Component ─────────────────────────────────────────────────────────────────
 
 interface HeroProps {
   config?: Partial<HeroCarouselConfig>;
   items?: SectionItem[];
+  /** When set, locks to this slide index and pauses autoplay (admin preview). */
+  activeSlideIndex?: number | null;
 }
 
-export function Hero({ config, items = [] }: HeroProps) {
-  const rotationSpeed = config?.rotation_speed ?? 6;
-  const autoRotate = config?.auto_rotate ?? true;
+export function Hero({ config: rawConfig, items = [], activeSlideIndex }: HeroProps) {
+  const sectionConfig = useMemo(
+    () => migrateSectionConfig((rawConfig ?? {}) as Record<string, unknown>),
+    [rawConfig],
+  );
 
-  const cmsSlides = items
-    .filter((i) => i.is_enabled)
-    .sort((a, b) => a.sort_order - b.sort_order)
-    .map(cmsItemToSlide);
+  const rawSlides = useMemo(() => parseSlideItems(items), [items]);
+  const slideConfigs = useMemo(
+    () => (rawSlides.length > 0 ? rawSlides : FALLBACK_SLIDES),
+    [rawSlides],
+  );
 
-  const slides = cmsSlides.length > 0 ? cmsSlides : FALLBACK_SLIDES;
-  const [idx, setIdx] = useState(0);
+  const resolved = useMemo(() => slideConfigs.map(resolveSlide), [slideConfigs]);
+
+  const prefersReduced = useReducedMotion();
+  const breakpoint = useBreakpoint();
+  const heightPreset = sectionConfig.height ?? "large";
+
+  const autoRotate = sectionConfig.auto_rotate ?? true;
+  const rotationSpeed = sectionConfig.rotation_speed ?? 6;
+  const transitionStyle = sectionConfig.transition ?? "fade";
+  const transitionSpeed = sectionConfig.transition_duration ?? "normal";
+  const pauseOnHover = sectionConfig.pause_on_hover ?? false;
+
+  const [activeIdx, setActiveIdx] = useState(0);
+  const [isPaused, setIsPaused] = useState(false);
+  const [isTransitioning, setIsTransitioning] = useState(false);
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  // When activeSlideIndex is provided (admin preview), lock to that slide and pause autoplay
+  const isEditing = activeSlideIndex != null;
+  useEffect(() => {
+    if (isEditing && activeSlideIndex != null && activeSlideIndex !== activeIdx) {
+      setIsTransitioning(true);
+      setActiveIdx(activeSlideIndex);
+      setTimeout(() => setIsTransitioning(false), transition.durationMs);
+    }
+  }, [isEditing, activeSlideIndex]);
+
+  const { height, minHeightClass } = useMemo(
+    () => resolveHeight(heightPreset, breakpoint),
+    [heightPreset, breakpoint],
+  );
+
+  const transition = useMemo(
+    () => resolveTransition(transitionStyle, transitionSpeed),
+    [transitionStyle, transitionSpeed],
+  );
+
+  const shouldAnimate =
+    autoRotate && !isPaused && !prefersReduced && slideConfigs.length > 1 && !isEditing;
+
+  // ── Navigation ────────────────────────────────────────────────────────────
+
+  const goTo = useCallback(
+    (idx: number) => {
+      if (isTransitioning) return;
+      setIsTransitioning(true);
+      setActiveIdx(idx);
+      setTimeout(() => setIsTransitioning(false), transition.durationMs);
+    },
+    [isTransitioning, transition.durationMs],
+  );
+
+  const goNext = useCallback(() => {
+    goTo((activeIdx + 1) % slideConfigs.length);
+  }, [activeIdx, slideConfigs.length, goTo]);
+
+  const goPrev = useCallback(() => {
+    goTo((activeIdx - 1 + slideConfigs.length) % slideConfigs.length);
+  }, [activeIdx, slideConfigs.length, goTo]);
+
+  // ── Auto-rotate ───────────────────────────────────────────────────────────
 
   useEffect(() => {
-    if (!autoRotate) return;
-    const id = setInterval(() => setIdx((v) => (v + 1) % slides.length), rotationSpeed * 1000);
+    if (!shouldAnimate) return;
+    const id = setInterval(goNext, rotationSpeed * 1000);
     return () => clearInterval(id);
-  }, [slides.length, rotationSpeed, autoRotate]);
+  }, [shouldAnimate, rotationSpeed, goNext]);
 
-  const s = slides[idx];
-  const alignRow =
-    s.alignment === "center"
-      ? "justify-center"
-      : s.alignment === "right"
-        ? "justify-end"
-        : "justify-start";
-  const alignText =
-    s.alignment === "center" ? "text-center" : s.alignment === "right" ? "text-right" : "text-left";
-  const alignItems =
-    s.alignment === "center"
-      ? "items-center"
-      : s.alignment === "right"
-        ? "items-end"
-        : "items-start";
+  // ── Keyboard navigation ───────────────────────────────────────────────────
+
+  const handleKeyDown = useCallback(
+    (e: React.KeyboardEvent) => {
+      if (e.key === "ArrowLeft") {
+        e.preventDefault();
+        goPrev();
+      } else if (e.key === "ArrowRight") {
+        e.preventDefault();
+        goNext();
+      } else if (e.key === " ") {
+        e.preventDefault();
+        setIsPaused((p) => !p);
+      }
+    },
+    [goNext, goPrev],
+  );
+
+  // ── Render ────────────────────────────────────────────────────────────────
+
+  const slide = resolved[activeIdx];
 
   return (
-    <section className="relative h-[78vh] min-h-[560px] w-full overflow-hidden">
-      {slides.map((sl, i) => (
-        <img
-          key={i}
-          src={sl.image}
-          alt={sl.title ?? ""}
-          className={`absolute inset-0 w-full h-full object-cover transition-opacity duration-[1200ms] ${i === idx ? "opacity-100" : "opacity-0"}`}
-          width={1920}
-          height={1080}
-          fetchPriority={i === 0 ? "high" : "low"}
-        />
-      ))}
-      {s.overlay && (
-        <div className="absolute inset-0 bg-black" style={{ opacity: s.overlayOpacity }} />
-      )}
+    <section
+      ref={containerRef}
+      className={`relative w-full overflow-hidden ${minHeightClass}`}
+      style={{ height }}
+      role="region"
+      aria-roledescription="carousel"
+      aria-label="Hero banner"
+      tabIndex={0}
+      onKeyDown={handleKeyDown}
+      onMouseEnter={() => pauseOnHover && setIsPaused(true)}
+      onMouseLeave={() => pauseOnHover && setIsPaused(false)}
+    >
+      {/* ── Slide backgrounds ── */}
+      {resolved.map((s, i) => {
+        const isActive = i === activeIdx;
+        const isVisible = transitionStyle === "slide" ? Math.abs(i - activeIdx) <= 1 : isActive;
+
+        return (
+          <SlideBackground
+            key={i}
+            slide={s}
+            isActive={isActive}
+            isVisible={isVisible}
+            transition={transition}
+            isPreload={i === 0}
+          />
+        );
+      })}
+
+      {/* ── Overlay ── */}
       <div
-        className={`relative z-10 h-full flex items-center px-6 md:px-16 ${alignRow}`}
-        style={{ textShadow: "0 2px 16px rgba(0,0,0,0.35)" }}
+        className="absolute inset-0 z-[1] pointer-events-none"
+        style={{
+          background: slide.colors.gradient
+            ? `linear-gradient(to ${slide.colors.gradientDirection}, ${slide.colors.overlayColor}, transparent)`
+            : slide.colors.overlayColor,
+          opacity: slide.colors.overlayOpacity,
+        }}
+      />
+
+      {/* ── Content ── */}
+      <div
+        className={`relative z-10 h-full ${slide.layout.containerClass} ${slide.layout.padding}`}
+        style={{ textShadow: slide.typography.textShadow }}
       >
-        <div className={`max-w-xl flex flex-col ${alignItems} ${alignText}`}>
-          {s.eyebrow && (
-            <p className="text-[11px] tracking-[0.3em] uppercase text-accent mb-5">{s.eyebrow}</p>
+        <div
+          className={`${slide.layout.maxWidth} flex flex-col ${slide.layout.contentClass} gap-4 py-12`}
+        >
+          {/* Eyebrow */}
+          {slide.content.eyebrow && (
+            <p
+              className="text-[11px] tracking-[0.3em] uppercase mb-1"
+              style={{ color: slide.colors.eyebrow }}
+            >
+              {slide.content.eyebrow}
+            </p>
           )}
-          <h1 className="font-display text-[clamp(2.5rem,6vw,5rem)] leading-[1.05] text-foreground whitespace-pre-line">
-            {s.title}
+
+          {/* Headline */}
+          <h1
+            className="whitespace-pre-line leading-[1.05]"
+            style={{
+              fontFamily: slide.typography.headlineFont,
+              fontSize: slide.typography.headlineSize,
+              fontWeight: slide.typography.headlineWeight,
+              color: slide.colors.text,
+            }}
+          >
+            {slide.content.headline}
           </h1>
-          {s.sub && (
-            <p className="mt-5 text-base md:text-lg text-foreground/80 max-w-md">{s.sub}</p>
+
+          {/* Subheading */}
+          {slide.content.subheading && (
+            <p
+              className="max-w-md"
+              style={{
+                fontSize: slide.typography.descriptionSize,
+                color: slide.colors.text,
+                opacity: 0.8,
+              }}
+            >
+              {slide.content.subheading}
+            </p>
           )}
-          <div className="mt-8 flex items-center gap-4">
-            <a
-              href={s.href}
-              className="group inline-flex items-center gap-3 bg-primary text-primary-foreground px-7 py-3.5 text-xs tracking-[0.22em] uppercase hover:bg-accent hover:text-accent-foreground transition-colors"
-            >
-              {s.cta || "Shop now"}
-              <ArrowRight className="size-4 group-hover:translate-x-1 transition-transform" />
-            </a>
-            <Link
-              to="/about"
-              className="text-xs tracking-[0.22em] uppercase border-b border-foreground/60 pb-0.5 hover:border-accent hover:text-accent transition"
-            >
-              Our story
-            </Link>
+
+          {/* Buttons */}
+          <div className="mt-4 flex items-center gap-4 flex-wrap">
+            {slide.content.primaryBtnText && (
+              <a
+                href={slide.content.primaryBtnUrl}
+                className={slide.buttons.primary.className}
+                style={slide.buttons.primary.style}
+              >
+                {slide.content.primaryBtnText}
+                <ArrowRight className="size-4 group-hover:translate-x-1 transition-transform" />
+              </a>
+            )}
+            {slide.buttons.hasSecondary && slide.content.secondaryBtnText && (
+              <a
+                href={slide.content.secondaryBtnUrl}
+                className={slide.buttons.secondary.className}
+                style={slide.buttons.secondary.style}
+              >
+                {slide.content.secondaryBtnText}
+              </a>
+            )}
           </div>
         </div>
       </div>
 
-      <div className="absolute bottom-8 right-6 md:right-12 z-10 flex items-center gap-2">
-        <button
-          onClick={() => setIdx((v) => (v - 1 + slides.length) % slides.length)}
-          className="size-10 border border-foreground/40 hover:bg-primary hover:text-primary-foreground transition flex items-center justify-center"
-          aria-label="Previous"
-        >
-          <ChevronLeft className="size-4" />
-        </button>
-        <button
-          onClick={() => setIdx((v) => (v + 1) % slides.length)}
-          className="size-10 border border-foreground/40 hover:bg-primary hover:text-primary-foreground transition flex items-center justify-center"
-          aria-label="Next"
-        >
-          <ChevronRight className="size-4" />
-        </button>
-      </div>
+      {/* ── Navigation arrows ── */}
+      {slideConfigs.length > 1 && (
+        <div className="absolute bottom-8 right-6 md:right-12 z-20 flex items-center gap-2">
+          <button
+            onClick={goPrev}
+            className="size-10 border border-white/40 hover:bg-white/20 text-white transition flex items-center justify-center backdrop-blur-sm"
+            aria-label="Previous slide"
+          >
+            <ChevronLeft className="size-4" />
+          </button>
+          <button
+            onClick={goNext}
+            className="size-10 border border-white/40 hover:bg-white/20 text-white transition flex items-center justify-center backdrop-blur-sm"
+            aria-label="Next slide"
+          >
+            <ChevronRight className="size-4" />
+          </button>
+        </div>
+      )}
 
-      <div className="absolute bottom-12 left-6 md:left-16 z-10 flex items-center gap-3 text-xs tracking-[0.2em] text-foreground/70">
-        <span>{String(idx + 1).padStart(2, "0")}</span>
-        <span className="w-16 h-px bg-foreground/30 relative overflow-hidden">
-          <span
-            className="absolute inset-y-0 left-0 bg-accent transition-all duration-500"
-            style={{ width: `${((idx + 1) / slides.length) * 100}%` }}
-          />
-        </span>
-        <span>{String(slides.length).padStart(2, "0")}</span>
-      </div>
+      {/* ── Slide counter & progress ── */}
+      {slideConfigs.length > 1 && (
+        <div className="absolute bottom-12 left-6 md:left-16 z-20 flex items-center gap-3 text-xs tracking-[0.2em] text-white/70">
+          <span>{String(activeIdx + 1).padStart(2, "0")}</span>
+          <span className="w-16 h-px bg-white/30 relative overflow-hidden">
+            <span
+              className="absolute inset-y-0 left-0 bg-white transition-all duration-500"
+              style={{ width: `${((activeIdx + 1) / slideConfigs.length) * 100}%` }}
+            />
+          </span>
+          <span>{String(slideConfigs.length).padStart(2, "0")}</span>
+        </div>
+      )}
+
+      {/* ── Pause/Play toggle ── */}
+      {shouldAnimate && (
+        <button
+          onClick={() => setIsPaused((p) => !p)}
+          className="absolute bottom-8 left-6 md:left-12 z-20 size-8 border border-white/30 hover:bg-white/20 text-white/70 hover:text-white transition flex items-center justify-center backdrop-blur-sm rounded-full"
+          aria-label={isPaused ? "Resume autoplay" : "Pause autoplay"}
+        >
+          {isPaused ? <Play className="size-3 ml-0.5" /> : <Pause className="size-3" />}
+        </button>
+      )}
     </section>
   );
 }
+
+// ── Slide Background (memoized) ───────────────────────────────────────────────
+
+interface SlideBackgroundProps {
+  slide: ResolvedSlide;
+  isActive: boolean;
+  isVisible: boolean;
+  transition: { durationMs: number; property: string; easing: string };
+  isPreload: boolean;
+}
+
+const SlideBackground = memo(function SlideBackground({
+  slide,
+  isActive,
+  isVisible,
+  transition,
+  isPreload,
+}: SlideBackgroundProps) {
+  if (!isVisible) return null;
+
+  const durationMs = transition.durationMs;
+  const easing = transition.easing;
+
+  if (slide.media.hasVideo) {
+    return (
+      <video
+        className="absolute inset-0 w-full h-full object-cover"
+        src={slide.media.videoUrl}
+        poster={slide.media.videoPosterUrl || undefined}
+        autoPlay
+        muted
+        loop
+        playsInline
+        style={{
+          opacity: isActive ? 1 : 0,
+          transition: `opacity ${durationMs}ms ${easing}`,
+        }}
+      />
+    );
+  }
+
+  return (
+    <picture>
+      {slide.media.mobileUrl && (
+        <source media="(max-width: 639px)" srcSet={slide.media.mobileUrl} />
+      )}
+      {slide.media.tabletUrl && (
+        <source media="(max-width: 1023px)" srcSet={slide.media.tabletUrl} />
+      )}
+      <img
+        src={slide.media.desktopUrl}
+        alt={slide.content.seoAlt}
+        className="absolute inset-0 w-full h-full object-cover"
+        style={{
+          opacity: isActive ? 1 : 0,
+          transition: `opacity ${durationMs}ms ${easing}`,
+        }}
+        fetchPriority={isPreload ? "high" : "low"}
+        loading={isPreload ? "eager" : "lazy"}
+        width={1920}
+        height={1080}
+      />
+    </picture>
+  );
+});

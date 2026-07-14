@@ -9,6 +9,14 @@ from fastapi import HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.redis import safe_redis_delete, safe_redis_get, safe_redis_setex
+from app.modules.cms.hero_validation import (
+    HeroValidationResult,
+    migrate_legacy_section,
+    migrate_legacy_slide,
+    normalize_section_config,
+    normalize_slide,
+    validate_hero_config,
+)
 from app.modules.cms.media_service import CmsMediaService
 from app.modules.cms.models import Banner, CmsMedia, CmsPage, LandingSection
 from app.modules.cms.repository import CMSRepository
@@ -164,13 +172,33 @@ class CMSService:
         s = await self._repo.get_section_by_key(db, key)
         if not s:
             raise HTTPException(status.HTTP_404_NOT_FOUND, "Section not found")
-        updates: dict = {"draft_config": data.draft_config}
+
+        draft_config = data.draft_config
+        if s.section_type == "hero_carousel":
+            draft_config = self._normalise_hero_draft(db, s, draft_config)
+
+        updates: dict = {"draft_config": draft_config}
         if s.status == "published":
             updates["status"] = "draft"
         s = await self._repo.update_section(db, s, updates)
         await db.commit()
         await db.refresh(s)
         return s
+
+    def _normalise_hero_draft(
+        self,
+        db: AsyncSession,
+        section: LandingSection,
+        draft_config: dict,
+    ) -> dict:
+        """Migrate + normalise a hero_carousel draft config.
+
+        Does NOT validate (drafts may be incomplete) — validation runs
+        only at publish time.
+        """
+        draft_config = migrate_legacy_section(draft_config)
+        draft_config = normalize_section_config(draft_config)
+        return draft_config
 
     async def publish_section(
         self,
@@ -191,6 +219,41 @@ class CMSService:
             await db.commit()
             await db.refresh(s)
             return s
+
+        # ── Hero carousel validation (before publish) ────────────────────
+        if s.section_type == "hero_carousel":
+            validation = await self._validate_hero_for_publish(db, s)
+            if validation.errors:
+                raise HTTPException(
+                    status.HTTP_422_UNPROCESSABLE_ENTITY,
+                    detail={
+                        "message": "Hero carousel validation failed",
+                        "errors": [
+                            {"field": e.field, "message": e.message}
+                            for e in validation.errors
+                        ],
+                        "warnings": [
+                            {"field": w.field, "message": w.message}
+                            for w in validation.warnings
+                        ],
+                    },
+                )
+            # Warnings exist but not acknowledged → block publish
+            if validation.warnings and not data.acknowledge_warnings:
+                raise HTTPException(
+                    status.HTTP_422_UNPROCESSABLE_ENTITY,
+                    detail={
+                        "message": (
+                            "Hero carousel has warnings that must be "
+                            "acknowledged before publishing"
+                        ),
+                        "errors": [],
+                        "warnings": [
+                            {"field": w.field, "message": w.message}
+                            for w in validation.warnings
+                        ],
+                    },
+                )
 
         # Snapshot items
         items = await self._repo.get_items_for_section(db, s.id)
@@ -231,6 +294,36 @@ class CMSService:
         await db.commit()
         await db.refresh(s)
         return s
+
+    async def _validate_hero_for_publish(
+        self, db: AsyncSession, section: LandingSection
+    ) -> HeroValidationResult:
+        """Load items, migrate+normalise, and validate hero carousel."""
+        items = await self._repo.get_items_for_section(db, section.id)
+        slide_configs: list[dict] = []
+        for item in items:
+            if not item.is_enabled:
+                continue
+            slide = migrate_legacy_slide(item.config)
+            slide = normalize_slide(slide)
+            slide_configs.append(slide)
+
+        section_config = migrate_legacy_section(section.draft_config or section.config)
+        section_config = normalize_section_config(section_config)
+
+        return validate_hero_config(slide_configs, section_config)
+
+    async def validate_hero_section(
+        self, db: AsyncSession, key: str
+    ) -> HeroValidationResult:
+        """Public validation endpoint — returns result without persisting."""
+        self._ensure_manageable(key)
+        s = await self._repo.get_section_by_key(db, key)
+        if not s:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "Section not found")
+        if s.section_type != "hero_carousel":
+            return HeroValidationResult()
+        return await self._validate_hero_for_publish(db, s)
 
     async def toggle_section(
         self,

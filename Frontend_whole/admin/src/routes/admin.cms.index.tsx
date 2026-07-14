@@ -1,4 +1,4 @@
-import { memo, useCallback, useEffect, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
@@ -21,6 +21,8 @@ import {
   Mail,
   Megaphone,
   Navigation,
+  PanelLeftClose,
+  PanelLeftOpen,
   Plus,
   RefreshCw,
   Save,
@@ -41,8 +43,10 @@ import {
 } from "@/hooks/cms/useCmsSections";
 import { api } from "@/lib/api/client";
 import { queryKeys } from "@/lib/api/queryKeys";
-import { toUserMessage } from "@/lib/api/errors";
+import { isApiError, toUserMessage } from "@/lib/api/errors";
 import { ImageUploadField } from "@/components/cms/ImageUploadField";
+import { ColorPaletteSelect } from "@/components/cms/ColorPaletteSelect";
+import { LayoutPresetSelect } from "@/components/cms/LayoutPresetSelect";
 import { ImageWithFallback } from "@/components/common/ImageWithFallback";
 import { Skeleton } from "@/components/ui/skeleton";
 
@@ -66,6 +70,22 @@ import type {
   FooterConfig,
   HeroCarouselConfig,
   HeroSlideConfig,
+  HeroSlideContent,
+  HeroSlideColors,
+  HeroSlideTypography,
+  HeroSlideButtons,
+  HeroSlideLayout,
+  HeroSlideMedia,
+  HeroPaletteName,
+  HeroFontFamily,
+  HeroFontSize,
+  HeroFontWeight,
+  HeroDescriptionSize,
+  HeroLayoutPreset,
+  HeroHeightPreset,
+  HeroButtonStyle,
+  HeroTransition,
+  HeroTransitionSpeed,
   ImageBannerConfig,
   InstagramGalleryConfig,
   InstagramItemConfig,
@@ -76,6 +96,12 @@ import type {
   SectionType,
   VideoSectionConfig,
   WhyChooseCardConfig,
+} from "@/types/cms";
+import {
+  migrateSlideConfig,
+  migrateSectionConfig,
+  validateHeroConfig,
+  HERO_PALETTE,
 } from "@/types/cms";
 import type { ProductListItem, ProductListResponse } from "@/types/admin";
 
@@ -148,7 +174,14 @@ const STATUS_CLS: Record<string, string> = {
 
 const DEFAULT_CONFIGS: Partial<Record<SectionType, Record<string, unknown>>> = {
   announcement_bar: { rotation_speed: 4, show_close: true },
-  hero_carousel: { auto_rotate: true, rotation_speed: 6 },
+  hero_carousel: {
+    auto_rotate: true,
+    rotation_speed: 6,
+    transition: "fade",
+    transition_duration: "normal",
+    height: "large",
+    pause_on_hover: false,
+  },
   image_banner: {
     title: "The Hadha Edit",
     subtitle: "Timeless sterling silver jewellery",
@@ -565,40 +598,114 @@ function AnnouncementEditor({
 
 // ── Hero Carousel ─────────────────────────────────────────────────────────────
 
+const HERO_SECTION_GROUPS = [
+  { id: "content", label: "Content", icon: "T" },
+  { id: "images", label: "Images & Media", icon: "image" },
+  { id: "typography", label: "Typography", icon: "type" },
+  { id: "colors", label: "Colors", icon: "palette" },
+  { id: "buttons", label: "Buttons", icon: "link" },
+  { id: "layout", label: "Layout", icon: "layout" },
+] as const;
+
+function CollapsibleSection({
+  id,
+  label,
+  icon,
+  isOpen,
+  onToggle,
+  children,
+  badge,
+}: {
+  id: string;
+  label: string;
+  icon: string;
+  isOpen: boolean;
+  onToggle: () => void;
+  children: React.ReactNode;
+  badge?: string;
+}) {
+  return (
+    <div className="border border-border/30 rounded-lg overflow-hidden">
+      <button
+        type="button"
+        onClick={onToggle}
+        className="w-full flex items-center justify-between px-3 py-2.5 bg-muted/20 hover:bg-muted/40 transition-colors"
+      >
+        <div className="flex items-center gap-2">
+          <span className="text-[11px] font-medium text-foreground/80">{label}</span>
+          {badge && (
+            <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-primary/10 text-primary font-medium">
+              {badge}
+            </span>
+          )}
+        </div>
+        {isOpen ? (
+          <ChevronUp className="size-3.5 text-muted-foreground" />
+        ) : (
+          <ChevronDown className="size-3.5 text-muted-foreground" />
+        )}
+      </button>
+      {isOpen && <div className="p-3 space-y-3 border-t border-border/20">{children}</div>}
+    </div>
+  );
+}
+
 function HeroSlideCard({
   item,
   index,
-  expanded,
-  onToggleExpand,
-  onUpdate,
+  expandedSections,
+  onToggleSection,
+  onUpdateContent,
+  onUpdateMedia,
+  onUpdateTypography,
+  onUpdateColors,
+  onUpdateButtons,
+  onUpdateLayout,
   onDelete,
   onDuplicate,
   onToggleEnabled,
+  autoAdjust,
 }: {
   item: SectionItem;
   index: number;
-  expanded: boolean;
-  onToggleExpand: () => void;
-  onUpdate: (field: keyof HeroSlideConfig, val: unknown) => void;
+  expandedSections: Set<string>;
+  onToggleSection: (id: string) => void;
+  onUpdateContent: (field: keyof HeroSlideContent, val: unknown) => void;
+  onUpdateMedia: (field: keyof HeroSlideMedia, val: unknown) => void;
+  onUpdateTypography: (field: keyof HeroSlideTypography, val: unknown) => void;
+  onUpdateColors: (field: keyof HeroSlideColors, val: unknown) => void;
+  onUpdateButtons: (field: keyof HeroSlideButtons, val: unknown) => void;
+  onUpdateLayout: (field: keyof HeroSlideLayout, val: unknown) => void;
   onDelete: () => void;
   onDuplicate: () => void;
   onToggleEnabled: () => void;
+  autoAdjust?: boolean;
 }) {
-  const slide = item.config as unknown as HeroSlideConfig;
+  const migrated = migrateSlideConfig(item.config as Record<string, unknown>);
+  const slide = migrated;
+  const content = slide.content ?? {};
+  const media = slide.media ?? {};
+  const typography = slide.typography ?? {};
+  const colors = slide.colors ?? {};
+  const buttons = slide.buttons ?? {};
+  const layout = slide.layout ?? {};
+
+  const isOpen = (id: string) => expandedSections.has(`${item.id}_${id}`);
+
   return (
     <div
       className={`border rounded-xl overflow-hidden transition-all ${item.is_enabled ? "border-border/50" : "border-border/20 opacity-50"}`}
     >
       {/* Card header */}
       <div className="flex items-center gap-2 p-3 bg-muted/20">
-        <GripVertical className="size-4 text-muted-foreground/30 shrink-0" />
+        <GripVertical className="size-4 text-muted-foreground/30 shrink-0 cursor-grab" />
         <div className="flex-1 min-w-0">
           <p className="text-xs font-medium truncate">
             Slide {index + 1}
-            {slide.eyebrow ? ` — ${slide.eyebrow}` : ""}
+            {content.eyebrow ? ` — ${content.eyebrow}` : ""}
           </p>
           <p className="text-[10px] text-muted-foreground truncate">
-            {slide.headline || "Untitled slide"}
+            {content.headline || "Untitled slide"}
           </p>
         </div>
         <div className="flex items-center gap-1 shrink-0">
@@ -627,129 +734,306 @@ function HeroSlideCard({
           >
             <Trash2 className="size-3.5 text-muted-foreground" />
           </button>
-          <button
-            onClick={onToggleExpand}
-            className="p-1.5 rounded hover:bg-muted transition-colors"
-          >
-            {expanded ? (
-              <ChevronUp className="size-3.5 text-muted-foreground" />
-            ) : (
-              <ChevronDown className="size-3.5 text-muted-foreground" />
-            )}
-          </button>
         </div>
       </div>
-      {/* Expanded fields */}
-      {expanded && (
-        <div className="p-4 space-y-4 border-t border-border/30">
-          <ImageUploadField
-            label="Desktop image"
-            value={slide.desktop_image_url ?? ""}
-            onChange={(v) => onUpdate("desktop_image_url", v)}
-            folder="/cms/hero"
-            previewHeight={90}
-          />
-          <ImageUploadField
-            label="Mobile image"
-            value={slide.mobile_image_url ?? ""}
-            onChange={(v) => onUpdate("mobile_image_url", v)}
-            folder="/cms/hero"
-            previewHeight={70}
-          />
-          <ImageUploadField
-            label="Tablet image"
-            value={slide.tablet_image_url ?? ""}
-            onChange={(v) => onUpdate("tablet_image_url", v)}
-            folder="/cms/hero"
-            previewHeight={70}
-          />
-          <Field label="Eyebrow tag">
-            <TextInput
-              value={slide.eyebrow ?? ""}
-              onChange={(v) => onUpdate("eyebrow", v)}
-              placeholder="FEATURED GIFTING"
-            />
-          </Field>
-          <Field label="Headline">
-            <TextArea
-              value={slide.headline ?? ""}
-              onChange={(v) => onUpdate("headline", v)}
-              rows={2}
-            />
-          </Field>
-          <Field label="Description">
-            <TextArea
-              value={slide.subheading ?? ""}
-              onChange={(v) => onUpdate("subheading", v)}
-              rows={2}
-            />
-          </Field>
-          <div className="grid grid-cols-2 gap-3">
-            <Field label="Primary button text">
-              <TextInput
-                value={slide.primary_btn_text ?? ""}
-                onChange={(v) => onUpdate("primary_btn_text", v)}
-                placeholder="OUR STORY"
-              />
-            </Field>
-            <Field label="Primary button URL">
-              <TextInput
-                value={slide.primary_btn_url ?? ""}
-                onChange={(v) => onUpdate("primary_btn_url", v)}
-                placeholder="/about"
-              />
-            </Field>
-          </div>
-          <div className="grid grid-cols-2 gap-3">
-            <Field label="Secondary button text">
-              <TextInput
-                value={slide.secondary_btn_text ?? ""}
-                onChange={(v) => onUpdate("secondary_btn_text", v)}
-                placeholder="EXPLORE GIFTING"
-              />
-            </Field>
-            <Field label="Secondary button URL">
-              <TextInput
-                value={slide.secondary_btn_url ?? ""}
-                onChange={(v) => onUpdate("secondary_btn_url", v)}
-                placeholder="/collections"
-              />
-            </Field>
-          </div>
-          <SelectRow
-            label="Text alignment"
-            value={slide.alignment ?? "left"}
-            onChange={(v) => onUpdate("alignment", v)}
-            options={[
-              { value: "left", label: "Left" },
-              { value: "center", label: "Center" },
-              { value: "right", label: "Right" },
-            ]}
-          />
-          <ToggleRow
-            label="Overlay"
-            checked={slide.overlay ?? true}
-            onChange={(v) => onUpdate("overlay", v)}
-          />
-          {(slide.overlay ?? true) && (
-            <SliderRow
-              label="Overlay opacity"
-              value={Math.round((slide.overlay_opacity ?? 0.5) * 100)}
-              min={0}
-              max={100}
-              unit="%"
-              onChange={(v) => onUpdate("overlay_opacity", v / 100)}
-            />
-          )}
-          <Field label="SEO alt text">
-            <TextInput
-              value={slide.seo_alt ?? ""}
-              onChange={(v) => onUpdate("seo_alt", v)}
-              placeholder="Hero image description"
-            />
-          </Field>
-        </div>
-      )}
+
+      {/* Expanded grouped fields */}
+      <div className="p-3 space-y-2 border-t border-border/30">
+        {HERO_SECTION_GROUPS.map(({ id, label, icon }) => (
+          <CollapsibleSection
+            key={id}
+            id={id}
+            label={label}
+            icon={icon}
+            isOpen={isOpen(id)}
+            onToggle={() => onToggleSection(`${item.id}_${id}`)}
+          >
+            {id === "content" && (
+              <div className="space-y-3">
+                <Field label="Eyebrow tag">
+                  <TextInput
+                    value={content.eyebrow ?? ""}
+                    onChange={(v) => onUpdateContent("eyebrow", v)}
+                    placeholder="NEW SEASON · 92.5 SILVER"
+                  />
+                </Field>
+                <Field label="Headline">
+                  <TextArea
+                    value={content.headline ?? ""}
+                    onChange={(v) => onUpdateContent("headline", v)}
+                    rows={2}
+                  />
+                </Field>
+                <Field label="Description">
+                  <TextArea
+                    value={content.subheading ?? ""}
+                    onChange={(v) => onUpdateContent("subheading", v)}
+                    rows={2}
+                  />
+                </Field>
+                <Field label="SEO alt text">
+                  <TextInput
+                    value={content.seo_alt ?? ""}
+                    onChange={(v) => onUpdateContent("seo_alt", v)}
+                    placeholder="Describe this slide for screen readers"
+                  />
+                </Field>
+              </div>
+            )}
+            {id === "images" && (
+              <div className="space-y-3">
+                <ImageUploadField
+                  label={autoAdjust ? "Desktop image (used for all viewports)" : "Desktop image"}
+                  value={media.desktop_image_url ?? ""}
+                  onChange={(v) => onUpdateMedia("desktop_image_url", v)}
+                  folder="/cms/hero"
+                  previewHeight={90}
+                />
+                {!autoAdjust && (
+                  <>
+                    <ImageUploadField
+                      label="Tablet image (optional)"
+                      value={media.tablet_image_url ?? ""}
+                      onChange={(v) => onUpdateMedia("tablet_image_url", v)}
+                      folder="/cms/hero"
+                      previewHeight={70}
+                    />
+                    <ImageUploadField
+                      label="Mobile image (optional)"
+                      value={media.mobile_image_url ?? ""}
+                      onChange={(v) => onUpdateMedia("mobile_image_url", v)}
+                      folder="/cms/hero"
+                      previewHeight={70}
+                    />
+                  </>
+                )}
+                {autoAdjust && (
+                  <p className="text-[10px] text-muted-foreground/60 italic">
+                    Responsive images auto-scale from the desktop version. Disable auto-adjust to
+                    set custom images per device.
+                  </p>
+                )}
+                <Field label="Video URL (optional)">
+                  <TextInput
+                    value={media.video_url ?? ""}
+                    onChange={(v) => onUpdateMedia("video_url", v)}
+                    placeholder="https://...mp4"
+                  />
+                </Field>
+                {media.video_url && (
+                  <Field label="Video poster image">
+                    <TextInput
+                      value={media.video_poster_url ?? ""}
+                      onChange={(v) => onUpdateMedia("video_poster_url", v)}
+                      placeholder="https://...jpg"
+                    />
+                  </Field>
+                )}
+              </div>
+            )}
+            {id === "typography" && (
+              <div className="space-y-3">
+                <SelectRow
+                  label="Headline font"
+                  value={typography.headline_font ?? "display"}
+                  onChange={(v) => onUpdateTypography("headline_font", v as HeroFontFamily)}
+                  options={[
+                    { value: "display", label: "Display (Cinzel)" },
+                    { value: "serif", label: "Serif (Cormorant)" },
+                    { value: "sans", label: "Sans (Inter)" },
+                  ]}
+                />
+                <SelectRow
+                  label="Headline size"
+                  value={typography.headline_size ?? "hero"}
+                  onChange={(v) => onUpdateTypography("headline_size", v as HeroFontSize)}
+                  options={[
+                    { value: "small", label: "Small" },
+                    { value: "medium", label: "Medium" },
+                    { value: "large", label: "Large" },
+                    { value: "xl", label: "Extra Large" },
+                    { value: "hero", label: "Hero" },
+                  ]}
+                />
+                <SelectRow
+                  label="Headline weight"
+                  value={typography.headline_weight ?? "semibold"}
+                  onChange={(v) => onUpdateTypography("headline_weight", v as HeroFontWeight)}
+                  options={[
+                    { value: "regular", label: "Regular" },
+                    { value: "medium", label: "Medium" },
+                    { value: "semibold", label: "Semi Bold" },
+                    { value: "bold", label: "Bold" },
+                  ]}
+                />
+                <SelectRow
+                  label="Description size"
+                  value={typography.description_size ?? "medium"}
+                  onChange={(v) => onUpdateTypography("description_size", v as HeroDescriptionSize)}
+                  options={[
+                    { value: "small", label: "Small" },
+                    { value: "medium", label: "Medium" },
+                    { value: "large", label: "Large" },
+                  ]}
+                />
+                <ToggleRow
+                  label="Text shadow"
+                  checked={typography.text_shadow ?? true}
+                  onChange={(v) => onUpdateTypography("text_shadow", v)}
+                />
+              </div>
+            )}
+            {id === "colors" && (
+              <div className="space-y-3">
+                <ColorPaletteSelect
+                  label="Text color"
+                  value={colors.text ?? "dark"}
+                  customValue={colors.text_custom}
+                  onChange={(p, c) => {
+                    onUpdateColors("text", p);
+                    if (c !== undefined) onUpdateColors("text_custom", c);
+                  }}
+                />
+                <ColorPaletteSelect
+                  label="Eyebrow color"
+                  value={colors.eyebrow ?? "gold"}
+                  customValue={colors.eyebrow_custom}
+                  onChange={(p, c) => {
+                    onUpdateColors("eyebrow", p);
+                    if (c !== undefined) onUpdateColors("eyebrow_custom", c);
+                  }}
+                />
+                <ColorPaletteSelect
+                  label="Overlay color"
+                  value={colors.overlay_color ?? "dark"}
+                  customValue={colors.overlay_color_custom}
+                  onChange={(p, c) => {
+                    onUpdateColors("overlay_color", p);
+                    if (c !== undefined) onUpdateColors("overlay_color_custom", c);
+                  }}
+                />
+                <SliderRow
+                  label="Overlay opacity"
+                  value={Math.round((colors.overlay_opacity ?? 0.5) * 100)}
+                  min={0}
+                  max={100}
+                  unit="%"
+                  onChange={(v) => onUpdateColors("overlay_opacity", v / 100)}
+                />
+                <ToggleRow
+                  label="Gradient overlay"
+                  checked={colors.gradient ?? false}
+                  onChange={(v) => onUpdateColors("gradient", v)}
+                />
+                {colors.gradient && (
+                  <SelectRow
+                    label="Gradient direction"
+                    value={colors.gradient_direction ?? "right"}
+                    onChange={(v) => onUpdateColors("gradient_direction", v)}
+                    options={[
+                      { value: "left", label: "Left" },
+                      { value: "right", label: "Right" },
+                    ]}
+                  />
+                )}
+              </div>
+            )}
+            {id === "buttons" && (
+              <div className="space-y-3">
+                <SelectRow
+                  label="Primary button style"
+                  value={buttons.primary_style ?? "filled"}
+                  onChange={(v) => onUpdateButtons("primary_style", v as HeroButtonStyle)}
+                  options={[
+                    { value: "filled", label: "Filled" },
+                    { value: "outline", label: "Outline" },
+                    { value: "ghost", label: "Ghost" },
+                    { value: "text", label: "Text" },
+                  ]}
+                />
+                <ColorPaletteSelect
+                  label="Primary button color"
+                  value={buttons.primary_color ?? "navy"}
+                  customValue={buttons.primary_color_custom}
+                  onChange={(p, c) => {
+                    onUpdateButtons("primary_color", p);
+                    if (c !== undefined) onUpdateButtons("primary_color_custom", c);
+                  }}
+                />
+                <SelectRow
+                  label="Secondary button style"
+                  value={buttons.secondary_style ?? "outline"}
+                  onChange={(v) => onUpdateButtons("secondary_style", v as HeroButtonStyle)}
+                  options={[
+                    { value: "outline", label: "Outline" },
+                    { value: "filled", label: "Filled" },
+                    { value: "ghost", label: "Ghost" },
+                    { value: "text", label: "Text" },
+                  ]}
+                />
+                <ColorPaletteSelect
+                  label="Secondary button color"
+                  value={buttons.secondary_color ?? "white"}
+                  customValue={buttons.secondary_color_custom}
+                  onChange={(p, c) => {
+                    onUpdateButtons("secondary_color", p);
+                    if (c !== undefined) onUpdateButtons("secondary_color_custom", c);
+                  }}
+                />
+                <div className="grid grid-cols-2 gap-3">
+                  <Field label="Primary button text">
+                    <TextInput
+                      value={content.primary_btn_text ?? ""}
+                      onChange={(v) => onUpdateContent("primary_btn_text", v)}
+                      placeholder="Shop now"
+                    />
+                  </Field>
+                  <Field label="Primary button URL">
+                    <TextInput
+                      value={content.primary_btn_url ?? ""}
+                      onChange={(v) => onUpdateContent("primary_btn_url", v)}
+                      placeholder="/collections"
+                    />
+                  </Field>
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <Field label="Secondary button text">
+                    <TextInput
+                      value={content.secondary_btn_text ?? ""}
+                      onChange={(v) => onUpdateContent("secondary_btn_text", v)}
+                      placeholder="Our story"
+                    />
+                  </Field>
+                  <Field label="Secondary button URL">
+                    <TextInput
+                      value={content.secondary_btn_url ?? ""}
+                      onChange={(v) => onUpdateContent("secondary_btn_url", v)}
+                      placeholder="/about"
+                    />
+                  </Field>
+                </div>
+              </div>
+            )}
+            {id === "layout" && (
+              <div className="space-y-3">
+                <LayoutPresetSelect
+                  label="Layout preset"
+                  value={layout.preset ?? "classic-left"}
+                  onChange={(v) => onUpdateLayout("preset", v)}
+                />
+                {layout.preset && layout.preset !== "classic-left" && (
+                  <div className="p-2 bg-muted/30 rounded-lg border border-border/20">
+                    <p className="text-[10px] text-muted-foreground italic">
+                      Override: {layout.advanced?.alignment ?? "default"} alignment,{" "}
+                      {layout.advanced?.content_width ?? "default"} width
+                    </p>
+                  </div>
+                )}
+              </div>
+            )}
+          </CollapsibleSection>
+        ))}
+      </div>
     </div>
   );
 }
@@ -762,11 +1046,41 @@ function HeroEditor({
   onAddItem,
   onDeleteItem,
   onDuplicateItem,
-}: EP<Partial<HeroCarouselConfig>> & ItemCtrl) {
-  const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
+  onEditedSlideChange,
+}: EP<Partial<HeroCarouselConfig>> &
+  ItemCtrl & {
+    onEditedSlideChange?: (index: number | null) => void;
+  }) {
+  const [expandedSections, setExpandedSections] = useState<Set<string>>(new Set());
+  const [validationErrors, setValidationErrors] = useState<string[]>([]);
 
-  function toggleExpand(id: string) {
-    setExpandedIds((prev) => {
+  const sectionConfig = useMemo(
+    () => migrateSectionConfig((config ?? {}) as Record<string, unknown>),
+    [config],
+  );
+
+  const migratedSlides = useMemo(
+    () => items.map((item) => migrateSlideConfig(item.config as Record<string, unknown>)),
+    [items],
+  );
+
+  // Compute which slide is being edited and notify parent
+  useEffect(() => {
+    let editedIdx: number | null = null;
+    for (const key of expandedSections) {
+      for (let i = 0; i < items.length; i++) {
+        if (key.startsWith(`${items[i].id}_`)) {
+          editedIdx = i;
+          break;
+        }
+      }
+      if (editedIdx !== null) break;
+    }
+    onEditedSlideChange?.(editedIdx);
+  }, [expandedSections, items, onEditedSlideChange]);
+
+  function toggleSection(id: string) {
+    setExpandedSections((prev) => {
       const n = new Set(prev);
       if (n.has(id)) n.delete(id);
       else n.add(id);
@@ -774,14 +1088,80 @@ function HeroEditor({
     });
   }
 
-  function updateSlide(idx: number, field: keyof HeroSlideConfig, val: unknown) {
-    onItemChange(
-      items.map((it, i) => (i === idx ? { ...it, config: { ...it.config, [field]: val } } : it)),
-    );
+  function updateSlideContent(idx: number, field: keyof HeroSlideContent, val: unknown) {
+    const item = items[idx];
+    const migrated = migrateSlideConfig(item.config as Record<string, unknown>);
+    const newContent = { ...(migrated.content ?? {}), [field]: val };
+    const newConfig = { ...migrated, content: newContent };
+    onItemChange(items.map((it, i) => (i === idx ? { ...it, config: newConfig } : it)));
   }
 
-  function toggleEnabled(idx: number) {
-    onItemChange(items.map((it, i) => (i === idx ? { ...it, is_enabled: !it.is_enabled } : it)));
+  function updateSlideMedia(idx: number, field: keyof HeroSlideMedia, val: unknown) {
+    const item = items[idx];
+    const migrated = migrateSlideConfig(item.config as Record<string, unknown>);
+    const newMedia = { ...(migrated.media ?? {}), [field]: val };
+    const newConfig = { ...migrated, media: newMedia };
+    onItemChange(items.map((it, i) => (i === idx ? { ...it, config: newConfig } : it)));
+  }
+
+  function updateSlideTypography(idx: number, field: keyof HeroSlideTypography, val: unknown) {
+    const item = items[idx];
+    const migrated = migrateSlideConfig(item.config as Record<string, unknown>);
+    const newTypo = { ...(migrated.typography ?? {}), [field]: val };
+    const newConfig = { ...migrated, typography: newTypo };
+    onItemChange(items.map((it, i) => (i === idx ? { ...it, config: newConfig } : it)));
+  }
+
+  function updateSlideColors(idx: number, field: keyof HeroSlideColors, val: unknown) {
+    const item = items[idx];
+    const migrated = migrateSlideConfig(item.config as Record<string, unknown>);
+    const newColors = { ...(migrated.colors ?? {}), [field]: val };
+    const newConfig = { ...migrated, colors: newColors };
+    onItemChange(items.map((it, i) => (i === idx ? { ...it, config: newConfig } : it)));
+  }
+
+  function updateSlideButtons(idx: number, field: keyof HeroSlideButtons, val: unknown) {
+    const item = items[idx];
+    const migrated = migrateSlideConfig(item.config as Record<string, unknown>);
+    const newButtons = { ...(migrated.buttons ?? {}), [field]: val };
+    const newConfig = { ...migrated, buttons: newButtons };
+    onItemChange(items.map((it, i) => (i === idx ? { ...it, config: newConfig } : it)));
+  }
+
+  function updateSlideLayout(idx: number, field: keyof HeroSlideLayout, val: unknown) {
+    const item = items[idx];
+    const migrated = migrateSlideConfig(item.config as Record<string, unknown>);
+    const newLayout = { ...(migrated.layout ?? {}), [field]: val };
+    const newConfig = { ...migrated, layout: newLayout };
+    onItemChange(items.map((it, i) => (i === idx ? { ...it, config: newConfig } : it)));
+  }
+
+  function handleAddSlide() {
+    const newId = `__new_${Date.now()}`;
+    onAddItem({
+      media: { desktop_image_url: "" },
+      content: {
+        headline: "New Slide",
+        eyebrow: "",
+        subheading: "",
+        primary_btn_text: "Shop Now",
+        primary_btn_url: "/collections",
+      },
+      typography: {},
+      colors: { overlay_opacity: 0.5 },
+      layout: { preset: "classic-left" },
+      buttons: { primary_style: "filled", primary_color: "navy" },
+    });
+    setTimeout(() => setExpandedSections((prev) => new Set(prev).add(`${newId}_content`)), 50);
+  }
+
+  function handleValidate() {
+    const result = validateHeroConfig(migratedSlides, sectionConfig as HeroCarouselConfig);
+    const msgs: string[] = [];
+    result.errors.forEach((e) => msgs.push(`Error: ${e.message}`));
+    result.warnings.forEach((w) => msgs.push(`Warning: ${w.message}`));
+    setValidationErrors(msgs);
+    return result.errors.length === 0;
   }
 
   return (
@@ -792,21 +1172,7 @@ function HeroEditor({
             Slides ({items.length})
           </p>
           <button
-            onClick={() => {
-              const newId = `__new_${Date.now()}`;
-              onAddItem({
-                desktop_image_url: "",
-                headline: "New Slide",
-                eyebrow: "",
-                subheading: "",
-                primary_btn_text: "Shop Now",
-                primary_btn_url: "/collections",
-                overlay: true,
-                overlay_opacity: 0.5,
-                alignment: "left",
-              });
-              setTimeout(() => setExpandedIds((prev) => new Set(prev).add(newId)), 50);
-            }}
+            onClick={handleAddSlide}
             className="flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wide text-primary hover:text-primary/80 transition-colors"
           >
             <Plus className="size-3.5" /> Add Slide
@@ -823,12 +1189,24 @@ function HeroEditor({
                 key={item.id}
                 item={item}
                 index={i}
-                expanded={expandedIds.has(item.id)}
-                onToggleExpand={() => toggleExpand(item.id)}
-                onUpdate={(field, val) => updateSlide(i, field, val)}
+                expandedSections={expandedSections}
+                onToggleSection={toggleSection}
+                onUpdateContent={(f, v) => updateSlideContent(i, f, v)}
+                onUpdateMedia={(f, v) => updateSlideMedia(i, f, v)}
+                onUpdateTypography={(f, v) => updateSlideTypography(i, f, v)}
+                onUpdateColors={(f, v) => updateSlideColors(i, f, v)}
+                onUpdateButtons={(f, v) => updateSlideButtons(i, f, v)}
+                onUpdateLayout={(f, v) => updateSlideLayout(i, f, v)}
                 onDelete={() => onDeleteItem(item.id)}
                 onDuplicate={() => onDuplicateItem(item.id)}
-                onToggleEnabled={() => toggleEnabled(i)}
+                autoAdjust={sectionConfig.auto_adjust ?? true}
+                onToggleEnabled={() =>
+                  onItemChange(
+                    items.map((it, idx) =>
+                      idx === i ? { ...it, is_enabled: !it.is_enabled } : it,
+                    ),
+                  )
+                }
               />
             ))}
           </div>
@@ -837,17 +1215,75 @@ function HeroEditor({
       <SectionSubheader label="Carousel settings" />
       <ToggleRow
         label="Auto rotate"
-        checked={config.auto_rotate ?? true}
+        checked={sectionConfig.auto_rotate ?? true}
         onChange={(v) => onChange({ ...config, auto_rotate: v })}
       />
       <SliderRow
         label="Rotation speed"
-        value={config.rotation_speed ?? 6}
+        value={sectionConfig.rotation_speed ?? 6}
         min={2}
         max={30}
         unit="s"
         onChange={(v) => onChange({ ...config, rotation_speed: v })}
       />
+      <SelectRow
+        label="Transition"
+        value={sectionConfig.transition ?? "fade"}
+        onChange={(v) => onChange({ ...config, transition: v as HeroTransition })}
+        options={[
+          { value: "fade", label: "Crossfade" },
+          { value: "slide", label: "Slide" },
+        ]}
+      />
+      <SelectRow
+        label="Transition speed"
+        value={sectionConfig.transition_duration ?? "normal"}
+        onChange={(v) => onChange({ ...config, transition_duration: v as HeroTransitionSpeed })}
+        options={[
+          { value: "fast", label: "Fast (600ms)" },
+          { value: "normal", label: "Normal (1200ms)" },
+          { value: "slow", label: "Slow (2000ms)" },
+        ]}
+      />
+      <SelectRow
+        label="Height"
+        value={sectionConfig.height ?? "large"}
+        onChange={(v) => onChange({ ...config, height: v as HeroHeightPreset })}
+        options={[
+          { value: "compact", label: "Compact (50vh)" },
+          { value: "medium", label: "Medium (70vh)" },
+          { value: "large", label: "Large (78vh)" },
+          { value: "fullscreen", label: "Full Screen (100vh)" },
+        ]}
+      />
+      <ToggleRow
+        label="Pause on hover"
+        checked={sectionConfig.pause_on_hover ?? false}
+        onChange={(v) => onChange({ ...config, pause_on_hover: v })}
+      />
+      <div className="border-t border-border/30 pt-3 mt-1">
+        <ToggleRow
+          label="Auto-adjust responsive"
+          checked={sectionConfig.auto_adjust ?? true}
+          onChange={(v) => onChange({ ...config, auto_adjust: v })}
+        />
+        <p className="text-[10px] text-muted-foreground/70 mt-1 ml-0.5 leading-relaxed">
+          Configure once in desktop mode. Typography, height, and layout scale automatically for
+          laptop, tablet, and mobile. Desktop image is used as fallback for smaller screens.
+        </p>
+      </div>
+      {validationErrors.length > 0 && (
+        <div className="p-3 rounded-lg border border-amber-200 bg-amber-50 space-y-1">
+          {validationErrors.map((msg, i) => (
+            <p
+              key={i}
+              className={`text-xs ${msg.startsWith("Error") ? "text-red-600" : "text-amber-600"}`}
+            >
+              {msg}
+            </p>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
@@ -1971,6 +2407,7 @@ function SectionConfigEditor({
   onAddItem,
   onDeleteItem,
   onDuplicateItem,
+  onEditedSlideChange,
 }: {
   section: AdminSection;
   config: Record<string, unknown>;
@@ -1980,8 +2417,11 @@ function SectionConfigEditor({
   onAddItem: (cfg: Record<string, unknown>) => void;
   onDeleteItem: (id: string) => void;
   onDuplicateItem: (id: string) => void;
+  onEditedSlideChange?: (index: number | null) => void;
 }) {
   const ctrl: ItemCtrl = { items, onItemChange, onAddItem, onDeleteItem, onDuplicateItem };
+  const migratedConfig =
+    section.section_type === "hero_carousel" ? migrateSectionConfig(config) : config;
   switch (section.section_type) {
     case "announcement_bar":
       return (
@@ -1995,9 +2435,10 @@ function SectionConfigEditor({
     case "hero_carousel":
       return (
         <HeroEditor
-          config={config as unknown as Partial<HeroCarouselConfig>}
+          config={migratedConfig as unknown as Partial<HeroCarouselConfig>}
           onChange={onChange as unknown as (next: Partial<HeroCarouselConfig>) => void}
           {...ctrl}
+          onEditedSlideChange={onEditedSlideChange}
         />
       );
     case "image_banner":
@@ -2059,17 +2500,20 @@ function SectionConfigEditor({
 // Preview utilities
 // ─────────────────────────────────────────────────────────────────────────────
 
-function usePreviewScale(ref: React.RefObject<HTMLDivElement | null>) {
+function usePreviewScale(
+  ref: React.RefObject<HTMLDivElement | null>,
+  previewWidth: number = PREVIEW_W,
+) {
   const [scale, setScale] = useState(0.6);
   useEffect(() => {
     const el = ref.current;
     if (!el) return;
-    const update = () => setScale(el.offsetWidth / PREVIEW_W);
+    const update = () => setScale(el.offsetWidth / previewWidth);
     update();
     const ro = new ResizeObserver(update);
     ro.observe(el);
     return () => ro.disconnect();
-  }, [ref]);
+  }, [ref, previewWidth]);
   return scale;
 }
 
@@ -2077,13 +2521,20 @@ function renderSection(
   section: AdminSection,
   config: Record<string, unknown>,
   items: SectionItem[],
+  activeSlideIndex?: number | null,
 ) {
   const naturalH = NATURAL_H[section.section_type as SectionType] ?? 300;
   switch (section.section_type) {
     case "announcement_bar":
       return <AnnouncementBar config={config as unknown as AnnouncementConfig} items={items} />;
     case "hero_carousel":
-      return <Hero config={config as unknown as HeroCarouselConfig} items={items} />;
+      return (
+        <Hero
+          config={migrateSectionConfig(config) as unknown as HeroCarouselConfig}
+          items={items}
+          activeSlideIndex={activeSlideIndex}
+        />
+      );
     case "image_banner":
       return <PromoBanner config={config as unknown as ImageBannerConfig} />;
     case "newsletter":
@@ -2271,10 +2722,15 @@ function SectionEditorPanel({
   onDuplicateItem,
   onSaveDraft,
   onPublish,
+  onPublishAnyWay,
+  onDismissWarnings,
   onClose,
   isSaving,
   isPublishing,
   isDirty,
+  publishErrors,
+  publishWarnings,
+  onEditedSlideChange,
 }: {
   section: AdminSection;
   config: Record<string, unknown>;
@@ -2286,10 +2742,15 @@ function SectionEditorPanel({
   onDuplicateItem: (id: string) => void;
   onSaveDraft: () => void;
   onPublish: () => void;
+  onPublishAnyWay: () => void;
+  onDismissWarnings: () => void;
   onClose: () => void;
   isSaving: boolean;
   isPublishing: boolean;
   isDirty: boolean;
+  publishErrors: { field: string; message: string }[] | null;
+  publishWarnings: { field: string; message: string }[] | null;
+  onEditedSlideChange?: (index: number | null) => void;
 }) {
   const chip = STATUS_CLS[section.status] ?? STATUS_CLS.published;
   return (
@@ -2343,9 +2804,57 @@ function SectionEditorPanel({
             onAddItem={onAddItem}
             onDeleteItem={onDeleteItem}
             onDuplicateItem={onDuplicateItem}
+            onEditedSlideChange={onEditedSlideChange}
           />
         </div>
       </div>
+
+      {/* Inline validation banner */}
+      {(publishErrors || publishWarnings) && (
+        <div className="flex-none border-t border-border/40 px-4 py-3 space-y-2 bg-background">
+          {publishErrors && publishErrors.length > 0 && (
+            <div className="rounded-lg border border-red-200 bg-red-50 p-3">
+              <p className="text-[10px] font-semibold uppercase tracking-wider text-red-700 mb-1.5">
+                Publish blocked
+              </p>
+              {publishErrors.map((e, i) => (
+                <div key={i} className="flex items-start gap-2 text-xs text-red-700">
+                  <span className="shrink-0 mt-0.5">•</span>
+                  <span>{e.message}</span>
+                </div>
+              ))}
+            </div>
+          )}
+          {publishWarnings && publishWarnings.length > 0 && (
+            <div className="rounded-lg border border-amber-200 bg-amber-50 p-3">
+              <p className="text-[10px] font-semibold uppercase tracking-wider text-amber-700 mb-1.5">
+                Warnings — fix or publish anyway
+              </p>
+              {publishWarnings.map((w, i) => (
+                <div key={i} className="flex items-start gap-2 text-xs text-amber-700">
+                  <span className="shrink-0 mt-0.5">•</span>
+                  <span>{w.message}</span>
+                </div>
+              ))}
+              <div className="flex items-center gap-2 mt-2.5">
+                <button
+                  onClick={onDismissWarnings}
+                  className="px-2.5 py-1 text-[11px] border border-amber-300 rounded-md hover:bg-amber-100 transition-colors"
+                >
+                  Dismiss
+                </button>
+                <button
+                  onClick={onPublishAnyWay}
+                  disabled={isPublishing}
+                  className="px-2.5 py-1 text-[11px] bg-amber-600 text-white rounded-md hover:bg-amber-700 disabled:opacity-50 transition-colors"
+                >
+                  {isPublishing ? "Publishing…" : "Publish anyway"}
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Save / Publish footer */}
       <div className="flex-none border-t border-border/40 px-4 py-3 flex items-center justify-between bg-background/95 backdrop-blur-sm">
@@ -2366,7 +2875,7 @@ function SectionEditorPanel({
             {isSaving ? "Saving…" : "Save Draft"}
           </button>
           <button
-            onClick={onPublish}
+            onClick={() => onPublish()}
             disabled={isPublishing}
             className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 disabled:opacity-60 transition-colors"
           >
@@ -2383,19 +2892,32 @@ function SectionEditorPanel({
 // Preview panel (Col 3 — live render, no controls)
 // ─────────────────────────────────────────────────────────────────────────────
 
+const PREVIEW_VIEWPORTS = [
+  { id: "desktop", label: "Desktop", width: 1440 },
+  { id: "laptop", label: "Laptop", width: 1024 },
+  { id: "tablet", label: "Tablet", width: 768 },
+  { id: "mobile", label: "Mobile", width: 375 },
+] as const;
+
 function PreviewPanel({
   section,
   config,
   items,
   isDirty,
+  activeSlideIndex,
 }: {
   section: AdminSection;
   config: Record<string, unknown>;
   items: SectionItem[];
   isDirty: boolean;
+  activeSlideIndex?: number | null;
 }) {
   const containerRef = useRef<HTMLDivElement>(null);
-  const scale = usePreviewScale(containerRef);
+  const [viewportId, setViewportId] = useState<string>("desktop");
+  const viewport = PREVIEW_VIEWPORTS.find((v) => v.id === viewportId) ?? PREVIEW_VIEWPORTS[0];
+  const isHero = section.section_type === "hero_carousel";
+
+  const scale = usePreviewScale(containerRef, viewport.width);
   const naturalH = NATURAL_H[section.section_type as SectionType] ?? 300;
 
   return (
@@ -2413,6 +2935,23 @@ function PreviewPanel({
             </span>
           )}
         </div>
+        {isHero && (
+          <div className="flex items-center gap-1 bg-muted/40 rounded-lg p-0.5">
+            {PREVIEW_VIEWPORTS.map((vp) => (
+              <button
+                key={vp.id}
+                onClick={() => setViewportId(vp.id)}
+                className={`px-2 py-1 text-[10px] rounded-md transition-colors font-medium ${
+                  viewportId === vp.id
+                    ? "bg-background text-foreground shadow-sm"
+                    : "text-muted-foreground hover:text-foreground"
+                }`}
+              >
+                {vp.label}
+              </button>
+            ))}
+          </div>
+        )}
         <p className="text-[10px] text-muted-foreground truncate max-w-[200px]">
           {section.title ?? section.section_key}
         </p>
@@ -2422,18 +2961,21 @@ function PreviewPanel({
       <div className="flex-1 overflow-y-auto bg-white">
         <div ref={containerRef} className="w-full">
           <div
-            className="relative overflow-hidden"
-            style={{ height: Math.round(naturalH * scale) }}
+            className="relative overflow-hidden mx-auto"
+            style={{
+              height: Math.round(naturalH * scale),
+              maxWidth: isHero ? viewport.width : undefined,
+            }}
           >
             <div
               className="pointer-events-none select-none absolute top-0 left-0"
               style={{
-                width: PREVIEW_W,
+                width: isHero ? viewport.width : PREVIEW_W,
                 transform: `scale(${scale})`,
                 transformOrigin: "top left",
               }}
             >
-              {renderSection(section, config, items)}
+              {renderSection(section, config, items, activeSlideIndex)}
             </div>
           </div>
         </div>
@@ -2442,7 +2984,9 @@ function PreviewPanel({
       {/* Preview footer note */}
       <div className="flex-none px-4 py-2 border-t border-border/30 bg-background/50">
         <p className="text-[10px] text-muted-foreground/50 text-center">
-          Preview updates instantly · {PREVIEW_W}px desktop viewport
+          {isHero
+            ? `Preview: ${viewport.label} (${viewport.width}px)`
+            : `Preview updates instantly · ${PREVIEW_W}px desktop viewport`}
         </p>
       </div>
     </div>
@@ -2613,9 +3157,11 @@ function AdminCmsEditor() {
   });
 
   const publishMutation = useMutation({
-    mutationFn: (key: string) =>
-      api.post<AdminSection>(`/cms/admin/sections/${key}/publish`, { body: {} }),
-    onSuccess: (_, key) => {
+    mutationFn: ({ key, acknowledgeWarnings }: { key: string; acknowledgeWarnings?: boolean }) =>
+      api.post<AdminSection>(`/cms/admin/sections/${key}/publish`, {
+        body: { acknowledge_warnings: acknowledgeWarnings ?? false },
+      }),
+    onSuccess: (_, { key }) => {
       qc.invalidateQueries({ queryKey: queryKeys.admin.cmsSection(key) });
       qc.invalidateQueries({ queryKey: queryKeys.admin.cmsSections });
       qc.invalidateQueries({ queryKey: queryKeys.cms.homepage });
@@ -2634,12 +3180,54 @@ function AdminCmsEditor() {
   const [dragIdx, setDragIdx] = useState<number | null>(null);
   const [overIdx, setOverIdx] = useState<number | null>(null);
 
+  const [publishWarnings, setPublishWarnings] = useState<
+    { field: string; message: string }[] | null
+  >(null);
+  const [publishErrors, setPublishErrors] = useState<{ field: string; message: string }[] | null>(
+    null,
+  );
+
+  const [editedSlideIndex, setEditedSlideIndex] = useState<number | null>(null);
+
   const [statusMsg, setStatusMsg] = useState<string | null>(null);
   useEffect(() => {
     if (!statusMsg) return;
     const t = setTimeout(() => setStatusMsg(null), 3500);
     return () => clearTimeout(t);
   }, [statusMsg]);
+
+  const CMS_PANEL_KEY = "hadha:admin:cms-sections-open";
+  const [sectionsOpen, setSectionsOpen] = useState<boolean>(() => {
+    if (typeof window === "undefined") return true;
+    const stored = localStorage.getItem(CMS_PANEL_KEY);
+    if (stored !== null) return stored === "true";
+    return window.innerWidth >= 1440;
+  });
+
+  const toggleSectionsPanel = useCallback(() => {
+    setSectionsOpen((prev) => {
+      const next = !prev;
+      localStorage.setItem(CMS_PANEL_KEY, String(next));
+      return next;
+    });
+  }, []);
+
+  // Auto-collapse sections panel on narrow viewports
+  useEffect(() => {
+    const mq = window.matchMedia("(max-width: 1439px)");
+    const handler = (e: MediaQueryListEvent | MediaQueryList) => {
+      if (e.matches) {
+        setSectionsOpen(false);
+        localStorage.setItem(CMS_PANEL_KEY, "false");
+      }
+    };
+    if (mq.matches) {
+      setSectionsOpen(false);
+      localStorage.setItem(CMS_PANEL_KEY, "false");
+    }
+    mq.addEventListener("change", handler);
+    return () => mq.removeEventListener("change", handler);
+  }, []);
 
   useEffect(() => {
     if (dragIdx !== null) return;
@@ -2682,11 +3270,19 @@ function AdminCmsEditor() {
   function updateConfig(key: string, config: Record<string, unknown>) {
     setLocalConfigs((prev) => ({ ...prev, [key]: config }));
     setDirtyKeys((prev) => new Set(prev).add(key));
+    if (publishWarnings || publishErrors) {
+      setPublishWarnings(null);
+      setPublishErrors(null);
+    }
   }
 
   function handleItemChange(key: string, items: SectionItem[]) {
     setLocalItems((prev) => ({ ...prev, [key]: items }));
     setDirtyKeys((prev) => new Set(prev).add(key));
+    if (publishWarnings || publishErrors) {
+      setPublishWarnings(null);
+      setPublishErrors(null);
+    }
   }
 
   function addItem(key: string, cfg: Record<string, unknown>) {
@@ -2774,6 +3370,7 @@ function AdminCmsEditor() {
 
   const handleSelectSection = useCallback((key: string) => {
     setActiveKey((cur) => (cur === key ? null : key));
+    setEditedSlideIndex(null);
   }, []);
 
   const handleDuplicateStub = useCallback(() => {
@@ -2823,9 +3420,11 @@ function AdminCmsEditor() {
     }
   }
 
-  async function handlePublish() {
+  async function handlePublish(acknowledgeWarnings = false) {
     if (!activeSection) return;
     const key = activeSection.section_key;
+    setPublishErrors(null);
+    setPublishWarnings(null);
     try {
       await saveDraftMutation.mutateAsync({ key, config: getConfig(activeSection) });
       const currentItems = localItems[key];
@@ -2833,7 +3432,7 @@ function AdminCmsEditor() {
       if ((currentItems && currentItems.length > 0) || deletedIds.length > 0) {
         await saveItemsMutation.mutateAsync({ key, items: currentItems ?? [], deletedIds });
       }
-      await publishMutation.mutateAsync(key);
+      await publishMutation.mutateAsync({ key, acknowledgeWarnings });
       setLocalConfigs((prev) => {
         const n = { ...prev };
         delete n[key];
@@ -2854,11 +3453,30 @@ function AdminCmsEditor() {
         n.delete(key);
         return n;
       });
+      setPublishErrors(null);
+      setPublishWarnings(null);
       setStatusMsg("Published · Cache invalidated");
       toast.success("Section published.");
     } catch (e) {
-      toast.error(toUserMessage(e as Error));
+      if (isApiError(e) && e.status === 422 && e.details && typeof e.details === "object") {
+        const d = e.details as Record<string, unknown>;
+        const errors = Array.isArray(d.errors)
+          ? (d.errors as { field: string; message: string }[])
+          : [];
+        const warnings = Array.isArray(d.warnings)
+          ? (d.warnings as { field: string; message: string }[])
+          : [];
+        if (errors.length > 0) setPublishErrors(errors);
+        if (warnings.length > 0) setPublishWarnings(warnings);
+      } else {
+        toast.error(toUserMessage(e as Error));
+      }
     }
+  }
+
+  function handleDiscardWarnings() {
+    setPublishErrors(null);
+    setPublishWarnings(null);
   }
 
   function handleDiscard() {
@@ -2911,6 +3529,17 @@ function AdminCmsEditor() {
       {/* Top bar */}
       <div className="flex-none h-14 border-b border-border/60 bg-background flex items-center justify-between px-5 gap-4">
         <div className="flex items-center gap-2">
+          <button
+            onClick={toggleSectionsPanel}
+            className="p-1.5 rounded-lg hover:bg-muted transition-colors"
+            aria-label={sectionsOpen ? "Hide sections panel" : "Show sections panel"}
+          >
+            {sectionsOpen ? (
+              <PanelLeftClose className="size-4 text-muted-foreground" />
+            ) : (
+              <PanelLeftOpen className="size-4 text-muted-foreground" />
+            )}
+          </button>
           <div className="p-1.5 rounded-lg bg-primary/10 text-primary">
             <Settings className="size-4" />
           </div>
@@ -2964,7 +3593,7 @@ function AdminCmsEditor() {
                 <Save className="size-3.5" /> Save Draft
               </button>
               <button
-                onClick={handlePublish}
+                onClick={() => handlePublish()}
                 disabled={isPublishing}
                 className="inline-flex items-center gap-1.5 text-xs bg-primary text-primary-foreground px-3 py-1.5 rounded-lg hover:bg-primary/90 disabled:opacity-60 transition-colors"
               >
@@ -2978,43 +3607,45 @@ function AdminCmsEditor() {
       {/* Body — 3 columns, each scrolls independently */}
       <div className="flex-1 flex overflow-hidden min-h-0">
         {/* ── Col 1: Sections list (320px) ── */}
-        <div className="w-[320px] shrink-0 flex flex-col border-r border-border/50 bg-muted/10 overflow-hidden">
-          <div className="flex-none px-4 pt-3.5 pb-2.5 border-b border-border/40">
-            <p className="text-[10px] uppercase tracking-[0.25em] font-semibold text-muted-foreground">
-              Sections
-            </p>
-            <p className="text-[11px] text-muted-foreground/70 mt-0.5">
-              Drag to reorder · click Edit to configure
-            </p>
-          </div>
-          <div className="flex-1 overflow-y-auto p-3 space-y-2">
-            {isLoading &&
-              Array.from({ length: 6 }).map((_, i) => (
-                <Skeleton key={i} className="h-[72px] rounded-xl" />
+        {sectionsOpen && (
+          <div className="w-[320px] shrink-0 flex flex-col border-r border-border/50 bg-muted/10 overflow-hidden">
+            <div className="flex-none px-4 pt-3.5 pb-2.5 border-b border-border/40">
+              <p className="text-[10px] uppercase tracking-[0.25em] font-semibold text-muted-foreground">
+                Sections
+              </p>
+              <p className="text-[11px] text-muted-foreground/70 mt-0.5">
+                Drag to reorder · click Edit to configure
+              </p>
+            </div>
+            <div className="flex-1 overflow-y-auto p-3 space-y-2">
+              {isLoading &&
+                Array.from({ length: 6 }).map((_, i) => (
+                  <Skeleton key={i} className="h-[72px] rounded-xl" />
+                ))}
+              {localOrder.map((section, idx) => (
+                <SectionCard
+                  key={section.id}
+                  section={section}
+                  idx={idx}
+                  isActive={activeKey === section.section_key}
+                  isDragging={dragIdx === idx}
+                  isOver={overIdx === idx}
+                  isDirty={dirtyKeys.has(section.section_key)}
+                  onSelect={handleSelectSection}
+                  onToggle={handleToggle}
+                  onDragStart={onDragStart}
+                  onDragOver={onDragOver}
+                  onDrop={onDrop}
+                  onDuplicate={handleDuplicateStub}
+                  onDelete={handleDeleteStub}
+                />
               ))}
-            {localOrder.map((section, idx) => (
-              <SectionCard
-                key={section.id}
-                section={section}
-                idx={idx}
-                isActive={activeKey === section.section_key}
-                isDragging={dragIdx === idx}
-                isOver={overIdx === idx}
-                isDirty={dirtyKeys.has(section.section_key)}
-                onSelect={handleSelectSection}
-                onToggle={handleToggle}
-                onDragStart={onDragStart}
-                onDragOver={onDragOver}
-                onDrop={onDrop}
-                onDuplicate={handleDuplicateStub}
-                onDelete={handleDeleteStub}
-              />
-            ))}
-            {!isLoading && localOrder.length === 0 && (
-              <p className="text-xs text-muted-foreground text-center py-8">No sections found.</p>
-            )}
+              {!isLoading && localOrder.length === 0 && (
+                <p className="text-xs text-muted-foreground text-center py-8">No sections found.</p>
+              )}
+            </div>
           </div>
-        </div>
+        )}
 
         {/* ── Col 2: Section editor — form controls only (500px) ── */}
         <div className="w-[500px] shrink-0 flex flex-col border-r border-border/50 overflow-hidden bg-background">
@@ -3030,10 +3661,15 @@ function AdminCmsEditor() {
               onDuplicateItem={(id) => duplicateItem(activeSection.section_key, id)}
               onSaveDraft={handleSaveDraft}
               onPublish={handlePublish}
+              onPublishAnyWay={() => handlePublish(true)}
+              onDismissWarnings={handleDiscardWarnings}
               onClose={() => setActiveKey(null)}
               isSaving={isSaving}
               isPublishing={isPublishing}
               isDirty={dirtyKeys.has(activeSection.section_key)}
+              publishErrors={publishErrors}
+              publishWarnings={publishWarnings}
+              onEditedSlideChange={setEditedSlideIndex}
             />
           ) : (
             <EditorEmptyState />
@@ -3048,9 +3684,16 @@ function AdminCmsEditor() {
               config={getConfig(activeSection)}
               items={getItems(activeSection)}
               isDirty={dirtyKeys.has(activeSection.section_key)}
+              activeSlideIndex={editedSlideIndex}
             />
           ) : (
-            <HomepageOverview sections={localOrder} onSelect={(key) => setActiveKey(key)} />
+            <HomepageOverview
+              sections={localOrder}
+              onSelect={(key) => {
+                setActiveKey(key);
+                setEditedSlideIndex(null);
+              }}
+            />
           )}
         </div>
       </div>

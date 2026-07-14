@@ -85,6 +85,120 @@ export interface VersionHistoryEntry {
   created_at: string;
 }
 
+// ── Hero Carousel – Semantic Types ─────────────────────────────────────────────
+
+export type HeroPaletteName =
+  | "navy"
+  | "gold"
+  | "white"
+  | "dark"
+  | "silver"
+  | "custom";
+
+export type HeroFontFamily = "display" | "serif" | "sans";
+
+export type HeroFontSize = "small" | "medium" | "large" | "xl" | "hero";
+
+export type HeroFontWeight = "regular" | "medium" | "semibold" | "bold";
+
+export type HeroDescriptionSize = "small" | "medium" | "large";
+
+export type HeroLayoutPreset =
+  | "classic-left"
+  | "centered-luxury"
+  | "editorial"
+  | "minimal"
+  | "image-focused"
+  | "split";
+
+export type HeroHeightPreset = "compact" | "medium" | "large" | "fullscreen";
+
+export type HeroButtonStyle = "filled" | "outline" | "ghost" | "text";
+
+export type HeroTransition = "fade" | "slide";
+
+export type HeroTransitionSpeed = "fast" | "normal" | "slow";
+
+export interface HeroSlideMedia {
+  desktop_image_url: string;
+  tablet_image_url?: string;
+  mobile_image_url?: string;
+  image_bundle?: unknown;
+  video_url?: string;
+  video_poster_url?: string;
+}
+
+export interface HeroSlideContent {
+  eyebrow?: string;
+  headline: string;
+  subheading?: string;
+  primary_btn_text?: string;
+  primary_btn_url?: string;
+  secondary_btn_text?: string;
+  secondary_btn_url?: string;
+  seo_alt?: string;
+}
+
+export interface HeroSlideTypography {
+  headline_font?: HeroFontFamily;
+  headline_size?: HeroFontSize;
+  headline_weight?: HeroFontWeight;
+  description_size?: HeroDescriptionSize;
+  text_shadow?: boolean;
+}
+
+export interface HeroSlideColors {
+  text?: HeroPaletteName;
+  text_custom?: string;
+  eyebrow?: HeroPaletteName;
+  eyebrow_custom?: string;
+  background?: HeroPaletteName;
+  background_custom?: string;
+  overlay_color?: HeroPaletteName;
+  overlay_color_custom?: string;
+  overlay_opacity?: number;
+  gradient?: boolean;
+  gradient_direction?: "left" | "right";
+}
+
+export interface HeroSlideButtons {
+  primary_style?: HeroButtonStyle;
+  primary_color?: HeroPaletteName;
+  primary_color_custom?: string;
+  secondary_style?: HeroButtonStyle;
+  secondary_color?: HeroPaletteName;
+  secondary_color_custom?: string;
+}
+
+export interface HeroSlideLayout {
+  preset?: HeroLayoutPreset;
+  advanced?: {
+    alignment?: "left" | "center" | "right";
+    vertical?: "top" | "center" | "bottom";
+    content_width?: "narrow" | "wide";
+    padding?: "compact" | "standard" | "generous";
+  };
+}
+
+export interface HeroSlideConfig {
+  media: HeroSlideMedia;
+  content: HeroSlideContent;
+  typography: HeroSlideTypography;
+  colors: HeroSlideColors;
+  layout: HeroSlideLayout;
+  buttons: HeroSlideButtons;
+}
+
+export interface HeroCarouselConfig {
+  auto_rotate: boolean;
+  rotation_speed: number;
+  transition?: HeroTransition;
+  transition_duration?: HeroTransitionSpeed;
+  height?: HeroHeightPreset;
+  pause_on_hover?: boolean;
+  auto_adjust?: boolean;
+}
+
 // ── Config shapes per section type ────────────────────────────────────────────
 
 export interface AnnouncementConfig {
@@ -98,30 +212,6 @@ export interface AnnouncementItemConfig {
   text_color?: string;
   link?: string;
   link_text?: string;
-}
-
-export interface HeroCarouselConfig {
-  auto_rotate: boolean;
-  rotation_speed: number;
-}
-
-export interface HeroSlideConfig {
-  desktop_image_url: string;
-  tablet_image_url?: string;
-  mobile_image_url?: string;
-  video_url?: string;
-  video_poster_url?: string;
-  eyebrow?: string;
-  headline: string;
-  subheading?: string;
-  primary_btn_text?: string;
-  primary_btn_url?: string;
-  secondary_btn_text?: string;
-  secondary_btn_url?: string;
-  alignment?: "left" | "center" | "right";
-  overlay?: boolean;
-  overlay_opacity?: number;
-  seo_alt?: string;
 }
 
 export interface ProductGridConfig {
@@ -187,7 +277,10 @@ export interface FooterConfig {
   facebook?: string;
   description?: string;
   logo_url?: string;
-  columns?: Array<{ title: string; links: Array<{ label: string; url: string }> }>;
+  columns?: Array<{
+    title: string;
+    links: Array<{ label: string; url: string }>;
+  }>;
 }
 
 // ── Per-item config shapes ─────────────────────────────────────────────────────
@@ -260,3 +353,24 @@ export interface PublishLogEntry {
   metadata: Record<string, unknown>;
   created_at: string;
 }
+
+// ── Hero validation ────────────────────────────────────────────────────────────
+
+export type HeroValidationError = {
+  type: "error";
+  field: string;
+  message: string;
+  slideIndex?: number;
+};
+
+export type HeroValidationWarning = {
+  type: "warning";
+  field: string;
+  message: string;
+  slideIndex?: number;
+};
+
+export type HeroValidationResult = {
+  errors: HeroValidationError[];
+  warnings: HeroValidationWarning[];
+};

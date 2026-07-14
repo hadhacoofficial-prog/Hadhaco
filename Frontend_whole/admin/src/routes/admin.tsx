@@ -6,7 +6,7 @@ import {
   useNavigate,
   useRouterState,
 } from "@tanstack/react-router";
-import { useEffect } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { getSession } from "@/lib/supabase/session";
 import { roleSatisfies } from "@/types/auth";
@@ -30,18 +30,13 @@ import {
   Tag,
   Settings2,
   MessageSquare,
+  Menu,
 } from "lucide-react";
 import markAsset from "@/assets/hadha-mark.png";
 
 export const Route = createFileRoute("/admin")({
   beforeLoad: async ({ context: { queryClient }, location }) => {
-    // Login page is public — skip the guard to avoid an infinite redirect loop.
     if (location.pathname === "/admin/login") return;
-
-    // On the server (SSR), window is undefined and localStorage doesn't exist,
-    // so getSession() always returns null. Skip here and let the component-level
-    // guard handle the check client-side (it will show a loading screen until
-    // the authoritative role is confirmed, blocking any admin content from appearing).
     if (typeof window === "undefined") return;
 
     const session = await getSession();
@@ -52,7 +47,6 @@ export const Route = createFileRoute("/admin")({
       });
     }
 
-    // Role lives in the app's profiles table, not in Supabase app_metadata.
     let profile: ProfileDto | null = null;
     try {
       profile = await queryClient.fetchQuery({
@@ -91,10 +85,20 @@ type NavTo =
   | "/admin/settings"
   | "/admin/enquiries";
 
-type NavItem = { to: NavTo; label: string; icon: React.ReactNode; exact?: boolean };
+type NavItem = {
+  to: NavTo;
+  label: string;
+  icon: React.ReactNode;
+  exact?: boolean;
+};
 
 const nav: NavItem[] = [
-  { to: "/admin", label: "Dashboard", icon: <LayoutDashboard className="size-4" />, exact: true },
+  {
+    to: "/admin",
+    label: "Dashboard",
+    icon: <LayoutDashboard className="size-4" />,
+    exact: true,
+  },
   { to: "/admin/products", label: "Products", icon: <Package className="size-4" /> },
   { to: "/admin/collections", label: "Collections", icon: <FolderOpen className="size-4" /> },
   { to: "/admin/categories", label: "Categories", icon: <Tag className="size-4" /> },
@@ -110,25 +114,46 @@ const nav: NavItem[] = [
   { to: "/admin/settings", label: "Store Settings", icon: <Settings2 className="size-4" /> },
 ];
 
-// ─── Component-level auth gate ──────────────────────────────────────────────
-//
-// beforeLoad handles client-side navigations correctly (window is defined).
-// But TanStack Start reuses the server's beforeLoad result during hydration, so
-// the SSR skip above means the auth check never fires on the initial page load.
-//
-// This component gate covers that gap:
-//  - Shows a spinner while the profile (authoritative role) is loading
-//  - Redirects to /admin/login if unauthenticated
-//  - Redirects to / if authenticated but not admin
-//  - Only renders the admin shell once role === admin | super_admin is confirmed
+const SIDEBAR_WIDTH = 260;
+const SIDEBAR_WIDTH_COLLAPSED = 64;
+const STORAGE_KEY = "hadha:admin:sidebar-collapsed";
+
+function getInitialCollapsed(): boolean {
+  if (typeof window === "undefined") return false;
+  const stored = localStorage.getItem(STORAGE_KEY);
+  if (stored !== null) return stored === "true";
+  return window.innerWidth < 1440;
+}
 
 function AdminLayout() {
   const path = useRouterState({ select: (s) => s.location.pathname });
   const { isAuthenticated } = useAuthContext();
   const navigate = useNavigate();
 
-  // Fetch authoritative profile. On client-nav this hits the beforeLoad cache
-  // (no extra request). On SSR initial load this is the first real auth check.
+  const [collapsed, setCollapsed] = useState<boolean>(getInitialCollapsed);
+
+  const toggleSidebar = useCallback(() => {
+    setCollapsed((prev) => {
+      const next = !prev;
+      localStorage.setItem(STORAGE_KEY, String(next));
+      return next;
+    });
+  }, []);
+
+  // Auto-collapse on small screens
+  useEffect(() => {
+    const mq = window.matchMedia("(max-width: 1439px)");
+    const handler = (e: MediaQueryListEvent | MediaQueryList) => {
+      if (e.matches) {
+        setCollapsed(true);
+        localStorage.setItem(STORAGE_KEY, "true");
+      }
+    };
+    handler(mq);
+    mq.addEventListener("change", handler);
+    return () => mq.removeEventListener("change", handler);
+  }, []);
+
   const { data: profile, isLoading: profileLoading } = useQuery({
     queryKey: queryKeys.profile.me,
     queryFn: () => api.get<ProfileDto>("/me"),
@@ -142,7 +167,6 @@ function AdminLayout() {
     role === "customer" || role === "admin" || role === "super_admin" ? role : null;
   const isAdmin = roleSatisfies(normalizedRole, "admin");
 
-  // Fire redirects once we know auth state — never during loading, never on login page.
   useEffect(() => {
     if (path === "/admin/login") return;
     if (!isAuthenticated) {
@@ -154,12 +178,10 @@ function AdminLayout() {
     }
   }, [isAuthenticated, profileLoading, isAdmin, path]);
 
-  // Login page: public, no sidebar shell
   if (path === "/admin/login") {
     return <Outlet />;
   }
 
-  // Block render while session/profile are being resolved
   if (!isAuthenticated || profileLoading || !profile || !isAdmin) {
     return (
       <div className="min-h-screen bg-secondary/40 flex items-center justify-center">
@@ -168,56 +190,90 @@ function AdminLayout() {
     );
   }
 
-  // Authenticated admin — render the full shell
-  return (
-    <div className="min-h-screen bg-secondary/40 grid lg:grid-cols-[260px_1fr]">
-      <aside className="bg-foreground text-background p-6 lg:min-h-screen flex flex-col">
-        <Link to="/" className="flex items-center gap-3">
-          <img src={markAsset} alt="Hadha" className="h-10 w-auto" />
-          <span className="font-display text-2xl tracking-wide">Hadha</span>
-        </Link>
-        <p className="text-[10px] uppercase tracking-[0.3em] text-background/60 mt-1">Admin CMS</p>
+  const sidebarWidth = collapsed ? SIDEBAR_WIDTH_COLLAPSED : SIDEBAR_WIDTH;
 
-        <nav className="mt-10 space-y-1 flex-1">
+  return (
+    <div className="min-h-screen bg-secondary/40 flex">
+      {/* ── Sidebar ── */}
+      <aside
+        className="bg-foreground text-background lg:min-h-screen flex flex-col shrink-0 overflow-hidden transition-[width] duration-250 ease-in-out"
+        style={{ width: sidebarWidth }}
+      >
+        {/* Header */}
+        <div className="flex-none px-4 pt-5 pb-3 flex items-center gap-3">
+          <button
+            onClick={toggleSidebar}
+            className="flex-none p-1.5 rounded-md hover:bg-background/10 transition-colors"
+            aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+          >
+            <Menu className="size-5" />
+          </button>
+          {!collapsed && (
+            <>
+              <Link to="/" className="flex items-center gap-2.5 min-w-0">
+                <img src={markAsset} alt="Hadha" className="h-8 w-auto shrink-0" />
+                <span className="font-display text-xl tracking-wide truncate">Hadha</span>
+              </Link>
+            </>
+          )}
+        </div>
+        {!collapsed && (
+          <p className="text-[10px] uppercase tracking-[0.3em] text-background/60 px-6 pb-1">
+            Admin CMS
+          </p>
+        )}
+
+        {/* Nav */}
+        <nav className="mt-4 space-y-0.5 flex-1 px-2">
           {nav.map((n) => {
             const active = n.exact ? path === n.to : path.startsWith(n.to);
             return (
               <Link
                 key={n.to}
                 to={n.to}
-                className={`flex items-center gap-3 px-4 py-2.5 text-sm transition ${
+                title={collapsed ? n.label : undefined}
+                className={`flex items-center gap-3 px-3 py-2.5 text-sm transition rounded-lg ${
                   active
                     ? "bg-accent text-accent-foreground"
                     : "text-background/80 hover:bg-background/10"
-                }`}
+                } ${collapsed ? "justify-center" : ""}`}
               >
-                {n.icon}
-                {n.label}
+                <span className="shrink-0">{n.icon}</span>
+                {!collapsed && <span className="truncate">{n.label}</span>}
               </Link>
             );
           })}
         </nav>
 
-        <div className="mt-auto pt-6 border-t border-background/10 space-y-2">
+        {/* Footer */}
+        <div
+          className={`flex-none border-t border-background/10 px-3 py-3 space-y-1.5 ${collapsed ? "flex flex-col items-center" : ""}`}
+        >
           <Link
             to="/"
-            className="flex items-center gap-2 text-xs text-background/60 hover:text-background transition"
+            title={collapsed ? "Back to storefront" : undefined}
+            className={`flex items-center gap-2 text-xs text-background/60 hover:text-background transition rounded-md px-2 py-1.5 ${
+              collapsed ? "justify-center" : ""
+            }`}
           >
-            <ArrowLeft className="size-3.5" />
-            Back to storefront
+            <ArrowLeft className="size-3.5 shrink-0" />
+            {!collapsed && <span>Back to storefront</span>}
           </Link>
-          <LogoutButton />
+          <div className={collapsed ? "flex justify-center" : ""}>
+            <LogoutButton collapsed={collapsed} />
+          </div>
         </div>
       </aside>
 
-      <main className="p-6 md:p-10">
+      {/* ── Main content ── */}
+      <main className="flex-1 min-w-0 p-6 md:p-10">
         <Outlet />
       </main>
     </div>
   );
 }
 
-function LogoutButton() {
+function LogoutButton({ collapsed }: { collapsed: boolean }) {
   const { logout } = useAuthContext();
   const navigate = useNavigate();
 
@@ -232,10 +288,13 @@ function LogoutButton() {
   return (
     <button
       onClick={handleLogout}
-      className="flex items-center gap-2 text-xs text-background/60 hover:text-background transition w-full text-left"
+      title={collapsed ? "Sign out" : undefined}
+      className={`flex items-center gap-2 text-xs text-background/60 hover:text-background transition w-full text-left rounded-md px-2 py-1.5 ${
+        collapsed ? "justify-center" : ""
+      }`}
     >
-      <LogOut className="size-3.5" />
-      Sign out
+      <LogOut className="size-3.5 shrink-0" />
+      {!collapsed && <span>Sign out</span>}
     </button>
   );
 }

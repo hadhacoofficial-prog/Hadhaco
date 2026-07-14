@@ -6,6 +6,7 @@ export type * from "./shop";
 export type * from "./customer";
 export type * from "./profile";
 export type * from "./cms";
+export * from "./hero-mappings";
 export * from "./fulfillment";
 export type * from "./media";
 export * from "./imagePresets";

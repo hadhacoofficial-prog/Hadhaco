@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
@@ -128,6 +128,26 @@ class SaveDraftRequest(BaseModel):
 class PublishSectionRequest(BaseModel):
     change_summary: str | None = None
     scheduled_at: datetime | None = None
+    acknowledge_warnings: bool = False
+
+
+class HeroValidationErrorOut(BaseModel):
+    type: Literal["error"] = "error"
+    field: str
+    message: str
+    slide_index: int | None = None
+
+
+class HeroValidationWarningOut(BaseModel):
+    type: Literal["warning"] = "warning"
+    field: str
+    message: str
+    slide_index: int | None = None
+
+
+class HeroValidationResultOut(BaseModel):
+    errors: list[HeroValidationErrorOut] = []
+    warnings: list[HeroValidationWarningOut] = []
 
 
 class ReorderSectionEntry(BaseModel):

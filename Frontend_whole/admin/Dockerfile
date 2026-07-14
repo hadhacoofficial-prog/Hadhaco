@@ -28,10 +28,10 @@ COPY --from=deps --chown=hadha:hadha /app/node_modules /app/node_modules
 
 USER hadha
 
-EXPOSE 8080
+EXPOSE 8081
 
 HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
-    CMD curl -f http://localhost:8080 || exit 1
+    CMD curl -f http://localhost:8081 || exit 1
 
 CMD ["npm", "-w", "admin", "run", "dev", "--", "--host"]
 

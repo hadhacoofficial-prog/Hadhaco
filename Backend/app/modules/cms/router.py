@@ -24,6 +24,9 @@ from app.modules.cms.schemas import (
     CmsPageCreate,
     CmsPageOut,
     CmsPageUpdate,
+    HeroValidationErrorOut,
+    HeroValidationResultOut,
+    HeroValidationWarningOut,
     HomepageDataOut,
     LandingSectionOut,
     LandingSectionUpdate,
@@ -211,6 +214,35 @@ async def publish_section(
 ):
     result = await _svc.publish_section(db, redis, section_key, data, admin.id)
     return ok(result, ResponseCode.CMS_SECTION_PUBLISHED, "Section published")
+
+
+@router.get(
+    "/admin/sections/{section_key}/validate",
+    response_model=BaseSuccessResponse[HeroValidationResultOut],
+)
+async def validate_hero_section(
+    section_key: str, db: AsyncSession = Depends(get_db), _=Depends(require_admin)
+):
+    result = await _svc.validate_hero_section(db, section_key)
+    out = HeroValidationResultOut(
+        errors=[
+            HeroValidationErrorOut(
+                field=e.field,
+                message=e.message,
+                slide_index=e.slide_index,
+            )
+            for e in result.errors
+        ],
+        warnings=[
+            HeroValidationWarningOut(
+                field=w.field,
+                message=w.message,
+                slide_index=w.slide_index,
+            )
+            for w in result.warnings
+        ],
+    )
+    return ok(out, ResponseCode.CMS_SECTION_FETCHED, "Validation complete")
 
 
 @router.post(
