@@ -406,6 +406,12 @@ class TestProfileService:
         mock_profile.is_active = True
         mock_profile.is_verified = False
         mock_profile.created_at = datetime.now(UTC)
+        # list_users also queries Admin2FA status for the listed users —
+        # db.execute must return something whose .all() is iterable, not
+        # the default auto-mock (which yields an un-awaited coroutine).
+        mock_2fa_result = MagicMock()
+        mock_2fa_result.all.return_value = []
+        db.execute = AsyncMock(return_value=mock_2fa_result)
         with patch.object(
             self.repo_cls, "list_paginated", AsyncMock(return_value=([mock_profile], 1))
         ):

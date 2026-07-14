@@ -387,7 +387,7 @@ class TestAuthService2FA:
         db = AsyncMock()
         mock_record = MagicMock()
         mock_record.totp_secret = "encrypted"
-        mock_record.backup_codes = "[]"
+        mock_record.backup_codes = []
         mock_result = MagicMock()
         mock_result.scalar_one_or_none.return_value = mock_record
         db.execute = AsyncMock(return_value=mock_result)
