@@ -90,6 +90,8 @@ pytest-cov==6.0.0
 factory-boy==3.3.1
 
 
-# setuptools 83+ removed pkg_resources which razorpay 1.4.2 requires at import.
-# Keep <83 until the razorpay 2.x upgrade (payments rewrite).
-setuptools<83
+# setuptools 81+ already removes pkg_resources (setuptools itself warns
+# "pin to Setuptools<81" if you rely on it) which razorpay 1.4.2 requires at
+# import — a plain "<83" pin still resolves to 82.x and breaks. Keep <81
+# until the razorpay 2.x upgrade (payments rewrite).
+setuptools<81

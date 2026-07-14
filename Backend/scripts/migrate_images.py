@@ -26,15 +26,14 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from PIL import Image
-from botocore.config import Config
-from sqlalchemy import text
-
 import boto3
+from app.modules.media.service import _SIZES, _normalize_image, _resize_to_webp
+from botocore.config import Config
+from PIL import Image
+from sqlalchemy import text
 
 from app.core.config import settings
 from app.core.database import AsyncWorkerSessionLocal
-from app.modules.media.service import _SIZES, _normalize_image, _resize_to_webp
 
 logging.basicConfig(
     level=logging.INFO,
