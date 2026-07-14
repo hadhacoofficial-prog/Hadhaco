@@ -8,6 +8,8 @@ from app.common.responses import BaseSuccessResponse, ok
 from app.core.database import get_db
 from app.core.dependencies import get_current_user, require_admin, require_customer
 from app.modules.orders.schemas import (
+    ActiveReservationItem,
+    ActiveReservationResponse,
     CancelOrderRequest,
     CreatePaymentIntentRequest,
     CreatePaymentIntentResponse,
@@ -123,6 +125,24 @@ async def cancel_order(
 ):
     result = await _service.cancel_order(db, order_id, current_user.id, payload)
     return ok(result, ResponseCode.ORDER_CANCELLED, "Order cancelled successfully")
+
+
+@router.get(
+    "/orders/active-reservations",
+    response_model=BaseSuccessResponse[ActiveReservationResponse],
+    dependencies=[Depends(require_customer)],
+)
+async def get_active_reservations(
+    db: AsyncSession = Depends(get_db),
+    current_user: Profile = Depends(get_current_user),
+):
+    items_raw = await _service.get_active_reservations(db, current_user.id)
+    items = [ActiveReservationItem(**item) for item in items_raw]
+    return ok(
+        ActiveReservationResponse(items=items),
+        ResponseCode.ORDER_FETCHED,
+        "Active reservations fetched",
+    )
 
 
 # ── Admin endpoints ───────────────────────────────────────────────────────────

@@ -115,3 +115,17 @@ export interface CouponValidation {
   discount: number;
   reason?: string;
 }
+
+export interface ActiveReservationItem {
+  reservation_number: string;
+  product_id: string;
+  variant_id: string | null;
+  product_name: string;
+  variant_name: string | null;
+  quantity: number;
+  expires_at: string;
+}
+
+export interface ActiveReservationResponse {
+  items: ActiveReservationItem[];
+}

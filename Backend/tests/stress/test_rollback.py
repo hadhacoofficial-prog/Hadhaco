@@ -97,8 +97,8 @@ class TestReserveItemsRollback:
                 items=[{"product_id": product_id, "quantity": 3}],
             )
 
-        # No UPDATE was issued — execute was only called once (the SELECT FOR UPDATE)
-        assert db.execute.await_count == 1
+        # One extra execute for get_user_active_reservations + the SELECT FOR UPDATE
+        assert db.execute.await_count == 2
 
     async def test_product_not_found_raises_not_found(self):
         from app.modules.inventory.reservation_service import ReservationService
@@ -141,8 +141,11 @@ class TestReserveItemsRollback:
         reservation_mock.id = uuid.uuid4()
         reservation_mock.reservation_number = "RES-ABCD1234"
 
-        # Sequence: SELECT p1, UPDATE p1, (flush), SELECT p2 → error
+        # Sequence: get_user_active, SELECT p1, UPDATE p1, (flush), SELECT p2 → error
         execute_results = [
+            _exec_returning_row(
+                p1_row
+            ),  # get_user_active_reservations (fetchall → empty)
             _exec_returning_row(p1_row),  # SELECT p1 FOR UPDATE
             _exec_noop(),  # UPDATE products (p1 reserved_quantity++)
             _exec_returning_row(p2_row),  # SELECT p2 FOR UPDATE
@@ -165,7 +168,9 @@ class TestReserveItemsRollback:
             )
 
         # The second SELECT caused the error; no UPDATE for p2 was issued
-        assert db.execute.await_count == 3  # SELECT p1, UPDATE p1, SELECT p2
+        assert (
+            db.execute.await_count == 4
+        )  # get_user_active, SELECT p1, UPDATE p1, SELECT p2
 
 
 # ── 2. complete_order_reservations — idempotency ──────────────────────────
@@ -425,6 +430,11 @@ class TestPaymentFailureRelease:
         payment.id = payment_id
         payment.order_id = order_id
 
+        order = MagicMock()
+        order.id = order_id
+        order.payment_status = "pending"
+        order.coupon_id = None
+
         release_called = {"n": 0}
 
         async def _release(_, db, oid, reason="RELEASED"):
@@ -454,6 +464,11 @@ class TestPaymentFailureRelease:
             ),
             patch.object(PaymentRepository, "update", AsyncMock()),
             patch.object(ReservationService, "release_order_reservations", _release),
+            patch.object(
+                OrderRepository,
+                "get_by_id",
+                AsyncMock(return_value=order),
+            ),
             patch.object(
                 OrderRepository,
                 "update",

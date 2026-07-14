@@ -16,10 +16,11 @@ from __future__ import annotations
 import asyncio
 import uuid
 from datetime import UTC, datetime, timedelta
-from typing import Any
+from typing import Any, cast
 
 import structlog
 from sqlalchemy import text
+from sqlalchemy.engine import CursorResult
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import InventoryError, NotFoundError, ValidationError
@@ -231,11 +232,31 @@ class ReservationService:
 
         Uses SELECT FOR UPDATE so concurrent checkouts queue behind each other.
         Raises InventoryError if any item lacks sufficient available stock.
-        Returns the created InventoryReservation rows (not yet committed).
+
+        If the user already has an ACTIVE reservation for the same product/variant,
+        the existing reservation is reused (expiry extended) instead of creating
+        a duplicate.  This prevents the self-blocking scenario where a customer's
+        own reservation counts against them on retry.
+
+        Returns the InventoryReservation rows (new or reused, not yet committed).
         """
         expires_at = datetime.now(UTC) + timedelta(minutes=_RESERVATION_TTL_MINUTES)
         reservations: list[InventoryReservation] = []
         cache_targets: list[tuple[uuid.UUID, uuid.UUID | None]] = []
+
+        # Fetch existing ACTIVE reservations for this user up-front so we can
+        # match them inside the lock without extra queries per item.
+        existing_reservations = await self.get_user_active_reservations(db, user_id)
+        # Key by (product_id, variant_id) for O(1) lookup.
+        # None variant_id is stored as a sentinel to distinguish "no variant"
+        # from "any variant".
+        existing_by_key: dict[tuple[str, str | None], dict[str, Any]] = {}
+        for er in existing_reservations:
+            key = (
+                str(er["product_id"]),
+                str(er["variant_id"]) if er["variant_id"] else None,
+            )
+            existing_by_key[key] = er
 
         # Lock rows in a fixed (product_id, variant_id) order, not
         # cart-iteration order — two checkouts sharing 2+ products in
@@ -250,6 +271,47 @@ class ReservationService:
             variant_id: uuid.UUID | None = item.get("variant_id")
             quantity: int = item["quantity"]
 
+            # ── Check for existing ACTIVE reservation ────────────────────────
+            lookup_key = (str(product_id), str(variant_id) if variant_id else None)
+            existing = existing_by_key.get(lookup_key)
+
+            if existing:
+                # Reuse: extend expiry, don't double-count reserved_quantity.
+                new_expires = expires_at.isoformat()
+                await db.execute(
+                    text(
+                        "UPDATE inventory_reservations "
+                        "SET expires_at = :expires, updated_at = now() "
+                        "WHERE id = :rid AND status = 'ACTIVE'"
+                    ),
+                    {"expires": new_expires, "rid": str(existing["id"])},
+                )
+                await db.flush()
+
+                # Build a lightweight ORM-like object so callers see a
+                # consistent return type.
+                reservation = InventoryReservation(
+                    id=existing["id"],
+                    reservation_number=existing["reservation_number"],
+                    user_id=user_id,
+                    order_id=existing.get("order_id"),
+                    product_id=product_id,
+                    variant_id=variant_id,
+                    quantity=existing["quantity"],
+                    status="ACTIVE",
+                    expires_at=expires_at,
+                )
+                reservations.append(reservation)
+                log.info(
+                    "reservation_reused",
+                    reservation_number=existing["reservation_number"],
+                    product_id=str(product_id),
+                    quantity=existing["quantity"],
+                    user_id=str(user_id),
+                )
+                continue
+
+            # ── New reservation: lock, validate, reserve ─────────────────────
             stock = await self._lock_stock_target(db, product_id, variant_id)
 
             available = (
@@ -527,12 +589,19 @@ class ReservationService:
 
         await self._invalidate_inventory_cache(cache_targets)
 
-    async def expire_stale_reservations(self, db: AsyncSession) -> int:
-        """
+    async def expire_stale_reservations(self, db: AsyncSession) -> list[uuid.UUID]:
+        """Expire stale reservations and release reserved stock.
+
         Called by the reservation_expiry background worker every minute.
-        Finds all ACTIVE reservations past their expires_at and transitions them
-        to EXPIRED, freeing reserved_quantity back to available.
-        Returns the number of reservations expired.
+        Finds all ACTIVE reservations past their ``expires_at`` and transitions
+        them to EXPIRED, freeing ``reserved_quantity`` back to available.
+
+        Returns a list of order IDs that were transitioned to
+        ``payment_expired`` so the caller can handle downstream side-effects
+        (coupon restoration, notifications, etc.).
+
+        Orders with ``payment_status='paid'`` are never transitioned — a late
+        payment capture may still arrive for them.
         """
         # Identify expired reservations (no lock yet — just finding candidates)
         result = await db.execute(
@@ -545,10 +614,11 @@ class ReservationService:
         )
         candidates = result.fetchall()
         if not candidates:
-            return 0
+            return []
 
         expired_count = 0
         cache_targets: list[tuple[uuid.UUID, uuid.UUID | None]] = []
+        transitioned_order_ids: list[uuid.UUID] = []
         for row in candidates:
             res_id: uuid.UUID = row[0]
             product_id: uuid.UUID = row[1]
@@ -591,15 +661,27 @@ class ReservationService:
                 {"rid": str(res_id)},
             )
 
+            # Only transition orders that are NOT already paid and NOT in a
+            # terminal state.  An order with payment_status='paid' may still
+            # receive a late webhook — we must not mark it expired.
             if order_id:
-                await db.execute(
-                    text(
-                        "UPDATE orders SET status = 'payment_expired', updated_at = now() "
-                        "WHERE id = :oid "
-                        "AND status NOT IN ('confirmed','cancelled','payment_expired')"
+                update_cursor = cast(
+                    CursorResult,
+                    await db.execute(
+                        text(
+                            "UPDATE orders SET status = 'payment_expired', "
+                            "updated_at = now() "
+                            "WHERE id = :oid "
+                            "AND status NOT IN "
+                            "('confirmed','cancelled','payment_expired',"
+                            "'payment_failed') "
+                            "AND payment_status != 'paid'"
+                        ),
+                        {"oid": str(order_id)},
                     ),
-                    {"oid": str(order_id)},
                 )
+                if update_cursor.rowcount > 0:
+                    transitioned_order_ids.append(order_id)
 
             after_reserved = max(stock["reserved_quantity"] - quantity, 0)
             await self._log_transaction(
@@ -627,7 +709,143 @@ class ReservationService:
             )
 
         await self._invalidate_inventory_cache(cache_targets)
-        return expired_count
+
+        return transitioned_order_ids
+
+    async def complete_expired_order_reservations(
+        self, db: AsyncSession, order_id: uuid.UUID
+    ) -> None:
+        """Handle late payment confirmations for orders whose reservations expired.
+
+        When a reservation expires the reserved_quantity is released.  If a
+        payment capture arrives later (Razorpay webhook or frontend verify),
+        we still need to move sold_quantity.  This method finds EXPIRED or
+        COMPLETED reservations for the order and, for any that are EXPIRED,
+        directly increments sold_quantity to account for the stock that was
+        already released.
+
+        Idempotent: if all reservations are already COMPLETED, this is a no-op.
+        """
+        result = await db.execute(
+            text(
+                "SELECT id, product_id, variant_id, quantity, status "
+                "FROM inventory_reservations "
+                "WHERE order_id = :oid AND status IN ('EXPIRED', 'COMPLETED') "
+                "FOR UPDATE"
+            ),
+            {"oid": str(order_id)},
+        )
+        rows = result.fetchall()
+
+        if not rows:
+            log.warning(
+                "no_expired_reservations_for_late_payment",
+                order_id=str(order_id),
+            )
+            return
+
+        cache_targets: list[tuple[uuid.UUID, uuid.UUID | None]] = []
+        for row in rows:
+            res_id: uuid.UUID = row[0]
+            product_id: uuid.UUID = row[1]
+            variant_id: uuid.UUID | None = row[2]
+            quantity: int = row[3]
+            status: str = row[4]
+
+            if status == "COMPLETED":
+                # Already converted to sale — nothing to do.
+                continue
+
+            # status == "EXPIRED": reserved_quantity was already released by
+            # the expiry worker.  We need to increment sold_quantity directly.
+            try:
+                stock = await self._lock_stock_target(db, product_id, variant_id)
+            except NotFoundError:
+                log.error(
+                    "inventory_target_missing_during_late_payment",
+                    product_id=str(product_id),
+                    variant_id=str(variant_id) if variant_id else None,
+                )
+                continue
+
+            await self._update_stock_target(
+                db,
+                stock,
+                "sold_quantity = sold_quantity + :qty",
+                {"qty": quantity},
+            )
+
+            await db.execute(
+                text(
+                    "UPDATE inventory_reservations "
+                    "SET status = 'COMPLETED', updated_at = now() "
+                    "WHERE id = :rid"
+                ),
+                {"rid": str(res_id)},
+            )
+
+            after_sold = stock["sold_quantity"] + quantity
+            await self._log_transaction(
+                db,
+                product_id=product_id,
+                variant_id=variant_id,
+                reservation_id=res_id,
+                order_id=order_id,
+                transaction_type="SALE",
+                quantity=quantity,
+                before_stock=stock,
+                after_reserved=stock["reserved_quantity"],
+                after_sold=after_sold,
+                reference=f"late_payment:{order_id}",
+            )
+            cache_targets.append((product_id, variant_id))
+
+            log.info(
+                "expired_reservation_completed_late_payment",
+                reservation_id=str(res_id),
+                product_id=str(product_id),
+                quantity=quantity,
+                order_id=str(order_id),
+            )
+
+        await self._invalidate_inventory_cache(cache_targets)
+
+    async def get_user_active_reservations(
+        self,
+        db: AsyncSession,
+        user_id: uuid.UUID,
+        product_id: uuid.UUID | None = None,
+        variant_id: uuid.UUID | None = None,
+    ) -> list[dict[str, Any]]:
+        """Return ACTIVE reservations for a user, optionally filtered by product/variant.
+
+        Used by:
+        - reserve_items() to detect and reuse existing reservations
+        - The active-reservations endpoint to show customers what they have reserved
+        """
+        conditions = ["user_id = :uid", "status = 'ACTIVE'", "expires_at > now()"]
+        params: dict[str, Any] = {"uid": str(user_id)}
+
+        if product_id:
+            conditions.append("product_id = :pid")
+            params["pid"] = str(product_id)
+        if variant_id:
+            conditions.append("variant_id = :vid")
+            params["vid"] = str(variant_id)
+        elif variant_id is None and product_id:
+            conditions.append("variant_id IS NULL")
+
+        where = " AND ".join(conditions)
+        result = await db.execute(
+            text(
+                f"SELECT id, reservation_number, product_id, variant_id, "
+                f"quantity, expires_at, order_id "
+                f"FROM inventory_reservations "
+                f"WHERE {where}"  # nosec B608
+            ),
+            params,
+        )
+        return [dict(row._mapping) for row in result.fetchall()]
 
     async def get_available_stock(self, db: AsyncSession, product_id: uuid.UUID) -> int:
         """Returns available = total - reserved - sold. No locking."""

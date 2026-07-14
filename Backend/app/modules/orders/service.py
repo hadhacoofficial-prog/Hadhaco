@@ -5,6 +5,7 @@ import math
 import time
 import uuid
 from datetime import UTC, datetime
+from typing import Any
 
 import razorpay
 import structlog
@@ -389,6 +390,7 @@ class OrderService:
           2. Idempotency guard
           3. HMAC verification (no DB writes if signature bad)
           4. Complete reservations (reserved → sold, SELECT FOR UPDATE)
+             - If reservations already expired (late payment), deduct stock directly
           5. Finalize coupon
           6. Clear cart
           7. Record payment
@@ -404,10 +406,8 @@ class OrderService:
         order = await _repo.get_by_id(db, payload.order_id)
         if not order or order.user_id != user_id:
             raise NotFoundError("Order not found")
-        if order.status in ("cancelled", "payment_expired"):
-            raise ValidationError(
-                "Your reservation has expired. Please start a new checkout."
-            )
+        if order.status == "cancelled":
+            raise ValidationError("This order has been cancelled.")
 
         # Idempotency: already fulfilled
         if order.payment_status == "paid":
@@ -422,6 +422,11 @@ class OrderService:
                 order_number=order.order_number,
             )
 
+        # Allow late payments: if the order is in payment_expired status but
+        # the HMAC is valid, we still process the payment.  The stock may
+        # have been released by the expiry worker — complete_expired_order_reservations
+        # will handle the deduction.
+
         # HMAC verification before any writes
         msg = f"{payload.razorpay_order_id}|{payload.razorpay_payment_id}"
         expected = hmac.new(
@@ -435,8 +440,22 @@ class OrderService:
 
         log.info("payment_signature_verified", order_id=str(order.id))
 
-        # Complete stock reservation (reserved → sold) with row-level locking
+        # Complete stock reservation (reserved → sold) with row-level locking.
+        # First try the normal path; if no ACTIVE reservations exist (expired),
+        # fall back to the late-payment path.
         await _reservation_svc.complete_order_reservations(db, order.id)
+
+        # Check if any reservations were still ACTIVE (normal path) or if we
+        # need the late-payment path (all EXPIRED).
+        has_expired = await db.execute(
+            text(
+                "SELECT 1 FROM inventory_reservations "
+                "WHERE order_id = :oid AND status = 'EXPIRED' LIMIT 1"
+            ),
+            {"oid": str(order.id)},
+        )
+        if has_expired.fetchone():
+            await _reservation_svc.complete_expired_order_reservations(db, order.id)
 
         # Finalize coupon
         if order.coupon_id:
@@ -704,10 +723,11 @@ class OrderService:
         order_id: uuid.UUID,
     ) -> None:
         """
-        Idempotent inventory release for a cancellation.
+        Idempotent inventory + coupon release for a cancellation.
         - Releases any remaining ACTIVE reservations (pre-payment / stock_reserved orders).
         - If the order was confirmed, reverses sold_quantity for each item (handles
           both COD orders [payment_status=pending] and paid orders [payment_status=paid]).
+        - Restores coupon usage so the slot becomes available again.
         Already-cancelled orders produce no-ops in both sub-calls.
         """
         await _reservation_svc.release_order_reservations(
@@ -731,6 +751,101 @@ class OrderService:
                         variant_id=str(item.variant_id) if item.variant_id else None,
                         quantity=item.quantity,
                     )
+
+        # Restore coupon usage so the slot becomes available again.
+        if order.coupon_id:
+            from app.modules.coupons.service import CouponService
+
+            await CouponService().revert_usage(
+                db, order.coupon_id, order.user_id, order_id
+            )
+
+    async def handle_expired_order_side_effects(
+        self, db: AsyncSession, order_ids: list[uuid.UUID]
+    ) -> None:
+        """Handle coupon restoration for orders transitioned to payment_expired.
+
+        Called by the reservation_expiry worker after
+        ``ReservationService.expire_stale_reservations()`` returns a list of
+        order IDs that were transitioned.  Batch-loads all orders in a single
+        query to avoid N+1, then reverts coupon usage for each order that had
+        a coupon applied.
+
+        Coupon revert is idempotent — if ``finalize_usage()`` was never called,
+        the fallback in ``revert_usage()`` finds the pending (order_id=NULL)
+        row.
+        """
+        if not order_ids:
+            return
+
+        from app.modules.coupons.service import CouponService
+
+        coupon_svc = CouponService()
+        orders = await _repo.get_by_ids(db, order_ids)
+        orders_by_id = {o.id: o for o in orders}
+
+        for oid in order_ids:
+            order = orders_by_id.get(oid)
+            if not order or not order.coupon_id:
+                continue
+            try:
+                await coupon_svc.revert_usage(db, order.coupon_id, order.user_id, oid)
+            except Exception:
+                log.error("coupon_revert_failed_on_expiry", order_id=str(oid))
+
+    async def get_active_reservations(
+        self, db: AsyncSession, user_id: uuid.UUID
+    ) -> list[dict[str, Any]]:
+        """Return the user's current ACTIVE reservations with product details.
+
+        Used by the storefront to display 'Reserved for you' instead of
+        'Out of Stock' for items the customer has pending in a checkout.
+        """
+        reservations = await _reservation_svc.get_user_active_reservations(db, user_id)
+        if not reservations:
+            return []
+
+        # Batch-fetch product/variant names in one query.
+        product_ids = list({str(r["product_id"]) for r in reservations})
+        variant_ids = [
+            str(r["variant_id"]) for r in reservations if r.get("variant_id")
+        ]
+
+        product_rows = await db.execute(
+            text(
+                "SELECT id, name FROM products " "WHERE id = ANY(CAST(:pids AS uuid[]))"
+            ),
+            {"pids": product_ids},
+        )
+        products_by_id = {r.id: r.name for r in product_rows.fetchall()}
+
+        variants_by_id: dict = {}
+        if variant_ids:
+            variant_rows = await db.execute(
+                text(
+                    "SELECT id, name FROM product_variants "
+                    "WHERE id = ANY(CAST(:vids AS uuid[]))"
+                ),
+                {"vids": variant_ids},
+            )
+            variants_by_id = {r.id: r.name for r in variant_rows.fetchall()}
+
+        result = []
+        for r in reservations:
+            pid = r["product_id"]
+            vid = r.get("variant_id")
+            result.append(
+                {
+                    "reservation_number": r["reservation_number"],
+                    "product_id": pid,
+                    "variant_id": vid,
+                    "product_name": products_by_id.get(pid, ""),
+                    "variant_name": variants_by_id.get(vid) if vid else None,
+                    "quantity": r["quantity"],
+                    "expires_at": r["expires_at"],
+                }
+            )
+        return result
 
     async def cancel_order(
         self,

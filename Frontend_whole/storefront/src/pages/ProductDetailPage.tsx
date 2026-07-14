@@ -14,6 +14,7 @@ import {
   Pencil,
   X,
   Upload,
+  Clock,
 } from "lucide-react";
 import { toast } from "sonner";
 import { SiteLayout } from "@/components/site/SiteLayout";
@@ -24,6 +25,7 @@ import { InventoryBadge } from "@/components/site/InventoryBadge";
 import { useCart, cartLineKey } from "@/stores/cart";
 import { computeQuantityBounds } from "@/lib/cartQuantity";
 import { useWishlist } from "@/stores/wishlist";
+import { useActiveReservations } from "@/hooks/useActiveReservations";
 import { formatINR } from "@/lib/format";
 import { api } from "@/lib/api/client";
 import { queryKeys } from "@/lib/api/queryKeys";
@@ -215,8 +217,25 @@ export default function ProductPage() {
     }, 0);
   }, []);
 
+  // Reservation state — check if current user has an active reservation
+  const { isReserved: checkReserved, getReservation } = useActiveReservations();
+
   // Show Notify Me / sold-out state when product has no variants and is out of stock
-  const globalSoldOut = !hasVariants && liveAvailableStock === 0;
+  const globalSoldOut =
+    !hasVariants && liveAvailableStock === 0 && !checkReserved(product.id, null);
+
+  const currentReservation = hasVariants
+    ? currentVariant
+      ? getReservation(product.id, currentVariant.id)
+      : undefined
+    : getReservation(product.id, null);
+  const isCurrentSelectionReserved = !!currentReservation;
+
+  // When reserved, treat as "in stock" for checkout purposes (reservation holds the qty)
+  const effectiveInStock = isCurrentSelectionReserved ? true : displayInStock;
+  const effectiveAvailableStock = isCurrentSelectionReserved
+    ? (currentReservation?.quantity ?? 1)
+    : effectiveStock;
 
   return (
     <SiteLayout>
@@ -311,11 +330,13 @@ export default function ProductPage() {
 
           {/* Live stock badge */}
           <div className="flex items-center gap-3 mt-3">
-            {displayInStock !== null && (
+            {isCurrentSelectionReserved ? (
+              <InventoryBadge availableStock={0} isReserved />
+            ) : displayInStock !== null ? (
               <InventoryBadge
                 availableStock={hasVariants && currentVariant ? variantStock : liveAvailableStock}
               />
-            )}
+            ) : null}
             {hasVariants && displayInStock === null && (
               <span className="text-xs text-muted-foreground tracking-wide">
                 Select a variant to check availability
@@ -355,21 +376,26 @@ export default function ProductPage() {
                 {liveProduct.variants!.map((v) => {
                   const vStock = v.available_stock ?? v.stock_quantity;
                   const outOfStock = vStock === 0;
+                  const variantReserved = outOfStock && checkReserved(product.id, v.id);
                   const isSelected = currentVariant?.id === v.id;
                   return (
                     <button
                       key={v.id}
                       type="button"
-                      onClick={() => !outOfStock && selectVariant(v)}
-                      disabled={outOfStock}
+                      onClick={() =>
+                        outOfStock && !variantReserved ? undefined : selectVariant(v)
+                      }
+                      disabled={outOfStock && !variantReserved}
                       aria-pressed={isSelected}
-                      aria-label={`${v.name}${outOfStock ? " — sold out" : vStock <= 5 ? ` — only ${vStock} left` : ""}`}
+                      aria-label={`${v.name}${variantReserved ? " — reserved for you" : outOfStock ? " — sold out" : vStock <= 5 ? ` — only ${vStock} left` : ""}`}
                       className={`relative px-3.5 py-2 text-xs border transition-all ${
                         isSelected
                           ? "bg-foreground text-background border-foreground"
-                          : outOfStock
-                            ? "border-border text-muted-foreground line-through cursor-not-allowed opacity-40"
-                            : "border-border hover:border-foreground"
+                          : variantReserved
+                            ? "border-blue-400 text-blue-600"
+                            : outOfStock
+                              ? "border-border text-muted-foreground line-through cursor-not-allowed opacity-40"
+                              : "border-border hover:border-foreground"
                       }`}
                     >
                       {v.name}
@@ -382,7 +408,12 @@ export default function ProductPage() {
                             : `−${formatINR(Math.abs(v.price_adjustment))}`}
                         </span>
                       )}
-                      {outOfStock && (
+                      {variantReserved && (
+                        <span className="absolute -top-2 left-1/2 -translate-x-1/2 text-[9px] uppercase tracking-wide text-blue-600">
+                          reserved
+                        </span>
+                      )}
+                      {outOfStock && !variantReserved && (
                         <span className="absolute -top-2 left-1/2 -translate-x-1/2 text-[9px] uppercase tracking-wide text-destructive">
                           sold out
                         </span>
@@ -401,6 +432,25 @@ export default function ProductPage() {
                   Please select a variant to continue.
                 </p>
               )}
+            </div>
+          )}
+
+          {/* ── Reservation banner ── */}
+          {isCurrentSelectionReserved && currentReservation && (
+            <div className="mt-8 flex items-center gap-3 p-4 bg-blue-50 border border-blue-200">
+              <Clock className="size-5 shrink-0 text-blue-600" aria-hidden />
+              <div>
+                <p className="text-sm font-medium text-blue-900">This item is reserved for you</p>
+                <p className="text-xs text-blue-700 mt-0.5">
+                  {currentReservation.quantity}× {currentReservation.product_name}
+                  {currentReservation.variant_name ? ` — ${currentReservation.variant_name}` : ""} ·
+                  Expires{" "}
+                  {new Date(currentReservation.expires_at).toLocaleTimeString([], {
+                    hour: "2-digit",
+                    minute: "2-digit",
+                  })}
+                </p>
+              </div>
             </div>
           )}
 
@@ -434,22 +484,39 @@ export default function ProductPage() {
                 <QuantityStepper
                   value={qty}
                   onChange={setQty}
-                  max={bounds.remainingAllowed > 0 ? bounds.remainingAllowed : 1}
-                  disabled={displayInStock !== null && !bounds.canAdd}
+                  max={
+                    isCurrentSelectionReserved
+                      ? (currentReservation?.quantity ?? 1)
+                      : bounds.remainingAllowed > 0
+                        ? bounds.remainingAllowed
+                        : 1
+                  }
+                  disabled={
+                    !isCurrentSelectionReserved && effectiveInStock !== null && !bounds.canAdd
+                  }
                 />
-                {effectiveStock > 0 && effectiveStock <= 10 && bounds.canAdd && (
-                  <span className="text-xs text-amber-600">Only {effectiveStock} left</span>
-                )}
+                {effectiveAvailableStock > 0 &&
+                  effectiveAvailableStock <= 10 &&
+                  bounds.canAdd &&
+                  !isCurrentSelectionReserved && (
+                    <span className="text-xs text-amber-600">
+                      Only {effectiveAvailableStock} left
+                    </span>
+                  )}
                 <button
                   onClick={handleAddToCart}
-                  disabled={displayInStock === false || !bounds.canAdd}
+                  disabled={
+                    effectiveInStock === false || (!isCurrentSelectionReserved && !bounds.canAdd)
+                  }
                   className="flex-1 bg-primary text-primary-foreground text-[11px] uppercase tracking-[0.22em] py-3.5 hover:bg-accent hover:text-accent-foreground transition disabled:opacity-50 disabled:cursor-not-allowed"
                 >
-                  {displayInStock === false
+                  {effectiveInStock === false
                     ? "Out of Stock"
-                    : !bounds.canAdd
+                    : !bounds.canAdd && !isCurrentSelectionReserved
                       ? "Max Qty in Cart"
-                      : "Add to Cart"}
+                      : isCurrentSelectionReserved
+                        ? "Add Reserved to Cart"
+                        : "Add to Cart"}
                 </button>
                 <button
                   onClick={handleWishlistToggle}
@@ -459,7 +526,7 @@ export default function ProductPage() {
                   <Heart className={`size-4 ${wished ? "fill-current" : ""}`} />
                 </button>
               </div>
-              {bounds.limitMessage && (
+              {bounds.limitMessage && !isCurrentSelectionReserved && (
                 <p className="mt-2 text-xs text-amber-700 flex items-center gap-1" role="status">
                   <AlertTriangle className="size-3 shrink-0" aria-hidden />
                   {bounds.limitMessage}
@@ -467,10 +534,12 @@ export default function ProductPage() {
               )}
               <button
                 onClick={handleBuyNow}
-                disabled={displayInStock === false || !bounds.canAdd}
+                disabled={
+                  effectiveInStock === false || (!isCurrentSelectionReserved && !bounds.canAdd)
+                }
                 className="mt-3 w-full border border-foreground text-foreground text-[11px] uppercase tracking-[0.22em] py-3.5 hover:bg-foreground hover:text-background transition disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                Buy It Now
+                {isCurrentSelectionReserved ? "Buy Reserved Now" : "Buy It Now"}
               </button>
             </>
           )}

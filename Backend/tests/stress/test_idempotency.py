@@ -165,6 +165,9 @@ class TestPaymentCapturedIdempotency:
         results = []
         for _ in range(n):
             db = AsyncMock()
+            no_expired = MagicMock()
+            no_expired.fetchone.return_value = None
+            db.execute = AsyncMock(return_value=no_expired)
             with (
                 patch.object(
                     PaymentRepository, "get_by_razorpay_order_id", _get_payment
@@ -253,6 +256,7 @@ class TestPaymentFailedIdempotency:
         order.id = state.order_id
         order.user_id = uuid.uuid4()
         order.payment_status = "pending"
+        order.coupon_id = None
 
         async def _get_payment(_, db, rzp_oid):
             p = MagicMock()

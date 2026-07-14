@@ -6506,7 +6506,7 @@
               }
             },
             "url": {
-              "raw": "{{base_url}}/admin/settings/flags/sms_order_confirmation",
+              "raw": "{{base_url}}/admin/settings/flags/complimentary_gift_enabled",
               "host": [
                 "{{base_url}}"
               ],
@@ -6514,10 +6514,10 @@
                 "admin",
                 "settings",
                 "flags",
-                "sms_order_confirmation"
+                "complimentary_gift_enabled"
               ]
             },
-            "description": "Replace 'sms_order_confirmation' with actual flag key."
+            "description": "Toggle a feature flag. Only complimentary_gift_enabled is actively enforced."
           },
           "event": [
             {

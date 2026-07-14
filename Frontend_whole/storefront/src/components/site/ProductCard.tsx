@@ -1,10 +1,11 @@
 import { memo } from "react";
-import { Eye, Heart, ShoppingBag, Star, Bell } from "lucide-react";
+import { Eye, Heart, ShoppingBag, Star, Bell, Clock } from "lucide-react";
 import { Link } from "@tanstack/react-router";
 import { ResponsiveImage } from "@hadha/shared-media";
 import type { Product } from "@/types/shop";
 import { useCart } from "@/stores/cart";
 import { useWishlist } from "@/stores/wishlist";
+import { useActiveReservations } from "@/hooks/useActiveReservations";
 import { formatINR } from "@/lib/format";
 import { StockPill } from "@/components/site/InventoryBadge";
 
@@ -14,12 +15,14 @@ export const ProductCard = memo(function ProductCard({ p }: { p: Product }) {
   const add = useCart((s) => s.add);
   const toggleWishlist = useWishlist((s) => s.toggle);
   const wished = useWishlist((s) => s.items.some((i) => i.id === p.id));
+  const { isReserved: hasReservation } = useActiveReservations();
 
   const isSoldOut = p.availableStock === 0;
+  const reserved = isSoldOut && hasReservation(p.id);
 
   function handleAddToCart(e: React.MouseEvent) {
     e.preventDefault();
-    if (isSoldOut) return;
+    if (isSoldOut && !reserved) return;
     add(p.id, 1, {
       name: p.name,
       image: p.image,
@@ -35,14 +38,14 @@ export const ProductCard = memo(function ProductCard({ p }: { p: Product }) {
         to="/products/$slug"
         params={{ slug: p.slug }}
         className="block relative aspect-square bg-white overflow-hidden"
-        aria-label={`View ${p.name}${isSoldOut ? " — Sold Out" : ""}`}
+        aria-label={`View ${p.name}${isSoldOut && !reserved ? " — Sold Out" : reserved ? " — Reserved for You" : ""}`}
       >
         {p.imageBundle ? (
           <ResponsiveImage
             bundle={p.imageBundle}
             sizes={CARD_IMAGE_SIZES}
             className="w-full h-full"
-            imgClassName={`w-full h-full object-contain transition-transform duration-500 ease-out group-hover:scale-105 ${isSoldOut ? "opacity-60" : ""}`}
+            imgClassName={`w-full h-full object-contain transition-transform duration-500 ease-out group-hover:scale-105 ${isSoldOut && !reserved ? "opacity-60" : ""}`}
           />
         ) : (
           <img
@@ -51,18 +54,29 @@ export const ProductCard = memo(function ProductCard({ p }: { p: Product }) {
             loading="lazy"
             width={800}
             height={800}
-            className={`w-full h-full object-contain transition-transform duration-500 ease-out group-hover:scale-105 ${isSoldOut ? "opacity-60" : ""}`}
+            className={`w-full h-full object-contain transition-transform duration-500 ease-out group-hover:scale-105 ${isSoldOut && !reserved ? "opacity-60" : ""}`}
           />
         )}
 
-        {/* Sold-out overlay */}
-        {isSoldOut && (
+        {/* Sold-out / Reserved overlay */}
+        {isSoldOut && !reserved && (
           <div
             className="absolute inset-0 bg-background/40 flex items-center justify-center"
             aria-hidden
           >
             <span className="bg-foreground/80 text-background text-[10px] tracking-[0.28em] uppercase px-4 py-1.5">
               Sold Out
+            </span>
+          </div>
+        )}
+        {reserved && (
+          <div
+            className="absolute inset-0 bg-blue-500/10 flex items-center justify-center"
+            aria-hidden
+          >
+            <span className="bg-blue-600/90 text-white text-[10px] tracking-[0.28em] uppercase px-4 py-1.5 flex items-center gap-1.5">
+              <Clock className="size-3" />
+              Reserved for You
             </span>
           </div>
         )}
@@ -77,6 +91,7 @@ export const ProductCard = memo(function ProductCard({ p }: { p: Product }) {
 
         {/* Stock pill (only when not sold out — sold-out overlay covers it) */}
         {!isSoldOut && <StockPill availableStock={p.availableStock} />}
+        {reserved && <StockPill availableStock={0} isReserved />}
 
         <div className="absolute top-3 right-3 flex flex-col gap-2">
           <button
@@ -105,8 +120,8 @@ export const ProductCard = memo(function ProductCard({ p }: { p: Product }) {
         </div>
       </Link>
 
-      {/* Add to Cart / Notify Me — always visible below the image */}
-      {isSoldOut ? (
+      {/* Add to Cart / Notify Me / Reserved — always visible below the image */}
+      {isSoldOut && !reserved ? (
         <Link
           to="/products/$slug"
           params={{ slug: p.slug }}
@@ -115,6 +130,14 @@ export const ProductCard = memo(function ProductCard({ p }: { p: Product }) {
         >
           <Bell className="size-3.5" /> Notify Me
         </Link>
+      ) : reserved ? (
+        <button
+          onClick={handleAddToCart}
+          className="flex items-center justify-center gap-2 w-full bg-blue-600 text-white text-[11px] tracking-[0.24em] uppercase py-3.5 font-cinzel hover:bg-blue-700 transition-colors"
+          aria-label={`Add reserved ${p.name} to cart`}
+        >
+          <ShoppingBag className="size-3.5" /> Add Reserved to Cart
+        </button>
       ) : (
         <button
           onClick={handleAddToCart}
@@ -150,7 +173,7 @@ export const ProductCard = memo(function ProductCard({ p }: { p: Product }) {
         </h3>
         <div className="mt-2 flex items-baseline gap-2">
           <span
-            className={`font-sans font-bold text-base ${isSoldOut ? "text-muted-foreground" : "text-foreground"}`}
+            className={`font-sans font-bold text-base ${isSoldOut && !reserved ? "text-muted-foreground" : "text-foreground"}`}
           >
             {formatINR(p.price)}
           </span>
@@ -159,9 +182,14 @@ export const ProductCard = memo(function ProductCard({ p }: { p: Product }) {
               {formatINR(p.compareAt)}
             </span>
           )}
-          {isSoldOut && (
+          {isSoldOut && !reserved && (
             <span className="text-[10px] uppercase tracking-[0.18em] text-destructive font-medium">
               Sold Out
+            </span>
+          )}
+          {reserved && (
+            <span className="text-[10px] uppercase tracking-[0.18em] text-blue-600 font-medium">
+              Reserved
             </span>
           )}
         </div>

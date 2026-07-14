@@ -6,6 +6,9 @@ Finds all ACTIVE inventory reservations that have passed their expires_at
 releases the reserved stock back to available, marks the reservation EXPIRED,
 and transitions the associated order to payment_expired.
 
+After the inventory module completes its work, this worker orchestrates
+downstream side-effects (coupon restoration) via the Orders domain.
+
 Uses SKIP LOCKED on reservation rows so multiple scheduler instances (if any)
 never race on the same row.
 """
@@ -23,11 +26,14 @@ async def run() -> None:
 
 async def _expire_reservations(db) -> None:
     from app.modules.inventory.reservation_service import ReservationService
+    from app.modules.orders.service import OrderService
 
     svc = ReservationService()
-    expired = await svc.expire_stale_reservations(db)
+    expired_order_ids = await svc.expire_stale_reservations(db)
 
-    if expired:
-        log.info("reservations_expired_batch", count=expired)
+    if expired_order_ids:
+        log.info("reservations_expired_batch", count=len(expired_order_ids))
+        order_svc = OrderService()
+        await order_svc.handle_expired_order_side_effects(db, expired_order_ids)
     else:
         log.debug("reservation_expiry_run_no_expired")

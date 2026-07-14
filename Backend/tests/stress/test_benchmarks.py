@@ -156,14 +156,15 @@ class TestExpiryThroughput:
         svc = ReservationService()
 
         start = time.perf_counter()
-        count = await svc.expire_stale_reservations(db)
+        await svc.expire_stale_reservations(db)
         elapsed = time.perf_counter() - start
 
-        rps = count / elapsed if elapsed > 0 else float("inf")
+        processed = db.add.call_count
+        rps = processed / elapsed if elapsed > 0 else float("inf")
         print(
             f"\n  expire_stale_reservations (100 rows): {rps:.0f} rows/sec ({elapsed*1000:.1f}ms)"
         )
-        assert count == 100
+        assert processed == 100
 
     async def test_throughput_500_rows(self, capsys):
         from app.modules.inventory.reservation_service import ReservationService
@@ -172,14 +173,15 @@ class TestExpiryThroughput:
         svc = ReservationService()
 
         start = time.perf_counter()
-        count = await svc.expire_stale_reservations(db)
+        await svc.expire_stale_reservations(db)
         elapsed = time.perf_counter() - start
 
-        rps = count / elapsed if elapsed > 0 else float("inf")
+        processed = db.add.call_count
+        rps = processed / elapsed if elapsed > 0 else float("inf")
         print(
             f"\n  expire_stale_reservations (500 rows): {rps:.0f} rows/sec ({elapsed*1000:.1f}ms)"
         )
-        assert count == 500
+        assert processed == 500
         assert elapsed < 5.0, f"500-row expiry took {elapsed:.2f}s (expected < 5s)"
 
     async def test_throughput_report(self, capsys):
@@ -193,9 +195,10 @@ class TestExpiryThroughput:
         for n in batch_sizes:
             db = self._build_expiry_db(n)
             start = time.perf_counter()
-            count = await svc.expire_stale_reservations(db)
+            await svc.expire_stale_reservations(db)
             elapsed = time.perf_counter() - start
-            rps = count / elapsed if elapsed > 0 else float("inf")
+            processed = db.add.call_count
+            rps = processed / elapsed if elapsed > 0 else float("inf")
             results.append((n, elapsed * 1000, rps))
 
         print("\n=== expire_stale_reservations Throughput Report ===")
@@ -305,6 +308,9 @@ class TestReserveItemsLatency:
         db = AsyncMock()
         db.execute = AsyncMock(
             side_effect=[
+                MagicMock(
+                    fetchall=MagicMock(return_value=[])
+                ),  # get_user_active_reservations
                 select_result,  # SELECT FOR UPDATE
                 MagicMock(),  # UPDATE products
             ]

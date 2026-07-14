@@ -321,3 +321,24 @@ class CouponService:
                 order_id=str(order_id),
                 rowcount=rowcount,
             )
+
+    async def revert_usage(
+        self,
+        db: AsyncSession,
+        coupon_id: uuid.UUID,
+        user_id: uuid.UUID,
+        order_id: uuid.UUID | None = None,
+    ) -> None:
+        """Revert coupon usage when payment fails, is cancelled, or the
+        reservation expires before payment.  Removes the usage row and
+        decrements the coupon's usage_count so the slot becomes available
+        again for other customers.
+        """
+        deleted = await _repo.revert_usage(db, coupon_id, user_id, order_id)
+        if deleted:
+            log.info(
+                "coupon_usage_reverted",
+                coupon_id=str(coupon_id),
+                user_id=str(user_id),
+                order_id=str(order_id) if order_id else None,
+            )

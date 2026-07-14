@@ -130,6 +130,7 @@ def _mock_order(order_id=None, user_id=None, total=1000.0, payment_status="pendi
     order.payment_status = payment_status
     order.status = "stock_reserved"
     order.order_number = "HDH-202607-000001"
+    order.coupon_id = None
     return order
 
 
@@ -387,6 +388,9 @@ class TestPaymentCaptured:
         from app.modules.profiles.repository import ProfileRepository
 
         db = AsyncMock()
+        no_expired = MagicMock()
+        no_expired.fetchone.return_value = None
+        db.execute = AsyncMock(return_value=no_expired)
         payment = _mock_payment(status="created", amount=1000.0)
         order = _mock_order(
             order_id=payment.order_id, total=1000.0, payment_status="pending"
@@ -433,6 +437,9 @@ class TestPaymentCaptured:
         from app.modules.profiles.repository import ProfileRepository
 
         db = AsyncMock()
+        no_expired = MagicMock()
+        no_expired.fetchone.return_value = None
+        db.execute = AsyncMock(return_value=no_expired)
         order = _mock_order(total=1000.0, payment_status="pending")
 
         with (
@@ -585,6 +592,9 @@ class TestOrderPaid:
         from app.modules.profiles.repository import ProfileRepository
 
         db = AsyncMock()
+        no_expired = MagicMock()
+        no_expired.fetchone.return_value = None
+        db.execute = AsyncMock(return_value=no_expired)
         order = _mock_order(total=1000.0, payment_status="pending")
 
         with (

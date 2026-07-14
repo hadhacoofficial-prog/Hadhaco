@@ -268,6 +268,7 @@ class TestOrderServiceUpdateStatus:
         mock_order = MagicMock()
         mock_order.status = "confirmed"
         mock_order.user_id = uuid.uuid4()
+        mock_order.coupon_id = None  # no coupon → skip coupon revert
 
         async def capture_update(db, oid, data):
             captured_data.update(data)
@@ -353,3 +354,162 @@ class TestOrderServiceComplimentaryGift:
                 user_id,
                 SetComplimentaryGiftRequest(gift="Traditional Sweet"),
             )
+
+
+class TestHandleExpiredOrderSideEffects:
+    def setup_method(self):
+        from app.modules.orders.service import OrderService
+
+        self.svc = OrderService()
+
+    async def test_empty_order_ids_noop(self):
+        """Empty list → no DB calls at all."""
+        db = AsyncMock()
+        with patch(
+            "app.modules.orders.service._repo.get_by_ids",
+            AsyncMock(return_value=[]),
+        ) as mock_get:
+            await self.svc.handle_expired_order_side_effects(db, [])
+            mock_get.assert_not_called()
+
+    async def test_coupon_reverted_for_each_order_with_coupon(self):
+        """Orders with coupon_id get coupon reverted."""
+        db = AsyncMock()
+        oid1, oid2 = uuid.uuid4(), uuid.uuid4()
+        uid1, uid2 = uuid.uuid4(), uuid.uuid4()
+        cid1, cid2 = uuid.uuid4(), uuid.uuid4()
+
+        order1 = MagicMock()
+        order1.id = oid1
+        order1.user_id = uid1
+        order1.coupon_id = cid1
+
+        order2 = MagicMock()
+        order2.id = oid2
+        order2.user_id = uid2
+        order2.coupon_id = cid2
+
+        with patch(
+            "app.modules.orders.service._repo.get_by_ids",
+            AsyncMock(return_value=[order1, order2]),
+        ):
+            mock_coupon_svc = MagicMock()
+            mock_coupon_svc.revert_usage = AsyncMock()
+            with patch(
+                "app.modules.coupons.service.CouponService",
+                return_value=mock_coupon_svc,
+            ):
+                await self.svc.handle_expired_order_side_effects(db, [oid1, oid2])
+
+        assert mock_coupon_svc.revert_usage.call_count == 2
+        calls = mock_coupon_svc.revert_usage.call_args_list
+        assert calls[0].args == (db, cid1, uid1, oid1)
+        assert calls[1].args == (db, cid2, uid2, oid2)
+
+    async def test_orders_without_coupon_skipped(self):
+        """Orders without coupon_id are silently skipped."""
+        db = AsyncMock()
+        oid = uuid.uuid4()
+
+        order = MagicMock()
+        order.id = oid
+        order.user_id = uuid.uuid4()
+        order.coupon_id = None  # no coupon
+
+        with patch(
+            "app.modules.orders.service._repo.get_by_ids",
+            AsyncMock(return_value=[order]),
+        ):
+            mock_coupon_svc = MagicMock()
+            mock_coupon_svc.revert_usage = AsyncMock()
+            with patch(
+                "app.modules.coupons.service.CouponService",
+                return_value=mock_coupon_svc,
+            ):
+                await self.svc.handle_expired_order_side_effects(db, [oid])
+
+        mock_coupon_svc.revert_usage.assert_not_called()
+
+    async def test_missing_order_id_skipped(self):
+        """Order IDs not found in DB are silently skipped."""
+        db = AsyncMock()
+        oid = uuid.uuid4()
+
+        with patch(
+            "app.modules.orders.service._repo.get_by_ids",
+            AsyncMock(return_value=[]),  # order not found
+        ):
+            mock_coupon_svc = MagicMock()
+            mock_coupon_svc.revert_usage = AsyncMock()
+            with patch(
+                "app.modules.coupons.service.CouponService",
+                return_value=mock_coupon_svc,
+            ):
+                await self.svc.handle_expired_order_side_effects(db, [oid])
+
+        mock_coupon_svc.revert_usage.assert_not_called()
+
+    async def test_coupon_revert_failure_does_not_propagate(self):
+        """If revert_usage raises, the error is caught and logged."""
+        db = AsyncMock()
+        oid = uuid.uuid4()
+
+        order = MagicMock()
+        order.id = oid
+        order.user_id = uuid.uuid4()
+        order.coupon_id = uuid.uuid4()
+
+        with patch(
+            "app.modules.orders.service._repo.get_by_ids",
+            AsyncMock(return_value=[order]),
+        ):
+            mock_coupon_svc = MagicMock()
+            mock_coupon_svc.revert_usage = AsyncMock(
+                side_effect=RuntimeError("DB error")
+            )
+            with patch(
+                "app.modules.coupons.service.CouponService",
+                return_value=mock_coupon_svc,
+            ):
+                # Should NOT raise
+                await self.svc.handle_expired_order_side_effects(db, [oid])
+
+    async def test_partial_failure_continues_remaining(self):
+        """If one coupon revert fails, the others still proceed."""
+        db = AsyncMock()
+        oid1, oid2 = uuid.uuid4(), uuid.uuid4()
+        uid1, uid2 = uuid.uuid4(), uuid.uuid4()
+        cid1, cid2 = uuid.uuid4(), uuid.uuid4()
+
+        order1 = MagicMock()
+        order1.id = oid1
+        order1.user_id = uid1
+        order1.coupon_id = cid1
+
+        order2 = MagicMock()
+        order2.id = oid2
+        order2.user_id = uid2
+        order2.coupon_id = cid2
+
+        with patch(
+            "app.modules.orders.service._repo.get_by_ids",
+            AsyncMock(return_value=[order1, order2]),
+        ):
+            call_count = 0
+
+            async def _revert_side_effect(db, coupon_id, user_id, order_id):
+                nonlocal call_count
+                call_count += 1
+                if call_count == 1:
+                    raise RuntimeError("DB error on first")
+
+            mock_coupon_svc = MagicMock()
+            mock_coupon_svc.revert_usage = AsyncMock(side_effect=_revert_side_effect)
+            with patch(
+                "app.modules.coupons.service.CouponService",
+                return_value=mock_coupon_svc,
+            ):
+                await self.svc.handle_expired_order_side_effects(db, [oid1, oid2])
+
+        # Both were attempted despite first failure
+        assert mock_coupon_svc.revert_usage.call_count == 2

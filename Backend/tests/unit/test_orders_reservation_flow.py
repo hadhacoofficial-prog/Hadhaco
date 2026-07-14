@@ -394,9 +394,12 @@ class TestVerifyAndFulfill:
         ):
             payload = MagicMock()
             payload.order_id = order.id
+            payload.razorpay_order_id = "rzp_ord_test"
+            payload.razorpay_payment_id = "rzp_pay_test"
+            payload.razorpay_signature = "bad_sig"
 
             db = AsyncMock()
-            with pytest.raises(ValidationError, match="expired"):
+            with pytest.raises(ValidationError, match="signature"):
                 await self.svc.verify_and_fulfill(db, user_id, payload)
 
     async def test_cancelled_order_raises_validation_error(self):
@@ -412,7 +415,7 @@ class TestVerifyAndFulfill:
             payload.order_id = order.id
 
             db = AsyncMock()
-            with pytest.raises(ValidationError, match="expired"):
+            with pytest.raises(ValidationError, match="cancelled"):
                 await self.svc.verify_and_fulfill(db, user_id, payload)
 
     async def test_invalid_signature_raises_validation_error(self):
@@ -466,6 +469,9 @@ class TestVerifyAndFulfill:
         payload.razorpay_signature = sig
 
         db = AsyncMock()
+        no_expired = MagicMock()
+        no_expired.fetchone.return_value = None
+        db.execute = AsyncMock(return_value=no_expired)
         # db.begin_nested() is used as an async context manager around the
         # payment insert (SAVEPOINT for the duplicate-payment race guard).
         nested_cm = AsyncMock()

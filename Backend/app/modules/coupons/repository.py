@@ -131,3 +131,63 @@ class CouponRepository:
         if coupon:
             await db.delete(coupon)
             await db.flush()
+
+    async def revert_usage(
+        self,
+        db: AsyncSession,
+        coupon_id: uuid.UUID,
+        user_id: uuid.UUID,
+        order_id: uuid.UUID | None = None,
+    ) -> int:
+        """Remove pending coupon usage and decrement usage_count.
+
+        Called when payment fails, is cancelled, or the reservation expires
+        before payment completes.  If order_id is provided, only deletes the
+        usage row linked to that order; otherwise deletes the most recent
+        pending (order_id IS NULL) row for this coupon+user.
+
+        Fallback: if order_id was provided but no matching row was found
+        (because finalize_usage() was never called before the failure/expiry),
+        falls back to finding the pending (order_id IS NULL) row for the
+        same coupon+user.  This ensures coupon slots are properly released
+        even when the reservation expires before payment verification.
+
+        Returns the number of coupon_usage rows deleted (0 or 1).
+        """
+        from sqlalchemy import delete as sa_delete
+
+        conditions = [
+            CouponUsage.coupon_id == coupon_id,
+            CouponUsage.user_id == user_id,
+        ]
+        if order_id:
+            conditions.append(CouponUsage.order_id == order_id)
+        else:
+            conditions.append(CouponUsage.order_id.is_(None))
+
+        # Delete the usage row first, then decrement usage_count atomically.
+        result = await db.execute(sa_delete(CouponUsage).where(*conditions))
+        deleted = result.rowcount
+
+        # Fallback: if order_id was provided but no row matched, try the
+        # pending (order_id=NULL) row — covers the case where
+        # finalize_usage() was never called before the reservation expired
+        # or payment failed.
+        if deleted == 0 and order_id:
+            fallback = await db.execute(
+                sa_delete(CouponUsage).where(
+                    CouponUsage.coupon_id == coupon_id,
+                    CouponUsage.user_id == user_id,
+                    CouponUsage.order_id.is_(None),
+                )
+            )
+            deleted = fallback.rowcount
+
+        if deleted > 0:
+            await db.execute(
+                update(Coupon)
+                .where(Coupon.id == coupon_id, Coupon.usage_count > 0)
+                .values(usage_count=Coupon.usage_count - 1)
+            )
+
+        return deleted

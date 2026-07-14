@@ -82,6 +82,7 @@ export const queryKeys = {
     payment: (id: string) => ["orders", "payment", id] as const,
     invoice: (id: string) => ["orders", "invoice", id] as const,
     shipment: (id: string) => ["orders", "shipment", id] as const,
+    activeReservations: ["orders", "active-reservations"] as const,
   },
 
   returns: {

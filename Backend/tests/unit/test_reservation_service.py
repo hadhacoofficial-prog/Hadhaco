@@ -89,8 +89,10 @@ def _fetchall_result(rows: list) -> MagicMock:
 
 
 def _noop_result() -> MagicMock:
-    """Simulate an UPDATE result with no meaningful return."""
-    return MagicMock()
+    """Simulate an UPDATE result with rowcount=1 (successful update)."""
+    r = MagicMock()
+    r.rowcount = 1
+    return r
 
 
 # ── TestReserveItems ───────────────────────────────────────────────────────────
@@ -104,9 +106,11 @@ class TestReserveItems:
 
     async def test_empty_items_returns_empty_list(self):
         db = AsyncMock()
+        db.execute = AsyncMock(return_value=_fetchall_result([]))
         result = await self.svc.reserve_items(db, user_id=uuid.uuid4(), items=[])
         assert result == []
-        db.execute.assert_not_called()
+        # get_user_active_reservations makes one execute call
+        assert db.execute.call_count == 1
         db.add.assert_not_called()
 
     async def test_reserve_single_item_success(self):
@@ -117,6 +121,7 @@ class TestReserveItems:
         db = AsyncMock()
         db.execute = AsyncMock(
             side_effect=[
+                _fetchall_result([]),  # get_user_active_reservations
                 _lock_result(mapping),  # SELECT FOR UPDATE (lock_product)
                 _noop_result(),  # UPDATE products SET reserved_quantity += qty
             ]
@@ -154,6 +159,7 @@ class TestReserveItems:
         db = AsyncMock()
         db.execute = AsyncMock(
             side_effect=[
+                _fetchall_result([]),  # get_user_active_reservations
                 _lock_result(m1),  # lock item 1
                 _noop_result(),  # update item 1
                 _lock_result(m2),  # lock item 2
@@ -186,14 +192,19 @@ class TestReserveItems:
         )
 
         db = AsyncMock()
-        db.execute = AsyncMock(return_value=_lock_result(mapping))
+        db.execute = AsyncMock(
+            side_effect=[
+                _fetchall_result([]),  # get_user_active_reservations
+                _lock_result(mapping),
+            ]
+        )
 
         items = [{"product_id": product_id, "variant_id": None, "quantity": 3}]
         with pytest.raises(InventoryError, match="1 item"):
             await self.svc.reserve_items(db, user_id=uuid.uuid4(), items=items)
 
-        # No update should have been made
-        assert db.execute.call_count == 1  # only the lock SELECT
+        # get_user_active_reservations + the lock SELECT
+        assert db.execute.call_count == 2
 
     async def test_reserve_zero_available_raises_inventory_error(self):
         from app.core.exceptions import InventoryError
@@ -205,7 +216,12 @@ class TestReserveItems:
         # available = 0
 
         db = AsyncMock()
-        db.execute = AsyncMock(return_value=_lock_result(mapping))
+        db.execute = AsyncMock(
+            side_effect=[
+                _fetchall_result([]),  # get_user_active_reservations
+                _lock_result(mapping),
+            ]
+        )
 
         items = [{"product_id": product_id, "variant_id": None, "quantity": 1}]
         with pytest.raises(InventoryError, match="0 item"):
@@ -215,7 +231,12 @@ class TestReserveItems:
         from app.core.exceptions import NotFoundError
 
         db = AsyncMock()
-        db.execute = AsyncMock(return_value=_lock_result(None))  # fetchone returns None
+        db.execute = AsyncMock(
+            side_effect=[
+                _fetchall_result([]),  # get_user_active_reservations
+                _lock_result(None),  # fetchone returns None
+            ]
+        )
 
         items = [{"product_id": uuid.uuid4(), "variant_id": None, "quantity": 1}]
         with pytest.raises(NotFoundError):
@@ -233,7 +254,13 @@ class TestReserveItems:
         )
 
         db = AsyncMock()
-        db.execute = AsyncMock(side_effect=[_lock_result(mapping), _noop_result()])
+        db.execute = AsyncMock(
+            side_effect=[
+                _fetchall_result([]),  # get_user_active_reservations
+                _lock_result(mapping),  # lock product
+                _noop_result(),  # update product
+            ]
+        )
         db.add = MagicMock()
         db.flush = AsyncMock()
 
@@ -253,7 +280,13 @@ class TestReserveItems:
         )
 
         db = AsyncMock()
-        db.execute = AsyncMock(side_effect=[_lock_result(mapping), _noop_result()])
+        db.execute = AsyncMock(
+            side_effect=[
+                _fetchall_result([]),  # get_user_active_reservations
+                _lock_result(mapping),  # lock variant
+                _noop_result(),  # update variant
+            ]
+        )
         db.add = MagicMock()
         db.flush = AsyncMock()
 
@@ -285,6 +318,7 @@ class TestReserveItems:
         db = AsyncMock()
         db.execute = AsyncMock(
             side_effect=[
+                _fetchall_result([]),  # get_user_active_reservations
                 _lock_result(m1),  # lock pid1 — ok
                 _noop_result(),  # update pid1
                 _lock_result(m2),  # lock pid2 — available=0, qty=1
@@ -305,7 +339,13 @@ class TestReserveItems:
         mapping = _prod_mapping(product_id=product_id, stock=10)
 
         db = AsyncMock()
-        db.execute = AsyncMock(side_effect=[_lock_result(mapping), _noop_result()])
+        db.execute = AsyncMock(
+            side_effect=[
+                _fetchall_result([]),  # get_user_active_reservations
+                _lock_result(mapping),  # lock product
+                _noop_result(),  # update product
+            ]
+        )
         db.add = MagicMock()
         db.flush = AsyncMock()
 
@@ -598,13 +638,13 @@ class TestExpireStaleReservations:
 
         self.svc = ReservationService()
 
-    async def test_no_candidates_returns_zero(self):
+    async def test_no_candidates_returns_empty(self):
         db = AsyncMock()
         db.execute = AsyncMock(return_value=_fetchall_result([]))
 
-        count = await self.svc.expire_stale_reservations(db)
+        result = await self.svc.expire_stale_reservations(db)
 
-        assert count == 0
+        assert result == []
         assert db.execute.call_count == 1
 
     async def test_expire_single_reservation_without_order(self):
@@ -635,12 +675,12 @@ class TestExpireStaleReservations:
         )
         db.add = MagicMock()
 
-        count = await self.svc.expire_stale_reservations(db)
+        result = await self.svc.expire_stale_reservations(db)
 
-        assert count == 1
+        assert len(result) == 0  # no order_id, so no order IDs returned
         db.add.assert_called_once()  # RELEASE transaction logged
 
-    async def test_expire_single_reservation_with_order_updates_order_status(self):
+    async def test_expire_single_reservation_with_order_transitions_order(self):
         res_id = uuid.uuid4()
         product_id = uuid.uuid4()
         order_id = uuid.uuid4()
@@ -664,15 +704,53 @@ class TestExpireStaleReservations:
                 _fetchone_result(prod_row),  # product
                 _noop_result(),  # UPDATE products
                 _noop_result(),  # UPDATE reservations
-                _noop_result(),  # UPDATE orders SET payment_expired
+                _noop_result(),  # UPDATE orders (rowcount=1 → transitioned)
             ]
         )
         db.add = MagicMock()
 
-        count = await self.svc.expire_stale_reservations(db)
+        result = await self.svc.expire_stale_reservations(db)
 
-        assert count == 1
-        assert db.execute.call_count == 6  # all 6 calls including order update
+        assert len(result) == 1
+        assert result[0] == order_id
+        assert db.execute.call_count == 6
+
+    async def test_expire_order_already_terminal_not_returned(self):
+        """Order already in a terminal state → rowcount=0 → not in result."""
+        res_id = uuid.uuid4()
+        product_id = uuid.uuid4()
+        order_id = uuid.uuid4()
+        candidate_row = (res_id, product_id, None, order_id, 1)
+
+        locked_row = MagicMock()
+        locked_row.__getitem__ = lambda self, i: "ACTIVE" if i == 0 else None
+
+        prod_row = MagicMock()
+        prod_row._mapping = {
+            "stock_quantity": 5,
+            "reserved_quantity": 1,
+            "sold_quantity": 0,
+        }
+
+        order_update = MagicMock()
+        order_update.rowcount = 0  # order was already terminal
+
+        db = AsyncMock()
+        db.execute = AsyncMock(
+            side_effect=[
+                _fetchall_result([candidate_row]),
+                _fetchone_result(locked_row),  # SKIP LOCKED
+                _fetchone_result(prod_row),  # product
+                _noop_result(),  # UPDATE products
+                _noop_result(),  # UPDATE reservations
+                order_update,  # UPDATE orders (rowcount=0 → not transitioned)
+            ]
+        )
+        db.add = MagicMock()
+
+        result = await self.svc.expire_stale_reservations(db)
+
+        assert result == []  # reservation expired but order not transitioned
 
     async def test_skip_locked_already_processed_skips_row(self):
         """If SKIP LOCKED returns None (row locked by another worker), skip."""
@@ -689,9 +767,9 @@ class TestExpireStaleReservations:
         )
         db.add = MagicMock()
 
-        count = await self.svc.expire_stale_reservations(db)
+        result = await self.svc.expire_stale_reservations(db)
 
-        assert count == 0
+        assert result == []
         db.add.assert_not_called()
 
     async def test_skip_locked_row_not_active_skips(self):
@@ -712,9 +790,9 @@ class TestExpireStaleReservations:
         )
         db.add = MagicMock()
 
-        count = await self.svc.expire_stale_reservations(db)
+        result = await self.svc.expire_stale_reservations(db)
 
-        assert count == 0
+        assert result == []
         db.add.assert_not_called()
 
     async def test_expire_multiple_candidates(self):
@@ -755,9 +833,9 @@ class TestExpireStaleReservations:
         )
         db.add = MagicMock()
 
-        count = await self.svc.expire_stale_reservations(db)
+        result = await self.svc.expire_stale_reservations(db)
 
-        assert count == 2
+        assert len(result) == 0  # no order_ids in candidates
         assert db.add.call_count == 2  # one RELEASE txn per expired reservation
 
     async def test_expire_skips_missing_product(self):
@@ -778,9 +856,9 @@ class TestExpireStaleReservations:
         )
         db.add = MagicMock()
 
-        count = await self.svc.expire_stale_reservations(db)
+        result = await self.svc.expire_stale_reservations(db)
 
-        assert count == 0
+        assert result == []
 
 
 # ── TestGetAvailableStock ─────────────────────────────────────────────────────
@@ -1051,7 +1129,13 @@ class TestVariantLevelInventory:
         )
 
         db = AsyncMock()
-        db.execute = AsyncMock(side_effect=[_lock_result(mapping), _noop_result()])
+        db.execute = AsyncMock(
+            side_effect=[
+                _fetchall_result([]),  # get_user_active_reservations
+                _lock_result(mapping),  # lock variant
+                _noop_result(),  # update variant
+            ]
+        )
         db.add = MagicMock()
         db.flush = AsyncMock()
 
@@ -1065,7 +1149,8 @@ class TestVariantLevelInventory:
         assert reservations[0].product_id == product_id
 
         # The UPDATE must target product_variants, not products
-        update_call = db.execute.call_args_list[1]
+        # Index 2: [0]=get_user_active_reservations, [1]=lock, [2]=update
+        update_call = db.execute.call_args_list[2]
         sql = str(update_call[0][0])
         assert "product_variants" in sql
         assert "products" not in sql
@@ -1079,7 +1164,13 @@ class TestVariantLevelInventory:
         )
 
         db = AsyncMock()
-        db.execute = AsyncMock(side_effect=[_lock_result(mapping), _noop_result()])
+        db.execute = AsyncMock(
+            side_effect=[
+                _fetchall_result([]),  # get_user_active_reservations
+                _lock_result(mapping),  # lock variant
+                _noop_result(),  # update variant
+            ]
+        )
         db.add = MagicMock()
         db.flush = AsyncMock()
 
@@ -1099,14 +1190,20 @@ class TestVariantLevelInventory:
         mapping = _prod_mapping(product_id=product_id, stock=10)
 
         db = AsyncMock()
-        db.execute = AsyncMock(side_effect=[_lock_result(mapping), _noop_result()])
+        db.execute = AsyncMock(
+            side_effect=[
+                _fetchall_result([]),  # get_user_active_reservations
+                _lock_result(mapping),  # lock product
+                _noop_result(),  # update product
+            ]
+        )
         db.add = MagicMock()
         db.flush = AsyncMock()
 
         items = [{"product_id": product_id, "variant_id": None, "quantity": 2}]
         await self.svc.reserve_items(db, user_id=uuid.uuid4(), items=items)
 
-        update_call = db.execute.call_args_list[1]
+        update_call = db.execute.call_args_list[2]
         sql = str(update_call[0][0])
         assert "UPDATE products" in sql
 
@@ -1202,9 +1299,9 @@ class TestVariantLevelInventory:
         )
         db.add = MagicMock()
 
-        count = await self.svc.expire_stale_reservations(db)
+        result = await self.svc.expire_stale_reservations(db)
 
-        assert count == 1
+        assert len(result) == 0  # no order_id → no order IDs returned
         update_sql = str(db.execute.call_args_list[3][0][0])
         assert "product_variants" in update_sql
 
@@ -1283,13 +1380,19 @@ class TestVariantLevelInventory:
         )  # available = 3 - 2 - 1 = 0
 
         db = AsyncMock()
-        db.execute = AsyncMock(return_value=_lock_result(mapping))
+        db.execute = AsyncMock(
+            side_effect=[
+                _fetchall_result([]),  # get_user_active_reservations
+                _lock_result(mapping),  # lock variant
+            ]
+        )
 
         items = [{"product_id": product_id, "variant_id": variant_id, "quantity": 1}]
         with pytest.raises(InventoryError, match="0 item"):
             await self.svc.reserve_items(db, user_id=uuid.uuid4(), items=items)
 
-        assert db.execute.call_count == 1  # only the lock SELECT
+        # get_user_active_reservations + the lock SELECT
+        assert db.execute.call_count == 2
 
     # 10. Variant adjustment updates product_variants
     async def test_adjustment_variant_updates_product_variants(self):

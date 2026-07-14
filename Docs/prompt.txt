@@ -1391,8 +1391,6 @@ support_phone
 
 tax_percentage
 
-maintenance_mode
-
 Generate admin APIs.
 -------------------------
 # TAX MODULE

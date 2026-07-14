@@ -247,6 +247,7 @@ class TestOrderServiceCancel:
         mock_order = MagicMock()
         mock_order.user_id = user_id
         mock_order.status = "pending"
+        mock_order.coupon_id = None
         mock_order.items = []
         mock_updated = MagicMock()
         with (

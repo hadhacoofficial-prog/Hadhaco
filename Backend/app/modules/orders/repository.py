@@ -40,6 +40,20 @@ class OrderRepository:
         )
         return result.scalar_one_or_none()
 
+    async def get_by_ids(
+        self, db: AsyncSession, order_ids: list[uuid.UUID]
+    ) -> list[Order]:
+        """Batch-load orders by a list of IDs in a single query.
+
+        Returns only orders that exist — missing IDs are silently omitted.
+        """
+        if not order_ids:
+            return []
+        result = await db.execute(
+            select(Order).where(Order.id.in_(order_ids)).options(self._with_items())
+        )
+        return list(result.scalars().all())
+
     @staticmethod
     def _item_count_subquery():
         """Correlated scalar subquery that returns ORDER item count without loading rows."""

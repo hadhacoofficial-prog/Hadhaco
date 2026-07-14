@@ -10,6 +10,7 @@ import { QuantityStepper } from "@/components/site/QuantityStepper";
 import { InventoryBadge } from "@/components/site/InventoryBadge";
 import { useCart, cartLineKey } from "@/stores/cart";
 import { computeQuantityBounds } from "@/lib/cartQuantity";
+import { useActiveReservations } from "@/hooks/useActiveReservations";
 import { api } from "@/lib/api/client";
 import { toUserMessage } from "@/lib/api/errors";
 import { formatINR } from "@/lib/format";
@@ -55,8 +56,15 @@ export default function CartPage() {
     if (q.data) stockMap[q.data.lineKey] = q.data;
   });
 
+  // Active reservations — items with 0 stock but reserved for the current user
+  const { isReserved: checkReserved } = useActiveReservations();
+  const isLineReserved = (line: { productId: string; variantId?: string | null }) =>
+    checkReserved(line.productId, line.variantId ?? null);
+
   // Detect items where cart qty exceeds the effective cap (stock or order limit)
+  // Reserved items bypass the stock cap — the reservation holds the qty
   const stockIssues = lines.filter((line) => {
+    if (isLineReserved(line)) return false;
     const si = stockMap[cartLineKey(line.productId, line.variantId)];
     if (!si) return false;
     const bounds = computeQuantityBounds({
@@ -68,9 +76,11 @@ export default function CartPage() {
   });
   const hasStockIssues = stockIssues.length > 0;
 
-  // Any item with zero available stock
+  // Any item with zero available stock that is NOT reserved
   const soldOutItems = lines.filter(
-    (line) => (stockMap[cartLineKey(line.productId, line.variantId)]?.availableStock ?? 1) === 0,
+    (line) =>
+      !isLineReserved(line) &&
+      (stockMap[cartLineKey(line.productId, line.variantId)]?.availableStock ?? 1) === 0,
   );
 
   const subtotalAmt = subtotal();
@@ -153,16 +163,18 @@ export default function CartPage() {
                 </div>
                 {lines.map((line) => {
                   const si = stockMap[cartLineKey(line.productId, line.variantId)];
+                  const reserved = isLineReserved(line);
                   const bounds = si
                     ? computeQuantityBounds({
-                        availableStock: si.availableStock,
+                        availableStock: reserved ? si.availableStock || 1 : si.availableStock,
                         maxOrderQty: si.maxOrderQty,
                         cartQty: 0,
                       })
                     : null;
-                  const isSoldOut = si !== undefined && si.availableStock === 0;
-                  const isOverQty = bounds !== null && line.qty > bounds.effectiveCap && !isSoldOut;
-                  const stepperMax = bounds ? bounds.effectiveCap : 99;
+                  const isSoldOut = !reserved && si !== undefined && si.availableStock === 0;
+                  const isOverQty =
+                    !reserved && bounds !== null && line.qty > bounds.effectiveCap && !isSoldOut;
+                  const stepperMax = reserved ? line.qty : bounds ? bounds.effectiveCap : 99;
 
                   return (
                     <div
@@ -217,11 +229,14 @@ export default function CartPage() {
                         {/* Available stock badge */}
                         {si !== undefined && (
                           <div className="mt-2">
-                            <InventoryBadge availableStock={si.availableStock} />
+                            <InventoryBadge
+                              availableStock={si.availableStock}
+                              isReserved={reserved}
+                            />
                           </div>
                         )}
 
-                        {/* Over-qty warning */}
+                        {/* Over-qty warning (not for reserved items) */}
                         {isOverQty && (
                           <p className="mt-1.5 text-[11px] text-amber-700 flex items-center gap-1">
                             <AlertTriangle className="size-3 shrink-0" aria-hidden />
@@ -238,6 +253,10 @@ export default function CartPage() {
                           {isSoldOut ? (
                             <span className="text-xs text-destructive uppercase tracking-[0.18em]">
                               Sold Out
+                            </span>
+                          ) : reserved ? (
+                            <span className="text-xs text-blue-600 uppercase tracking-[0.18em]">
+                              Reserved
                             </span>
                           ) : (
                             <QuantityStepper
@@ -260,6 +279,10 @@ export default function CartPage() {
                         {isSoldOut ? (
                           <span className="text-xs text-destructive uppercase tracking-[0.18em]">
                             Sold Out
+                          </span>
+                        ) : reserved ? (
+                          <span className="text-xs text-blue-600 uppercase tracking-[0.18em]">
+                            Reserved
                           </span>
                         ) : (
                           <QuantityStepper

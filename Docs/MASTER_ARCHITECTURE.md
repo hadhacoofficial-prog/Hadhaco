@@ -3671,8 +3671,7 @@ INSERT INTO app_settings (key, value, description, is_public) VALUES
 ('seller_gstin', '', 'Seller GST Identification Number', false),
 ('support_email', 'support@hadha.co', 'Customer support email', true),
 ('support_phone', '+919000000000', 'Customer support phone', true),
-('return_window_days', '7', 'Number of days after delivery allowed for returns', true),
-('maintenance_mode', 'false', 'Puts site in maintenance mode', false);
+('return_window_days', '7', 'Number of days after delivery allowed for returns', true);
 ```
 
 ### Settings APIs
@@ -5292,17 +5291,11 @@ CREATE TABLE feature_flags (
 
 ### Seed Feature Flags
 ```sql
+-- complimentary_gift_enabled is the only actively enforced flag.
+-- Seeded via Alembic migration 0036_feature_flags_table.
 INSERT INTO feature_flags (key, value, description) VALUES
-('sms_order_confirmation', true,  'Send SMS after order payment confirmed'),
-('sms_shipping_updates',   false, 'Send SMS for shipping status updates'),
-('whatsapp_notifications',  false, 'Enable WhatsApp notification channel'),
-('google_oauth',            true,  'Enable Google OAuth login'),
-('magic_link_login',        true,  'Enable magic link email login'),
-('guest_checkout',          true,  'Allow checkout without account'),
-('wishlist_sharing',        true,  'Allow sharing wishlists via public link'),
-('review_images',           true,  'Allow customers to upload review images'),
-('maintenance_mode',        false, 'Put frontend in maintenance mode'),
-('free_shipping_banner',    true,  'Show free shipping threshold banner');
+    ('complimentary_gift_enabled', true, 'Show complimentary gift option at checkout')
+ON CONFLICT (key) DO NOTHING;
 ```
 
 ### Usage in Code
@@ -5357,7 +5350,7 @@ These rules are inviolable. Any code path that bypasses them is a production bug
 
 10. **GST on Shipping State:** Tax type (CGST+SGST vs. IGST) is determined by comparing seller state (`Maharashtra`) with buyer's shipping address state. This must be evaluated at order creation and locked.
 
-11. **SMS Business Rule:** SMS is only sent for `OrderCreated` event AND only when `payment.status = 'captured'`. The `sms_order_confirmation` feature flag must be enabled. Never send SMS for registration, password reset, or marketing unless feature flag explicitly enables it.
+11. **SMS Business Rule:** SMS is only sent for `OrderCreated` event AND only when `payment.status = 'captured'`. SMS is gated by the `SMS_ENABLED` environment variable. Never send SMS for registration, password reset, or marketing unless explicitly enabled.
 
 12. **Admin 2FA:** Admin and super_admin accounts MUST complete TOTP 2FA setup. Any admin route called without verified 2FA returns `403` with `{"code":"2FA_REQUIRED"}`.
 
@@ -5408,21 +5401,14 @@ INSERT INTO app_settings (key, value, description, is_public) VALUES
     ('seller_gstin',            '',             'GSTIN of seller',                      false),
     ('support_email',           'support@hadha.co', 'Support email',                  true),
     ('support_phone',           '+919000000000','Support phone',                       true),
-    ('return_window_days',      '7',            'Days for return after delivery',       true),
-    ('maintenance_mode',        'false',        'Maintenance mode flag',                false);
+    ('return_window_days',      '7',            'Days for return after delivery',       true);
 
 -- ── Feature Flags ────────────────────────────────────────────────────────────
+-- complimentary_gift_enabled is the only actively enforced flag.
+-- Seeded via Alembic migration 0036_feature_flags_table.
 INSERT INTO feature_flags (key, value, description) VALUES
-    ('sms_order_confirmation', true,  'SMS after order payment'),
-    ('sms_shipping_updates',   false, 'SMS for shipping updates'),
-    ('whatsapp_notifications',  false, 'WhatsApp channel'),
-    ('google_oauth',            true,  'Google OAuth login'),
-    ('magic_link_login',        true,  'Magic link login'),
-    ('guest_checkout',          true,  'Guest checkout'),
-    ('wishlist_sharing',        true,  'Share wishlists'),
-    ('review_images',           true,  'Review image uploads'),
-    ('maintenance_mode',        false, 'Maintenance mode'),
-    ('free_shipping_banner',    true,  'Free shipping banner');
+    ('complimentary_gift_enabled', true, 'Show complimentary gift option at checkout')
+ON CONFLICT (key) DO NOTHING;
 
 -- ── CMS Home ─────────────────────────────────────────────────────────────────
 INSERT INTO landing_sections (section_key, title, subtitle, is_active, sort_order, config) VALUES

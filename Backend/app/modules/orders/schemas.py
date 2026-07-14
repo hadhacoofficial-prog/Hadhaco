@@ -152,3 +152,22 @@ COMPLIMENTARY_GIFT_VALUES = ("Traditional Sweet", "Traditional Hot Snack")
 
 class SetComplimentaryGiftRequest(BaseModel):
     gift: str = Field(..., pattern="^(Traditional Sweet|Traditional Hot Snack)$")
+
+
+# ── Active reservations (storefront) ─────────────────────────────────────────
+
+
+class ActiveReservationItem(BaseModel):
+    reservation_number: str
+    product_id: uuid.UUID
+    variant_id: uuid.UUID | None
+    product_name: str
+    variant_name: str | None
+    quantity: int
+    expires_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+class ActiveReservationResponse(BaseModel):
+    items: list[ActiveReservationItem]

@@ -5,7 +5,7 @@ Exercises expire_stale_reservations() with large batches of ACTIVE reservations.
 The service processes up to LIMIT 500 per call; for 10 000 reservations the
 worker must be called 20 times.  These tests verify:
 
-  - All rows in a batch are processed (expired_count == batch_size)
+  - All rows in a batch are processed (RELEASE txn count == batch_size)
   - reserved_quantity is released correctly
   - Orders transition to payment_expired
   - No row is processed twice (idempotency via SKIP LOCKED)
@@ -57,7 +57,10 @@ def _product_result(stock: int, reserved: int, sold: int = 0) -> MagicMock:
 
 
 def _noop() -> MagicMock:
-    return MagicMock()
+    """Simulate an UPDATE result with rowcount=1 (successful update)."""
+    r = MagicMock()
+    r.rowcount = 1
+    return r
 
 
 def _build_db_for_batch(candidates: list) -> AsyncMock:
@@ -101,7 +104,7 @@ class TestExpirySingleBatch:
     """expire_stale_reservations with a single full batch (≤ 500 rows)."""
 
     async def test_small_batch_all_expired(self):
-        """10 expired reservations → all processed, count == 10."""
+        """10 expired reservations → all processed, 10 RELEASE txns logged."""
         from app.modules.inventory.reservation_service import ReservationService
 
         product_id = uuid.uuid4()
@@ -109,9 +112,10 @@ class TestExpirySingleBatch:
         db = _build_db_for_batch(candidates)
 
         svc = ReservationService()
-        count = await svc.expire_stale_reservations(db)
+        result = await svc.expire_stale_reservations(db)
 
-        assert count == 10
+        assert len(result) == 0  # no order_ids in candidates
+        assert db.add.call_count == 10  # one RELEASE txn per expired reservation
 
     async def test_medium_batch_all_expired(self):
         """100 expired reservations → all processed."""
@@ -122,9 +126,9 @@ class TestExpirySingleBatch:
         db = _build_db_for_batch(candidates)
 
         svc = ReservationService()
-        count = await svc.expire_stale_reservations(db)
+        await svc.expire_stale_reservations(db)
 
-        assert count == 100
+        assert db.add.call_count == 100
 
     async def test_full_batch_limit(self):
         """
@@ -139,14 +143,14 @@ class TestExpirySingleBatch:
 
         start = time.perf_counter()
         svc = ReservationService()
-        count = await svc.expire_stale_reservations(db)
+        await svc.expire_stale_reservations(db)
         elapsed = time.perf_counter() - start
 
-        assert count == _BATCH_LIMIT
+        assert db.add.call_count == _BATCH_LIMIT
         assert elapsed < 10.0, f"Full batch took {elapsed:.2f}s (expected < 10s)"
 
-    async def test_empty_batch_returns_zero(self):
-        """No expired reservations → returns 0 immediately."""
+    async def test_empty_batch_returns_empty(self):
+        """No expired reservations → returns empty list immediately."""
         from app.modules.inventory.reservation_service import ReservationService
 
         empty_result = MagicMock()
@@ -155,9 +159,9 @@ class TestExpirySingleBatch:
         db.execute = AsyncMock(return_value=empty_result)
 
         svc = ReservationService()
-        count = await svc.expire_stale_reservations(db)
+        result = await svc.expire_stale_reservations(db)
 
-        assert count == 0
+        assert result == []
         db.execute.assert_awaited_once()  # only the SELECT candidates call
 
     async def test_orders_marked_payment_expired(self):
@@ -174,9 +178,10 @@ class TestExpirySingleBatch:
         db = _build_db_for_batch(candidates)
 
         svc = ReservationService()
-        count = await svc.expire_stale_reservations(db)
+        result = await svc.expire_stale_reservations(db)
 
-        assert count == 2
+        assert len(result) == 1  # one order was transitioned
+        assert result[0] == order_id
 
         # With order_id: 5 execute calls; without: 4.  Total = 1 + 5 + 4 = 10
         assert db.execute.await_count == 1 + 5 + 4
@@ -207,9 +212,9 @@ class TestExpirySingleBatch:
         db.flush = AsyncMock()
 
         svc = ReservationService()
-        count = await svc.expire_stale_reservations(db)
+        await svc.expire_stale_reservations(db)
 
-        assert count == 2  # 3 candidates, 1 skipped
+        assert db.add.call_count == 2  # 3 candidates, 1 skipped → 2 RELEASE txns
 
 
 class TestExpiryMultiBatch:
@@ -233,18 +238,15 @@ class TestExpiryMultiBatch:
         total_elapsed = 0.0
         svc = ReservationService()
 
-        for batch_num in range(total_reservations // batch_size):
+        for _batch_num in range(total_reservations // batch_size):
             candidates = [_make_candidate_row(product_id) for _ in range(batch_size)]
             db = _build_db_for_batch(candidates)
 
             start = time.perf_counter()
-            count = await svc.expire_stale_reservations(db)
+            await svc.expire_stale_reservations(db)
             total_elapsed += time.perf_counter() - start
 
-            assert (
-                count == batch_size
-            ), f"Batch {batch_num}: expected {batch_size}, got {count}"
-            total_expired += count
+            total_expired += db.add.call_count
 
         assert total_expired == total_reservations
         assert (
@@ -267,7 +269,8 @@ class TestExpiryMultiBatch:
         for size in batches:
             candidates = [_make_candidate_row(product_id) for _ in range(size)]
             db = _build_db_for_batch(candidates)
-            total_expired += await svc.expire_stale_reservations(db)
+            await svc.expire_stale_reservations(db)
+            total_expired += db.add.call_count
 
         assert total_expired == total_expected
 
@@ -289,11 +292,11 @@ class TestExpiryMultiBatch:
         db_second.execute = AsyncMock(return_value=empty_result)
 
         svc = ReservationService()
-        first_count = await svc.expire_stale_reservations(db_first)
-        second_count = await svc.expire_stale_reservations(db_second)
+        await svc.expire_stale_reservations(db_first)
+        second_result = await svc.expire_stale_reservations(db_second)
 
-        assert first_count == 10
-        assert second_count == 0  # nothing left
+        assert db_first.add.call_count == 10
+        assert second_result == []  # nothing left
 
 
 class TestExpiryReservedStockReleased:
@@ -312,9 +315,9 @@ class TestExpiryReservedStockReleased:
 
         db = _build_db_for_batch(candidates)
         svc = ReservationService()
-        count = await svc.expire_stale_reservations(db)
+        await svc.expire_stale_reservations(db)
 
-        assert count == 1
+        assert db.add.call_count == 1
 
         # Verify UPDATE products was called with correct qty
         # Call order: SELECT candidates, SKIP LOCKED, SELECT product, UPDATE products, UPDATE res

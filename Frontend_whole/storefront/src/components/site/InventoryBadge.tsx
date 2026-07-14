@@ -1,11 +1,25 @@
 /** Stock status badge shown on product cards and product detail pages. */
 export function InventoryBadge({
   availableStock,
+  isReserved = false,
   className = "",
 }: {
   availableStock: number;
+  isReserved?: boolean;
   className?: string;
 }) {
+  if (isReserved) {
+    return (
+      <span
+        className={`inline-flex items-center gap-1 text-[11px] uppercase tracking-[0.18em] text-blue-600 font-medium ${className}`}
+        aria-label="Reserved for you"
+      >
+        <span className="size-1.5 rounded-full bg-blue-500" aria-hidden />
+        Reserved for you
+      </span>
+    );
+  }
+
   if (availableStock === 0) {
     return (
       <span
@@ -43,7 +57,20 @@ export function InventoryBadge({
 }
 
 /** Compact pill badge for product cards (overlaid on image). */
-export function StockPill({ availableStock }: { availableStock: number }) {
+export function StockPill({
+  availableStock,
+  isReserved = false,
+}: {
+  availableStock: number;
+  isReserved?: boolean;
+}) {
+  if (isReserved) {
+    return (
+      <span className="absolute bottom-3 left-3 bg-blue-600/90 text-white text-[10px] tracking-[0.18em] uppercase px-2.5 py-1 pointer-events-none">
+        Reserved for You
+      </span>
+    );
+  }
   if (availableStock === 0) {
     return (
       <span className="absolute bottom-3 left-3 bg-destructive/90 text-white text-[10px] tracking-[0.18em] uppercase px-2.5 py-1 pointer-events-none">

@@ -4,16 +4,9 @@
 -- ============================================================
 
 -- ── Feature flags ─────────────────────────────────────────────────────────────
-INSERT INTO feature_flags (key, value, description) VALUES
-    ('sms_order_confirmation',  FALSE, 'Send SMS on order confirmation via Twilio'),
-    ('sms_shipping_update',     FALSE, 'Send SMS when order ships'),
-    ('review_gate_verified',    TRUE,  'Require verified purchase to submit review'),
-    ('cart_abandonment_emails', TRUE,  'Send cart abandonment reminder emails'),
-    ('low_stock_alerts',        TRUE,  'Emit alerts when inventory hits threshold'),
-    ('fraud_auto_hold',         FALSE, 'Auto-hold orders flagged by fraud signals'),
-    ('coupon_one_per_user',     TRUE,  'Restrict coupon to one use per user'),
-    ('maintenance_mode',        FALSE, 'Put storefront in maintenance mode')
-ON CONFLICT (key) DO NOTHING;
+-- complimentary_gift_enabled is seeded by Alembic migration 0036.
+-- No other feature flags are wired up; add new flags here only when the
+-- corresponding backend + frontend enforcement code exists.
 
 -- ── App settings ──────────────────────────────────────────────────────────────
 INSERT INTO app_settings (key, value, description) VALUES
