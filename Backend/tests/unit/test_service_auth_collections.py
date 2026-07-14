@@ -364,6 +364,7 @@ class TestAuthService2FA:
         mock_record = MagicMock()
         mock_record.totp_secret = "encrypted"
         mock_record.backup_codes = "[]"
+        mock_record.last_used_counter = None
         mock_result = MagicMock()
         mock_result.scalar_one_or_none.return_value = mock_record
         db.execute = AsyncMock(return_value=mock_result)
@@ -405,6 +406,35 @@ class TestAuthService2FA:
 
         assert result is False
 
+    async def test_validate_2fa_rejects_replay_of_already_used_step(self):
+        """A previously-accepted code (same or earlier TOTP time-step) must
+        not verify again — otherwise an intercepted code stays valid for the
+        whole ~90s pyotp tolerance window and can be replayed verbatim."""
+        import time
+
+        db = AsyncMock()
+        mock_record = MagicMock()
+        mock_record.totp_secret = "encrypted"
+        mock_record.backup_codes = "[]"
+        mock_record.last_used_counter = int(time.time() // 30) + 10  # future step
+        mock_result = MagicMock()
+        mock_result.scalar_one_or_none.return_value = mock_record
+        db.execute = AsyncMock(return_value=mock_result)
+
+        with (
+            patch(
+                "app.modules.auth.service.decrypt_value",
+                return_value="JBSWY3DPEHPK3PXP",
+            ),
+            patch("app.modules.auth.service.pyotp.TOTP") as mock_totp_cls,
+        ):
+            mock_totp = MagicMock()
+            mock_totp.verify.return_value = True
+            mock_totp_cls.return_value = mock_totp
+            result = await self.svc.validate_2fa(db, str(uuid.uuid4()), "123456")
+
+        assert result is False
+
     async def test_validate_2fa_accepts_valid_backup_code(self):
         db = AsyncMock()
         mock_record = MagicMock()
@@ -440,13 +470,123 @@ class TestAuthService2FA:
         with pytest.raises(NotFoundError):
             await self.svc._get_2fa_record(db, str(uuid.uuid4()))
 
-    async def test_record_admin_session_adds_to_db(self):
+    async def test_mark_admin_session_2fa_verified_creates_row_when_missing(self):
         db = AsyncMock()
         db.add = MagicMock()
-        await self.svc.record_admin_session(
-            db, str(uuid.uuid4()), "1.2.3.4", "Mozilla/5.0"
+        mock_result = MagicMock()
+        mock_result.scalar_one_or_none.return_value = None
+        db.execute = AsyncMock(return_value=mock_result)
+
+        await self.svc.mark_admin_session_2fa_verified(
+            db, str(uuid.uuid4()), "supabase-session-1", "1.2.3.4", "Mozilla/5.0"
         )
+
         db.add.assert_called_once()
+        added = db.add.call_args[0][0]
+        assert added.is_2fa_verified is True
+        assert added.supabase_session_id == "supabase-session-1"
+
+    async def test_mark_admin_session_2fa_verified_updates_existing_row(self):
+        db = AsyncMock()
+        existing = MagicMock()
+        existing.id = uuid.uuid4()
+        mock_result = MagicMock()
+        mock_result.scalar_one_or_none.return_value = existing
+        db.execute = AsyncMock(return_value=mock_result)
+
+        await self.svc.mark_admin_session_2fa_verified(
+            db, str(uuid.uuid4()), "supabase-session-1", "1.2.3.4", "Mozilla/5.0"
+        )
+
+        db.add.assert_not_called()
+        assert db.execute.await_count == 2  # SELECT then UPDATE
+
+    async def test_is_admin_session_2fa_verified_false_when_no_row(self):
+        db = AsyncMock()
+        mock_result = MagicMock()
+        mock_result.scalar_one_or_none.return_value = None
+        db.execute = AsyncMock(return_value=mock_result)
+
+        result = await self.svc.is_admin_session_2fa_verified(
+            db, str(uuid.uuid4()), "supabase-session-1"
+        )
+
+        assert result is False
+
+    async def test_is_admin_session_2fa_verified_false_when_expired(self):
+        from datetime import UTC, datetime, timedelta
+
+        db = AsyncMock()
+        record = MagicMock()
+        record.is_2fa_verified = True
+        record.expires_at = datetime.now(UTC) - timedelta(hours=1)
+        mock_result = MagicMock()
+        mock_result.scalar_one_or_none.return_value = record
+        db.execute = AsyncMock(return_value=mock_result)
+
+        result = await self.svc.is_admin_session_2fa_verified(
+            db, str(uuid.uuid4()), "supabase-session-1"
+        )
+
+        assert result is False
+
+    async def test_is_admin_session_2fa_verified_true_when_valid(self):
+        from datetime import UTC, datetime, timedelta
+
+        db = AsyncMock()
+        record = MagicMock()
+        record.is_2fa_verified = True
+        record.expires_at = datetime.now(UTC) + timedelta(hours=1)
+        mock_result = MagicMock()
+        mock_result.scalar_one_or_none.return_value = record
+        db.execute = AsyncMock(return_value=mock_result)
+
+        result = await self.svc.is_admin_session_2fa_verified(
+            db, str(uuid.uuid4()), "supabase-session-1"
+        )
+
+        assert result is True
+
+    async def test_is_2fa_locked_out_false_when_no_failures(self):
+        redis = AsyncMock()
+        with patch(
+            "app.modules.auth.service.safe_redis_get", AsyncMock(return_value=None)
+        ):
+            result = await self.svc.is_2fa_locked_out(redis, str(uuid.uuid4()))
+        assert result is False
+
+    async def test_is_2fa_locked_out_true_at_threshold(self):
+        from app.modules.auth.service import ADMIN_2FA_LOCKOUT_THRESHOLD
+
+        redis = AsyncMock()
+        with patch(
+            "app.modules.auth.service.safe_redis_get",
+            AsyncMock(return_value=str(ADMIN_2FA_LOCKOUT_THRESHOLD)),
+        ):
+            result = await self.svc.is_2fa_locked_out(redis, str(uuid.uuid4()))
+        assert result is True
+
+    async def test_record_2fa_failure_increments_count(self):
+        redis = AsyncMock()
+        with (
+            patch(
+                "app.modules.auth.service.safe_redis_get", AsyncMock(return_value="2")
+            ),
+            patch(
+                "app.modules.auth.service.safe_redis_setex", AsyncMock()
+            ) as mock_setex,
+        ):
+            count = await self.svc.record_2fa_failure(redis, str(uuid.uuid4()))
+        assert count == 3
+        mock_setex.assert_awaited_once()
+
+    async def test_clear_2fa_failures_deletes_key(self):
+        redis = AsyncMock()
+        with patch(
+            "app.modules.auth.service.safe_redis_delete", AsyncMock()
+        ) as mock_delete:
+            await self.svc.clear_2fa_failures(redis, str(uuid.uuid4()))
+        mock_delete.assert_awaited_once()
 
     async def test_logout_calls_supabase_api(self):
         db = AsyncMock()

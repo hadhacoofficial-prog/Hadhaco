@@ -125,7 +125,17 @@ export function AuthProvider({ children, queryClient }: AuthProviderProps) {
       user: session?.user ?? null,
       role,
       login: async (email, password) => {
-        await signInWithPassword(email, password);
+        const { session: newSession } = await signInWithPassword(email, password);
+        // Update context state synchronously instead of waiting for the
+        // async onAuthStateChange subscription to catch up — callers that
+        // navigate immediately after login() (e.g. the admin login page)
+        // would otherwise race a still-"unauthenticated" context against
+        // route guards that read isAuthenticated right after the navigate.
+        if (mounted.current && newSession) {
+          setSession(newSession);
+          setRole((prev) => prev ?? metadataRole(newSession.user));
+          setStatus("authenticated");
+        }
       },
       register: async (name, email, password) => {
         await signUpWithPassword(name, email, password);
@@ -139,6 +149,14 @@ export function AuthProvider({ children, queryClient }: AuthProviderProps) {
           setSession(null);
           setRole(null);
           setStatus("unauthenticated");
+        }
+        // Drop the admin 2FA UX flag — the backend already invalidates the
+        // underlying AdminSession row on logout; this just keeps the client
+        // hint in sync so a fresh login always re-runs the challenge.
+        try {
+          sessionStorage.removeItem("hadha:2fa_verified");
+        } catch {
+          // sessionStorage unavailable (private mode, SSR) — harmless no-op.
         }
         // ── Centralized React Query cleanup ──────────────────────────────────
         // clear() removes all cached data AND cancels all in-flight queries

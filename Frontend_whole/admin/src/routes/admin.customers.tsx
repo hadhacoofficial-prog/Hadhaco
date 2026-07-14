@@ -53,7 +53,7 @@ function AdminCustomers() {
         className={`bg-background border border-border overflow-x-auto transition-opacity ${isPlaceholderData ? "opacity-60" : ""}`}
       >
         {isLoading ? (
-          <TableSkeleton headers={["Email", "Name", "Role", "Status", "Joined"]} rows={8} />
+          <TableSkeleton headers={["Email", "Name", "Role", "2FA", "Status", "Joined"]} rows={8} />
         ) : (
           <table className="w-full text-sm">
             <thead className="bg-secondary text-left text-[11px] uppercase tracking-[0.18em] text-muted-foreground">
@@ -61,6 +61,7 @@ function AdminCustomers() {
                 <th className="px-4 py-3">Email</th>
                 <th className="px-4 py-3">Name</th>
                 <th className="px-4 py-3">Role</th>
+                <th className="px-4 py-3">2FA</th>
                 <th className="px-4 py-3">Status</th>
                 <th className="px-4 py-3">Joined</th>
               </tr>
@@ -84,6 +85,21 @@ function AdminCustomers() {
                     </span>
                   </td>
                   <td className="px-4 py-3">
+                    {c.role === "admin" || c.role === "super_admin" ? (
+                      <span
+                        className={`text-[10px] uppercase tracking-[0.22em] px-2 py-0.5 ${
+                          c.two_factor_enabled
+                            ? "bg-accent/15 text-accent"
+                            : "bg-secondary text-muted-foreground"
+                        }`}
+                      >
+                        {c.two_factor_enabled ? "Enabled" : "Disabled"}
+                      </span>
+                    ) : (
+                      <span className="text-muted-foreground text-xs">—</span>
+                    )}
+                  </td>
+                  <td className="px-4 py-3">
                     <span
                       className={`text-[10px] uppercase tracking-[0.22em] px-2 py-0.5 ${
                         c.is_active
@@ -101,7 +117,7 @@ function AdminCustomers() {
               ))}
               {customers.length === 0 && (
                 <tr>
-                  <td colSpan={5} className="px-4 py-12 text-center text-muted-foreground text-sm">
+                  <td colSpan={6} className="px-4 py-12 text-center text-muted-foreground text-sm">
                     No customers found.
                   </td>
                 </tr>

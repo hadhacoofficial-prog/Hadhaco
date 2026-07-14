@@ -7,6 +7,7 @@ import { queryKeys } from "@/lib/api/queryKeys";
 import { getSession } from "@/lib/supabase/session";
 import { roleSatisfies } from "@/types/auth";
 import type { ProfileDto } from "@/types/profile";
+import type { TwoFactorStatus } from "@/types/admin";
 import logoAsset from "@/assets/hadha-logo.png";
 import markAsset from "@/assets/hadha-mark.png";
 
@@ -95,7 +96,24 @@ function AdminLoginPage() {
         return;
       }
 
-      // 4. Navigate to the originally requested admin page (or dashboard)
+      // 5. Check if 2FA is enabled — redirect to challenge page if so
+      try {
+        const tfStatus = await api.get<TwoFactorStatus>("/auth/admin/2fa/status");
+        if (tfStatus.is_enabled) {
+          const alreadyVerified = sessionStorage.getItem("hadha:2fa_verified");
+          if (!alreadyVerified) {
+            navigate({
+              to: "/admin/2fa",
+              search: { redirect: sanitizeRedirect(redirectTo, "/admin") },
+            });
+            return;
+          }
+        }
+      } catch {
+        // If 2FA status check fails, continue normally (don't block login)
+      }
+
+      // 6. Navigate to the originally requested admin page (or dashboard)
       const target = sanitizeRedirect(redirectTo, "/admin");
       navigate({ to: target });
     } catch (err: unknown) {

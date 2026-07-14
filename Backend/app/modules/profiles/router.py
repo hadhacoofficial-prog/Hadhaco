@@ -7,6 +7,7 @@ from fastapi import (
     File,
     HTTPException,
     Query,
+    Request,
     UploadFile,
 )
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -19,6 +20,7 @@ from app.core.dependencies import (
     profile_cache_key,
     require_2fa_verified,
     require_admin,
+    require_super_admin,
 )
 from app.core.redis import get_redis, safe_redis_delete
 from app.modules.media.repository import ImageRepository
@@ -190,3 +192,33 @@ async def set_user_status(
         ResponseCode.USER_STATUS_CHANGED,
         "User status updated successfully",
     )
+
+
+@router.post(
+    "/admin/users/{user_id}/2fa/reset",
+    response_model=BaseSuccessResponse[None],
+    summary="Force reset 2FA for an admin user (super_admin only)",
+)
+async def force_reset_2fa(
+    user_id: str,
+    request: Request,
+    actor: Profile = Depends(require_super_admin),
+    db: AsyncSession = Depends(get_db),
+) -> BaseSuccessResponse[None]:
+    from app.modules.audit.service import AuditService
+    from app.modules.auth.service import AuthService
+
+    svc = AuthService()
+    await svc.force_reset_2fa(db, user_id)
+    await AuditService().log(
+        db,
+        actor_id=str(actor.id),
+        actor_email=actor.email,
+        actor_role=actor.role,
+        action="2fa_force_reset",
+        resource_type="admin_2fa",
+        resource_id=user_id,
+        ip_address=request.client.host if request.client else "unknown",
+        user_agent=request.headers.get("user-agent"),
+    )
+    return ok(None, ResponseCode.AUTH_2FA_VERIFIED, "2FA has been reset for this user")

@@ -17,9 +17,15 @@ HTTP_422 = (
 class HadhaException(Exception):
     """Base for all application exceptions."""
 
-    def __init__(self, message: str, code: str | None = None) -> None:
+    def __init__(
+        self,
+        message: str,
+        code: str | None = None,
+        data: object = None,
+    ) -> None:
         self.message = message
         self.code = code
+        self.data = data
         super().__init__(message)
 
 
@@ -97,6 +103,7 @@ def register_exception_handlers(app: FastAPI) -> None:
             status_code=exc.status_code,  # type: ignore[attr-defined]
             message=exc.message,
             code=exc.code,
+            detail=exc.data,
         )
 
     @app.exception_handler(RequestValidationError)

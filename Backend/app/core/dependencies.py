@@ -7,8 +7,20 @@ Provides:
   - get_current_user          → Profile (any authenticated user)
   - get_current_user_optional → Profile | None (public endpoints that enrich authed users)
   - require_customer          → Profile (role: customer | admin | super_admin)
-  - require_admin             → Profile (role: admin | super_admin)
-  - require_super_admin       → Profile (role: super_admin only)
+  - require_admin             → Profile (role: admin | super_admin; gated by admin 2FA
+                                 session verification when the account has 2FA enabled)
+  - require_super_admin       → Profile (role: super_admin only; same 2FA gating)
+  - require_2fa_verified      → Profile (role: admin | super_admin; 2FA MUST be enabled
+                                 and this session MUST have passed the TOTP challenge —
+                                 used for extra-sensitive admin mutations)
+  - require_admin_role        → Profile (role: admin | super_admin, NO 2FA gate — only
+                                 for the 2FA bootstrap endpoints themselves, which must
+                                 stay reachable before/while completing the challenge)
+
+2FA session verification is backed by the `admin_sessions` table (see
+app.modules.profiles.models.AdminSession), correlated to the caller via the
+Supabase JWT's `session_id` claim. There is no separate session store —
+this reuses the existing AdminSession architecture end to end.
 """
 
 import json
@@ -23,6 +35,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.constants import UserRole
 from app.core.database import get_db
+from app.core.exceptions import AuthorizationError
 from app.core.redis import get_redis, safe_redis_get, safe_redis_setex
 from app.core.security import JWTPayload, oauth2_scheme, verify_supabase_jwt
 
@@ -121,8 +134,13 @@ async def _load_profile(user_id: str, db: AsyncSession, redis: aioredis.Redis):
     return profile
 
 
+async def get_jwt_payload(token: str = Depends(oauth2_scheme)) -> JWTPayload:
+    """Verify the Supabase JWT once per request (FastAPI caches by dependable)."""
+    return await verify_supabase_jwt(token)
+
+
 async def get_current_user(
-    token: str = Depends(oauth2_scheme),
+    payload: JWTPayload = Depends(get_jwt_payload),
     db: AsyncSession = Depends(get_db),
     redis: aioredis.Redis = Depends(get_redis),
 ):
@@ -130,7 +148,6 @@ async def get_current_user(
     Verify the Supabase JWT, load the profile from Redis/DB, and return it.
     Raises 401 if the token is invalid or the profile does not exist/is inactive.
     """
-    payload: JWTPayload = await verify_supabase_jwt(token)
     user_id: str = payload.sub
 
     profile = await _load_profile(user_id, db, redis)
@@ -203,26 +220,84 @@ def require_role(*roles: str):
 
 # Convenience role dependencies
 require_customer = require_role(UserRole.CUSTOMER, UserRole.ADMIN, UserRole.SUPER_ADMIN)
-require_admin = require_role(UserRole.ADMIN, UserRole.SUPER_ADMIN)
-require_super_admin = require_role(UserRole.SUPER_ADMIN)
+
+# Role-only checks, with NO 2FA session gate. Only the 2FA bootstrap endpoints
+# themselves (setup/verify/validate/status/disable/regenerate) may depend on
+# these directly — every other admin route must use require_admin /
+# require_super_admin / require_2fa_verified below so the 2FA gate applies.
+require_admin_role = require_role(UserRole.ADMIN, UserRole.SUPER_ADMIN)
+_require_super_admin_role = require_role(UserRole.SUPER_ADMIN)
 
 
-async def require_2fa_verified(
-    current_user=Depends(require_admin),
-    db: AsyncSession = Depends(get_db),
+async def _ensure_2fa_session(
+    current_user,
+    payload: JWTPayload,
+    db: AsyncSession,
+    *,
+    required: bool,
 ):
     """
-    Ensures admin/super_admin has completed 2FA verification.
-    Returns 403 with setup URL if 2FA is not configured or not verified.
+    Backend-enforced 2FA gate, backed by the `admin_sessions` table.
+
+    If the account has 2FA enabled, this request's Supabase session must have
+    already completed the TOTP challenge (POST /auth/admin/2fa/validate) —
+    frontend routing/sessionStorage is never the source of truth. If the
+    account has 2FA disabled, `required=False` callers (require_admin /
+    require_super_admin) let it through unchanged; `required=True` callers
+    (require_2fa_verified) instead mandate that 2FA be enabled at all.
     """
     from app.modules.auth.service import AuthService
 
     svc = AuthService()
     has_2fa = await svc.has_active_2fa(db, str(current_user.id))
     if not has_2fa:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Two-factor authentication is required for admin access",
-            headers={"X-Error-Code": "2FA_REQUIRED", "X-Setup-URL": "/admin/2fa/setup"},
+        if required:
+            raise AuthorizationError(
+                "Two-factor authentication is required for this action",
+                code="2FA_REQUIRED",
+                data={"setup_required": True, "setup_url": "/admin/settings/security"},
+            )
+        return current_user
+
+    verified = (
+        payload.session_id is not None
+        and await svc.is_admin_session_2fa_verified(
+            db, str(current_user.id), payload.session_id
+        )
+    )
+    if not verified:
+        raise AuthorizationError(
+            "Two-factor verification is required for this session",
+            code="2FA_REQUIRED",
+            data={"setup_required": False, "setup_url": "/admin/2fa"},
         )
     return current_user
+
+
+async def require_admin(
+    current_user=Depends(require_admin_role),
+    payload: JWTPayload = Depends(get_jwt_payload),
+    db: AsyncSession = Depends(get_db),
+):
+    return await _ensure_2fa_session(current_user, payload, db, required=False)
+
+
+async def require_super_admin(
+    current_user=Depends(_require_super_admin_role),
+    payload: JWTPayload = Depends(get_jwt_payload),
+    db: AsyncSession = Depends(get_db),
+):
+    return await _ensure_2fa_session(current_user, payload, db, required=False)
+
+
+async def require_2fa_verified(
+    current_user=Depends(require_admin_role),
+    payload: JWTPayload = Depends(get_jwt_payload),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Stricter than require_admin: 2FA MUST be enabled (not just optionally
+    verified) and this session MUST have passed the TOTP challenge. Used for
+    admin mutations that mandate 2FA regardless of the account's own choice.
+    """
+    return await _ensure_2fa_session(current_user, payload, db, required=True)

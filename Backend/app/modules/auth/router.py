@@ -1,4 +1,5 @@
-from fastapi import APIRouter, Depends
+import redis.asyncio as aioredis
+from fastapi import APIRouter, Depends, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.common.response_codes import ResponseCode
@@ -6,9 +7,13 @@ from app.common.responses import BaseSuccessResponse, ok
 from app.core.database import get_db
 from app.core.dependencies import (
     get_current_user,
-    require_admin,
+    get_jwt_payload,
+    require_admin_role,
     require_super_admin,
 )
+from app.core.exceptions import AuthorizationError
+from app.core.redis import get_redis
+from app.core.security import JWTPayload
 from app.middleware.rate_limit import (
     rate_limit_2fa_setup,
     rate_limit_2fa_validate,
@@ -17,8 +22,13 @@ from app.middleware.rate_limit import (
     rate_limit_logout,
     rate_limit_verify_token,
 )
+from app.modules.audit.service import AuditService
 from app.modules.auth.schemas import (
+    Disable2FARequest,
+    RegenerateBackupCodesRequest,
+    RegenerateBackupCodesResponse,
     Setup2FAResponse,
+    TwoFactorStatusResponse,
     Validate2FARequest,
     Validate2FAResponse,
     Verify2FARequest,
@@ -32,6 +42,12 @@ from app.modules.profiles.models import Profile
 router = APIRouter(prefix="/auth", tags=["auth"])
 _svc = AuthService()
 _image_repo = ImageRepository()
+_audit = AuditService()
+
+
+def _client_meta(request: Request) -> tuple[str, str | None]:
+    ip = request.client.host if request.client else "unknown"
+    return ip, request.headers.get("user-agent")
 
 
 @router.post(
@@ -78,9 +94,11 @@ async def verify_token(
 )
 async def logout(
     current_user: Profile = Depends(get_current_user),
+    payload: JWTPayload = Depends(get_jwt_payload),
     db: AsyncSession = Depends(get_db),
 ) -> BaseSuccessResponse[None]:
     await _svc.logout(db, str(current_user.id))
+    await _svc.clear_admin_session_2fa(db, str(current_user.id), payload.session_id)
     return ok(None, ResponseCode.AUTH_LOGOUT_SUCCESS, "Logged out successfully")
 
 
@@ -92,10 +110,24 @@ async def logout(
 )
 async def force_logout(
     user_id: str,
-    _: Profile = Depends(require_super_admin),
+    request: Request,
+    actor: Profile = Depends(require_super_admin),
     db: AsyncSession = Depends(get_db),
 ) -> BaseSuccessResponse[None]:
     await _svc.force_logout(db, user_id)
+    await _svc.clear_all_admin_sessions_2fa(db, user_id)
+    ip, ua = _client_meta(request)
+    await _audit.log(
+        db,
+        actor_id=str(actor.id),
+        actor_email=actor.email,
+        actor_role=actor.role,
+        action="admin_force_logout",
+        resource_type="profile",
+        resource_id=user_id,
+        ip_address=ip,
+        user_agent=ua,
+    )
     return ok(
         None, ResponseCode.AUTH_FORCE_LOGOUT_SUCCESS, f"User {user_id} logged out"
     )
@@ -111,10 +143,23 @@ async def force_logout(
     dependencies=[Depends(rate_limit_2fa_setup)],
 )
 async def setup_2fa(
-    current_user: Profile = Depends(require_admin),
+    request: Request,
+    current_user: Profile = Depends(require_admin_role),
     db: AsyncSession = Depends(get_db),
 ) -> BaseSuccessResponse[Setup2FAResponse]:
     data = await _svc.setup_2fa(db, str(current_user.id), current_user.email)
+    ip, ua = _client_meta(request)
+    await _audit.log(
+        db,
+        actor_id=str(current_user.id),
+        actor_email=current_user.email,
+        actor_role=current_user.role,
+        action="2fa_setup_initiated",
+        resource_type="admin_2fa",
+        resource_id=str(current_user.id),
+        ip_address=ip,
+        user_agent=ua,
+    )
     return ok(
         Setup2FAResponse(**data), ResponseCode.AUTH_2FA_SETUP, "2FA setup initiated"
     )
@@ -128,11 +173,24 @@ async def setup_2fa(
 )
 async def verify_2fa(
     body: Verify2FARequest,
-    current_user: Profile = Depends(require_admin),
+    request: Request,
+    current_user: Profile = Depends(require_admin_role),
     db: AsyncSession = Depends(get_db),
 ) -> BaseSuccessResponse[Verify2FAResponse]:
     backup_codes = await _svc.verify_and_activate_2fa(
         db, str(current_user.id), body.totp_code
+    )
+    ip, ua = _client_meta(request)
+    await _audit.log(
+        db,
+        actor_id=str(current_user.id),
+        actor_email=current_user.email,
+        actor_role=current_user.role,
+        action="2fa_enabled",
+        resource_type="admin_2fa",
+        resource_id=str(current_user.id),
+        ip_address=ip,
+        user_agent=ua,
     )
     return ok(
         Verify2FAResponse(
@@ -152,12 +210,151 @@ async def verify_2fa(
 )
 async def validate_2fa(
     body: Validate2FARequest,
-    current_user: Profile = Depends(require_admin),
+    request: Request,
+    current_user: Profile = Depends(require_admin_role),
+    payload: JWTPayload = Depends(get_jwt_payload),
     db: AsyncSession = Depends(get_db),
+    redis: aioredis.Redis = Depends(get_redis),
 ) -> BaseSuccessResponse[Validate2FAResponse]:
-    valid = await _svc.validate_2fa(db, str(current_user.id), body.totp_code)
+    user_id = str(current_user.id)
+    ip, ua = _client_meta(request)
+
+    # Account-level lockout — independent of the per-IP rate limiter, so
+    # rotating source IPs can't be used to grind through TOTP/backup codes
+    # for one specific stolen-token account.
+    if await _svc.is_2fa_locked_out(redis, user_id):
+        await _audit.log(
+            db,
+            actor_id=user_id,
+            actor_email=current_user.email,
+            actor_role=current_user.role,
+            action="2fa_locked_out",
+            resource_type="admin_2fa",
+            resource_id=user_id,
+            ip_address=ip,
+            user_agent=ua,
+        )
+        raise AuthorizationError(
+            "Too many failed verification attempts. Try again later.",
+            code="2FA_LOCKED",
+        )
+
+    valid = await _svc.validate_2fa(db, user_id, body.totp_code)
+
+    if valid:
+        await _svc.clear_2fa_failures(redis, user_id)
+        if payload.session_id:
+            await _svc.mark_admin_session_2fa_verified(
+                db, user_id, payload.session_id, ip, ua
+            )
+        await _audit.log(
+            db,
+            actor_id=user_id,
+            actor_email=current_user.email,
+            actor_role=current_user.role,
+            action="2fa_verify_success",
+            resource_type="admin_2fa",
+            resource_id=user_id,
+            ip_address=ip,
+            user_agent=ua,
+        )
+    else:
+        failure_count = await _svc.record_2fa_failure(redis, user_id)
+        await _audit.log(
+            db,
+            actor_id=user_id,
+            actor_email=current_user.email,
+            actor_role=current_user.role,
+            action="2fa_verify_failed",
+            resource_type="admin_2fa",
+            resource_id=user_id,
+            metadata={"failure_count": failure_count},
+            ip_address=ip,
+            user_agent=ua,
+        )
+
     return ok(
         Validate2FAResponse(valid=valid),
         ResponseCode.AUTH_2FA_VALID,
         "2FA code validated",
+    )
+
+
+@router.get(
+    "/admin/2fa/status",
+    response_model=BaseSuccessResponse[TwoFactorStatusResponse],
+    summary="Get 2FA status for the current admin",
+)
+async def get_2fa_status(
+    current_user: Profile = Depends(require_admin_role),
+    db: AsyncSession = Depends(get_db),
+) -> BaseSuccessResponse[TwoFactorStatusResponse]:
+    data = await _svc.get_2fa_status(db, str(current_user.id))
+    return ok(
+        TwoFactorStatusResponse(**data),
+        ResponseCode.AUTH_2FA_SETUP,
+        "2FA status fetched",
+    )
+
+
+@router.post(
+    "/admin/2fa/disable",
+    response_model=BaseSuccessResponse[None],
+    summary="Disable 2FA for the current admin",
+    dependencies=[Depends(rate_limit_2fa_verify)],
+)
+async def disable_2fa(
+    body: Disable2FARequest,
+    request: Request,
+    current_user: Profile = Depends(require_admin_role),
+    db: AsyncSession = Depends(get_db),
+) -> BaseSuccessResponse[None]:
+    await _svc.disable_2fa(db, str(current_user.id), body.totp_code)
+    ip, ua = _client_meta(request)
+    await _audit.log(
+        db,
+        actor_id=str(current_user.id),
+        actor_email=current_user.email,
+        actor_role=current_user.role,
+        action="2fa_disabled",
+        resource_type="admin_2fa",
+        resource_id=str(current_user.id),
+        ip_address=ip,
+        user_agent=ua,
+    )
+    return ok(None, ResponseCode.AUTH_2FA_VERIFIED, "2FA disabled successfully")
+
+
+@router.post(
+    "/admin/2fa/backup-codes/regenerate",
+    response_model=BaseSuccessResponse[RegenerateBackupCodesResponse],
+    summary="Regenerate backup codes for the current admin",
+    dependencies=[Depends(rate_limit_2fa_verify)],
+)
+async def regenerate_backup_codes(
+    body: RegenerateBackupCodesRequest,
+    request: Request,
+    current_user: Profile = Depends(require_admin_role),
+    db: AsyncSession = Depends(get_db),
+) -> BaseSuccessResponse[RegenerateBackupCodesResponse]:
+    codes = await _svc.regenerate_backup_codes(db, str(current_user.id), body.totp_code)
+    ip, ua = _client_meta(request)
+    await _audit.log(
+        db,
+        actor_id=str(current_user.id),
+        actor_email=current_user.email,
+        actor_role=current_user.role,
+        action="2fa_backup_codes_regenerated",
+        resource_type="admin_2fa",
+        resource_id=str(current_user.id),
+        ip_address=ip,
+        user_agent=ua,
+    )
+    return ok(
+        RegenerateBackupCodesResponse(
+            message="Backup codes regenerated. Save them — they will not be shown again.",
+            backup_codes=codes,
+        ),
+        ResponseCode.AUTH_2FA_VERIFIED,
+        "Backup codes regenerated",
     )

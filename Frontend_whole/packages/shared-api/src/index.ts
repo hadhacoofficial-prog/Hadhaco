@@ -50,3 +50,12 @@ export {
 } from "./hooks/admin/useFulfillment";
 export { useCompanyConfig, useUpdateCompanyConfig } from "./hooks/admin/useCompanyConfig";
 export * from "./hooks/admin/useNotificationAdmin";
+export {
+  useTwoFactorStatus,
+  useTwoFactorSetup,
+  useTwoFactorVerify,
+  useTwoFactorValidate,
+  useTwoFactorDisable,
+  useTwoFactorRegenerateCodes,
+  useForceReset2FA,
+} from "./hooks/admin/useTwoFactor";

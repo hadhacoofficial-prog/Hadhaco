@@ -1,12 +1,13 @@
 import math
 import uuid
 
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.constants import UserRole
 from app.core.exceptions import NotFoundError
 from app.modules.media.repository import ImageRepository
-from app.modules.profiles.models import Profile
+from app.modules.profiles.models import Admin2FA, Profile
 from app.modules.profiles.repository import ProfileRepository
 from app.modules.profiles.schemas import (
     AdminUserListItem,
@@ -85,6 +86,22 @@ class ProfileService:
         for item in list_items:
             if item.primary_image_id:
                 item.avatar_url = urls.get(item.id)
+
+        # Fetch 2FA status for all listed users
+        user_ids = [i.id for i in list_items]
+        if user_ids:
+            result = await db.execute(
+                select(Admin2FA.user_id, Admin2FA.is_enabled).where(
+                    Admin2FA.user_id.in_(user_ids)
+                )
+            )
+            two_fa_map = {row[0]: row[1] for row in result.all()}
+        else:
+            two_fa_map = {}
+
+        for item in list_items:
+            item.two_factor_enabled = bool(two_fa_map.get(item.id, False))
+
         return AdminUserListResponse(
             items=list_items,
             total=total,

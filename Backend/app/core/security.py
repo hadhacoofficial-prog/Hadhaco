@@ -34,6 +34,11 @@ class JWTPayload:
     aud: str | list[str]
     exp: int
     iat: int
+    # Supabase's stable per-login session identifier (`session_id` claim).
+    # Persists across access-token refreshes within the same login session,
+    # so it's used to correlate an AdminSession row to "this browser login"
+    # for admin 2FA session-verification gating.
+    session_id: str | None
 
 
 # ── Supabase JWT — ES256 + JWKS ───────────────────────────────────────────────
@@ -107,6 +112,7 @@ async def verify_supabase_jwt(token: str) -> JWTPayload:
         aud=payload.get("aud", ""),
         exp=payload.get("exp", 0),
         iat=payload.get("iat", 0),
+        session_id=payload.get("session_id"),
     )
 
 

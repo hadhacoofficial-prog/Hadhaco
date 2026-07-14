@@ -1,8 +1,17 @@
 import uuid
 from datetime import datetime
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, Index, String, Text, func
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy import (
+    BigInteger,
+    Boolean,
+    DateTime,
+    ForeignKey,
+    Index,
+    String,
+    Text,
+    func,
+)
+from sqlalchemy.dialects.postgresql import INET, JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.constants import UserRole
@@ -67,13 +76,17 @@ class Admin2FA(Base):
     totp_secret: Mapped[str] = mapped_column(
         Text, nullable=False
     )  # encrypted via Fernet
-    backup_codes: Mapped[str] = mapped_column(
-        Text, nullable=False, default="[]"
+    backup_codes: Mapped[list] = mapped_column(
+        JSONB, nullable=False, default=list
     )  # JSON array of bcrypt-hashed codes
     is_enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     enabled_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
+    # Last 30s TOTP time-step that successfully verified. Rejects re-submission
+    # of an intercepted/captured code within the same (or an earlier) step —
+    # pyotp's valid_window tolerance alone does not prevent replay.
+    last_used_counter: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )
@@ -96,11 +109,24 @@ class AdminSession(Base):
         ForeignKey("profiles.id", ondelete="CASCADE"),
         nullable=False,
     )
-    ip_address: Mapped[str] = mapped_column(String(45), nullable=False)
+    ip_address: Mapped[str] = mapped_column(INET, nullable=False)
     user_agent: Mapped[str | None] = mapped_column(Text, nullable=True)
     device_hash: Mapped[str | None] = mapped_column(String(64), nullable=True)
-    location: Mapped[str | None] = mapped_column(Text, nullable=True)  # JSON
+    location: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    # Supabase JWT `session_id` claim — correlates this row to one login
+    # session so the 2FA gate in app.core.dependencies can look it up per
+    # request. Stable across access-token refreshes within the same session.
+    supabase_session_id: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    is_2fa_verified: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False
+    )
+    verified_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    expires_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
     last_seen_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )
@@ -111,4 +137,10 @@ class AdminSession(Base):
     __table_args__ = (
         Index("idx_admin_sessions_user_id", "user_id"),
         Index("idx_admin_sessions_ip", "ip_address"),
+        Index(
+            "idx_admin_sessions_user_supabase_session",
+            "user_id",
+            "supabase_session_id",
+            unique=True,
+        ),
     )

@@ -13,6 +13,7 @@ import { roleSatisfies } from "@/types/auth";
 import { api } from "@/lib/api/client";
 import { queryKeys } from "@/lib/api/queryKeys";
 import type { ProfileDto } from "@/types/profile";
+import type { TwoFactorStatus } from "@/types/admin";
 import { useAuthContext } from "@/providers/auth-context";
 import {
   LayoutDashboard,
@@ -165,23 +166,36 @@ function AdminLayout() {
     retry: 1,
   });
 
+  const { data: tfStatus } = useQuery({
+    queryKey: queryKeys.admin.twoFactorStatus,
+    queryFn: () => api.get<TwoFactorStatus>("/auth/admin/2fa/status"),
+    enabled: isAuthenticated,
+    staleTime: 60_000,
+    retry: 1,
+  });
+
   const role = profile?.role;
   const normalizedRole =
     role === "customer" || role === "admin" || role === "super_admin" ? role : null;
   const isAdmin = roleSatisfies(normalizedRole, "admin");
 
   useEffect(() => {
-    if (path === "/admin/login") return;
+    if (path === "/admin/login" || path === "/admin/2fa") return;
     if (!isAuthenticated) {
       navigate({ to: "/admin/login", search: { redirect: path } });
       return;
     }
     if (!profileLoading && !isAdmin) {
       navigate({ to: "/" });
+      return;
     }
-  }, [isAuthenticated, profileLoading, isAdmin, path]);
+    // If 2FA is enabled but not verified in this session, redirect to challenge
+    if (tfStatus?.is_enabled && !sessionStorage.getItem("hadha:2fa_verified")) {
+      navigate({ to: "/admin/2fa", search: { redirect: path } });
+    }
+  }, [isAuthenticated, profileLoading, isAdmin, tfStatus, path, navigate]);
 
-  if (path === "/admin/login") {
+  if (path === "/admin/login" || path === "/admin/2fa") {
     return <Outlet />;
   }
 

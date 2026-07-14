@@ -40,6 +40,26 @@ class LogoutResponse(BaseModel):
     message: str
 
 
+class TwoFactorStatusResponse(BaseModel):
+    is_enabled: bool
+    enabled_at: datetime | None
+    backup_codes_remaining: int
+    total_backup_codes: int
+
+
+class Disable2FARequest(BaseModel):
+    totp_code: str
+
+
+class RegenerateBackupCodesRequest(BaseModel):
+    totp_code: str
+
+
+class RegenerateBackupCodesResponse(BaseModel):
+    message: str
+    backup_codes: list[str]
+
+
 class AdminSessionResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 

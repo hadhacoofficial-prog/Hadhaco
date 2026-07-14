@@ -53,6 +53,7 @@ class AdminUserListItem(BaseModel):
     is_active: bool
     is_verified: bool
     created_at: datetime
+    two_factor_enabled: bool = False
 
 
 class AdminUserRoleUpdateRequest(BaseModel):

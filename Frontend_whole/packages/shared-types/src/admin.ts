@@ -508,6 +508,39 @@ export interface AdminUserDto {
   is_active: boolean;
   is_verified: boolean;
   created_at: string;
+  two_factor_enabled?: boolean;
+}
+
+// ── Two-Factor Authentication (admin) ──────────────────────────────────────
+export interface TwoFactorStatus {
+  is_enabled: boolean;
+  enabled_at: string | null;
+  backup_codes_remaining: number;
+  total_backup_codes: number;
+}
+
+export interface Setup2FAResponse {
+  totp_uri: string;
+  secret: string;
+  qr_code_data_url: string;
+}
+
+export interface Verify2FAResponse {
+  message: string;
+  backup_codes: string[];
+}
+
+export interface Validate2FAResponse {
+  valid: boolean;
+}
+
+export interface Disable2FARequest {
+  totp_code: string;
+}
+
+export interface RegenerateBackupCodesResponse {
+  message: string;
+  backup_codes: string[];
 }
 
 export interface AdminUserListResponse {
