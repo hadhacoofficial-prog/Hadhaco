@@ -26,10 +26,11 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-import boto3
-from botocore.config import Config
 from PIL import Image
+from botocore.config import Config
 from sqlalchemy import text
+
+import boto3
 
 from app.core.config import settings
 from app.core.database import AsyncWorkerSessionLocal

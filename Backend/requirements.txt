@@ -90,4 +90,6 @@ pytest-cov==6.0.0
 factory-boy==3.3.1
 
 
-setuptools==83.0.0
+# setuptools 83+ removed pkg_resources which razorpay 1.4.2 requires at import.
+# Keep <83 until the razorpay 2.x upgrade (payments rewrite).
+setuptools<83

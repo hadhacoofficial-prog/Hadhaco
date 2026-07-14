@@ -55,9 +55,15 @@ async def _mock_db():
 async def admin_client(app, client):
     """Yield the shared client with admin dependency overrides active."""
     from app.core.database import get_db
-    from app.core.dependencies import require_admin
+    from app.core.dependencies import require_2fa_verified, require_admin
 
     app.dependency_overrides[require_admin] = _mock_admin
+    # PATCH /admin/company sits behind require_2fa_verified, which itself
+    # depends on require_admin and calls AuthService().has_active_2fa(db,
+    # current_user.id) — real DB call the mocked db/current_user dict can't
+    # satisfy. Override it directly so these tests exercise the company
+    # config logic, not the 2FA gate (covered separately by auth tests).
+    app.dependency_overrides[require_2fa_verified] = _mock_admin
     app.dependency_overrides[get_db] = _mock_db
     yield client
     app.dependency_overrides.clear()
