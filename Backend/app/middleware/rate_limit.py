@@ -116,3 +116,15 @@ async def rate_limit_webhook(request: Request) -> None:
         window=60,
         key_prefix="rl:webhook",
     )
+
+
+async def rate_limit_enquiry(request: Request) -> None:
+    """Dependency for public enquiry submission — 5 requests per minute per IP."""
+    redis = get_redis_pool()
+    await check_rate_limit(
+        request,
+        redis,
+        limit=5,
+        window=60,
+        key_prefix="rl:enquiry",
+    )

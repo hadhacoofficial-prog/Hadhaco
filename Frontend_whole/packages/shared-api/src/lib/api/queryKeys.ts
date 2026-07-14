@@ -173,6 +173,8 @@ export const queryKeys = {
       ["admin", "notifications", "logs", filters ?? {}] as const,
     returns: (filters?: Filters) => ["admin", "returns", filters ?? {}] as const,
     support: (filters?: Filters) => ["admin", "support", filters ?? {}] as const,
+    enquiries: (filters?: Filters) => ["admin", "enquiries", filters ?? {}] as const,
+    enquiry: (id: string) => ["admin", "enquiry", id] as const,
   },
 } as const;
 

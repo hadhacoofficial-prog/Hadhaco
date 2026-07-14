@@ -29,6 +29,7 @@ import {
   FolderOpen,
   Tag,
   Settings2,
+  MessageSquare,
 } from "lucide-react";
 import markAsset from "@/assets/hadha-mark.png";
 
@@ -87,7 +88,8 @@ type NavTo =
   | "/admin/cms"
   | "/admin/reports"
   | "/admin/templates"
-  | "/admin/settings";
+  | "/admin/settings"
+  | "/admin/enquiries";
 
 type NavItem = { to: NavTo; label: string; icon: React.ReactNode; exact?: boolean };
 
@@ -101,6 +103,7 @@ const nav: NavItem[] = [
   { to: "/admin/customers", label: "Customers", icon: <Users className="size-4" /> },
   { to: "/admin/reviews", label: "Reviews", icon: <Star className="size-4" /> },
   { to: "/admin/coupons", label: "Coupons", icon: <Ticket className="size-4" /> },
+  { to: "/admin/enquiries", label: "Enquiries", icon: <MessageSquare className="size-4" /> },
   { to: "/admin/cms", label: "Homepage CMS", icon: <LayoutTemplate className="size-4" /> },
   { to: "/admin/reports", label: "Reports", icon: <BarChart3 className="size-4" /> },
   { to: "/admin/templates", label: "Templates", icon: <Settings2 className="size-4" /> },

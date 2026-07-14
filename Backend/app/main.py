@@ -132,6 +132,7 @@ def _mount_routers(app: FastAPI) -> None:
     from app.modules.company.router import router as company_router
     from app.modules.coupons.router import router as coupons_router
     from app.modules.dev_auth.router import router as dev_auth_router
+    from app.modules.enquiries.router import router as enquiries_router
     from app.modules.fraud.router import router as fraud_router
     from app.modules.fulfillment.router import router as fulfillment_router
     from app.modules.inventory.router import router as inventory_router
@@ -176,6 +177,7 @@ def _mount_routers(app: FastAPI) -> None:
     app.include_router(cms_router, prefix=prefix, tags=["cms"])
     app.include_router(analytics_router, prefix=prefix, tags=["analytics"])
     app.include_router(returns_router, prefix=prefix, tags=["returns"])
+    app.include_router(enquiries_router, prefix=prefix, tags=["enquiries"])
     app.include_router(support_router, prefix=prefix, tags=["support"])
     app.include_router(notifications_router, prefix=prefix, tags=["notifications"])
     app.include_router(fraud_router, prefix=prefix, tags=["fraud"])

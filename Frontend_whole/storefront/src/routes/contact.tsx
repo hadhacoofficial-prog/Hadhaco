@@ -54,6 +54,53 @@ const CONTACT_CARDS: { icon: React.ReactNode; t: string; s: string; n: string; h
 
 function ContactPage() {
   const [sent, setSent] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState("");
+
+  async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    setError("");
+    const form = e.currentTarget;
+    const fd = new FormData(form);
+    const name = (fd.get("name") as string).trim();
+    const email = (fd.get("email") as string).trim();
+    const phone = (fd.get("phone") as string).trim();
+    const subject = (fd.get("subject") as string).trim();
+    const message = (fd.get("message") as string).trim();
+
+    if (!name || !email || !message) {
+      setError("Please fill in all required fields.");
+      return;
+    }
+
+    setSubmitting(true);
+    try {
+      const base = (import.meta.env.VITE_API_BASE_URL as string | undefined) ?? "/api/v1";
+      const res = await fetch(`${base}/enquiries`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name,
+          email,
+          phone: phone || null,
+          subject: subject || "General Enquiry",
+          message,
+          website: "",
+        }),
+      });
+      if (!res.ok) {
+        const body = await res.json().catch(() => null);
+        throw new Error(body?.message ?? `Request failed (${res.status})`);
+      }
+      setSent(true);
+      form.reset();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Something went wrong. Please try again.");
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
   return (
     <SiteLayout>
       <div className="px-4 md:px-8 py-10 max-w-6xl mx-auto">
@@ -66,35 +113,55 @@ function ContactPage() {
         </div>
 
         <div className="grid lg:grid-cols-[1fr_400px] gap-12">
-          <form
-            onSubmit={(e) => {
-              e.preventDefault();
-              setSent(true);
-            }}
-            className="space-y-5 border border-border p-8 bg-card"
-          >
+          <form onSubmit={handleSubmit} className="space-y-5 border border-border p-8 bg-card">
             {sent && (
               <div className="bg-accent/10 text-accent text-sm px-4 py-3">
                 Thanks! We'll get back to you within 24 hours.
               </div>
             )}
+            {error && (
+              <div className="bg-destructive/10 text-destructive text-sm px-4 py-3">{error}</div>
+            )}
             <div className="grid sm:grid-cols-2 gap-4">
-              <F label="Name" required />
-              <F label="Email" type="email" required />
+              <F label="Name" name="name" required />
+              <F label="Email" name="email" type="email" required />
             </div>
-            <F label="Subject" />
+            <div className="grid sm:grid-cols-2 gap-4">
+              <F label="Phone" name="phone" type="tel" />
+              <F label="Subject" name="subject" />
+            </div>
             <label className="block">
               <span className="text-[11px] uppercase tracking-[0.18em] text-muted-foreground">
                 Message
               </span>
               <textarea
+                name="message"
                 required
                 rows={6}
                 className="mt-1.5 w-full bg-background border border-border px-3 py-2.5 text-sm outline-none focus:border-foreground transition"
               />
             </label>
-            <button className="bg-primary text-primary-foreground text-[11px] uppercase tracking-[0.22em] px-8 py-3.5 hover:bg-accent hover:text-accent-foreground transition">
-              Send Message
+            {/* Honeypot — hidden from humans, bots will fill it */}
+            <div
+              style={{
+                position: "absolute",
+                left: "-9999px",
+                opacity: 0,
+                height: 0,
+                width: 0,
+                overflow: "hidden",
+              }}
+              aria-hidden="true"
+            >
+              <label htmlFor="website">Website</label>
+              <input type="text" name="website" id="website" tabIndex={-1} autoComplete="off" />
+            </div>
+            <button
+              type="submit"
+              disabled={submitting}
+              className="bg-primary text-primary-foreground text-[11px] uppercase tracking-[0.22em] px-8 py-3.5 hover:bg-accent hover:text-accent-foreground disabled:opacity-50 transition"
+            >
+              {submitting ? "Sending..." : "Send Message"}
             </button>
           </form>
 

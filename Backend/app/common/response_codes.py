@@ -163,6 +163,13 @@ class ResponseCode(StrEnum):
     REVIEW_REMINDERS_SENT = "REVIEW_REMINDERS_SENT"
     NOTIFICATIONS_RETRIED = "NOTIFICATIONS_RETRIED"
 
+    # ── Enquiries ────────────────────────────────────────────────────────────
+    ENQUIRY_CREATED = "ENQUIRY_CREATED"
+    ENQUIRY_LISTED = "ENQUIRY_LISTED"
+    ENQUIRY_FETCHED = "ENQUIRY_FETCHED"
+    ENQUIRY_UPDATED = "ENQUIRY_UPDATED"
+    ENQUIRY_DELETED = "ENQUIRY_DELETED"
+
     # ── Support ──────────────────────────────────────────────────────────────
     SUPPORT_TICKET_CREATED = "SUPPORT_TICKET_CREATED"
     SUPPORT_TICKET_LISTED = "SUPPORT_TICKET_LISTED"

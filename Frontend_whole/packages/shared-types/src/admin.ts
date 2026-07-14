@@ -529,6 +529,49 @@ export interface LowStockItem {
   category_id: string | null;
 }
 
+// ── Enquiries (admin) ────────────────────────────────────────────────────────
+export type EnquiryStatus =
+  | "new_enquiry"
+  | "contacted_customer"
+  | "positive_response"
+  | "negative_response"
+  | "closed";
+
+export interface EnquiryDto {
+  id: string;
+  user_id: string | null;
+  name: string;
+  email: string;
+  phone: string | null;
+  subject: string;
+  message: string;
+  status: EnquiryStatus;
+  admin_notes: string | null;
+  contacted_at: string | null;
+  is_archived: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface EnquiryStats {
+  total: number;
+  new_enquiry: number;
+  contacted_customer: number;
+  positive_response: number;
+  negative_response: number;
+  closed: number;
+  archived: number;
+}
+
+export interface EnquiryListResponse {
+  items: EnquiryDto[];
+  total: number;
+  page: number;
+  page_size: number;
+  total_pages: number;
+  stats: EnquiryStats;
+}
+
 // ── Analytics dashboard ──────────────────────────────────────────────────────
 export interface RevenueByDay {
   date: string;

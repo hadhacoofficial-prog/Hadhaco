@@ -22,8 +22,6 @@ import { Route } from "@/routes/cart";
 export default function CartPage() {
   const { lines, setQty, remove, subtotal } = useCart();
   const [coupon, setCoupon] = useState("");
-  const [pin, setPin] = useState("");
-  const [shipping, setShipping] = useState<number | null>(null);
   const [discount, setDiscount] = useState(0);
   const [appliedCode, setAppliedCode] = useState<string | null>(null);
 
@@ -84,7 +82,7 @@ export default function CartPage() {
   );
 
   const subtotalAmt = subtotal();
-  const ship = shipping ?? (subtotalAmt > 999 ? 0 : 99);
+  const ship = subtotalAmt > 999 ? 0 : 99;
   const total = subtotalAmt - discount + (lines.length ? ship : 0);
 
   const couponMutation = useMutation({
@@ -393,30 +391,6 @@ export default function CartPage() {
                     className="bg-foreground text-background px-4 text-[11px] uppercase tracking-[0.22em] disabled:opacity-50"
                   >
                     {couponMutation.isPending ? "…" : "Apply"}
-                  </button>
-                </div>
-              </div>
-
-              <div className="border border-border bg-card p-6">
-                <label htmlFor="pincode" className="text-xs uppercase tracking-[0.22em] mb-3 block">
-                  Estimate shipping
-                </label>
-                <div className="flex gap-2">
-                  <input
-                    id="pincode"
-                    value={pin}
-                    onChange={(e) => setPin(e.target.value)}
-                    maxLength={6}
-                    placeholder="Pincode"
-                    className="flex-1 bg-background border border-border px-3 py-2.5 text-sm outline-none focus:border-foreground"
-                  />
-                  <button
-                    onClick={() =>
-                      setShipping(pin.length === 6 ? (subtotalAmt > 999 ? 0 : 99) : null)
-                    }
-                    className="bg-foreground text-background px-4 text-[11px] uppercase tracking-[0.22em]"
-                  >
-                    Check
                   </button>
                 </div>
               </div>
