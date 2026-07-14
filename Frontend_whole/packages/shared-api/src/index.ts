@@ -49,3 +49,4 @@ export {
   useFulfillmentTimeline,
 } from "./hooks/admin/useFulfillment";
 export { useCompanyConfig, useUpdateCompanyConfig } from "./hooks/admin/useCompanyConfig";
+export * from "./hooks/admin/useNotificationAdmin";

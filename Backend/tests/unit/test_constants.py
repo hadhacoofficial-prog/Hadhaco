@@ -88,7 +88,7 @@ class TestGender:
 class TestNotificationChannel:
     def test_channels(self):
         assert NotificationChannel.EMAIL == "email"
-        assert NotificationChannel.SMS == "sms"
+        assert NotificationChannel.WHATSAPP == "whatsapp"
 
 
 class TestAuditAction:

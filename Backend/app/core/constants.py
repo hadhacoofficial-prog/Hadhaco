@@ -71,15 +71,17 @@ class ShipmentStatus(StrEnum):
 
 class NotificationChannel(StrEnum):
     EMAIL = "email"
-    SMS = "sms"
-    PUSH = "push"
+    WHATSAPP = "whatsapp"
 
 
 class NotificationStatus(StrEnum):
     PENDING = "pending"
     SENT = "sent"
+    DELIVERED = "delivered"
+    READ = "read"
     FAILED = "failed"
     RETRYING = "retrying"
+    CANCELLED = "cancelled"
 
 
 class ReturnStatus(StrEnum):

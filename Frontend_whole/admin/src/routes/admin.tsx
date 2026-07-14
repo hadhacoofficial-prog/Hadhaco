@@ -31,6 +31,7 @@ import {
   Settings2,
   MessageSquare,
   Menu,
+  Bell,
 } from "lucide-react";
 import markAsset from "@/assets/hadha-mark.png";
 
@@ -83,7 +84,8 @@ type NavTo =
   | "/admin/reports"
   | "/admin/templates"
   | "/admin/settings"
-  | "/admin/enquiries";
+  | "/admin/enquiries"
+  | "/admin/notifications";
 
 type NavItem = {
   to: NavTo;
@@ -108,6 +110,7 @@ const nav: NavItem[] = [
   { to: "/admin/reviews", label: "Reviews", icon: <Star className="size-4" /> },
   { to: "/admin/coupons", label: "Coupons", icon: <Ticket className="size-4" /> },
   { to: "/admin/enquiries", label: "Enquiries", icon: <MessageSquare className="size-4" /> },
+  { to: "/admin/notifications", label: "Notifications", icon: <Bell className="size-4" /> },
   { to: "/admin/cms", label: "Homepage CMS", icon: <LayoutTemplate className="size-4" /> },
   { to: "/admin/reports", label: "Reports", icon: <BarChart3 className="size-4" /> },
   { to: "/admin/templates", label: "Templates", icon: <Settings2 className="size-4" /> },

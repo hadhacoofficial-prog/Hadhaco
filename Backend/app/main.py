@@ -63,6 +63,14 @@ async def lifespan(app: FastAPI):
 
     register_notification_listeners()
 
+    # Sync the code-defined Notification Event Registry into notification_rules
+    # (insert-missing-only — never overwrites an admin's existing rule row).
+    from app.core.database import AsyncSessionLocal
+    from app.modules.notifications.event_registry import sync_notification_rules
+
+    async with AsyncSessionLocal() as _sync_db:
+        await sync_notification_rules(_sync_db)
+
     # Start background job scheduler
     from app.workers.queue import build_queue
 
@@ -139,6 +147,9 @@ def _mount_routers(app: FastAPI) -> None:
     from app.modules.invoices.router import router as invoices_router
     from app.modules.media.router import router as media_router
     from app.modules.notifications.router import router as notifications_router
+    from app.modules.notifications.webhook_router import (
+        router as notification_webhooks_router,
+    )
     from app.modules.orders.router import router as orders_router
     from app.modules.payments.router import router as payments_router
     from app.modules.profiles.router import router as profiles_router
@@ -180,6 +191,9 @@ def _mount_routers(app: FastAPI) -> None:
     app.include_router(enquiries_router, prefix=prefix, tags=["enquiries"])
     app.include_router(support_router, prefix=prefix, tags=["support"])
     app.include_router(notifications_router, prefix=prefix, tags=["notifications"])
+    app.include_router(
+        notification_webhooks_router, prefix=prefix, tags=["notifications"]
+    )
     app.include_router(fraud_router, prefix=prefix, tags=["fraud"])
     app.include_router(settings_router, prefix=prefix, tags=["settings"])
     app.include_router(settings_public_router, prefix=prefix, tags=["settings"])

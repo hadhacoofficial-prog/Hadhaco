@@ -16,8 +16,8 @@ Revision ID: 0041
 Revises: 0040
 Create Date: 2026-07-14
 """
-from alembic import op
 
+from alembic import op
 
 revision = "0041_remove_stale_feature_flags"
 down_revision = "0040_enquiries_user_archived"

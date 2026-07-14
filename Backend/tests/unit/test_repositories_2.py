@@ -250,6 +250,161 @@ class TestNotificationRepository:
         result = await self.repo.get_pending_retries(db)
         assert result == [mock_log]
 
+    # ── Lifecycle timestamps ─────────────────────────────────────────────────
+
+    async def test_mark_sent_sets_sent_at(self):
+        db = _db()
+        log = MagicMock()
+        log.attempt_count = 0
+        await self.repo.mark_sent(db, log, "msg-1", "resend")
+        assert log.sent_at is not None
+
+    async def test_mark_delivered_sets_delivered_at(self):
+        db = _db()
+        log = MagicMock()
+        await self.repo.mark_delivered(db, log)
+        assert log.status == "delivered"
+        assert log.delivered_at is not None
+
+    async def test_mark_read_sets_read_at(self):
+        db = _db()
+        log = MagicMock()
+        await self.repo.mark_read(db, log)
+        assert log.status == "read"
+        assert log.read_at is not None
+
+    async def test_mark_failed_over_limit_sets_failed_at(self):
+        db = _db()
+        log = MagicMock()
+        log.attempt_count = 99
+        log.failed_at = None
+        await self.repo.mark_failed(db, log, "permanent failure")
+        assert log.status == "failed"
+        assert log.failed_at is not None
+
+    async def test_mark_failed_under_limit_leaves_failed_at_none(self):
+        db = _db()
+        log = MagicMock()
+        log.attempt_count = 0
+        log.failed_at = None
+        await self.repo.mark_failed(db, log, "transient error")
+        assert log.status == "retrying"
+        assert log.failed_at is None
+
+    async def test_mark_permanently_failed_sets_failed_at(self):
+        db = _db()
+        log = MagicMock()
+        log.attempt_count = 0
+        await self.repo.mark_permanently_failed(db, log, "auth error")
+        assert log.status == "failed"
+        assert log.failed_at is not None
+
+    # ── Template versioning ──────────────────────────────────────────────────
+
+    async def test_update_template_snapshots_and_bumps_version_on_content_change(self):
+        mock_tpl = MagicMock()
+        mock_tpl.id = uuid.uuid4()
+        mock_tpl.version = 1
+        mock_tpl.subject = "old subject"
+        mock_tpl.template_body = "old body"
+        mock_tpl.variables = None
+        db = _db(_scalar_one_or_none(mock_tpl))
+        result = await self.repo.update_template(
+            db, mock_tpl.id, {"template_body": "new body"}
+        )
+        db.add.assert_called()  # snapshot + template both added
+        assert result.version == 2
+        assert result.template_body == "new body"
+
+    async def test_update_template_does_not_bump_version_for_metadata_only(self):
+        mock_tpl = MagicMock()
+        mock_tpl.id = uuid.uuid4()
+        mock_tpl.version = 1
+        db = _db(_scalar_one_or_none(mock_tpl))
+        result = await self.repo.update_template(db, mock_tpl.id, {"is_active": False})
+        assert result.version == 1
+
+    async def test_list_template_versions_returns_list(self):
+        mock_version = MagicMock()
+        db = _db(_scalars([mock_version]))
+        result = await self.repo.list_template_versions(db, uuid.uuid4())
+        assert result == [mock_version]
+
+    # ── Analytics foundation ─────────────────────────────────────────────────
+
+    async def test_get_daily_totals_returns_list(self):
+        row = MagicMock()
+        row.day = datetime(2026, 7, 1, tzinfo=UTC)
+        row.sent = 10
+        row.delivered = 8
+        row.failed = 2
+        result_mock = MagicMock()
+        result_mock.all.return_value = [row]
+        db = _db(result_mock)
+        result = await self.repo.get_daily_totals(db, days=7)
+        assert result == [
+            {"date": "2026-07-01", "sent": 10, "delivered": 8, "failed": 2}
+        ]
+
+    async def test_get_top_templates_returns_list(self):
+        row = MagicMock()
+        row.name = "order_created_email"
+        row.event_type = "order_created"
+        row.channel = "email"
+        row.sent_count = 42
+        result_mock = MagicMock()
+        result_mock.all.return_value = [row]
+        db = _db(result_mock)
+        result = await self.repo.get_top_templates(db)
+        assert result[0]["name"] == "order_created_email"
+        assert result[0]["sent_count"] == 42
+
+    async def test_get_provider_success_rate_computes_rate(self):
+        row = MagicMock()
+        row.provider = "resend"
+        row.sent = 9
+        row.failed = 1
+        result_mock = MagicMock()
+        result_mock.all.return_value = [row]
+        db = _db(result_mock)
+        result = await self.repo.get_provider_success_rate(db)
+        assert result["resend"]["success_rate"] == 0.9
+
+    async def test_get_average_delivery_seconds_returns_value(self):
+        r = MagicMock()
+        r.scalar.return_value = 120.5
+        db = _db(r)
+        result = await self.repo.get_average_delivery_seconds(db)
+        assert result == 120.5
+
+    async def test_get_average_delivery_seconds_returns_none_when_no_data(self):
+        r = MagicMock()
+        r.scalar.return_value = None
+        db = _db(r)
+        result = await self.repo.get_average_delivery_seconds(db)
+        assert result is None
+
+    # ── Provider health ───────────────────────────────────────────────────────
+
+    async def test_get_provider_health_stats_returns_dict(self):
+        success_log = MagicMock()
+        success_log.created_at = datetime(2026, 7, 10, tzinfo=UTC)
+        failure_log = MagicMock()
+        failure_log.created_at = datetime(2026, 7, 9, tzinfo=UTC)
+        failure_log.error_message = "boom"
+        webhook_log = MagicMock()
+        webhook_log.updated_at = datetime(2026, 7, 10, 1, tzinfo=UTC)
+
+        db = _db(
+            _scalar_one_or_none(success_log),
+            _scalar_one_or_none(failure_log),
+            _scalar_one_or_none(webhook_log),
+        )
+        result = await self.repo.get_provider_health_stats(db, channel="whatsapp")
+        assert result["last_success_at"] == success_log.created_at
+        assert result["last_failure_message"] == "boom"
+        assert result["last_webhook_at"] == webhook_log.updated_at
+
     async def test_get_preferences_returns_none(self):
         db = _db(_scalar_one_or_none(None))
         result = await self.repo.get_preferences(db, uuid.uuid4())

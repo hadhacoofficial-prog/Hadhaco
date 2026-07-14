@@ -89,10 +89,11 @@ class TestQueueService:
         ):
             build_queue()
 
-        assert len(interval_ids) + len(cron_ids) == 4
+        assert len(interval_ids) + len(cron_ids) == 5
         assert "reservation_expiry" in interval_ids
         assert "cms_publish" in interval_ids
         # Registered in CB-1 Phase 2 — the crash-recovery/retry poller for
         # image variant generation (app/workers/media_generation.py).
         assert "media_generation" in interval_ids
+        assert "notification_retry" in interval_ids
         assert "partition_manager" in cron_ids

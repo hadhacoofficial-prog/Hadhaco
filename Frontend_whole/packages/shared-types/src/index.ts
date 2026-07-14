@@ -10,3 +10,4 @@ export * from "./hero-mappings";
 export * from "./fulfillment";
 export type * from "./media";
 export * from "./imagePresets";
+export type * from "./notifications";

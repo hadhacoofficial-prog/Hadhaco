@@ -169,8 +169,21 @@ export const queryKeys = {
     fraud: (filters?: Filters) => ["admin", "fraud", filters ?? {}] as const,
     settings: ["admin", "settings", "flags"] as const,
     companyConfig: ["admin", "company-config"] as const,
-    notificationLogs: (filters?: Filters) =>
-      ["admin", "notifications", "logs", filters ?? {}] as const,
+    notifications: {
+      rules: ["admin", "notifications", "rules"] as const,
+      templates: ["admin", "notifications", "templates"] as const,
+      templateVersions: (templateId: string) =>
+        ["admin", "notifications", "templates", templateId, "versions"] as const,
+      logs: (filters?: Filters) =>
+        ["admin", "notifications", "logs", filters ?? {}] as const,
+      analytics: (hours?: number) =>
+        ["admin", "notifications", "analytics", hours ?? 24] as const,
+      providerSettings: (provider: string) =>
+        ["admin", "notifications", "provider-settings", provider] as const,
+      providerHealth: (provider: string) =>
+        ["admin", "notifications", "provider-health", provider] as const,
+      waTemplates: ["admin", "notifications", "wa-templates"] as const,
+    },
     returns: (filters?: Filters) => ["admin", "returns", filters ?? {}] as const,
     support: (filters?: Filters) => ["admin", "support", filters ?? {}] as const,
     enquiries: (filters?: Filters) => ["admin", "enquiries", filters ?? {}] as const,

@@ -136,12 +136,15 @@ class Settings(BaseSettings):
     EMAIL_FROM_NAME: str = "Hadha.co"
     ADMIN_ALERT_EMAIL: str = "admin@hadha.co"
 
-    # ── SMS ────────────────────────────────────────────────────────────────────
-    SMS_ENABLED: bool = False
-    MSG91_API_KEY: str = ""
-    MSG91_SENDER_ID: str = ""
-    MSG91_TEMPLATE_ID: str = ""
-    MSG91_ROUTE: int = 4
+    # ── WhatsApp (Meta Business Cloud API) ─────────────────────────────────────
+    WHATSAPP_ENABLED: bool = False
+    WHATSAPP_BUSINESS_PHONE: str = ""
+    WHATSAPP_PHONE_NUMBER_ID: str = ""
+    WHATSAPP_BUSINESS_ACCOUNT_ID: str = ""
+    WHATSAPP_ACCESS_TOKEN: str = ""
+    WHATSAPP_VERIFY_TOKEN: str = ""
+    WHATSAPP_WEBHOOK_SECRET: str = ""
+    WHATSAPP_API_VERSION: str = "v21.0"
 
     # ── Razorpay ───────────────────────────────────────────────────────────────
     RAZORPAY_KEY_ID: str
@@ -281,19 +284,19 @@ def validate_required_settings(s: Settings) -> None:
             f"Set it to an address whose domain is verified in your Resend dashboard.\n"
         )
 
-    if s.SMS_ENABLED:
-        msg91_required = [
-            ("MSG91_API_KEY", s.MSG91_API_KEY),
-            ("MSG91_SENDER_ID", s.MSG91_SENDER_ID),
-            ("MSG91_TEMPLATE_ID", s.MSG91_TEMPLATE_ID),
+    if s.WHATSAPP_ENABLED:
+        wa_required = [
+            ("WHATSAPP_PHONE_NUMBER_ID", s.WHATSAPP_PHONE_NUMBER_ID),
+            ("WHATSAPP_BUSINESS_ACCOUNT_ID", s.WHATSAPP_BUSINESS_ACCOUNT_ID),
+            ("WHATSAPP_ACCESS_TOKEN", s.WHATSAPP_ACCESS_TOKEN),
         ]
-        msg91_missing = [name for name, value in msg91_required if not value]
-        if msg91_missing:
-            lines = "\n  ".join(msg91_missing)
+        wa_missing = [name for name, value in wa_required if not value]
+        if wa_missing:
+            lines = "\n  ".join(wa_missing)
             raise SystemExit(
-                f"\n[Hadha.co] SMS_ENABLED=true but the following MSG91 credentials are missing:\n\n"
+                f"\n[Hadha.co] WHATSAPP_ENABLED=true but the following credentials are missing:\n\n"
                 f"  {lines}\n\n"
-                f"Either set the missing variables or set SMS_ENABLED=false.\n"
+                f"Either set the missing variables or set WHATSAPP_ENABLED=false.\n"
             )
 
 

@@ -64,6 +64,7 @@ def build_queue() -> QueueService:
     from app.workers import (
         cms_publish,
         media_generation,
+        notification_retry,
         partition_manager,
         reservation_expiry,
     )
@@ -83,6 +84,11 @@ def build_queue() -> QueueService:
     # multi-process deployment. Short interval since an admin waiting on
     # "Generating…" in the editor is the worst case this recovers.
     queue.add_interval_job(media_generation.run, seconds=5, job_id="media_generation")
+    # Notification retry — picks up failed notifications whose backoff has
+    # elapsed and re-attempts delivery via the appropriate provider.
+    queue.add_interval_job(
+        notification_retry.run, seconds=30, job_id="notification_retry"
+    )
     # First day of each month, 00:10 UTC — create next month's DB partitions.
     queue.add_cron_job(
         partition_manager.run, cron="10 0 1 * *", job_id="partition_manager"

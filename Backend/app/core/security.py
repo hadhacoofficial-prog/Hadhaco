@@ -136,6 +136,24 @@ def verify_razorpay_webhook_signature(body: bytes, signature: str) -> bool:
     return secrets.compare_digest(expected, signature)
 
 
+def verify_whatsapp_webhook_signature(body: bytes, signature_header: str) -> bool:
+    """Validate Meta's `X-Hub-Signature-256: sha256=<hex>` header against
+    WHATSAPP_WEBHOOK_SECRET (the app secret configured for the webhook)."""
+    import hashlib
+    import hmac
+
+    prefix = "sha256="
+    if not signature_header.startswith(prefix):
+        return False
+    provided = signature_header[len(prefix) :]
+    expected = hmac.new(
+        settings.WHATSAPP_WEBHOOK_SECRET.encode(),
+        body,
+        hashlib.sha256,
+    ).hexdigest()
+    return secrets.compare_digest(expected, provided)
+
+
 # ── Secure token generation ────────────────────────────────────────────────────
 
 

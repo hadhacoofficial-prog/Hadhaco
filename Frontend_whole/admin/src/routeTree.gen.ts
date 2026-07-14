@@ -18,6 +18,7 @@ import { Route as AdminReviewsRouteImport } from './routes/admin.reviews'
 import { Route as AdminReportsRouteImport } from './routes/admin.reports'
 import { Route as AdminProductsRouteImport } from './routes/admin.products'
 import { Route as AdminOrdersRouteImport } from './routes/admin.orders'
+import { Route as AdminNotificationsRouteImport } from './routes/admin.notifications'
 import { Route as AdminLoginRouteImport } from './routes/admin.login'
 import { Route as AdminInventoryRouteImport } from './routes/admin.inventory'
 import { Route as AdminEnquiriesRouteImport } from './routes/admin.enquiries'
@@ -28,20 +29,28 @@ import { Route as AdminCmsRouteImport } from './routes/admin.cms'
 import { Route as AdminCategoriesRouteImport } from './routes/admin.categories'
 import { Route as AdminProductsIndexRouteImport } from './routes/admin.products.index'
 import { Route as AdminOrdersIndexRouteImport } from './routes/admin.orders.index'
+import { Route as AdminNotificationsIndexRouteImport } from './routes/admin.notifications.index'
 import { Route as AdminCollectionsIndexRouteImport } from './routes/admin.collections.index'
 import { Route as AdminCmsIndexRouteImport } from './routes/admin.cms.index'
 import { Route as AdminCategoriesIndexRouteImport } from './routes/admin.categories.index'
 import { Route as AdminProductsNewRouteImport } from './routes/admin.products.new'
 import { Route as AdminProductsProductIdRouteImport } from './routes/admin.products.$productId'
 import { Route as AdminOrdersOrderIdRouteImport } from './routes/admin.orders.$orderId'
+import { Route as AdminNotificationsTemplatesRouteImport } from './routes/admin.notifications.templates'
+import { Route as AdminNotificationsProvidersRouteImport } from './routes/admin.notifications.providers'
+import { Route as AdminNotificationsMatrixRouteImport } from './routes/admin.notifications.matrix'
+import { Route as AdminNotificationsLogsRouteImport } from './routes/admin.notifications.logs'
+import { Route as AdminNotificationsAnalyticsRouteImport } from './routes/admin.notifications.analytics'
 import { Route as AdminCollectionsNewRouteImport } from './routes/admin.collections.new'
 import { Route as AdminCollectionsCollectionIdRouteImport } from './routes/admin.collections.$collectionId'
 import { Route as AdminCmsMediaRouteImport } from './routes/admin.cms.media'
 import { Route as AdminCmsSectionKeyRouteImport } from './routes/admin.cms.$sectionKey'
 import { Route as AdminCategoriesNewRouteImport } from './routes/admin.categories.new'
 import { Route as AdminCategoriesCategoryIdRouteImport } from './routes/admin.categories.$categoryId'
+import { Route as AdminNotificationsTemplatesIndexRouteImport } from './routes/admin.notifications.templates.index'
 import { Route as AdminCollectionsCollectionIdIndexRouteImport } from './routes/admin.collections.$collectionId.index'
 import { Route as AdminCategoriesCategoryIdIndexRouteImport } from './routes/admin.categories.$categoryId.index'
+import { Route as AdminNotificationsTemplatesTemplateIdRouteImport } from './routes/admin.notifications.templates.$templateId'
 import { Route as AdminCollectionsCollectionIdEditRouteImport } from './routes/admin.collections.$collectionId.edit'
 import { Route as AdminCategoriesCategoryIdEditRouteImport } from './routes/admin.categories.$categoryId.edit'
 
@@ -88,6 +97,11 @@ const AdminProductsRoute = AdminProductsRouteImport.update({
 const AdminOrdersRoute = AdminOrdersRouteImport.update({
   id: '/orders',
   path: '/orders',
+  getParentRoute: () => AdminRoute,
+} as any)
+const AdminNotificationsRoute = AdminNotificationsRouteImport.update({
+  id: '/notifications',
+  path: '/notifications',
   getParentRoute: () => AdminRoute,
 } as any)
 const AdminLoginRoute = AdminLoginRouteImport.update({
@@ -140,6 +154,11 @@ const AdminOrdersIndexRoute = AdminOrdersIndexRouteImport.update({
   path: '/',
   getParentRoute: () => AdminOrdersRoute,
 } as any)
+const AdminNotificationsIndexRoute = AdminNotificationsIndexRouteImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => AdminNotificationsRoute,
+} as any)
 const AdminCollectionsIndexRoute = AdminCollectionsIndexRouteImport.update({
   id: '/',
   path: '/',
@@ -170,6 +189,35 @@ const AdminOrdersOrderIdRoute = AdminOrdersOrderIdRouteImport.update({
   path: '/$orderId',
   getParentRoute: () => AdminOrdersRoute,
 } as any)
+const AdminNotificationsTemplatesRoute =
+  AdminNotificationsTemplatesRouteImport.update({
+    id: '/templates',
+    path: '/templates',
+    getParentRoute: () => AdminNotificationsRoute,
+  } as any)
+const AdminNotificationsProvidersRoute =
+  AdminNotificationsProvidersRouteImport.update({
+    id: '/providers',
+    path: '/providers',
+    getParentRoute: () => AdminNotificationsRoute,
+  } as any)
+const AdminNotificationsMatrixRoute =
+  AdminNotificationsMatrixRouteImport.update({
+    id: '/matrix',
+    path: '/matrix',
+    getParentRoute: () => AdminNotificationsRoute,
+  } as any)
+const AdminNotificationsLogsRoute = AdminNotificationsLogsRouteImport.update({
+  id: '/logs',
+  path: '/logs',
+  getParentRoute: () => AdminNotificationsRoute,
+} as any)
+const AdminNotificationsAnalyticsRoute =
+  AdminNotificationsAnalyticsRouteImport.update({
+    id: '/analytics',
+    path: '/analytics',
+    getParentRoute: () => AdminNotificationsRoute,
+  } as any)
 const AdminCollectionsNewRoute = AdminCollectionsNewRouteImport.update({
   id: '/new',
   path: '/new',
@@ -202,6 +250,12 @@ const AdminCategoriesCategoryIdRoute =
     path: '/$categoryId',
     getParentRoute: () => AdminCategoriesRoute,
   } as any)
+const AdminNotificationsTemplatesIndexRoute =
+  AdminNotificationsTemplatesIndexRouteImport.update({
+    id: '/',
+    path: '/',
+    getParentRoute: () => AdminNotificationsTemplatesRoute,
+  } as any)
 const AdminCollectionsCollectionIdIndexRoute =
   AdminCollectionsCollectionIdIndexRouteImport.update({
     id: '/',
@@ -213,6 +267,12 @@ const AdminCategoriesCategoryIdIndexRoute =
     id: '/',
     path: '/',
     getParentRoute: () => AdminCategoriesCategoryIdRoute,
+  } as any)
+const AdminNotificationsTemplatesTemplateIdRoute =
+  AdminNotificationsTemplatesTemplateIdRouteImport.update({
+    id: '/$templateId',
+    path: '/$templateId',
+    getParentRoute: () => AdminNotificationsTemplatesRoute,
   } as any)
 const AdminCollectionsCollectionIdEditRoute =
   AdminCollectionsCollectionIdEditRouteImport.update({
@@ -238,6 +298,7 @@ export interface FileRoutesByFullPath {
   '/admin/enquiries': typeof AdminEnquiriesRoute
   '/admin/inventory': typeof AdminInventoryRoute
   '/admin/login': typeof AdminLoginRoute
+  '/admin/notifications': typeof AdminNotificationsRouteWithChildren
   '/admin/orders': typeof AdminOrdersRouteWithChildren
   '/admin/products': typeof AdminProductsRouteWithChildren
   '/admin/reports': typeof AdminReportsRoute
@@ -251,18 +312,26 @@ export interface FileRoutesByFullPath {
   '/admin/cms/media': typeof AdminCmsMediaRoute
   '/admin/collections/$collectionId': typeof AdminCollectionsCollectionIdRouteWithChildren
   '/admin/collections/new': typeof AdminCollectionsNewRoute
+  '/admin/notifications/analytics': typeof AdminNotificationsAnalyticsRoute
+  '/admin/notifications/logs': typeof AdminNotificationsLogsRoute
+  '/admin/notifications/matrix': typeof AdminNotificationsMatrixRoute
+  '/admin/notifications/providers': typeof AdminNotificationsProvidersRoute
+  '/admin/notifications/templates': typeof AdminNotificationsTemplatesRouteWithChildren
   '/admin/orders/$orderId': typeof AdminOrdersOrderIdRoute
   '/admin/products/$productId': typeof AdminProductsProductIdRoute
   '/admin/products/new': typeof AdminProductsNewRoute
   '/admin/categories/': typeof AdminCategoriesIndexRoute
   '/admin/cms/': typeof AdminCmsIndexRoute
   '/admin/collections/': typeof AdminCollectionsIndexRoute
+  '/admin/notifications/': typeof AdminNotificationsIndexRoute
   '/admin/orders/': typeof AdminOrdersIndexRoute
   '/admin/products/': typeof AdminProductsIndexRoute
   '/admin/categories/$categoryId/edit': typeof AdminCategoriesCategoryIdEditRoute
   '/admin/collections/$collectionId/edit': typeof AdminCollectionsCollectionIdEditRoute
+  '/admin/notifications/templates/$templateId': typeof AdminNotificationsTemplatesTemplateIdRoute
   '/admin/categories/$categoryId/': typeof AdminCategoriesCategoryIdIndexRoute
   '/admin/collections/$collectionId/': typeof AdminCollectionsCollectionIdIndexRoute
+  '/admin/notifications/templates/': typeof AdminNotificationsTemplatesIndexRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -280,18 +349,25 @@ export interface FileRoutesByTo {
   '/admin/cms/$sectionKey': typeof AdminCmsSectionKeyRoute
   '/admin/cms/media': typeof AdminCmsMediaRoute
   '/admin/collections/new': typeof AdminCollectionsNewRoute
+  '/admin/notifications/analytics': typeof AdminNotificationsAnalyticsRoute
+  '/admin/notifications/logs': typeof AdminNotificationsLogsRoute
+  '/admin/notifications/matrix': typeof AdminNotificationsMatrixRoute
+  '/admin/notifications/providers': typeof AdminNotificationsProvidersRoute
   '/admin/orders/$orderId': typeof AdminOrdersOrderIdRoute
   '/admin/products/$productId': typeof AdminProductsProductIdRoute
   '/admin/products/new': typeof AdminProductsNewRoute
   '/admin/categories': typeof AdminCategoriesIndexRoute
   '/admin/cms': typeof AdminCmsIndexRoute
   '/admin/collections': typeof AdminCollectionsIndexRoute
+  '/admin/notifications': typeof AdminNotificationsIndexRoute
   '/admin/orders': typeof AdminOrdersIndexRoute
   '/admin/products': typeof AdminProductsIndexRoute
   '/admin/categories/$categoryId/edit': typeof AdminCategoriesCategoryIdEditRoute
   '/admin/collections/$collectionId/edit': typeof AdminCollectionsCollectionIdEditRoute
+  '/admin/notifications/templates/$templateId': typeof AdminNotificationsTemplatesTemplateIdRoute
   '/admin/categories/$categoryId': typeof AdminCategoriesCategoryIdIndexRoute
   '/admin/collections/$collectionId': typeof AdminCollectionsCollectionIdIndexRoute
+  '/admin/notifications/templates': typeof AdminNotificationsTemplatesIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -305,6 +381,7 @@ export interface FileRoutesById {
   '/admin/enquiries': typeof AdminEnquiriesRoute
   '/admin/inventory': typeof AdminInventoryRoute
   '/admin/login': typeof AdminLoginRoute
+  '/admin/notifications': typeof AdminNotificationsRouteWithChildren
   '/admin/orders': typeof AdminOrdersRouteWithChildren
   '/admin/products': typeof AdminProductsRouteWithChildren
   '/admin/reports': typeof AdminReportsRoute
@@ -318,18 +395,26 @@ export interface FileRoutesById {
   '/admin/cms/media': typeof AdminCmsMediaRoute
   '/admin/collections/$collectionId': typeof AdminCollectionsCollectionIdRouteWithChildren
   '/admin/collections/new': typeof AdminCollectionsNewRoute
+  '/admin/notifications/analytics': typeof AdminNotificationsAnalyticsRoute
+  '/admin/notifications/logs': typeof AdminNotificationsLogsRoute
+  '/admin/notifications/matrix': typeof AdminNotificationsMatrixRoute
+  '/admin/notifications/providers': typeof AdminNotificationsProvidersRoute
+  '/admin/notifications/templates': typeof AdminNotificationsTemplatesRouteWithChildren
   '/admin/orders/$orderId': typeof AdminOrdersOrderIdRoute
   '/admin/products/$productId': typeof AdminProductsProductIdRoute
   '/admin/products/new': typeof AdminProductsNewRoute
   '/admin/categories/': typeof AdminCategoriesIndexRoute
   '/admin/cms/': typeof AdminCmsIndexRoute
   '/admin/collections/': typeof AdminCollectionsIndexRoute
+  '/admin/notifications/': typeof AdminNotificationsIndexRoute
   '/admin/orders/': typeof AdminOrdersIndexRoute
   '/admin/products/': typeof AdminProductsIndexRoute
   '/admin/categories/$categoryId/edit': typeof AdminCategoriesCategoryIdEditRoute
   '/admin/collections/$collectionId/edit': typeof AdminCollectionsCollectionIdEditRoute
+  '/admin/notifications/templates/$templateId': typeof AdminNotificationsTemplatesTemplateIdRoute
   '/admin/categories/$categoryId/': typeof AdminCategoriesCategoryIdIndexRoute
   '/admin/collections/$collectionId/': typeof AdminCollectionsCollectionIdIndexRoute
+  '/admin/notifications/templates/': typeof AdminNotificationsTemplatesIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -344,6 +429,7 @@ export interface FileRouteTypes {
     | '/admin/enquiries'
     | '/admin/inventory'
     | '/admin/login'
+    | '/admin/notifications'
     | '/admin/orders'
     | '/admin/products'
     | '/admin/reports'
@@ -357,18 +443,26 @@ export interface FileRouteTypes {
     | '/admin/cms/media'
     | '/admin/collections/$collectionId'
     | '/admin/collections/new'
+    | '/admin/notifications/analytics'
+    | '/admin/notifications/logs'
+    | '/admin/notifications/matrix'
+    | '/admin/notifications/providers'
+    | '/admin/notifications/templates'
     | '/admin/orders/$orderId'
     | '/admin/products/$productId'
     | '/admin/products/new'
     | '/admin/categories/'
     | '/admin/cms/'
     | '/admin/collections/'
+    | '/admin/notifications/'
     | '/admin/orders/'
     | '/admin/products/'
     | '/admin/categories/$categoryId/edit'
     | '/admin/collections/$collectionId/edit'
+    | '/admin/notifications/templates/$templateId'
     | '/admin/categories/$categoryId/'
     | '/admin/collections/$collectionId/'
+    | '/admin/notifications/templates/'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -386,18 +480,25 @@ export interface FileRouteTypes {
     | '/admin/cms/$sectionKey'
     | '/admin/cms/media'
     | '/admin/collections/new'
+    | '/admin/notifications/analytics'
+    | '/admin/notifications/logs'
+    | '/admin/notifications/matrix'
+    | '/admin/notifications/providers'
     | '/admin/orders/$orderId'
     | '/admin/products/$productId'
     | '/admin/products/new'
     | '/admin/categories'
     | '/admin/cms'
     | '/admin/collections'
+    | '/admin/notifications'
     | '/admin/orders'
     | '/admin/products'
     | '/admin/categories/$categoryId/edit'
     | '/admin/collections/$collectionId/edit'
+    | '/admin/notifications/templates/$templateId'
     | '/admin/categories/$categoryId'
     | '/admin/collections/$collectionId'
+    | '/admin/notifications/templates'
   id:
     | '__root__'
     | '/'
@@ -410,6 +511,7 @@ export interface FileRouteTypes {
     | '/admin/enquiries'
     | '/admin/inventory'
     | '/admin/login'
+    | '/admin/notifications'
     | '/admin/orders'
     | '/admin/products'
     | '/admin/reports'
@@ -423,18 +525,26 @@ export interface FileRouteTypes {
     | '/admin/cms/media'
     | '/admin/collections/$collectionId'
     | '/admin/collections/new'
+    | '/admin/notifications/analytics'
+    | '/admin/notifications/logs'
+    | '/admin/notifications/matrix'
+    | '/admin/notifications/providers'
+    | '/admin/notifications/templates'
     | '/admin/orders/$orderId'
     | '/admin/products/$productId'
     | '/admin/products/new'
     | '/admin/categories/'
     | '/admin/cms/'
     | '/admin/collections/'
+    | '/admin/notifications/'
     | '/admin/orders/'
     | '/admin/products/'
     | '/admin/categories/$categoryId/edit'
     | '/admin/collections/$collectionId/edit'
+    | '/admin/notifications/templates/$templateId'
     | '/admin/categories/$categoryId/'
     | '/admin/collections/$collectionId/'
+    | '/admin/notifications/templates/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -507,6 +617,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AdminOrdersRouteImport
       parentRoute: typeof AdminRoute
     }
+    '/admin/notifications': {
+      id: '/admin/notifications'
+      path: '/notifications'
+      fullPath: '/admin/notifications'
+      preLoaderRoute: typeof AdminNotificationsRouteImport
+      parentRoute: typeof AdminRoute
+    }
     '/admin/login': {
       id: '/admin/login'
       path: '/login'
@@ -577,6 +694,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AdminOrdersIndexRouteImport
       parentRoute: typeof AdminOrdersRoute
     }
+    '/admin/notifications/': {
+      id: '/admin/notifications/'
+      path: '/'
+      fullPath: '/admin/notifications/'
+      preLoaderRoute: typeof AdminNotificationsIndexRouteImport
+      parentRoute: typeof AdminNotificationsRoute
+    }
     '/admin/collections/': {
       id: '/admin/collections/'
       path: '/'
@@ -618,6 +742,41 @@ declare module '@tanstack/react-router' {
       fullPath: '/admin/orders/$orderId'
       preLoaderRoute: typeof AdminOrdersOrderIdRouteImport
       parentRoute: typeof AdminOrdersRoute
+    }
+    '/admin/notifications/templates': {
+      id: '/admin/notifications/templates'
+      path: '/templates'
+      fullPath: '/admin/notifications/templates'
+      preLoaderRoute: typeof AdminNotificationsTemplatesRouteImport
+      parentRoute: typeof AdminNotificationsRoute
+    }
+    '/admin/notifications/providers': {
+      id: '/admin/notifications/providers'
+      path: '/providers'
+      fullPath: '/admin/notifications/providers'
+      preLoaderRoute: typeof AdminNotificationsProvidersRouteImport
+      parentRoute: typeof AdminNotificationsRoute
+    }
+    '/admin/notifications/matrix': {
+      id: '/admin/notifications/matrix'
+      path: '/matrix'
+      fullPath: '/admin/notifications/matrix'
+      preLoaderRoute: typeof AdminNotificationsMatrixRouteImport
+      parentRoute: typeof AdminNotificationsRoute
+    }
+    '/admin/notifications/logs': {
+      id: '/admin/notifications/logs'
+      path: '/logs'
+      fullPath: '/admin/notifications/logs'
+      preLoaderRoute: typeof AdminNotificationsLogsRouteImport
+      parentRoute: typeof AdminNotificationsRoute
+    }
+    '/admin/notifications/analytics': {
+      id: '/admin/notifications/analytics'
+      path: '/analytics'
+      fullPath: '/admin/notifications/analytics'
+      preLoaderRoute: typeof AdminNotificationsAnalyticsRouteImport
+      parentRoute: typeof AdminNotificationsRoute
     }
     '/admin/collections/new': {
       id: '/admin/collections/new'
@@ -661,6 +820,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AdminCategoriesCategoryIdRouteImport
       parentRoute: typeof AdminCategoriesRoute
     }
+    '/admin/notifications/templates/': {
+      id: '/admin/notifications/templates/'
+      path: '/'
+      fullPath: '/admin/notifications/templates/'
+      preLoaderRoute: typeof AdminNotificationsTemplatesIndexRouteImport
+      parentRoute: typeof AdminNotificationsTemplatesRoute
+    }
     '/admin/collections/$collectionId/': {
       id: '/admin/collections/$collectionId/'
       path: '/'
@@ -674,6 +840,13 @@ declare module '@tanstack/react-router' {
       fullPath: '/admin/categories/$categoryId/'
       preLoaderRoute: typeof AdminCategoriesCategoryIdIndexRouteImport
       parentRoute: typeof AdminCategoriesCategoryIdRoute
+    }
+    '/admin/notifications/templates/$templateId': {
+      id: '/admin/notifications/templates/$templateId'
+      path: '/$templateId'
+      fullPath: '/admin/notifications/templates/$templateId'
+      preLoaderRoute: typeof AdminNotificationsTemplatesTemplateIdRouteImport
+      parentRoute: typeof AdminNotificationsTemplatesRoute
     }
     '/admin/collections/$collectionId/edit': {
       id: '/admin/collections/$collectionId/edit'
@@ -774,6 +947,46 @@ const AdminCollectionsRouteChildren: AdminCollectionsRouteChildren = {
 const AdminCollectionsRouteWithChildren =
   AdminCollectionsRoute._addFileChildren(AdminCollectionsRouteChildren)
 
+interface AdminNotificationsTemplatesRouteChildren {
+  AdminNotificationsTemplatesTemplateIdRoute: typeof AdminNotificationsTemplatesTemplateIdRoute
+  AdminNotificationsTemplatesIndexRoute: typeof AdminNotificationsTemplatesIndexRoute
+}
+
+const AdminNotificationsTemplatesRouteChildren: AdminNotificationsTemplatesRouteChildren =
+  {
+    AdminNotificationsTemplatesTemplateIdRoute:
+      AdminNotificationsTemplatesTemplateIdRoute,
+    AdminNotificationsTemplatesIndexRoute:
+      AdminNotificationsTemplatesIndexRoute,
+  }
+
+const AdminNotificationsTemplatesRouteWithChildren =
+  AdminNotificationsTemplatesRoute._addFileChildren(
+    AdminNotificationsTemplatesRouteChildren,
+  )
+
+interface AdminNotificationsRouteChildren {
+  AdminNotificationsAnalyticsRoute: typeof AdminNotificationsAnalyticsRoute
+  AdminNotificationsLogsRoute: typeof AdminNotificationsLogsRoute
+  AdminNotificationsMatrixRoute: typeof AdminNotificationsMatrixRoute
+  AdminNotificationsProvidersRoute: typeof AdminNotificationsProvidersRoute
+  AdminNotificationsTemplatesRoute: typeof AdminNotificationsTemplatesRouteWithChildren
+  AdminNotificationsIndexRoute: typeof AdminNotificationsIndexRoute
+}
+
+const AdminNotificationsRouteChildren: AdminNotificationsRouteChildren = {
+  AdminNotificationsAnalyticsRoute: AdminNotificationsAnalyticsRoute,
+  AdminNotificationsLogsRoute: AdminNotificationsLogsRoute,
+  AdminNotificationsMatrixRoute: AdminNotificationsMatrixRoute,
+  AdminNotificationsProvidersRoute: AdminNotificationsProvidersRoute,
+  AdminNotificationsTemplatesRoute:
+    AdminNotificationsTemplatesRouteWithChildren,
+  AdminNotificationsIndexRoute: AdminNotificationsIndexRoute,
+}
+
+const AdminNotificationsRouteWithChildren =
+  AdminNotificationsRoute._addFileChildren(AdminNotificationsRouteChildren)
+
 interface AdminOrdersRouteChildren {
   AdminOrdersOrderIdRoute: typeof AdminOrdersOrderIdRoute
   AdminOrdersIndexRoute: typeof AdminOrdersIndexRoute
@@ -813,6 +1026,7 @@ interface AdminRouteChildren {
   AdminEnquiriesRoute: typeof AdminEnquiriesRoute
   AdminInventoryRoute: typeof AdminInventoryRoute
   AdminLoginRoute: typeof AdminLoginRoute
+  AdminNotificationsRoute: typeof AdminNotificationsRouteWithChildren
   AdminOrdersRoute: typeof AdminOrdersRouteWithChildren
   AdminProductsRoute: typeof AdminProductsRouteWithChildren
   AdminReportsRoute: typeof AdminReportsRoute
@@ -831,6 +1045,7 @@ const AdminRouteChildren: AdminRouteChildren = {
   AdminEnquiriesRoute: AdminEnquiriesRoute,
   AdminInventoryRoute: AdminInventoryRoute,
   AdminLoginRoute: AdminLoginRoute,
+  AdminNotificationsRoute: AdminNotificationsRouteWithChildren,
   AdminOrdersRoute: AdminOrdersRouteWithChildren,
   AdminProductsRoute: AdminProductsRouteWithChildren,
   AdminReportsRoute: AdminReportsRoute,
