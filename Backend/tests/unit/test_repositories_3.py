@@ -289,18 +289,14 @@ class TestReturnRepository:
         mock_result = MagicMock()
         mock_result.fetchone.return_value = MagicMock()
         db = _db(mock_result)
-        result = await self.repo.is_within_return_window(
-            db, uuid.uuid4(), uuid.uuid4()
-        )
+        result = await self.repo.is_within_return_window(db, uuid.uuid4(), uuid.uuid4())
         assert result is True
 
     async def test_is_within_return_window_false(self):
         mock_result = MagicMock()
         mock_result.fetchone.return_value = None
         db = _db(mock_result)
-        result = await self.repo.is_within_return_window(
-            db, uuid.uuid4(), uuid.uuid4()
-        )
+        result = await self.repo.is_within_return_window(db, uuid.uuid4(), uuid.uuid4())
         assert result is False
 
 
