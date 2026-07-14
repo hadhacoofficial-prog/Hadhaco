@@ -1,3 +1,4 @@
+import sys
 import warnings
 from functools import lru_cache
 
@@ -370,11 +371,16 @@ def validate_production_safety(s: Settings) -> None:
                 f'Generate a real secret with: python -c "import secrets; print(secrets.token_urlsafe(64))"'
             )
 
-    # Razorpay keys must not be test keys in production.
+    # Razorpay test key in production is a warning, not a blocker — payments
+    # will simply fail against Razorpay's test environment until the live key
+    # is set, but the rest of the app (catalog, CMS, notifications, etc.)
+    # must not be taken down for it.
     if s.RAZORPAY_KEY_ID and s.RAZORPAY_KEY_ID.startswith("rzp_test_"):
-        violations.append(
-            "RAZORPAY_KEY_ID is a test key (rzp_test_*) in production. "
-            "Set RAZORPAY_KEY_ID to your live Razorpay key."
+        print(
+            "\n[Hadha.co] WARNING — RAZORPAY_KEY_ID is a test key (rzp_test_*) "
+            "in production. Payments will not work against live Razorpay until "
+            "RAZORPAY_KEY_ID is set to your live key.\n",
+            file=sys.stderr,
         )
 
     if violations:
