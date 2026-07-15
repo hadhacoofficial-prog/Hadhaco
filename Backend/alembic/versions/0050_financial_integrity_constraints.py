@@ -43,25 +43,43 @@ def upgrade() -> None:
 
     # 2. CHECK: payments.status must be a known value
     op.execute(
+        "DO $$ BEGIN "
+        "IF NOT EXISTS ("
+        "  SELECT 1 FROM pg_constraint WHERE conname = 'payments_status_check'"
+        ") THEN "
         "ALTER TABLE payments ADD CONSTRAINT payments_status_check "
         "CHECK (status IN ('created','captured','failed','refunded','partially_refunded')) "
-        "NOT VALID"
+        "NOT VALID; "
+        "END IF; "
+        "END $$;"
     )
     op.execute("ALTER TABLE payments VALIDATE CONSTRAINT payments_status_check")
 
     # 3. CHECK: refunds.status must be a known value
     op.execute(
+        "DO $$ BEGIN "
+        "IF NOT EXISTS ("
+        "  SELECT 1 FROM pg_constraint WHERE conname = 'refunds_status_check'"
+        ") THEN "
         "ALTER TABLE refunds ADD CONSTRAINT refunds_status_check "
         "CHECK (status IN ('pending','processed','failed')) "
-        "NOT VALID"
+        "NOT VALID; "
+        "END IF; "
+        "END $$;"
     )
     op.execute("ALTER TABLE refunds VALIDATE CONSTRAINT refunds_status_check")
 
     # 4. CHECK: payments.currency must not be empty (defensive)
     op.execute(
+        "DO $$ BEGIN "
+        "IF NOT EXISTS ("
+        "  SELECT 1 FROM pg_constraint WHERE conname = 'payments_currency_check'"
+        ") THEN "
         "ALTER TABLE payments ADD CONSTRAINT payments_currency_check "
         "CHECK (currency IS NOT NULL AND length(currency) > 0) "
-        "NOT VALID"
+        "NOT VALID; "
+        "END IF; "
+        "END $$;"
     )
     op.execute("ALTER TABLE payments VALIDATE CONSTRAINT payments_currency_check")
 
