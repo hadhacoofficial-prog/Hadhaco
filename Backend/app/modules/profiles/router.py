@@ -1,3 +1,4 @@
+import uuid
 from typing import Annotated
 
 import redis.asyncio as aioredis
@@ -17,12 +18,15 @@ from app.common.responses import BaseSuccessResponse, ok
 from app.core.database import get_db
 from app.core.dependencies import (
     get_current_user,
+    get_jwt_payload,
     profile_cache_key,
     require_2fa_verified,
     require_admin,
     require_super_admin,
 )
 from app.core.redis import get_redis, safe_redis_delete
+from app.core.security import JWTPayload
+from app.middleware.rate_limit import get_client_ip
 from app.modules.media.repository import ImageRepository
 from app.modules.media.universal_service import (
     UniversalImageService,
@@ -69,9 +73,25 @@ async def _to_profile_response(db: AsyncSession, profile: Profile) -> ProfileRes
 
 @router.get("/me", response_model=BaseSuccessResponse[ProfileResponse])
 async def get_my_profile(
+    request: Request,
     current_user: Profile = Depends(get_current_user),
+    payload: JWTPayload = Depends(get_jwt_payload),
     db: AsyncSession = Depends(get_db),
+    redis: aioredis.Redis = Depends(get_redis),
 ) -> BaseSuccessResponse[ProfileResponse]:
+    if current_user.role in ("admin", "super_admin") and payload.session_id:
+        from app.modules.auth.service import AuthService
+
+        await AuthService().track_admin_login_if_new_session(
+            db,
+            redis,
+            user_id=str(current_user.id),
+            user_email=current_user.email,
+            user_role=current_user.role,
+            session_id=payload.session_id,
+            ip_address=get_client_ip(request),
+            user_agent=request.headers.get("user-agent"),
+        )
     return ok(
         await _to_profile_response(db, current_user),
         ResponseCode.USER_PROFILE_FETCHED,
@@ -200,7 +220,7 @@ async def set_user_status(
     summary="Force reset 2FA for an admin user (super_admin only)",
 )
 async def force_reset_2fa(
-    user_id: str,
+    user_id: uuid.UUID,
     request: Request,
     actor: Profile = Depends(require_super_admin),
     db: AsyncSession = Depends(get_db),
@@ -209,7 +229,7 @@ async def force_reset_2fa(
     from app.modules.auth.service import AuthService
 
     svc = AuthService()
-    await svc.force_reset_2fa(db, user_id)
+    await svc.force_reset_2fa(db, str(user_id))
     await AuditService().log(
         db,
         actor_id=str(actor.id),
@@ -217,8 +237,8 @@ async def force_reset_2fa(
         actor_role=actor.role,
         action="2fa_force_reset",
         resource_type="admin_2fa",
-        resource_id=user_id,
-        ip_address=request.client.host if request.client else "unknown",
+        resource_id=str(user_id),
+        ip_address=get_client_ip(request),
         user_agent=request.headers.get("user-agent"),
     )
     return ok(None, ResponseCode.AUTH_2FA_VERIFIED, "2FA has been reset for this user")

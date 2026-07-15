@@ -451,7 +451,7 @@ class TestVerifyAndFulfill:
                 await self.svc.verify_and_fulfill(db, uuid.uuid4(), payload)
 
     async def test_valid_payment_completes_reservations(self):
-        """Happy path: valid HMAC → complete_order_reservations called, commit issued."""
+        """Happy path: valid HMAC → complete_reservations_for_order called, commit issued."""
         user_id = uuid.uuid4()
         order = _make_order(
             user_id=user_id, status="payment_pending", payment_status="pending"
@@ -469,9 +469,6 @@ class TestVerifyAndFulfill:
         payload.razorpay_signature = sig
 
         db = AsyncMock()
-        no_expired = MagicMock()
-        no_expired.fetchone.return_value = None
-        db.execute = AsyncMock(return_value=no_expired)
         # db.begin_nested() is used as an async context manager around the
         # payment insert (SAVEPOINT for the duplicate-payment race guard).
         nested_cm = AsyncMock()
@@ -483,7 +480,7 @@ class TestVerifyAndFulfill:
             "app.modules.orders.service._repo.get_by_id", AsyncMock(return_value=order)
         ):
             with patch(
-                "app.modules.orders.service._reservation_svc.complete_order_reservations",
+                "app.modules.orders.service._reservation_svc.complete_reservations_for_order",
                 AsyncMock(),
             ) as mock_complete:
                 with patch(

@@ -45,10 +45,24 @@ class Settings(BaseSettings):
     # ── Security ───────────────────────────────────────────────────────────────
     SECRET_KEY: str
     ENCRYPTION_KEY: str
+    # Comma-separated Fernet keys retired from active use but still needed to
+    # decrypt data encrypted under them (e.g. existing Admin2FA.totp_secret
+    # values). Safe key rotation: generate a new key, set it as
+    # ENCRYPTION_KEY, move the *old* key here, deploy — decryption keeps
+    # working for every existing value while all new/re-encrypted values use
+    # the new key. Drop an old key from this list only once nothing still
+    # depends on it (re-encrypt existing rows, or accept they age out).
+    ENCRYPTION_KEY_LEGACY: str = ""
     ALLOWED_ORIGINS: str = (
         "http://localhost:8081,http://127.0.0.1:8081,http://localhost:3000,http://localhost:5173,http://localhost:8080,http://localhost:8081,http://www.localhost:3000,http://www.localhost:5173,http://www.localhost:8080,http://www.localhost:8081"
     )
     ALLOWED_HOSTS: str = "localhost,127.0.0.1"
+    # Extra IPs (beyond private/loopback ranges, which are always trusted) to
+    # trust X-Real-IP/X-Forwarded-For from — e.g. a reverse proxy or load
+    # balancer with a public IP. Comma-separated. Empty by default: private/
+    # loopback peers cover the common Docker/internal-network deployment
+    # without any configuration.
+    TRUSTED_PROXY_IPS: str = ""
 
     # ── Supabase ───────────────────────────────────────────────────────────────
     SUPABASE_URL: str
@@ -210,6 +224,16 @@ class Settings(BaseSettings):
     @property
     def allowed_hosts_list(self) -> list[str]:
         return [h.strip() for h in self.ALLOWED_HOSTS.split(",") if h.strip()]
+
+    @property
+    def trusted_proxy_ips_list(self) -> list[str]:
+        return [ip.strip() for ip in self.TRUSTED_PROXY_IPS.split(",") if ip.strip()]
+
+    @property
+    def encryption_keys_list(self) -> list[str]:
+        """Primary key first, then any retired keys — for MultiFernet."""
+        legacy = [k.strip() for k in self.ENCRYPTION_KEY_LEGACY.split(",") if k.strip()]
+        return [self.ENCRYPTION_KEY, *legacy]
 
     @property
     def is_production(self) -> bool:

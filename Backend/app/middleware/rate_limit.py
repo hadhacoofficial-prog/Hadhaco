@@ -20,6 +20,7 @@ sliding-window implementation.  Import and use as FastAPI dependencies:
         ...
 """
 
+import ipaddress
 import time
 from dataclasses import dataclass
 
@@ -31,6 +32,28 @@ from app.core.config import settings
 from app.core.redis import get_redis_pool
 
 log = structlog.get_logger(__name__)
+
+
+def _is_trusted_proxy_peer(peer_ip: str) -> bool:
+    """
+    True if *peer_ip* — the actual TCP connection's source address, not
+    anything header-supplied — is allowed to set X-Real-IP/X-Forwarded-For.
+
+    Private/loopback ranges are always trusted (covers the common case: a
+    reverse proxy on the same Docker network or internal VPC) plus anything
+    explicitly listed in TRUSTED_PROXY_IPS (e.g. a public-IP load balancer).
+    If the request's direct peer isn't trusted, forwarding headers are
+    attacker-controlled input and must be ignored — otherwise any client
+    that can reach the API directly could spoof its own rate-limit key,
+    audit-log IP, and new-device/location detection.
+    """
+    if peer_ip in settings.trusted_proxy_ips_list:
+        return True
+    try:
+        addr = ipaddress.ip_address(peer_ip)
+    except ValueError:
+        return False
+    return addr.is_private or addr.is_loopback
 
 
 async def check_rate_limit(
@@ -49,7 +72,7 @@ async def check_rate_limit(
     Fails OPEN: a Redis outage must degrade rate limiting, not take the
     API down with it.
     """
-    ip = _get_client_ip(request)
+    ip = get_client_ip(request)
     path = request.url.path
     key = f"{key_prefix}:{ip}:{path}"
     now = time.time()
@@ -68,6 +91,14 @@ async def check_rate_limit(
 
     count: int = results[2]
     if count > limit:
+        log.warning(
+            "rate_limit_exceeded",
+            key_prefix=key_prefix,
+            path=path,
+            ip=ip,
+            count=count,
+            limit=limit,
+        )
         raise HTTPException(
             status_code=status.HTTP_429_TOO_MANY_REQUESTS,
             detail="Too many requests. Please slow down.",
@@ -80,42 +111,41 @@ async def check_rate_limit(
         )
 
 
-def _get_client_ip(request: Request) -> str:
+def get_client_ip(request: Request) -> str:
     """
     Extract the real client IP.
 
-    Strategy (defense in depth):
-    1. X-Real-IP — set by Nginx, always the true client IP (preferred).
-    2. X-Forwarded-For — only used when behind a trusted proxy.
-       Without a trusted-proxy allowlist we take the *last* non-private IP
-       in the chain (closest to the internet), not the first (which the
-       client controls).
-    3. request.client.host — direct connection IP.
+    X-Real-IP/X-Forwarded-For are trusted *only* when the request's direct
+    TCP peer is itself a trusted reverse proxy (private/loopback range, or
+    explicitly listed in TRUSTED_PROXY_IPS) — see _is_trusted_proxy_peer.
+    If the API is reachable directly (bypassing the reverse proxy) from an
+    untrusted address, these headers are attacker-controlled input and are
+    ignored entirely, falling back to the actual socket peer address.
 
-    IMPORTANT: This implementation assumes Nginx/Cloudflare is always in front.
-    If the API can be reached directly (bypassing the reverse proxy), rate-limit
-    bypass via spoofed headers is possible.  Mitigation: restrict network access
-    to the API port at the infrastructure level (firewall / security group).
+    Strategy once the peer is trusted:
+    1. X-Real-IP — set by Nginx, always the true client IP (preferred).
+    2. X-Forwarded-For — take the *last* entry (the proxy's own view of the
+       client, per RFC 7239: client, proxy1, proxy2, ...).
+    3. request.client.host — direct connection IP.
     """
+    direct_ip = request.client.host if request.client else "unknown"
+
+    if not _is_trusted_proxy_peer(direct_ip):
+        return direct_ip
+
     # Prefer X-Real-IP (set by Nginx's proxy_set_header).
     real_ip = request.headers.get("X-Real-IP", "").strip()
     if real_ip:
         return real_ip
 
-    # Fall back to X-Forwarded-For — take the rightmost untrusted IP.
+    # Fall back to X-Forwarded-For — take the rightmost entry.
     forwarded = request.headers.get("X-Forwarded-For", "")
     if forwarded:
-        # Per RFC 7239: client, proxy1, proxy2, ...
-        # The rightmost address that is NOT a private/reserved IP is the
-        # true client.  For simplicity, take the last entry (which is the
-        # the proxy's view of the client IP).
         parts = [p.strip() for p in forwarded.split(",") if p.strip()]
         if parts:
             return parts[-1]
 
-    if request.client:
-        return request.client.host
-    return "unknown"
+    return direct_ip
 
 
 # ── Named rate-limit policies ────────────────────────────────────────────────
@@ -175,6 +205,10 @@ rate_limit_2fa_validate = _make_policy_dependency(
 # Dev login: dev-only but still needs brute-force protection
 rate_limit_dev_login = _make_policy_dependency(
     _RateLimitPolicy(limit=5, window=60, key_prefix="rl:auth:dev-login")
+)
+# Admin session list/revoke: security-dashboard traffic, moderate frequency.
+rate_limit_admin_sessions = _make_policy_dependency(
+    _RateLimitPolicy(limit=30, window=60, key_prefix="rl:auth:admin-sessions")
 )
 
 

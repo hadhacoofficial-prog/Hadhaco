@@ -1,4 +1,7 @@
+import uuid
+
 import redis.asyncio as aioredis
+import structlog
 from fastapi import APIRouter, Depends, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -8,25 +11,31 @@ from app.core.database import get_db
 from app.core.dependencies import (
     get_current_user,
     get_jwt_payload,
+    require_admin,
     require_admin_role,
     require_super_admin,
 )
-from app.core.exceptions import AuthorizationError
+from app.core.exceptions import AuthorizationError, NotFoundError
 from app.core.redis import get_redis
 from app.core.security import JWTPayload
 from app.middleware.rate_limit import (
+    get_client_ip,
     rate_limit_2fa_setup,
     rate_limit_2fa_validate,
     rate_limit_2fa_verify,
+    rate_limit_admin_sessions,
     rate_limit_force_logout,
     rate_limit_logout,
     rate_limit_verify_token,
 )
 from app.modules.audit.service import AuditService
 from app.modules.auth.schemas import (
+    AdminSessionListResponse,
+    AdminSessionOut,
     Disable2FARequest,
     RegenerateBackupCodesRequest,
     RegenerateBackupCodesResponse,
+    RevokeSessionResponse,
     Setup2FAResponse,
     TwoFactorStatusResponse,
     Validate2FARequest,
@@ -43,11 +52,56 @@ router = APIRouter(prefix="/auth", tags=["auth"])
 _svc = AuthService()
 _image_repo = ImageRepository()
 _audit = AuditService()
+_log = structlog.get_logger(__name__)
+
+# Single toggle gating every admin security-notification email — off by
+# default. Managed the same way as every other flag (Settings > Feature
+# Flags), no separate config surface.
+ADMIN_LOGIN_NOTIFICATIONS_FLAG = "admin_login_notifications"
 
 
 def _client_meta(request: Request) -> tuple[str, str | None]:
-    ip = request.client.host if request.client else "unknown"
-    return ip, request.headers.get("user-agent")
+    # get_client_ip honors X-Real-IP/X-Forwarded-For from the reverse proxy —
+    # request.client.host alone would record the proxy's own address for
+    # every request in any deployment that sits behind one, silently
+    # breaking new-location detection and the audit trail's forensic value.
+    return get_client_ip(request), request.headers.get("user-agent")
+
+
+async def _notify_security_event(
+    db: AsyncSession, current_user: Profile, subject: str, message: str
+) -> None:
+    """
+    Best-effort security-alert email via the existing Resend/notification
+    dispatcher — gated behind ADMIN_LOGIN_NOTIFICATIONS_FLAG (off by
+    default). Never raises: a delivery failure must not block the request
+    that triggered it.
+    """
+    from app.modules.notifications.dispatcher import dispatcher
+    from app.modules.settings.service import SettingsService
+
+    try:
+        if not await SettingsService.is_feature_enabled(
+            db, ADMIN_LOGIN_NOTIFICATIONS_FLAG
+        ):
+            return
+        await dispatcher.send_email(
+            db,
+            to=current_user.email,
+            subject=subject,
+            html=f"<p>{message}</p><p>If this wasn't you, revoke your sessions immediately from Settings &rarr; Security and re-enable 2FA.</p>",
+        )
+    except Exception:
+        # Best-effort: a delivery failure must never block the request that
+        # triggered it, but silently swallowing it entirely would let every
+        # notification quietly stop working (e.g. a Resend outage or a typo)
+        # with no way to notice. Log it; never re-raise.
+        _log.warning(
+            "admin_security_notification_failed",
+            actor_id=str(current_user.id),
+            subject=subject,
+            exc_info=True,
+        )
 
 
 @router.post(
@@ -57,9 +111,29 @@ def _client_meta(request: Request) -> tuple[str, str | None]:
     dependencies=[Depends(rate_limit_verify_token)],
 )
 async def verify_token(
+    request: Request,
     current_user: Profile = Depends(get_current_user),
+    payload: JWTPayload = Depends(get_jwt_payload),
     db: AsyncSession = Depends(get_db),
+    redis: aioredis.Redis = Depends(get_redis),
 ) -> BaseSuccessResponse[VerifyTokenResponse]:
+    # NOTE: the admin frontend never actually calls /auth/verify-token — the
+    # real per-page-load call is GET /me (see profiles/router.py), which is
+    # where track_admin_login_if_new_session is wired in. Kept here too
+    # (harmless, correct, just currently unreached by this frontend) in case
+    # some other client legitimately uses this endpoint per its own docs.
+    if current_user.role in ("admin", "super_admin") and payload.session_id:
+        ip, ua = _client_meta(request)
+        await _svc.track_admin_login_if_new_session(
+            db,
+            redis,
+            user_id=str(current_user.id),
+            user_email=current_user.email,
+            user_role=current_user.role,
+            session_id=payload.session_id,
+            ip_address=ip,
+            user_agent=ua,
+        )
     avatar_url = None
     if current_user.primary_image_id:
         # get_primary_variant_urls looks up by owner_id (the profile's own
@@ -93,12 +167,26 @@ async def verify_token(
     dependencies=[Depends(rate_limit_logout)],
 )
 async def logout(
+    request: Request,
     current_user: Profile = Depends(get_current_user),
     payload: JWTPayload = Depends(get_jwt_payload),
     db: AsyncSession = Depends(get_db),
 ) -> BaseSuccessResponse[None]:
     await _svc.logout(db, str(current_user.id))
     await _svc.clear_admin_session_2fa(db, str(current_user.id), payload.session_id)
+    if current_user.role in ("admin", "super_admin"):
+        ip, ua = _client_meta(request)
+        await _audit.log(
+            db,
+            actor_id=str(current_user.id),
+            actor_email=current_user.email,
+            actor_role=current_user.role,
+            action="admin_logout",
+            resource_type="profile",
+            resource_id=str(current_user.id),
+            ip_address=ip,
+            user_agent=ua,
+        )
     return ok(None, ResponseCode.AUTH_LOGOUT_SUCCESS, "Logged out successfully")
 
 
@@ -109,13 +197,14 @@ async def logout(
     dependencies=[Depends(rate_limit_force_logout)],
 )
 async def force_logout(
-    user_id: str,
+    user_id: uuid.UUID,
     request: Request,
     actor: Profile = Depends(require_super_admin),
     db: AsyncSession = Depends(get_db),
 ) -> BaseSuccessResponse[None]:
-    await _svc.force_logout(db, user_id)
-    await _svc.clear_all_admin_sessions_2fa(db, user_id)
+    user_id_str = str(user_id)
+    await _svc.force_logout(db, user_id_str)
+    await _svc.clear_all_admin_sessions_2fa(db, user_id_str)
     ip, ua = _client_meta(request)
     await _audit.log(
         db,
@@ -124,7 +213,7 @@ async def force_logout(
         actor_role=actor.role,
         action="admin_force_logout",
         resource_type="profile",
-        resource_id=user_id,
+        resource_id=user_id_str,
         ip_address=ip,
         user_agent=ua,
     )
@@ -239,13 +328,23 @@ async def validate_2fa(
             code="2FA_LOCKED",
         )
 
-    valid = await _svc.validate_2fa(db, user_id, body.totp_code)
+    valid, method = await _svc.validate_2fa_detailed(db, user_id, body.totp_code)
 
     if valid:
         await _svc.clear_2fa_failures(redis, user_id)
+        # Check against sessions that exist *before* this login's own row is
+        # created/updated below, otherwise it would always match itself.
+        is_new_device = await _svc.is_new_device(db, user_id, ip, ua)
         if payload.session_id:
             await _svc.mark_admin_session_2fa_verified(
                 db, user_id, payload.session_id, ip, ua
+            )
+        if is_new_device:
+            await _notify_security_event(
+                db,
+                current_user,
+                "New sign-in to your Hadha admin account",
+                f"A new sign-in to your admin account was just verified from IP {ip}.",
             )
         await _audit.log(
             db,
@@ -255,9 +354,22 @@ async def validate_2fa(
             action="2fa_verify_success",
             resource_type="admin_2fa",
             resource_id=user_id,
+            metadata={"method": method},
             ip_address=ip,
             user_agent=ua,
         )
+        if method == "backup_code":
+            await _audit.log(
+                db,
+                actor_id=user_id,
+                actor_email=current_user.email,
+                actor_role=current_user.role,
+                action="2fa_backup_code_used",
+                resource_type="admin_2fa",
+                resource_id=user_id,
+                ip_address=ip,
+                user_agent=ua,
+            )
     else:
         failure_count = await _svc.record_2fa_failure(redis, user_id)
         await _audit.log(
@@ -268,7 +380,13 @@ async def validate_2fa(
             action="2fa_verify_failed",
             resource_type="admin_2fa",
             resource_id=user_id,
-            metadata={"failure_count": failure_count},
+            # method == "replay" means the code was cryptographically valid
+            # but already consumed this time-step — a materially different
+            # signal (a captured/intercepted code) than a plain wrong guess.
+            metadata={
+                "failure_count": failure_count,
+                "reason": method or "invalid_code",
+            },
             ip_address=ip,
             user_agent=ua,
         )
@@ -322,6 +440,12 @@ async def disable_2fa(
         ip_address=ip,
         user_agent=ua,
     )
+    await _notify_security_event(
+        db,
+        current_user,
+        "Two-factor authentication disabled",
+        "Two-factor authentication was just disabled on your Hadha admin account.",
+    )
     return ok(None, ResponseCode.AUTH_2FA_VERIFIED, "2FA disabled successfully")
 
 
@@ -350,6 +474,12 @@ async def regenerate_backup_codes(
         ip_address=ip,
         user_agent=ua,
     )
+    await _notify_security_event(
+        db,
+        current_user,
+        "Backup codes regenerated",
+        "Your two-factor backup codes were just regenerated — all previous codes are now invalid.",
+    )
     return ok(
         RegenerateBackupCodesResponse(
             message="Backup codes regenerated. Save them — they will not be shown again.",
@@ -357,4 +487,159 @@ async def regenerate_backup_codes(
         ),
         ResponseCode.AUTH_2FA_VERIFIED,
         "Backup codes regenerated",
+    )
+
+
+# ── Admin session dashboard ───────────────────────────────────────────────────
+
+
+@router.get(
+    "/admin/sessions",
+    response_model=BaseSuccessResponse[AdminSessionListResponse],
+    summary="List this admin's active sessions",
+    dependencies=[Depends(rate_limit_admin_sessions)],
+)
+async def list_admin_sessions(
+    current_user: Profile = Depends(require_admin),
+    payload: JWTPayload = Depends(get_jwt_payload),
+    db: AsyncSession = Depends(get_db),
+) -> BaseSuccessResponse[AdminSessionListResponse]:
+    rows = await _svc.list_admin_sessions(db, str(current_user.id))
+    sessions = []
+    for row in rows:
+        item = AdminSessionOut.model_validate(row)
+        item.is_current = row.supabase_session_id == payload.session_id
+        sessions.append(item)
+    return ok(
+        AdminSessionListResponse(sessions=sessions),
+        ResponseCode.AUTH_SESSIONS_LISTED,
+        "Sessions fetched successfully",
+    )
+
+
+@router.delete(
+    "/admin/sessions/{session_row_id}",
+    response_model=BaseSuccessResponse[RevokeSessionResponse],
+    summary="Revoke one admin session",
+    dependencies=[Depends(rate_limit_admin_sessions)],
+)
+async def revoke_admin_session(
+    session_row_id: uuid.UUID,
+    request: Request,
+    current_user: Profile = Depends(require_admin),
+    payload: JWTPayload = Depends(get_jwt_payload),
+    db: AsyncSession = Depends(get_db),
+) -> BaseSuccessResponse[RevokeSessionResponse]:
+    deleted, was_current = await _svc.revoke_admin_session(
+        db,
+        str(current_user.id),
+        str(session_row_id),
+        current_session_id=payload.session_id,
+    )
+    if was_current:
+        raise AuthorizationError(
+            'Can\'t revoke your current session this way — use "Log out" '
+            'or "Log out all sessions" instead.',
+            code="CANNOT_REVOKE_CURRENT_SESSION",
+        )
+    if not deleted:
+        raise NotFoundError("Session not found")
+    ip, ua = _client_meta(request)
+    await _audit.log(
+        db,
+        actor_id=str(current_user.id),
+        actor_email=current_user.email,
+        actor_role=current_user.role,
+        action="admin_session_revoked",
+        resource_type="admin_session",
+        resource_id=str(session_row_id),
+        ip_address=ip,
+        user_agent=ua,
+    )
+    return ok(
+        RevokeSessionResponse(revoked_count=1),
+        ResponseCode.AUTH_SESSION_REVOKED,
+        "Session revoked",
+    )
+
+
+@router.post(
+    "/admin/sessions/revoke-others",
+    response_model=BaseSuccessResponse[RevokeSessionResponse],
+    summary="Revoke every other admin session, keeping the current one",
+    dependencies=[Depends(rate_limit_admin_sessions)],
+)
+async def revoke_other_admin_sessions(
+    request: Request,
+    current_user: Profile = Depends(require_admin),
+    payload: JWTPayload = Depends(get_jwt_payload),
+    db: AsyncSession = Depends(get_db),
+) -> BaseSuccessResponse[RevokeSessionResponse]:
+    count = await _svc.revoke_other_admin_sessions(
+        db, str(current_user.id), payload.session_id
+    )
+    ip, ua = _client_meta(request)
+    await _audit.log(
+        db,
+        actor_id=str(current_user.id),
+        actor_email=current_user.email,
+        actor_role=current_user.role,
+        action="admin_sessions_revoked_others",
+        resource_type="admin_session",
+        resource_id=str(current_user.id),
+        metadata={"revoked_count": count},
+        ip_address=ip,
+        user_agent=ua,
+    )
+    if count > 0:
+        # Only notify when there was actually something to revoke — the
+        # caller who just clicked this button already knows; this is for
+        # visibility if the action wasn't something they consciously did in
+        # this tab (e.g. triggered from a different device).
+        await _notify_security_event(
+            db,
+            current_user,
+            "Other sessions signed out",
+            f"{count} other session(s) on your Hadha admin account were just signed out.",
+        )
+    return ok(
+        RevokeSessionResponse(revoked_count=count),
+        ResponseCode.AUTH_SESSION_REVOKED,
+        f"{count} other session(s) revoked",
+    )
+
+
+@router.post(
+    "/admin/sessions/revoke-all",
+    response_model=BaseSuccessResponse[RevokeSessionResponse],
+    summary="Revoke every admin session, including this one, and sign out of Supabase",
+    dependencies=[Depends(rate_limit_admin_sessions)],
+)
+async def revoke_all_admin_sessions(
+    request: Request,
+    current_user: Profile = Depends(require_admin),
+    db: AsyncSession = Depends(get_db),
+) -> BaseSuccessResponse[RevokeSessionResponse]:
+    count = await _svc.clear_all_admin_sessions_2fa(db, str(current_user.id))
+    # Supabase's admin API only supports revoking every session for a user at
+    # once (not one specific session) — this is the strongest option
+    # available and matches "logout everywhere".
+    await _svc.logout(db, str(current_user.id))
+    ip, ua = _client_meta(request)
+    await _audit.log(
+        db,
+        actor_id=str(current_user.id),
+        actor_email=current_user.email,
+        actor_role=current_user.role,
+        action="admin_sessions_revoked_all",
+        resource_type="admin_session",
+        resource_id=str(current_user.id),
+        metadata={"revoked_count": count},
+        ip_address=ip,
+        user_agent=ua,
+    )
+    return ok(
+        RevokeSessionResponse(revoked_count=count),
+        ResponseCode.AUTH_SESSION_REVOKED,
+        "All sessions revoked",
     )

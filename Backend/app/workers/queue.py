@@ -62,6 +62,7 @@ class QueueService:
 def build_queue() -> QueueService:
     """Register periodic workers with their configured intervals."""
     from app.workers import (
+        admin_session_cleanup,
         cms_publish,
         media_generation,
         notification_retry,
@@ -92,5 +93,11 @@ def build_queue() -> QueueService:
     # First day of each month, 00:10 UTC — create next month's DB partitions.
     queue.add_cron_job(
         partition_manager.run, cron="10 0 1 * *", job_id="partition_manager"
+    )
+    # Every hour — sweeps AdminSession rows whose 2FA verification expired
+    # over an hour ago. Pure hygiene; expired sessions are already rejected
+    # at request time regardless of whether this has run yet.
+    queue.add_interval_job(
+        admin_session_cleanup.run, seconds=3600, job_id="admin_session_cleanup"
     )
     return queue

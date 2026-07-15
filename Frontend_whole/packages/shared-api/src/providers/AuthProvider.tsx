@@ -126,11 +126,6 @@ export function AuthProvider({ children, queryClient }: AuthProviderProps) {
       role,
       login: async (email, password) => {
         const { session: newSession } = await signInWithPassword(email, password);
-        // Update context state synchronously instead of waiting for the
-        // async onAuthStateChange subscription to catch up — callers that
-        // navigate immediately after login() (e.g. the admin login page)
-        // would otherwise race a still-"unauthenticated" context against
-        // route guards that read isAuthenticated right after the navigate.
         if (mounted.current && newSession) {
           setSession(newSession);
           setRole((prev) => prev ?? metadataRole(newSession.user));
@@ -150,19 +145,13 @@ export function AuthProvider({ children, queryClient }: AuthProviderProps) {
           setRole(null);
           setStatus("unauthenticated");
         }
-        // Drop the admin 2FA UX flag — the backend already invalidates the
-        // underlying AdminSession row on logout; this just keeps the client
-        // hint in sync so a fresh login always re-runs the challenge.
+        // Drop the admin 2FA UX flag.
         try {
           sessionStorage.removeItem("hadha:2fa_verified");
         } catch {
           // sessionStorage unavailable (private mode, SSR) — harmless no-op.
         }
-        // ── Centralized React Query cleanup ──────────────────────────────────
-        // clear() removes all cached data AND cancels all in-flight queries
-        // AND removes all pending mutations AND resets all observer state.
-        // This prevents stale auth-gated data from being served and stops
-        // any background polling (notifications, inventory, reservations).
+        // ── Centralized React Query cleanup ──────────────────────────────
         queryClientRef.current?.clear();
         // Notify other tabs to clear their auth state too.
         try {

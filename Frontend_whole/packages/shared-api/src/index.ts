@@ -59,3 +59,10 @@ export {
   useTwoFactorRegenerateCodes,
   useForceReset2FA,
 } from "./hooks/admin/useTwoFactor";
+export {
+  useAdminSessions,
+  useRevokeAdminSession,
+  useRevokeOtherAdminSessions,
+  useRevokeAllAdminSessions,
+  useAdminLoginHistory,
+} from "./hooks/admin/useAdminSessions";

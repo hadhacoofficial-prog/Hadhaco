@@ -22,6 +22,7 @@ import { QuantityStepper } from "@/components/site/QuantityStepper";
 import { ProductGrid } from "@/components/site/ProductGrid";
 import { InventoryBadge } from "@/components/site/InventoryBadge";
 import { useCart, cartLineKey } from "@/stores/cart";
+import { useBuyNowStore } from "@/stores/buyNow";
 import { computeQuantityBounds } from "@/lib/cartQuantity";
 import { useWishlist } from "@/stores/wishlist";
 import { useRecentlyViewed } from "@/stores/recentlyViewed";
@@ -241,19 +242,21 @@ function ProductPage() {
       return;
     }
     if (!bounds.canAdd) return;
-    add(
-      product.id,
-      qty,
+    useBuyNowStore.getState().setItems([
       {
-        name: product.name,
-        image: product.image,
-        slug: product.slug,
-        sku: displaySku,
-        price: displayPrice,
-        variantName: currentVariant?.name,
+        productId: product.id,
+        qty,
+        snapshot: {
+          name: product.name,
+          image: product.image,
+          slug: product.slug,
+          sku: displaySku,
+          price: displayPrice,
+          variantName: currentVariant?.name,
+        },
+        variantId: currentVariant?.id,
       },
-      currentVariant?.id,
-    );
+    ]);
     navigate({ to: "/checkout" });
   };
 

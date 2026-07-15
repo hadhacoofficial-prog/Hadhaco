@@ -13,9 +13,12 @@ import time
 from typing import Any
 
 import httpx
+import structlog
 from jwt.algorithms import ECAlgorithm
 
 from app.core.config import settings
+
+log = structlog.get_logger(__name__)
 
 
 class JWKSCache:
@@ -40,14 +43,34 @@ class JWKSCache:
         """Return the EC public key for *kid*, refreshing the cache if needed."""
         async with self._lock:
             if self._is_stale():
-                await self._refresh()
+                await self._try_refresh()
             if kid not in self._keys:
                 # Key not found — Supabase may have rotated. Refresh once more.
-                await self._refresh()
+                await self._try_refresh()
 
         if kid not in self._keys:
             raise ValueError(f"JWKS: unknown key id '{kid}'")
         return self._keys[kid]
+
+    async def _try_refresh(self) -> None:
+        """
+        Refresh, but degrade gracefully on failure: a transient network blip
+        or Supabase outage during a routine refresh must not wipe out an
+        already-cached, still-valid key and hard-fail every request for the
+        rest of the TTL window. Only propagate the failure if we have no
+        cached keys at all — then there is genuinely nothing to verify
+        against, and failing closed is correct.
+        """
+        try:
+            await self._refresh()
+        except Exception:
+            if not self._keys:
+                raise
+            log.warning(
+                "jwks_refresh_failed_serving_stale_cache",
+                cached_kids=list(self._keys.keys()),
+                exc_info=True,
+            )
 
     def _is_stale(self) -> bool:
         return (time.monotonic() - self._fetched_at) >= self._ttl

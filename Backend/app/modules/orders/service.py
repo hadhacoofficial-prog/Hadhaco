@@ -7,7 +7,6 @@ import uuid
 from datetime import UTC, datetime
 from typing import Any
 
-import razorpay
 import structlog
 from sqlalchemy import text
 from sqlalchemy.exc import IntegrityError
@@ -21,6 +20,7 @@ from app.core.events import (
     event_bus,
 )
 from app.core.exceptions import InventoryError, NotFoundError, ValidationError
+from app.core.security import get_razorpay_client
 from app.modules.inventory.reservation_service import ReservationService
 from app.modules.orders.repository import OrderRepository
 from app.modules.orders.schemas import (
@@ -317,9 +317,7 @@ class OrderService:
 
         # ── Create Razorpay order (offloaded to thread pool) ──────────────────
         amount_paise = int(round(total * 100))
-        client = razorpay.Client(
-            auth=(settings.RAZORPAY_KEY_ID, settings.RAZORPAY_KEY_SECRET)
-        )
+        client = get_razorpay_client()
         rzp_payload = {
             "amount": amount_paise,
             "currency": settings.RAZORPAY_CURRENCY,
@@ -440,22 +438,10 @@ class OrderService:
 
         log.info("payment_signature_verified", order_id=str(order.id))
 
-        # Complete stock reservation (reserved → sold) with row-level locking.
-        # First try the normal path; if no ACTIVE reservations exist (expired),
-        # fall back to the late-payment path.
-        await _reservation_svc.complete_order_reservations(db, order.id)
-
-        # Check if any reservations were still ACTIVE (normal path) or if we
-        # need the late-payment path (all EXPIRED).
-        has_expired = await db.execute(
-            text(
-                "SELECT 1 FROM inventory_reservations "
-                "WHERE order_id = :oid AND status = 'EXPIRED' LIMIT 1"
-            ),
-            {"oid": str(order.id)},
-        )
-        if has_expired.fetchone():
-            await _reservation_svc.complete_expired_order_reservations(db, order.id)
+        # Complete stock reservation (reserved → sold) with row-level locking,
+        # falling back to the late-payment path if reservations had already
+        # expired before this call. See ReservationService.
+        await _reservation_svc.complete_reservations_for_order(db, order.id)
 
         # Finalize coupon
         if order.coupon_id:
@@ -681,6 +667,9 @@ class OrderService:
         prev_status = order.status
         updated = await _repo.update(db, order_id, data)
 
+        # Commit BEFORE publishing — listeners open fresh sessions.
+        await db.commit()
+
         await event_bus.publish(
             OrderStatusChangedEvent(
                 order_id=str(order_id),
@@ -875,6 +864,9 @@ class OrderService:
                 "cancelled_at": datetime.now(UTC),
             },
         )
+
+        # Commit BEFORE publishing — listeners open fresh sessions.
+        await db.commit()
 
         await event_bus.publish(
             OrderStatusChangedEvent(

@@ -4,6 +4,8 @@ import { toast } from "sonner";
 import { useTwoFactorStatus } from "@/hooks/admin/useTwoFactor";
 import { TwoFactorStatusCard } from "@/components/admin/two-factor/TwoFactorStatus";
 import { TwoFactorSetupWizard } from "@/components/admin/two-factor/TwoFactorSetupWizard";
+import { ActiveSessionsPanel } from "@/components/admin/security/ActiveSessions";
+import { LoginHistoryPanel } from "@/components/admin/security/LoginHistory";
 import { Skeleton } from "@/components/ui/skeleton";
 
 export const Route = createFileRoute("/admin/settings/security")({
@@ -52,7 +54,7 @@ function SecuritySettingsPage() {
           <TwoFactorSetupWizard onComplete={handleSetupComplete} onCancel={handleSetupCancel} />
         </div>
       ) : (
-        <div className="max-w-2xl">
+        <div className="max-w-3xl space-y-6">
           <TwoFactorStatusCard
             status={
               status ?? {
@@ -65,6 +67,8 @@ function SecuritySettingsPage() {
             onSetup={handleSetupClick}
             onStatusChange={() => refetch()}
           />
+          <ActiveSessionsPanel is2faEnabled={status?.is_enabled ?? false} />
+          <LoginHistoryPanel />
         </div>
       )}
     </div>

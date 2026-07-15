@@ -9,6 +9,8 @@ class ResponseCode(StrEnum):
     AUTH_2FA_SETUP = "AUTH_2FA_SETUP"
     AUTH_2FA_VERIFIED = "AUTH_2FA_VERIFIED"
     AUTH_2FA_VALID = "AUTH_2FA_VALID"
+    AUTH_SESSIONS_LISTED = "AUTH_SESSIONS_LISTED"
+    AUTH_SESSION_REVOKED = "AUTH_SESSION_REVOKED"
 
     # ── Users / Profiles ─────────────────────────────────────────────────────
     USER_PROFILE_FETCHED = "USER_PROFILE_FETCHED"
@@ -78,8 +80,6 @@ class ResponseCode(StrEnum):
     ORDER_STATUS_UPDATED = "ORDER_STATUS_UPDATED"
 
     # ── Payments ─────────────────────────────────────────────────────────────
-    PAYMENT_ORDER_CREATED = "PAYMENT_ORDER_CREATED"
-    PAYMENT_VERIFIED = "PAYMENT_VERIFIED"
     PAYMENT_FETCHED = "PAYMENT_FETCHED"
     REFUND_INITIATED = "REFUND_INITIATED"
     REFUND_LISTED = "REFUND_LISTED"

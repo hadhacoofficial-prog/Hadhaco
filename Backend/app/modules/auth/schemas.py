@@ -3,6 +3,8 @@ from datetime import datetime
 
 from pydantic import BaseModel, ConfigDict, EmailStr
 
+from app.common.validators import IpAddressStr
+
 
 class VerifyTokenResponse(BaseModel):
     id: uuid.UUID
@@ -60,13 +62,28 @@ class RegenerateBackupCodesResponse(BaseModel):
     backup_codes: list[str]
 
 
-class AdminSessionResponse(BaseModel):
+class AdminSessionOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     id: uuid.UUID
-    ip_address: str
+    ip_address: IpAddressStr
     user_agent: str | None
-    location: str | None
-    is_active: bool
-    last_seen_at: datetime
+    is_2fa_verified: bool
+    verified_at: datetime | None
+    expires_at: datetime | None
+    last_activity_at: datetime | None
+    last_seen_ip: IpAddressStr | None
+    last_seen_user_agent: str | None
+    device_name: str | None
+    browser_name: str | None
+    os_name: str | None
     created_at: datetime
+    is_current: bool = False
+
+
+class AdminSessionListResponse(BaseModel):
+    sessions: list[AdminSessionOut]
+
+
+class RevokeSessionResponse(BaseModel):
+    revoked_count: int

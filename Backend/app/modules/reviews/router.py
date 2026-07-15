@@ -216,6 +216,10 @@ async def send_review_reminders(
     candidate_ids = [order.id for order, email in rows if email]
     reviewed_ids = await ReviewRepository().get_reviewed_order_ids(db, candidate_ids)
 
+    # Commit is a no-op here (read-only query), but ensures listeners
+    # see a clean transaction boundary before the publish loop.
+    await db.commit()
+
     sent = 0
     skipped = 0
     for order, email in rows:

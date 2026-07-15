@@ -8,6 +8,7 @@ import {
 } from "@tanstack/react-router";
 import { useEffect, useState, useCallback } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { getAuthRedirectUrl } from "@hadha/shared-utils";
 import { getSession } from "@/lib/supabase/session";
 import { roleSatisfies } from "@/types/auth";
 import { api } from "@/lib/api/client";
@@ -45,7 +46,7 @@ export const Route = createFileRoute("/admin")({
     if (!session) {
       throw redirect({
         to: "/admin/login",
-        search: { redirect: location.pathname },
+        search: { redirect: getAuthRedirectUrl(location) },
       });
     }
 
@@ -57,7 +58,7 @@ export const Route = createFileRoute("/admin")({
         staleTime: 60_000,
       });
     } catch {
-      throw redirect({ to: "/admin/login", search: { redirect: undefined } });
+      throw redirect({ to: "/admin/login", search: { redirect: getAuthRedirectUrl(location) } });
     }
 
     const role = profile?.role;
@@ -182,7 +183,8 @@ function AdminLayout() {
   useEffect(() => {
     if (path === "/admin/login" || path === "/admin/2fa") return;
     if (!isAuthenticated) {
-      navigate({ to: "/admin/login", search: { redirect: path } });
+      const redirectUrl = getAuthRedirectUrl(window.location, "/admin");
+      navigate({ to: "/admin/login", search: { redirect: redirectUrl } });
       return;
     }
     if (!profileLoading && !isAdmin) {
@@ -191,7 +193,8 @@ function AdminLayout() {
     }
     // If 2FA is enabled but not verified in this session, redirect to challenge
     if (tfStatus?.is_enabled && !sessionStorage.getItem("hadha:2fa_verified")) {
-      navigate({ to: "/admin/2fa", search: { redirect: path } });
+      const redirectUrl = getAuthRedirectUrl(window.location, "/admin");
+      navigate({ to: "/admin/2fa", search: { redirect: redirectUrl } });
     }
   }, [isAuthenticated, profileLoading, isAdmin, tfStatus, path, navigate]);
 

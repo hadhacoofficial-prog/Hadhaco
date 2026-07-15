@@ -13,48 +13,15 @@ from app.core.dependencies import (
     require_customer,
 )
 from app.modules.payments.schemas import (
-    CreatePaymentOrderRequest,
-    PaymentOrderResponse,
     PaymentResponse,
     RefundRequest,
     RefundResponse,
-    VerifyPaymentRequest,
 )
 from app.modules.payments.service import PaymentService
 from app.modules.profiles.models import Profile
 
 router = APIRouter()
 _service = PaymentService()
-
-
-@router.post(
-    "/payments/create-order",
-    response_model=BaseSuccessResponse[PaymentOrderResponse],
-    dependencies=[Depends(require_customer)],
-)
-async def create_payment_order(
-    payload: CreatePaymentOrderRequest,
-    db: AsyncSession = Depends(get_db),
-    current_user: Profile = Depends(get_current_user),
-):
-    result = await _service.create_razorpay_order(db, current_user.id, payload)
-    return ok(
-        result, ResponseCode.PAYMENT_ORDER_CREATED, "Payment order created successfully"
-    )
-
-
-@router.post(
-    "/payments/verify",
-    response_model=BaseSuccessResponse[PaymentResponse],
-    dependencies=[Depends(require_customer)],
-)
-async def verify_payment(
-    payload: VerifyPaymentRequest,
-    db: AsyncSession = Depends(get_db),
-    current_user: Profile = Depends(get_current_user),
-):
-    result = await _service.verify_and_capture(db, current_user.id, payload)
-    return ok(result, ResponseCode.PAYMENT_VERIFIED, "Payment verified successfully")
 
 
 @router.get(

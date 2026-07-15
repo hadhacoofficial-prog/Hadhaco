@@ -113,6 +113,15 @@ class Refund(Base):
         Index("idx_refunds_payment_id", "payment_id"),
         Index("idx_refunds_order_id", "order_id"),
         CheckConstraint("amount >= 0", name="refunds_amount_check"),
+        # Nullable-safe unique index — mirrors idx_payments_razorpay_payment_id_unique.
+        # Without it, PaymentService.initiate_refund's begin_nested()/IntegrityError
+        # dedup against a concurrent refund.created webhook has nothing to catch,
+        # so the same Razorpay refund could be recorded as two Refund rows.
+        Index(
+            "idx_refunds_razorpay_refund_id_unique",
+            "razorpay_refund_id",
+            unique=True,
+        ),
     )
 
 

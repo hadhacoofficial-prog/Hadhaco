@@ -4,6 +4,8 @@ from typing import Any
 
 from pydantic import BaseModel, ConfigDict
 
+from app.common.validators import IpAddressStr
+
 
 class AuditLogEntry(BaseModel):
     model_config = ConfigDict(from_attributes=True)
@@ -18,7 +20,7 @@ class AuditLogEntry(BaseModel):
     old_value: dict[str, Any] | None
     new_value: dict[str, Any] | None
     meta: dict[str, Any] | None
-    ip_address: str | None
+    ip_address: IpAddressStr | None
     user_agent: str | None
     request_id: str | None
     source: str

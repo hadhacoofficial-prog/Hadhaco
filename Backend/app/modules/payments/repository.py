@@ -95,6 +95,43 @@ class PaymentRepository:
         )
         return list(result.scalars().all())
 
+    async def get_total_refunded_for_payment(
+        self, db: AsyncSession, payment_id: uuid.UUID
+    ) -> float:
+        """Return the sum of all non-failed refund amounts for a payment.
+
+        Used to calculate the remaining refundable amount without relying on
+        the payment.status field, which can be stale under concurrent updates.
+        """
+        from sqlalchemy import func
+
+        result = await db.execute(
+            select(
+                func.coalesce(
+                    func.sum(Refund.amount),
+                    0,
+                )
+            ).where(
+                Refund.payment_id == payment_id,
+                Refund.status.in_(["processed", "pending"]),
+            )
+        )
+        return float(result.scalar_one())
+
+    async def get_for_order_with_lock(
+        self, db: AsyncSession, order_id: uuid.UUID
+    ) -> Payment | None:
+        """Row-locked variant of get_for_order — used when initiating refunds
+        to prevent concurrent refund race conditions."""
+        result = await db.execute(
+            select(Payment)
+            .where(Payment.order_id == order_id)
+            .order_by(Payment.created_at.desc())
+            .limit(1)
+            .with_for_update()
+        )
+        return result.scalar_one_or_none()
+
     # ── Invoice ──────────────────────────────────────────────────────────────
 
     async def create_invoice(self, db: AsyncSession, data: dict[str, Any]) -> Invoice:

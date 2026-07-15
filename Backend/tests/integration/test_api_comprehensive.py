@@ -42,12 +42,17 @@ class TestAuthRequiredEndpoints:
         )
         assert r.status_code == 401
 
-    async def test_create_payment_order_requires_auth(self, client):
-        r = await client.post("/api/v1/payments/create-order", json={})
+    async def test_get_order_payment_requires_auth(self, client):
+        r = await client.get(
+            "/api/v1/orders/00000000-0000-0000-0000-000000000000/payment"
+        )
         assert r.status_code == 401
 
-    async def test_verify_payment_requires_auth(self, client):
-        r = await client.post("/api/v1/payments/verify", json={})
+    async def test_initiate_refund_requires_auth(self, client):
+        r = await client.post(
+            "/api/v1/admin/orders/00000000-0000-0000-0000-000000000000/refund",
+            json={},
+        )
         assert r.status_code == 401
 
     async def test_submit_review_requires_auth(self, client):
@@ -245,7 +250,7 @@ class TestOpenAPISchema:
             "/api/v1/products",
             "/api/v1/cart",
             "/api/v1/orders",
-            "/api/v1/payments",
+            "/api/v1/admin/orders/{order_id}/refund",
             "/api/v1/admin/dashboard",
         ]:
             assert fragment in paths, f"missing route: {fragment}"

@@ -12,13 +12,50 @@ class TestEncryptionRoundTrip:
         with patch("app.core.security.settings") as mock_settings:
             from cryptography.fernet import Fernet
 
-            mock_settings.ENCRYPTION_KEY = Fernet.generate_key().decode()
+            key = Fernet.generate_key().decode()
+            mock_settings.ENCRYPTION_KEY = key
+            mock_settings.ENCRYPTION_KEY_LEGACY = ""
+            # _get_fernet reads settings.encryption_keys_list (primary +
+            # legacy keys, for MultiFernet key rotation) rather than the
+            # single ENCRYPTION_KEY field directly — mock it explicitly
+            # since replacing the whole `settings` object bypasses the real
+            # Settings.encryption_keys_list property.
+            mock_settings.encryption_keys_list = [key]
             import app.core.security as security_module
 
             security_module._fernet = None  # reset cached instance for this key
             ciphertext = encrypt_value("re_super_secret_key")
             assert ciphertext != "re_super_secret_key"
             assert decrypt_value(ciphertext) == "re_super_secret_key"
+            security_module._fernet = None
+
+    def test_decrypts_with_retired_legacy_key_after_rotation(self):
+        """Safe key rotation: a value encrypted under an old key must keep
+        decrypting once that key is moved to ENCRYPTION_KEY_LEGACY and a new
+        key takes over as ENCRYPTION_KEY — no re-encryption migration
+        required at deploy time."""
+        with patch("app.core.security.settings") as mock_settings:
+            from cryptography.fernet import Fernet
+
+            import app.core.security as security_module
+
+            old_key = Fernet.generate_key().decode()
+            new_key = Fernet.generate_key().decode()
+
+            # Encrypt under the "old" key, as if this happened before rotation.
+            mock_settings.encryption_keys_list = [old_key]
+            security_module._fernet = None
+            ciphertext = encrypt_value("pre-rotation-secret")
+
+            # Rotate: new key primary, old key demoted to legacy.
+            mock_settings.encryption_keys_list = [new_key, old_key]
+            security_module._fernet = None
+            assert decrypt_value(ciphertext) == "pre-rotation-secret"
+
+            # New values now encrypt under the new primary key.
+            new_ciphertext = encrypt_value("post-rotation-secret")
+            assert decrypt_value(new_ciphertext) == "post-rotation-secret"
+
             security_module._fernet = None
 
 

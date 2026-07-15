@@ -4,26 +4,6 @@ from datetime import datetime
 from pydantic import BaseModel, Field
 
 
-class CreatePaymentOrderRequest(BaseModel):
-    order_id: uuid.UUID
-
-
-class PaymentOrderResponse(BaseModel):
-    razorpay_order_id: str
-    amount_paise: int  # Razorpay uses paise (INR × 100)
-    currency: str
-    order_id: uuid.UUID
-    payment_id: uuid.UUID  # Our internal payment record ID
-    key_id: str  # Razorpay key_id for frontend SDK init
-
-
-class VerifyPaymentRequest(BaseModel):
-    payment_id: uuid.UUID
-    razorpay_payment_id: str
-    razorpay_order_id: str
-    razorpay_signature: str
-
-
 class PaymentResponse(BaseModel):
     id: uuid.UUID
     order_id: uuid.UUID

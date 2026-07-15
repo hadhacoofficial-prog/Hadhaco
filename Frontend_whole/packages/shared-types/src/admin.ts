@@ -551,6 +551,55 @@ export interface AdminUserListResponse {
   total_pages: number;
 }
 
+// ── Admin sessions (security dashboard) ──────────────────────────────────────
+export interface AdminSessionOut {
+  id: string;
+  ip_address: string;
+  user_agent: string | null;
+  is_2fa_verified: boolean;
+  verified_at: string | null;
+  expires_at: string | null;
+  last_activity_at: string | null;
+  last_seen_ip: string | null;
+  last_seen_user_agent: string | null;
+  device_name: string | null;
+  browser_name: string | null;
+  os_name: string | null;
+  created_at: string;
+  is_current: boolean;
+}
+
+export interface AdminSessionListResponse {
+  sessions: AdminSessionOut[];
+}
+
+export interface RevokeSessionResponse {
+  revoked_count: number;
+}
+
+// ── Audit log / login history ────────────────────────────────────────────────
+export interface AuditLogEntry {
+  id: string;
+  actor_id: string | null;
+  actor_email: string | null;
+  actor_role: string | null;
+  action: string;
+  resource_type: string;
+  resource_id: string | null;
+  meta: Record<string, unknown> | null;
+  ip_address: string | null;
+  user_agent: string | null;
+  source: string;
+  created_at: string;
+}
+
+export interface AuditLogPage {
+  items: AuditLogEntry[];
+  total: number;
+  page: number;
+  page_size: number;
+}
+
 // ── Inventory (admin) ────────────────────────────────────────────────────────
 export interface LowStockItem {
   id: string;

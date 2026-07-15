@@ -189,6 +189,7 @@ export const queryKeys = {
     enquiries: (filters?: Filters) => ["admin", "enquiries", filters ?? {}] as const,
     enquiry: (id: string) => ["admin", "enquiry", id] as const,
     twoFactorStatus: ["admin", "two-factor-status"] as const,
+    sessions: ["admin", "sessions"] as const,
   },
 } as const;
 

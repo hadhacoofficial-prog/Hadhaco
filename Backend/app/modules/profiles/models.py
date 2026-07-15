@@ -130,6 +130,17 @@ class AdminSession(Base):
     last_seen_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )
+    # Security-dashboard activity tracking. Updated at most every few minutes
+    # from a successful 2FA-verified admin request — see
+    # AuthService.touch_admin_session_activity — never on every request.
+    last_activity_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    last_seen_ip: Mapped[str | None] = mapped_column(INET, nullable=True)
+    last_seen_user_agent: Mapped[str | None] = mapped_column(Text, nullable=True)
+    device_name: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    browser_name: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    os_name: Mapped[str | None] = mapped_column(String(100), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )
@@ -143,4 +154,5 @@ class AdminSession(Base):
             "supabase_session_id",
             unique=True,
         ),
+        Index("idx_admin_sessions_expires_at", "expires_at"),
     )

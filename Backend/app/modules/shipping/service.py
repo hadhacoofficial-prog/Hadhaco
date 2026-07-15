@@ -66,6 +66,10 @@ class ShippingService:
         from app.modules.profiles.repository import ProfileRepository
 
         profile = await ProfileRepository().get_by_id(db, order.user_id)
+
+        # Commit BEFORE publishing — listeners open fresh sessions.
+        await db.commit()
+
         await event_bus.publish(
             OrderShippedEvent(
                 order_id=str(order_id),
@@ -124,6 +128,10 @@ class ShippingService:
                 from app.modules.profiles.repository import ProfileRepository
 
                 profile = await ProfileRepository().get_by_id(db, order.user_id)
+
+                # Commit BEFORE publishing — listeners open fresh sessions.
+                await db.commit()
+
                 await event_bus.publish(
                     OrderDeliveredEvent(
                         order_id=str(order_id),

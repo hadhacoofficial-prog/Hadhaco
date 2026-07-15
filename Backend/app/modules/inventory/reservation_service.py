@@ -505,6 +505,33 @@ class ReservationService:
 
         await self._invalidate_inventory_cache(cache_targets)
 
+    async def complete_reservations_for_order(
+        self, db: AsyncSession, order_id: uuid.UUID
+    ) -> None:
+        """Complete an order's reservations, covering the late-payment case.
+
+        Orchestrates the two-step sequence shared by every payment-capture
+        path (frontend verify and the Razorpay webhook):
+          1. Complete any ACTIVE reservations (reserved -> sold).
+          2. If reservations had already expired before payment was captured
+             (stock was released by the expiry worker), fall back to
+             directly incrementing sold_quantity so the sale is still
+             recorded.
+
+        Runs inside the caller's existing transaction — does not commit.
+        """
+        await self.complete_order_reservations(db, order_id)
+
+        has_expired = await db.execute(
+            text(
+                "SELECT 1 FROM inventory_reservations "
+                "WHERE order_id = :oid AND status = 'EXPIRED' LIMIT 1"
+            ),
+            {"oid": str(order_id)},
+        )
+        if has_expired.fetchone():
+            await self.complete_expired_order_reservations(db, order_id)
+
     async def release_order_reservations(
         self,
         db: AsyncSession,

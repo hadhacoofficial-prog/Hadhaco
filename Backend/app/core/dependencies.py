@@ -38,6 +38,7 @@ from app.core.database import get_db
 from app.core.exceptions import AuthorizationError
 from app.core.redis import get_redis, safe_redis_get, safe_redis_setex
 from app.core.security import JWTPayload, oauth2_scheme, verify_supabase_jwt
+from app.middleware.rate_limit import get_client_ip
 
 # Forward declaration — resolved at runtime to avoid circular imports
 _profile_repository = None
@@ -233,6 +234,7 @@ async def _ensure_2fa_session(
     current_user,
     payload: JWTPayload,
     db: AsyncSession,
+    request: Request,
     *,
     required: bool,
 ):
@@ -271,26 +273,44 @@ async def _ensure_2fa_session(
             code="2FA_REQUIRED",
             data={"setup_required": False, "setup_url": "/admin/2fa"},
         )
+
+    # Best-effort, throttled activity tracking for the security dashboard —
+    # never blocks the request if it fails.
+    assert payload.session_id is not None  # `verified` is only True when set
+    try:
+        await svc.touch_admin_session_activity(
+            db,
+            str(current_user.id),
+            payload.session_id,
+            get_client_ip(request),
+            request.headers.get("user-agent"),
+        )
+    except Exception:
+        pass
+
     return current_user
 
 
 async def require_admin(
+    request: Request,
     current_user=Depends(require_admin_role),
     payload: JWTPayload = Depends(get_jwt_payload),
     db: AsyncSession = Depends(get_db),
 ):
-    return await _ensure_2fa_session(current_user, payload, db, required=False)
+    return await _ensure_2fa_session(current_user, payload, db, request, required=False)
 
 
 async def require_super_admin(
+    request: Request,
     current_user=Depends(_require_super_admin_role),
     payload: JWTPayload = Depends(get_jwt_payload),
     db: AsyncSession = Depends(get_db),
 ):
-    return await _ensure_2fa_session(current_user, payload, db, required=False)
+    return await _ensure_2fa_session(current_user, payload, db, request, required=False)
 
 
 async def require_2fa_verified(
+    request: Request,
     current_user=Depends(require_admin_role),
     payload: JWTPayload = Depends(get_jwt_payload),
     db: AsyncSession = Depends(get_db),
@@ -300,4 +320,4 @@ async def require_2fa_verified(
     verified) and this session MUST have passed the TOTP challenge. Used for
     admin mutations that mandate 2FA regardless of the account's own choice.
     """
-    return await _ensure_2fa_session(current_user, payload, db, required=True)
+    return await _ensure_2fa_session(current_user, payload, db, request, required=True)

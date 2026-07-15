@@ -24,7 +24,7 @@ class TestAppWiring:
             "/api/v1/products",
             "/api/v1/cart",
             "/api/v1/orders",
-            "/api/v1/payments",
+            "/api/v1/admin/orders/{order_id}/refund",
             "/api/v1/admin/dashboard",
             "/api/v1/admin/audit-logs",
         ]

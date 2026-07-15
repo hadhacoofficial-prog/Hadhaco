@@ -3,6 +3,7 @@ import { createFileRoute, useNavigate, Link, redirect } from "@tanstack/react-ro
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Truck, Tag, Plus, AlertTriangle, Loader2, Gift, X, Check } from "lucide-react";
 import { toast } from "sonner";
+import { getAuthRedirectUrl } from "@hadha/shared-utils";
 import { SiteLayout } from "@/components/site/SiteLayout";
 import { Breadcrumbs } from "@/components/site/Breadcrumbs";
 import {
@@ -10,7 +11,10 @@ import {
   ReservationExpiredModal,
 } from "@/components/site/ReservationCountdown";
 import { Field, PhoneField, isValidIndianMobile } from "@/components/common/FormField";
+import { ProtectedRoute } from "@/components/common/ProtectedRoute";
 import { useCart } from "@/stores/cart";
+import { useCheckoutStore } from "@/stores/checkout";
+import { useBuyNowStore } from "@/stores/buyNow";
 import { api } from "@/lib/api/client";
 import { queryKeys } from "@/lib/api/queryKeys";
 import { toUserMessage } from "@/lib/api/errors";
@@ -26,6 +30,7 @@ import type {
   VerifyPaymentResponse,
   ComplimentaryGift,
 } from "@/types/customer";
+import type { AppliedCoupon } from "@/stores/checkout";
 
 const GIFT_OPTIONS: { value: ComplimentaryGift; emoji: string; label: string }[] = [
   { value: "Traditional Sweet", emoji: "🍬", label: "Traditional Sweet" },
@@ -35,10 +40,13 @@ const GIFT_OPTIONS: { value: ComplimentaryGift; emoji: string; label: string }[]
 const GIFT_ELIGIBILITY_THRESHOLD = 2000;
 
 export const Route = createFileRoute("/checkout")({
-  beforeLoad: async () => {
+  beforeLoad: async ({ location }) => {
     if (typeof window === "undefined") return;
     const { data } = await supabase.auth.getSession();
-    if (!data.session) throw redirect({ to: "/account/login", search: { redirect: "/checkout" } });
+    if (!data.session) {
+      const redirectUrl = getAuthRedirectUrl(location);
+      throw redirect({ to: "/account/login", search: { redirect: redirectUrl } });
+    }
   },
   head: () => ({ meta: [{ title: "Checkout · Hadha" }] }),
   component: CheckoutPage,
@@ -58,32 +66,45 @@ function loadRazorpayScript(): Promise<void> {
   });
 }
 
-type CheckoutState =
-  | "idle"
-  | "reserving"
-  | "payment_open"
-  | "verifying"
-  | "payment_failed"
-  | "reservation_expired";
-
 function CheckoutPage() {
-  const { lines, subtotal, clear } = useCart();
+  const { lines: cartLines, subtotal: cartSubtotal, clear: clearCart } = useCart();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const [shippingMethod, setShippingMethod] = useState<"standard" | "express">("standard");
-  const [billingSame, setBillingSame] = useState(true);
-  const [selectedAddressId, setSelectedAddressId] = useState<string | "new">("new");
-  const [phone, setPhone] = useState("");
-  const [altPhone, setAltPhone] = useState("");
+
+  // Buy-Now mode — completely independent from the cart
+  const buyNowActive = useBuyNowStore((s) => s.isActive);
+  const buyNowItems = useBuyNowStore((s) => s.items);
+
+  // Effective lines: buy-now items when active, otherwise cart lines
+  const lines = buyNowActive ? buyNowItems : cartLines;
+  const sub = buyNowActive
+    ? buyNowItems.reduce((n, l) => n + (l.snapshot ? l.snapshot.price * l.qty : 0), 0)
+    : cartSubtotal();
+
+  // Checkout form state — persisted in Zustand so it survives auth redirects
+  const shippingMethod = useCheckoutStore((s) => s.shippingMethod);
+  const setShippingMethod = useCheckoutStore((s) => s.setShippingMethod);
+  const billingSame = useCheckoutStore((s) => s.billingSame);
+  const setBillingSame = useCheckoutStore((s) => s.setBillingSame);
+  const selectedAddressId = useCheckoutStore((s) => s.selectedAddressId);
+  const setSelectedAddressId = useCheckoutStore((s) => s.setSelectedAddressId);
+  const phone = useCheckoutStore((s) => s.phone);
+  const setPhone = useCheckoutStore((s) => s.setPhone);
+  const altPhone = useCheckoutStore((s) => s.altPhone);
+  const setAltPhone = useCheckoutStore((s) => s.setAltPhone);
+  const couponCode = useCheckoutStore((s) => s.couponCode);
+  const setCouponCode = useCheckoutStore((s) => s.setCouponCode);
+  const appliedCoupon = useCheckoutStore((s) => s.appliedCoupon);
+  const setAppliedCoupon = useCheckoutStore((s) => s.setAppliedCoupon);
+  const checkoutState = useCheckoutStore((s) => s.checkoutStep);
+  const setCheckoutState = useCheckoutStore((s) => s.setCheckoutStep);
+  const reservationStartedAt = useCheckoutStore((s) => s.reservationStartedAt);
+  const setReservationStartedAt = useCheckoutStore((s) => s.setReservationStartedAt);
+  const resetCheckout = useCheckoutStore((s) => s.reset);
+
+  // Transient UI state (not persisted — resets on remount, which is fine)
   const [phoneError, setPhoneError] = useState<string | undefined>();
   const [altPhoneError, setAltPhoneError] = useState<string | undefined>();
-  const [couponCode, setCouponCode] = useState("");
-  const [appliedCoupon, setAppliedCoupon] = useState<{
-    code: string;
-    discount: number;
-    type: string;
-    description: string | null;
-  } | null>(null);
   const [giftPopup, setGiftPopup] = useState<{
     orderId: string;
     orderNumber: string;
@@ -93,11 +114,8 @@ function CheckoutPage() {
     orderId: string;
     orderNumber: string;
   } | null>(null);
-
-  // Reservation tracking
-  const [checkoutState, setCheckoutState] = useState<CheckoutState>("idle");
-  const [reservationStartedAt, setReservationStartedAt] = useState<number | null>(null);
   const currentIntentRef = useRef<CreatePaymentIntentResponse | null>(null);
+  const isVerifyingRef = useRef(false);
 
   const { data: addresses = [] } = useQuery({
     queryKey: queryKeys.addresses.all,
@@ -114,12 +132,62 @@ function CheckoutPage() {
   useEffect(() => {
     if (!addressInitialized.current && addresses.length > 0) {
       addressInitialized.current = true;
-      const def = addresses.find((a) => a.is_default) ?? addresses[0];
-      setSelectedAddressId(def.id);
+      // If the persisted selectedAddressId no longer exists (deleted in another
+      // tab or stale from localStorage), fall back to default or "new".
+      if (selectedAddressId !== "new" && !addresses.some((a) => a.id === selectedAddressId)) {
+        const def = addresses.find((a) => a.is_default) ?? addresses[0];
+        setSelectedAddressId(def.id);
+      } else if (selectedAddressId === "new" && addresses.length > 0) {
+        const def = addresses.find((a) => a.is_default) ?? addresses[0];
+        setSelectedAddressId(def.id);
+      }
     }
-  }, [addresses]);
+  }, [addresses, selectedAddressId, setSelectedAddressId]);
 
-  const sub = subtotal();
+  // Revalidate a persisted coupon on mount — ensures it's still valid after
+  // page refresh (server-side expiry, product changes, etc.)
+  const couponRevalidated = useRef(false);
+  useEffect(() => {
+    if (couponRevalidated.current || !appliedCoupon || !appliedCoupon.code) return;
+    couponRevalidated.current = true;
+    api
+      .post<{
+        valid: boolean;
+        discount_amount: number;
+        coupon?: { code: string; coupon_type: string; description: string | null };
+      }>("/coupons/validate", {
+        body: {
+          code: appliedCoupon.code.toUpperCase(),
+          order_subtotal: sub,
+          cart_product_ids: lines.map((l) => l.productId),
+          shipping_method: shippingMethod,
+          delivery_state: addresses.find((a) => a.id === selectedAddressId)?.state,
+          delivery_city: addresses.find((a) => a.id === selectedAddressId)?.city,
+          delivery_pincode: addresses.find((a) => a.id === selectedAddressId)?.postal_code,
+        },
+      })
+      .then((res) => {
+        if (!res.valid) {
+          setAppliedCoupon(null);
+          setCouponCode("");
+          toast.info("Your previously applied coupon is no longer valid and has been removed.");
+        } else {
+          // Refresh with latest server values
+          setAppliedCoupon({
+            code: res.coupon?.code ?? appliedCoupon.code,
+            discount: res.discount_amount,
+            type: res.coupon?.coupon_type ?? appliedCoupon.type,
+            description: res.coupon?.description ?? appliedCoupon.description,
+          });
+        }
+      })
+      .catch(() => {
+        // Network error — keep the persisted coupon; user can manually remove
+      });
+    // Only run on mount — eslint-disable is intentional
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const ship =
     lines.length === 0
       ? 0
@@ -188,7 +256,16 @@ function CheckoutPage() {
     mutationFn: (body: VerifyPaymentRequest) =>
       api.post<VerifyPaymentResponse>("/orders/verify-payment", { body }),
     onSuccess: (result) => {
-      clear();
+      isVerifyingRef.current = false;
+      // Use store.getState() to read current mode at call time — avoids
+      // stale closure over buyNowActive which could change during the mutation.
+      const buyNowState = useBuyNowStore.getState();
+      if (buyNowState.isActive) {
+        buyNowState.clear();
+      } else {
+        clearCart();
+      }
+      resetCheckout();
       queryClient.invalidateQueries({ queryKey: queryKeys.orders.all });
       queryClient.invalidateQueries({ queryKey: queryKeys.cart.all });
       queryClient.invalidateQueries({ queryKey: queryKeys.products.all });
@@ -196,8 +273,6 @@ function CheckoutPage() {
       queryClient.invalidateQueries({ queryKey: queryKeys.collections.all });
       queryClient.invalidateQueries({ queryKey: queryKeys.cms.homepage });
       queryClient.invalidateQueries({ queryKey: queryKeys.search.all });
-      setCheckoutState("idle");
-      setReservationStartedAt(null);
 
       const destination = { orderId: result.order_id, orderNumber: result.order_number };
       // Check eligibility using the total captured at render time
@@ -213,6 +288,7 @@ function CheckoutPage() {
       }
     },
     onError: (e) => {
+      isVerifyingRef.current = false;
       setCheckoutState("payment_failed");
       toast.error(`Payment verification failed: ${toUserMessage(e)}`);
     },
@@ -245,6 +321,8 @@ function CheckoutPage() {
       prefill: { name: userName, email: userEmail, contact: "" },
       theme: { color: "#000000" },
       handler: (response) => {
+        if (isVerifyingRef.current) return;
+        isVerifyingRef.current = true;
         setCheckoutState("verifying");
         verifyPaymentMutation.mutate({
           order_id: intent.order_id,
@@ -269,6 +347,7 @@ function CheckoutPage() {
   const placeOrder = async (e: React.FormEvent) => {
     e.preventDefault();
     if (lines.length === 0) return;
+    if (checkoutState !== "idle") return;
 
     let shippingAddressId = selectedAddressId !== "new" ? selectedAddressId : null;
 
@@ -338,6 +417,7 @@ function CheckoutPage() {
   const retryPayment = async () => {
     const intent = currentIntentRef.current;
     if (!intent) return;
+    isVerifyingRef.current = false;
     try {
       await loadRazorpayScript();
     } catch {
@@ -365,7 +445,7 @@ function CheckoutPage() {
     createAddressMutation.isPending;
 
   return (
-    <>
+    <ProtectedRoute loginPath="/account/login" defaultRedirect="/checkout">
       {/* Countdown bar — visible once reservation is active */}
       {isReservationActive && reservationStartedAt && (
         <ReservationCountdown
@@ -381,7 +461,18 @@ function CheckoutPage() {
             setCheckoutState("idle");
             setReservationStartedAt(null);
             currentIntentRef.current = null;
-            navigate({ to: "/cart" });
+            isVerifyingRef.current = false;
+            // Read buyNow state before clearing — need slug for navigation.
+            const buyNowState = useBuyNowStore.getState();
+            const buyNowActiveAtExpiry = buyNowState.isActive;
+            const firstItemSlug = buyNowState.items[0]?.snapshot?.slug;
+            buyNowState.clear();
+            resetCheckout();
+            if (buyNowActiveAtExpiry && firstItemSlug) {
+              navigate({ to: "/products/$slug", params: { slug: firstItemSlug } });
+            } else {
+              navigate({ to: "/cart" });
+            }
           }}
         />
       )}
@@ -768,7 +859,7 @@ function CheckoutPage() {
           </div>
         </div>
       </SiteLayout>
-    </>
+    </ProtectedRoute>
   );
 }
 
@@ -782,13 +873,6 @@ function Section({ title, children }: { title: string; children: React.ReactNode
 }
 
 // ── Coupon Section ─────────────────────────────────────────────────────────────
-
-interface AppliedCoupon {
-  code: string;
-  discount: number;
-  type: string;
-  description: string | null;
-}
 
 interface AppliedCouponValidateCtx {
   cartProductIds: string[];

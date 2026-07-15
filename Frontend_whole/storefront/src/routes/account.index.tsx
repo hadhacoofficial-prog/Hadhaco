@@ -25,9 +25,11 @@ import {
   Loader2,
 } from "lucide-react";
 import { toast } from "sonner";
+import { getAuthRedirectUrl } from "@hadha/shared-utils";
 
 import { SiteLayout } from "@/components/site/SiteLayout";
 import { PageLoader } from "@/components/common/PageLoader";
+import { ProtectedRoute } from "@/components/common/ProtectedRoute";
 import { OrderTrackingSection } from "@/components/customer/OrderTrackingSection";
 import { Breadcrumbs } from "@/components/site/Breadcrumbs";
 import { Sheet, SheetContent, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
@@ -57,10 +59,13 @@ export const Route = createFileRoute("/account/")({
   validateSearch: z.object({
     tab: z.enum(TAB_VALUES).optional(),
   }),
-  beforeLoad: async () => {
+  beforeLoad: async ({ location }) => {
     if (typeof window === "undefined") return;
     const session = await getSession();
-    if (!session) throw redirect({ to: "/account/login", search: { redirect: "/account" } });
+    if (!session) {
+      const redirectUrl = getAuthRedirectUrl(location);
+      throw redirect({ to: "/account/login", search: { redirect: redirectUrl } });
+    }
   },
   head: () => ({ meta: [{ title: "My Account · Hadha" }] }),
   component: AccountPage,
@@ -166,57 +171,59 @@ function AccountPage() {
   };
 
   return (
-    <SiteLayout>
-      <div className="px-4 md:px-8 py-10 max-w-6xl mx-auto">
-        <Breadcrumbs items={[{ label: "Home", to: "/" }, { label: "Account" }]} />
+    <ProtectedRoute loginPath="/account/login" defaultRedirect="/account">
+      <SiteLayout>
+        <div className="px-4 md:px-8 py-10 max-w-6xl mx-auto">
+          <Breadcrumbs items={[{ label: "Home", to: "/" }, { label: "Account" }]} />
 
-        {/* Header */}
-        <div className="mt-6 mb-8 flex items-end justify-between">
-          <div>
-            <p className="text-[11px] uppercase tracking-[0.3em] text-muted-foreground">
-              Welcome back
-            </p>
-            <h1 className="font-display text-4xl md:text-5xl mt-1">Hello, {firstName}</h1>
-          </div>
-          {/* Mobile menu trigger */}
-          <Sheet>
-            <SheetTrigger asChild>
-              <button className="lg:hidden flex items-center gap-2 border border-border rounded-xl px-4 py-2 text-sm text-muted-foreground hover:border-foreground transition">
-                <Menu className="size-4" />
-                Menu
-              </button>
-            </SheetTrigger>
-            <SheetContent side="left" className="w-72 pt-12">
-              <SheetTitle className="sr-only">My Account Navigation</SheetTitle>
-              <p className="text-[11px] uppercase tracking-[0.3em] text-muted-foreground mb-1 px-4">
-                My Account
+          {/* Header */}
+          <div className="mt-6 mb-8 flex items-end justify-between">
+            <div>
+              <p className="text-[11px] uppercase tracking-[0.3em] text-muted-foreground">
+                Welcome back
               </p>
-              <p className="font-display text-xl px-4 mb-6">{firstName}</p>
-              <Sidebar tab={tab} setTab={setTab} onSignOut={handleSignOut} />
-            </SheetContent>
-          </Sheet>
-        </div>
-
-        <div className="grid lg:grid-cols-[220px_1fr] gap-8">
-          {/* Desktop sidebar */}
-          <aside className="hidden lg:block">
-            <div className="sticky top-24 bg-card border border-border rounded-2xl p-4 shadow-sm">
-              <Sidebar tab={tab} setTab={setTab} onSignOut={handleSignOut} />
+              <h1 className="font-display text-4xl md:text-5xl mt-1">Hello, {firstName}</h1>
             </div>
-          </aside>
+            {/* Mobile menu trigger */}
+            <Sheet>
+              <SheetTrigger asChild>
+                <button className="lg:hidden flex items-center gap-2 border border-border rounded-xl px-4 py-2 text-sm text-muted-foreground hover:border-foreground transition">
+                  <Menu className="size-4" />
+                  Menu
+                </button>
+              </SheetTrigger>
+              <SheetContent side="left" className="w-72 pt-12">
+                <SheetTitle className="sr-only">My Account Navigation</SheetTitle>
+                <p className="text-[11px] uppercase tracking-[0.3em] text-muted-foreground mb-1 px-4">
+                  My Account
+                </p>
+                <p className="font-display text-xl px-4 mb-6">{firstName}</p>
+                <Sidebar tab={tab} setTab={setTab} onSignOut={handleSignOut} />
+              </SheetContent>
+            </Sheet>
+          </div>
 
-          {/* Main content */}
-          <main className="min-w-0">
-            {tab === "overview" && <OverviewTab onNavigate={setTab} user={user} />}
-            {tab === "orders" && <OrdersTab />}
-            {tab === "addresses" && <AddressesTab />}
-            {tab === "wishlist" && <WishlistTab />}
-            {tab === "profile" && <ProfileTab />}
-            {tab === "security" && <SecurityTab />}
-          </main>
+          <div className="grid lg:grid-cols-[220px_1fr] gap-8">
+            {/* Desktop sidebar */}
+            <aside className="hidden lg:block">
+              <div className="sticky top-24 bg-card border border-border rounded-2xl p-4 shadow-sm">
+                <Sidebar tab={tab} setTab={setTab} onSignOut={handleSignOut} />
+              </div>
+            </aside>
+
+            {/* Main content */}
+            <main className="min-w-0">
+              {tab === "overview" && <OverviewTab onNavigate={setTab} user={user} />}
+              {tab === "orders" && <OrdersTab />}
+              {tab === "addresses" && <AddressesTab />}
+              {tab === "wishlist" && <WishlistTab />}
+              {tab === "profile" && <ProfileTab />}
+              {tab === "security" && <SecurityTab />}
+            </main>
+          </div>
         </div>
-      </div>
-    </SiteLayout>
+      </SiteLayout>
+    </ProtectedRoute>
   );
 }
 

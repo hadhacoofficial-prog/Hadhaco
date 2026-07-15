@@ -162,4 +162,24 @@ class ProfileService:
             metadata={"is_active": is_active},
         )
 
+        if not is_active:
+            # Deactivation already blocks access at get_current_user (inactive
+            # profiles are rejected before they ever reach the 2FA gate) — this
+            # is operational hygiene, not a security fix: don't leave revoked
+            # sessions sitting around, and record that they were revoked.
+            from app.modules.auth.service import AuthService
+
+            revoked = await AuthService().clear_all_admin_sessions_2fa(
+                db, str(target_user_id)
+            )
+            if revoked:
+                await audit.log(
+                    db,
+                    actor_id=str(actor_id),
+                    action="admin_sessions_revoked_on_deactivation",
+                    resource_type="admin_session",
+                    resource_id=str(target_user_id),
+                    metadata={"sessions_removed": revoked},
+                )
+
         return updated  # type: ignore[return-value]

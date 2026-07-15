@@ -409,17 +409,24 @@ class TestAuthService2FA:
     async def test_validate_2fa_rejects_replay_of_already_used_step(self):
         """A previously-accepted code (same or earlier TOTP time-step) must
         not verify again — otherwise an intercepted code stays valid for the
-        whole ~90s pyotp tolerance window and can be replayed verbatim."""
-        import time
+        whole ~90s pyotp tolerance window and can be replayed verbatim.
 
+        The replay check is now a single atomic conditional UPDATE (not a
+        Python-side read-then-compare) so that two concurrent requests can't
+        race past it — a rowcount of 0 means either a genuine replay or a
+        concurrent request that already won the race, both correctly
+        rejected here."""
         db = AsyncMock()
         mock_record = MagicMock()
         mock_record.totp_secret = "encrypted"
         mock_record.backup_codes = "[]"
-        mock_record.last_used_counter = int(time.time() // 30) + 10  # future step
-        mock_result = MagicMock()
-        mock_result.scalar_one_or_none.return_value = mock_record
-        db.execute = AsyncMock(return_value=mock_result)
+
+        select_result = MagicMock()
+        select_result.scalar_one_or_none.return_value = mock_record
+        update_result = MagicMock()
+        update_result.rowcount = 0  # conditional UPDATE matched no row
+
+        db.execute = AsyncMock(side_effect=[select_result, update_result])
 
         with (
             patch(
@@ -470,36 +477,131 @@ class TestAuthService2FA:
         with pytest.raises(NotFoundError):
             await self.svc._get_2fa_record(db, str(uuid.uuid4()))
 
-    async def test_mark_admin_session_2fa_verified_creates_row_when_missing(self):
+    async def test_ensure_admin_session_tracked_uses_upsert_not_2fa_fields(self):
+        """Must be an upsert (single statement, no db.add) whose set_ clause
+        never includes is_2fa_verified/verified_at/expires_at — a plain
+        login-presence touch must never regress an already-verified
+        session back to unverified."""
+        from sqlalchemy.dialects.postgresql.dml import Insert
+
         db = AsyncMock()
         db.add = MagicMock()
-        mock_result = MagicMock()
-        mock_result.scalar_one_or_none.return_value = None
-        db.execute = AsyncMock(return_value=mock_result)
+        db.execute = AsyncMock()
 
-        await self.svc.mark_admin_session_2fa_verified(
+        await self.svc.ensure_admin_session_tracked(
             db, str(uuid.uuid4()), "supabase-session-1", "1.2.3.4", "Mozilla/5.0"
         )
 
-        db.add.assert_called_once()
-        added = db.add.call_args[0][0]
-        assert added.is_2fa_verified is True
-        assert added.supabase_session_id == "supabase-session-1"
+        db.add.assert_not_called()
+        db.execute.assert_awaited_once()
+        stmt = db.execute.call_args[0][0]
+        assert isinstance(stmt, Insert)
 
-    async def test_mark_admin_session_2fa_verified_updates_existing_row(self):
+    async def test_track_admin_login_if_new_session_noop_without_session_id(self):
         db = AsyncMock()
-        existing = MagicMock()
-        existing.id = uuid.uuid4()
-        mock_result = MagicMock()
-        mock_result.scalar_one_or_none.return_value = existing
-        db.execute = AsyncMock(return_value=mock_result)
+        redis = AsyncMock()
+
+        with patch.object(
+            self.svc, "ensure_admin_session_tracked", AsyncMock()
+        ) as mock_track:
+            await self.svc.track_admin_login_if_new_session(
+                db,
+                redis,
+                user_id=str(uuid.uuid4()),
+                user_email="admin@example.com",
+                user_role="admin",
+                session_id=None,
+                ip_address="1.2.3.4",
+                user_agent="Mozilla/5.0",
+            )
+
+        mock_track.assert_not_called()
+
+    async def test_track_admin_login_if_new_session_tracks_and_logs_once(self):
+        db = AsyncMock()
+        redis = AsyncMock()
+        session_id = "supabase-session-1"
+
+        with (
+            patch(
+                "app.modules.auth.service.safe_redis_get", AsyncMock(return_value=None)
+            ),
+            patch(
+                "app.modules.auth.service.safe_redis_setex", AsyncMock()
+            ) as mock_setex,
+            patch.object(
+                self.svc, "ensure_admin_session_tracked", AsyncMock()
+            ) as mock_track,
+            patch(
+                "app.modules.audit.service.AuditService.log", AsyncMock()
+            ) as mock_log,
+        ):
+            await self.svc.track_admin_login_if_new_session(
+                db,
+                redis,
+                user_id=str(uuid.uuid4()),
+                user_email="admin@example.com",
+                user_role="admin",
+                session_id=session_id,
+                ip_address="1.2.3.4",
+                user_agent="Mozilla/5.0",
+            )
+
+        mock_track.assert_awaited_once()
+        mock_log.assert_awaited_once()
+        assert mock_setex.await_count == 2
+
+    async def test_track_admin_login_if_new_session_skips_when_already_deduped(self):
+        """Both dedup keys already set (routine reload) — neither side
+        effect should fire again."""
+        db = AsyncMock()
+        redis = AsyncMock()
+
+        with (
+            patch(
+                "app.modules.auth.service.safe_redis_get", AsyncMock(return_value="1")
+            ),
+            patch.object(
+                self.svc, "ensure_admin_session_tracked", AsyncMock()
+            ) as mock_track,
+            patch(
+                "app.modules.audit.service.AuditService.log", AsyncMock()
+            ) as mock_log,
+        ):
+            await self.svc.track_admin_login_if_new_session(
+                db,
+                redis,
+                user_id=str(uuid.uuid4()),
+                user_email="admin@example.com",
+                user_role="admin",
+                session_id="supabase-session-1",
+                ip_address="1.2.3.4",
+                user_agent="Mozilla/5.0",
+            )
+
+        mock_track.assert_not_called()
+        mock_log.assert_not_called()
+
+    async def test_mark_admin_session_2fa_verified_uses_atomic_upsert(self):
+        """Must be a single upsert statement, not SELECT-then-branch — the
+        old shape had a real race: two concurrent calls for the same
+        session could both see no existing row and both attempt an INSERT,
+        the second violating the unique (user_id, supabase_session_id)
+        index with an unhandled IntegrityError."""
+        from sqlalchemy.dialects.postgresql.dml import Insert
+
+        db = AsyncMock()
+        db.add = MagicMock()
+        db.execute = AsyncMock()
 
         await self.svc.mark_admin_session_2fa_verified(
             db, str(uuid.uuid4()), "supabase-session-1", "1.2.3.4", "Mozilla/5.0"
         )
 
         db.add.assert_not_called()
-        assert db.execute.await_count == 2  # SELECT then UPDATE
+        db.execute.assert_awaited_once()
+        stmt = db.execute.call_args[0][0]
+        assert isinstance(stmt, Insert)
 
     async def test_is_admin_session_2fa_verified_false_when_no_row(self):
         db = AsyncMock()
@@ -547,6 +649,48 @@ class TestAuthService2FA:
 
         assert result is True
 
+    async def test_is_new_device_true_when_no_match(self):
+        db = AsyncMock()
+        mock_result = MagicMock()
+        mock_result.scalar_one_or_none.return_value = None
+        db.execute = AsyncMock(return_value=mock_result)
+
+        result = await self.svc.is_new_device(
+            db, str(uuid.uuid4()), "9.9.9.9", "Mozilla/5.0 Chrome/120.0"
+        )
+
+        assert result is True
+
+    async def test_is_new_device_false_when_ip_and_device_both_recognized(self):
+        db = AsyncMock()
+        mock_result = MagicMock()
+        mock_result.scalar_one_or_none.return_value = uuid.uuid4()
+        db.execute = AsyncMock(return_value=mock_result)
+
+        result = await self.svc.is_new_device(
+            db, str(uuid.uuid4()), "1.2.3.4", "Mozilla/5.0 Chrome/120.0"
+        )
+
+        assert result is False
+
+    async def test_is_new_device_true_when_ip_new_even_if_device_recognized(self):
+        """A familiar browser from a brand-new IP must still count as new —
+        regression test for the De Morgan bug where a single OR'd query only
+        fired when *both* signals were unrecognized."""
+        db = AsyncMock()
+        ip_not_seen = MagicMock()
+        ip_not_seen.scalar_one_or_none.return_value = None
+        db.execute = AsyncMock(return_value=ip_not_seen)
+
+        result = await self.svc.is_new_device(
+            db,
+            str(uuid.uuid4()),
+            "203.0.113.7",
+            "Mozilla/5.0 (Windows NT 10.0) Chrome/120.0",
+        )
+
+        assert result is True
+
     async def test_is_2fa_locked_out_false_when_no_failures(self):
         redis = AsyncMock()
         with patch(
@@ -588,6 +732,153 @@ class TestAuthService2FA:
             await self.svc.clear_2fa_failures(redis, str(uuid.uuid4()))
         mock_delete.assert_awaited_once()
 
+    async def test_touch_admin_session_activity_skips_when_throttled(self):
+        from datetime import UTC, datetime
+
+        db = AsyncMock()
+        record = MagicMock()
+        record.last_activity_at = datetime.now(UTC)
+        mock_result = MagicMock()
+        mock_result.scalar_one_or_none.return_value = record
+        db.execute = AsyncMock(return_value=mock_result)
+
+        await self.svc.touch_admin_session_activity(
+            db, str(uuid.uuid4()), "sess-1", "1.2.3.4", "Mozilla/5.0"
+        )
+
+        # Only the initial SELECT ran — no UPDATE within the throttle window.
+        assert db.execute.await_count == 1
+
+    async def test_touch_admin_session_activity_writes_when_stale(self):
+        from datetime import UTC, datetime, timedelta
+
+        db = AsyncMock()
+        record = MagicMock()
+        record.last_activity_at = datetime.now(UTC) - timedelta(hours=1)
+        mock_result = MagicMock()
+        mock_result.scalar_one_or_none.return_value = record
+        db.execute = AsyncMock(return_value=mock_result)
+
+        await self.svc.touch_admin_session_activity(
+            db,
+            str(uuid.uuid4()),
+            "sess-1",
+            "1.2.3.4",
+            "Mozilla/5.0 (Windows NT 10.0) Chrome/120.0",
+        )
+
+        assert db.execute.await_count == 2  # SELECT then UPDATE
+
+    async def test_touch_admin_session_activity_noop_when_no_row(self):
+        db = AsyncMock()
+        mock_result = MagicMock()
+        mock_result.scalar_one_or_none.return_value = None
+        db.execute = AsyncMock(return_value=mock_result)
+
+        await self.svc.touch_admin_session_activity(
+            db, str(uuid.uuid4()), "sess-1", "1.2.3.4", "Mozilla/5.0"
+        )
+
+        assert db.execute.await_count == 1  # SELECT only, nothing to update
+
+    async def test_list_admin_sessions_returns_rows(self):
+        db = AsyncMock()
+        rows = [MagicMock(), MagicMock()]
+        mock_result = MagicMock()
+        mock_result.scalars.return_value.all.return_value = rows
+        db.execute = AsyncMock(return_value=mock_result)
+
+        result = await self.svc.list_admin_sessions(db, str(uuid.uuid4()))
+
+        assert result == rows
+
+    async def test_revoke_admin_session_true_when_deleted(self):
+        db = AsyncMock()
+        record = MagicMock()
+        record.id = uuid.uuid4()
+        record.supabase_session_id = "some-other-session"
+        mock_result = MagicMock()
+        mock_result.scalar_one_or_none.return_value = record
+        db.execute = AsyncMock(return_value=mock_result)
+
+        deleted, was_current = await self.svc.revoke_admin_session(
+            db,
+            str(uuid.uuid4()),
+            str(uuid.uuid4()),
+            current_session_id="current-session",
+        )
+
+        assert deleted is True
+        assert was_current is False
+
+    async def test_revoke_admin_session_false_when_nothing_matched(self):
+        db = AsyncMock()
+        mock_result = MagicMock()
+        mock_result.scalar_one_or_none.return_value = None
+        db.execute = AsyncMock(return_value=mock_result)
+
+        deleted, was_current = await self.svc.revoke_admin_session(
+            db, str(uuid.uuid4()), str(uuid.uuid4())
+        )
+
+        assert deleted is False
+        assert was_current is False
+
+    async def test_revoke_admin_session_refuses_to_delete_current_session(self):
+        """Deleting the caller's own current session must go through
+        /revoke-all or /logout instead — not the generic one-session
+        endpoint, so it can't happen by accident."""
+        db = AsyncMock()
+        record = MagicMock()
+        record.id = uuid.uuid4()
+        record.supabase_session_id = "current-session"
+        mock_result = MagicMock()
+        mock_result.scalar_one_or_none.return_value = record
+        db.execute = AsyncMock(return_value=mock_result)
+
+        deleted, was_current = await self.svc.revoke_admin_session(
+            db,
+            str(uuid.uuid4()),
+            str(uuid.uuid4()),
+            current_session_id="current-session",
+        )
+
+        assert deleted is False
+        assert was_current is True
+        db.execute.assert_awaited_once()  # SELECT only — no DELETE issued
+
+    async def test_revoke_other_admin_sessions_returns_count(self):
+        db = AsyncMock()
+        mock_result = MagicMock()
+        mock_result.rowcount = 3
+        db.execute = AsyncMock(return_value=mock_result)
+
+        result = await self.svc.revoke_other_admin_sessions(
+            db, str(uuid.uuid4()), "current-session"
+        )
+
+        assert result == 3
+
+    async def test_cleanup_expired_admin_sessions_returns_count(self):
+        db = AsyncMock()
+        mock_result = MagicMock()
+        mock_result.rowcount = 7
+        db.execute = AsyncMock(return_value=mock_result)
+
+        result = await self.svc.cleanup_expired_admin_sessions(db)
+
+        assert result == 7
+
+    async def test_clear_all_admin_sessions_2fa_returns_count(self):
+        db = AsyncMock()
+        mock_result = MagicMock()
+        mock_result.rowcount = 2
+        db.execute = AsyncMock(return_value=mock_result)
+
+        result = await self.svc.clear_all_admin_sessions_2fa(db, str(uuid.uuid4()))
+
+        assert result == 2
+
     async def test_logout_calls_supabase_api(self):
         db = AsyncMock()
         mock_response = MagicMock()
@@ -598,6 +889,21 @@ class TestAuthService2FA:
         with patch("httpx.AsyncClient", return_value=mock_client):
             await self.svc.logout(db, str(uuid.uuid4()))
         mock_client.post.assert_awaited_once()
+
+    async def test_logout_swallows_supabase_outage_without_raising(self):
+        """A Supabase admin-API outage must never prevent logout — routers
+        call this before clearing the local AdminSession row, so letting the
+        exception propagate would leave that row (and the 2FA-verified
+        state) in place even though the user asked to log out."""
+        db = AsyncMock()
+        mock_client = AsyncMock()
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock(return_value=False)
+        mock_client.post = AsyncMock(
+            side_effect=ConnectionError("supabase unreachable")
+        )
+        with patch("httpx.AsyncClient", return_value=mock_client):
+            await self.svc.logout(db, str(uuid.uuid4()))  # must not raise
 
     async def test_force_logout_delegates_to_logout(self):
         db = AsyncMock()

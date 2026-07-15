@@ -531,6 +531,79 @@ class TestCompleteOrderReservations:
         assert db.add.call_count == 2
 
 
+# ── TestCompleteReservationsForOrder ──────────────────────────────────────────
+#
+# This orchestration (complete -> detect EXPIRED -> late-payment fallback) used
+# to be duplicated inline in orders/service.py::verify_and_fulfill and
+# webhooks/service.py::_process_payment_captured. It now lives in exactly one
+# place, so these are the only tests for that sequencing.
+
+
+class TestCompleteReservationsForOrder:
+    def setup_method(self):
+        from app.modules.inventory.reservation_service import ReservationService
+
+        self.svc = ReservationService()
+
+    async def test_no_expired_reservations_skips_late_payment_fallback(self):
+        order_id = uuid.uuid4()
+
+        db = AsyncMock()
+        # Only the EXPIRED-detection query hits db.execute directly here;
+        # the two sub-methods are patched out to isolate orchestration.
+        db.execute = AsyncMock(return_value=_fetchone_result(None))
+
+        self.svc.complete_order_reservations = AsyncMock()
+        self.svc.complete_expired_order_reservations = AsyncMock()
+
+        await self.svc.complete_reservations_for_order(db, order_id)
+
+        self.svc.complete_order_reservations.assert_awaited_once_with(db, order_id)
+        self.svc.complete_expired_order_reservations.assert_not_awaited()
+
+    async def test_expired_reservations_trigger_late_payment_fallback(self):
+        order_id = uuid.uuid4()
+
+        db = AsyncMock()
+        db.execute = AsyncMock(return_value=_fetchone_result((1,)))
+
+        self.svc.complete_order_reservations = AsyncMock()
+        self.svc.complete_expired_order_reservations = AsyncMock()
+
+        await self.svc.complete_reservations_for_order(db, order_id)
+
+        self.svc.complete_order_reservations.assert_awaited_once_with(db, order_id)
+        self.svc.complete_expired_order_reservations.assert_awaited_once_with(
+            db, order_id
+        )
+
+    async def test_complete_runs_before_expired_check(self):
+        """The EXPIRED check must run after complete_order_reservations, not
+        before — otherwise a reservation completed by this same call could
+        never be observed as EXPIRED, which is fine, but the reverse
+        ordering bug (checking EXPIRED before completing) would still be a
+        regression worth catching."""
+        order_id = uuid.uuid4()
+        call_order: list[str] = []
+
+        async def _fake_complete(db, oid):
+            call_order.append("complete")
+
+        db = AsyncMock()
+
+        async def _fake_execute(*args, **kwargs):
+            call_order.append("expired_check")
+            return _fetchone_result(None)
+
+        db.execute = AsyncMock(side_effect=_fake_execute)
+        self.svc.complete_order_reservations = AsyncMock(side_effect=_fake_complete)
+        self.svc.complete_expired_order_reservations = AsyncMock()
+
+        await self.svc.complete_reservations_for_order(db, order_id)
+
+        assert call_order == ["complete", "expired_check"]
+
+
 # ── TestReleaseOrderReservations ──────────────────────────────────────────────
 
 

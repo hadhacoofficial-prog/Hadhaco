@@ -7,7 +7,7 @@ import {
   HeadContent,
   Scripts,
 } from "@tanstack/react-router";
-import { useEffect, type ReactNode } from "react";
+import { useEffect, useRef, type ReactNode } from "react";
 import { CartDrawer } from "../components/site/CartDrawer";
 import { GlobalJewelleryBackground } from "../components/site/GlobalJewelleryBackground";
 
@@ -25,6 +25,12 @@ import { Toaster } from "../components/ui/sonner";
 import { PageLoader } from "../components/common/PageLoader";
 import { useProfile } from "../hooks/auth/useProfile";
 import { useAuthContext } from "../providers/auth-context";
+import { useCart } from "../stores/cart";
+import { useCheckoutStore } from "../stores/checkout";
+import { useBuyNowStore } from "../stores/buyNow";
+import { useWishlist } from "../stores/wishlist";
+import { useRecentlyViewed } from "../stores/recentlyViewed";
+import { useRecentSearches } from "../stores/search";
 
 function NotFoundComponent() {
   return (
@@ -176,6 +182,7 @@ function AppContent() {
     <>
       <GlobalJewelleryBackground />
       <ProfileSyncer />
+      <AuthCleanup />
       <RouteTransition logoSrc={markAsset}>
         <ScrollProgress />
         {/* Required: nested routes render here. */}
@@ -194,5 +201,48 @@ function AppContent() {
 /** Fetches the backend profile once authenticated, setting the authoritative role. */
 function ProfileSyncer() {
   useProfile();
+  return null;
+}
+
+/**
+ * Watches auth state and clears all user-specific persisted stores on logout.
+ * Prevents stale data from leaking between accounts.
+ *
+ * Preserved across logout (anonymous preferences):
+ *   - hadha-welcome-offer-seen (UI flag)
+ */
+function AuthCleanup() {
+  const { isAuthenticated, initialized } = useAuthContext();
+  const resetCheckout = useCheckoutStore((s) => s.reset);
+  const clearBuyNow = useBuyNowStore((s) => s.clear);
+  const clearCart = useCart((s) => s.clear);
+  const clearWishlist = useWishlist((s) => s.clear);
+  const clearRecentlyViewed = useRecentlyViewed((s) => s.clear);
+  const clearRecentSearches = useRecentSearches((s) => s.clear);
+  const wasAuthenticated = useRef(false);
+
+  useEffect(() => {
+    if (initialized && wasAuthenticated.current && !isAuthenticated) {
+      resetCheckout();
+      clearBuyNow();
+      clearCart();
+      clearWishlist();
+      clearRecentlyViewed();
+      clearRecentSearches();
+    }
+    if (isAuthenticated) {
+      wasAuthenticated.current = true;
+    }
+  }, [
+    initialized,
+    isAuthenticated,
+    resetCheckout,
+    clearBuyNow,
+    clearCart,
+    clearWishlist,
+    clearRecentlyViewed,
+    clearRecentSearches,
+  ]);
+
   return null;
 }

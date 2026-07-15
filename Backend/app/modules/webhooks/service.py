@@ -30,7 +30,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 
 import structlog
-from sqlalchemy import select, text, update
+from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
@@ -357,22 +357,9 @@ class WebhookService:
                 },
             )
 
-        # Complete stock reservation (reserved -> sold). Idempotent: checks
-        # for ACTIVE reservations, silently no-ops if already completed.
-        # For late payments where reservations expired, handle the deduction.
-        await ReservationService().complete_order_reservations(db, order.id)
-
-        # Handle late payments: if the order's reservations were expired,
-        # we still need to deduct stock (sold_quantity).
-        has_expired = await db.execute(
-            text(
-                "SELECT 1 FROM inventory_reservations "
-                "WHERE order_id = :oid AND status = 'EXPIRED' LIMIT 1"
-            ),
-            {"oid": str(order.id)},
-        )
-        if has_expired.fetchone():
-            await ReservationService().complete_expired_order_reservations(db, order.id)
+        # Complete stock reservation (reserved -> sold), falling back to the
+        # late-payment path if reservations had already expired. Idempotent.
+        await ReservationService().complete_reservations_for_order(db, order.id)
 
         await order_repo.update(
             db,
@@ -383,6 +370,18 @@ class WebhookService:
                 "status": "confirmed",
             },
         )
+
+        # Finalize coupon — idempotent (updates order_id on the pending usage
+        # row). Must run on the webhook path too: if the webhook fires before
+        # verify_and_fulfill, this is the only path that will finalize the
+        # coupon usage. If verify_and_fulfill already finalized it, this is a
+        # safe no-op (rowcount=0, logged as warning).
+        if order.coupon_id:
+            from app.modules.coupons.service import CouponService
+
+            await CouponService().finalize_usage(
+                db, order.coupon_id, order.user_id, order.id
+            )
 
         # Generate invoice — idempotent (checks for an existing invoice first).
         refreshed_order = await order_repo.get_by_id(db, order.id)

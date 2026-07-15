@@ -14,7 +14,6 @@ import {
 } from "lucide-react";
 import { SiteLayout } from "@/components/site/SiteLayout";
 import { Skeleton } from "@/components/ui/skeleton";
-import { useCart } from "@/stores/cart";
 import { api } from "@/lib/api/client";
 import { queryKeys } from "@/lib/api/queryKeys";
 import { formatINR } from "@/lib/format";
@@ -485,17 +484,17 @@ function TotalRow({
 function SuccessPage() {
   const { order: orderNumber, orderId } = Route.useSearch();
   const queryClient = useQueryClient();
-  const clearCart = useCart((s) => s.clear);
   const didClean = useRef(false);
 
-  // Single-fire on mount: clear cart + bust caches now that order is committed
+  // Single-fire on mount: bust caches so fresh order + cart data is displayed.
+  // Store cleanup (cart/buyNow) is handled authoritatively by
+  // verifyPaymentMutation.onSuccess in checkout.tsx before navigation.
   useEffect(() => {
     if (didClean.current) return;
     didClean.current = true;
-    clearCart();
     queryClient.invalidateQueries({ queryKey: queryKeys.orders.all });
     queryClient.invalidateQueries({ queryKey: queryKeys.cart.all });
-  }, [clearCart, queryClient]);
+  }, [queryClient]);
 
   const fetchKey = orderId ?? orderNumber ?? "";
 

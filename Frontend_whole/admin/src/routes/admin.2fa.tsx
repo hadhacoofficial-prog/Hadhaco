@@ -1,5 +1,6 @@
 import { createFileRoute, redirect, useNavigate, useSearch } from "@tanstack/react-router";
 import { useState, useCallback } from "react";
+import { sanitizeRedirect, getAuthRedirectUrl } from "@hadha/shared-utils";
 import { useAuthContext } from "@/providers/auth-context";
 import { api } from "@/lib/api/client";
 import { queryKeys } from "@/lib/api/queryKeys";
@@ -22,10 +23,10 @@ export const Route = createFileRoute("/admin/2fa")({
   validateSearch: (search: Record<string, unknown>) => ({
     redirect: typeof search.redirect === "string" ? search.redirect : undefined,
   }),
-  beforeLoad: async ({ context: { queryClient } }) => {
+  beforeLoad: async ({ context: { queryClient }, location }) => {
     const session = await getSession();
     if (!session) {
-      throw redirect({ to: "/admin/login", search: { redirect: undefined } });
+      throw redirect({ to: "/admin/login", search: { redirect: getAuthRedirectUrl(location) } });
     }
     try {
       const profile = await queryClient.fetchQuery({
@@ -41,7 +42,7 @@ export const Route = createFileRoute("/admin/2fa")({
       }
     } catch (e) {
       if (e && typeof e === "object" && "isRedirect" in e) throw e;
-      throw redirect({ to: "/admin/login", search: { redirect: undefined } });
+      throw redirect({ to: "/admin/login", search: { redirect: getAuthRedirectUrl(location) } });
     }
   },
   head: () => ({
@@ -69,7 +70,7 @@ function TwoFactorChallengePage() {
       onSuccess: (res) => {
         if (res.valid) {
           sessionStorage.setItem("hadha:2fa_verified", Date.now().toString());
-          const target = redirectTo || "/admin";
+          const target = sanitizeRedirect(redirectTo, "/admin");
           navigate({ to: target });
         } else {
           setError("Invalid code. Please try again.");
