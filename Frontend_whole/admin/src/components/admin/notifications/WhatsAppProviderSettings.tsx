@@ -128,8 +128,9 @@ export function WhatsAppProviderSettings() {
           <Button
             onClick={handleSave}
             disabled={Object.keys(form).length === 0 || update.isPending}
+            loading={update.isPending}
           >
-            Save Changes
+            {update.isPending ? "Saving..." : "Save Changes"}
           </Button>
           <Button variant="outline" onClick={() => setTestOpen(true)}>
             <Send className="size-3.5 mr-1.5" /> Send Test WhatsApp
@@ -195,8 +196,9 @@ export function WhatsAppProviderSettings() {
             <Button
               onClick={handleTestSend}
               disabled={!testTo || !testTemplate || testWhatsApp.isPending}
+              loading={testWhatsApp.isPending}
             >
-              Send
+              {testWhatsApp.isPending ? "Sending..." : "Send"}
             </Button>
           </DialogFooter>
         </DialogContent>

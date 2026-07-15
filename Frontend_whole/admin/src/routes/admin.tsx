@@ -34,6 +34,7 @@ import {
   MessageSquare,
   Menu,
   Bell,
+  Loader2,
 } from "lucide-react";
 import markAsset from "@/assets/hadha-mark.png";
 
@@ -296,11 +297,14 @@ function AdminLayout() {
 function LogoutButton({ collapsed }: { collapsed: boolean }) {
   const { logout } = useAuthContext();
   const navigate = useNavigate();
+  const [isLoggingOut, setIsLoggingOut] = useState(false);
 
   async function handleLogout() {
+    setIsLoggingOut(true);
     try {
       await logout();
     } finally {
+      setIsLoggingOut(false);
       navigate({ to: "/admin/login", search: { redirect: undefined } });
     }
   }
@@ -308,13 +312,19 @@ function LogoutButton({ collapsed }: { collapsed: boolean }) {
   return (
     <button
       onClick={handleLogout}
+      disabled={isLoggingOut}
+      aria-busy={isLoggingOut}
       title={collapsed ? "Sign out" : undefined}
-      className={`flex items-center gap-2 text-xs text-background/60 hover:text-background transition w-full text-left rounded-md px-2 py-1.5 ${
+      className={`flex items-center gap-2 text-xs text-background/60 hover:text-background transition w-full text-left rounded-md px-2 py-1.5 disabled:opacity-60 ${
         collapsed ? "justify-center" : ""
       }`}
     >
-      <LogOut className="size-3.5 shrink-0" />
-      {!collapsed && <span>Sign out</span>}
+      {isLoggingOut ? (
+        <Loader2 className="size-3.5 shrink-0 animate-spin" />
+      ) : (
+        <LogOut className="size-3.5 shrink-0" />
+      )}
+      {!collapsed && <span>{isLoggingOut ? "Signing out…" : "Sign out"}</span>}
     </button>
   );
 }

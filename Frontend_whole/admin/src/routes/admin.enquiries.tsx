@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { MessageSquare, Search, X, Archive, ArchiveRestore, Trash2 } from "lucide-react";
+import { MessageSquare, Search, X, Archive, ArchiveRestore, Trash2, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { api } from "@/lib/api/client";
 import { queryKeys } from "@/lib/api/queryKeys";
@@ -394,14 +394,23 @@ function AdminEnquiries() {
                     })
                   }
                   disabled={archiveMutation.isPending}
+                  aria-busy={archiveMutation.isPending}
                   className="inline-flex items-center gap-1.5 border border-border px-3 py-2 text-xs uppercase tracking-[0.18em] hover:bg-secondary disabled:opacity-50 transition"
                 >
-                  {selected.is_archived ? (
+                  {archiveMutation.isPending ? (
+                    <Loader2 className="size-3.5 animate-spin" />
+                  ) : selected.is_archived ? (
                     <ArchiveRestore className="size-3.5" />
                   ) : (
                     <Archive className="size-3.5" />
                   )}
-                  {selected.is_archived ? "Restore" : "Archive"}
+                  {archiveMutation.isPending
+                    ? selected.is_archived
+                      ? "Restoring..."
+                      : "Archiving..."
+                    : selected.is_archived
+                      ? "Restore"
+                      : "Archive"}
                 </button>
                 <button
                   onClick={() => {
@@ -410,10 +419,15 @@ function AdminEnquiries() {
                     }
                   }}
                   disabled={deleteMutation.isPending}
+                  aria-busy={deleteMutation.isPending}
                   className="inline-flex items-center gap-1.5 border border-border px-3 py-2 text-xs uppercase tracking-[0.18em] hover:bg-destructive hover:text-destructive-foreground hover:border-destructive disabled:opacity-50 transition"
                 >
-                  <Trash2 className="size-3.5" />
-                  Delete
+                  {deleteMutation.isPending ? (
+                    <Loader2 className="size-3.5 animate-spin" />
+                  ) : (
+                    <Trash2 className="size-3.5" />
+                  )}
+                  {deleteMutation.isPending ? "Deleting..." : "Delete"}
                 </button>
               </div>
               <div className="flex gap-3">
@@ -426,8 +440,10 @@ function AdminEnquiries() {
                 <button
                   onClick={handleSave}
                   disabled={updateMutation.isPending}
-                  className="bg-primary text-primary-foreground px-4 py-2 text-xs uppercase tracking-[0.18em] hover:bg-accent hover:text-accent-foreground disabled:opacity-50 transition"
+                  aria-busy={updateMutation.isPending}
+                  className="inline-flex items-center gap-1.5 bg-primary text-primary-foreground px-4 py-2 text-xs uppercase tracking-[0.18em] hover:bg-accent hover:text-accent-foreground disabled:opacity-50 transition"
                 >
+                  {updateMutation.isPending && <Loader2 className="size-3.5 animate-spin" />}
                   {updateMutation.isPending ? "Saving..." : "Save Changes"}
                 </button>
               </div>

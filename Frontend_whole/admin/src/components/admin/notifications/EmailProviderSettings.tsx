@@ -99,8 +99,9 @@ export function EmailProviderSettings() {
           <Button
             onClick={handleSave}
             disabled={Object.keys(form).length === 0 || update.isPending}
+            loading={update.isPending}
           >
-            Save Changes
+            {update.isPending ? "Saving..." : "Save Changes"}
           </Button>
           <Button variant="outline" onClick={() => setTestOpen(true)}>
             <Send className="size-3.5 mr-1.5" /> Send Test Email
@@ -136,8 +137,12 @@ export function EmailProviderSettings() {
             <Button variant="outline" onClick={() => setTestOpen(false)}>
               Cancel
             </Button>
-            <Button onClick={handleTestSend} disabled={!testTo || testEmail.isPending}>
-              Send
+            <Button
+              onClick={handleTestSend}
+              disabled={!testTo || testEmail.isPending}
+              loading={testEmail.isPending}
+            >
+              {testEmail.isPending ? "Sending..." : "Send"}
             </Button>
           </DialogFooter>
         </DialogContent>

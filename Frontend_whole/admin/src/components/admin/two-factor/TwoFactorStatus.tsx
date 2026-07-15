@@ -1,5 +1,5 @@
 import { useCallback, useState } from "react";
-import { ShieldCheck, ShieldOff, KeyRound, RefreshCw, Loader2 } from "lucide-react";
+import { ShieldCheck, ShieldOff, KeyRound, RefreshCw } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import {

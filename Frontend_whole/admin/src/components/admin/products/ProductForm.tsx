@@ -697,8 +697,9 @@ function CreateCategoryDialog({
             type="button"
             onClick={handleCreate}
             disabled={!name.trim() || saving}
-            className="flex-1 bg-primary text-primary-foreground text-[11px] uppercase tracking-[0.22em] py-2.5 disabled:opacity-50"
+            className="flex-1 flex items-center justify-center gap-2 bg-primary text-primary-foreground text-[11px] uppercase tracking-[0.22em] py-2.5 disabled:opacity-50"
           >
+            {saving && <Loader2 className="size-3.5 animate-spin" />}
             {saving ? "Creating…" : "Create"}
           </button>
           <button
@@ -785,8 +786,9 @@ function CreateCollectionDialog({
             type="button"
             onClick={handleCreate}
             disabled={!name.trim() || saving}
-            className="flex-1 bg-primary text-primary-foreground text-[11px] uppercase tracking-[0.22em] py-2.5 disabled:opacity-50"
+            className="flex-1 flex items-center justify-center gap-2 bg-primary text-primary-foreground text-[11px] uppercase tracking-[0.22em] py-2.5 disabled:opacity-50"
           >
+            {saving && <Loader2 className="size-3.5 animate-spin" />}
             {saving ? "Creating…" : "Create"}
           </button>
           <button
@@ -1567,7 +1569,11 @@ function MediaSection({
                       className="bg-background/90 p-1.5 rounded-sm disabled:opacity-50"
                       title="Move earlier"
                     >
-                      <ChevronUp className="size-3.5" />
+                      {busy ? (
+                        <Loader2 className="size-3.5 animate-spin" />
+                      ) : (
+                        <ChevronUp className="size-3.5" />
+                      )}
                     </button>
                   )}
                   {i < savedImages.length - 1 && (
@@ -1578,7 +1584,11 @@ function MediaSection({
                       className="bg-background/90 p-1.5 rounded-sm disabled:opacity-50"
                       title="Move later"
                     >
-                      <ChevronDown className="size-3.5" />
+                      {busy ? (
+                        <Loader2 className="size-3.5 animate-spin" />
+                      ) : (
+                        <ChevronDown className="size-3.5" />
+                      )}
                     </button>
                   )}
                   {!img.is_primary && (
@@ -1589,7 +1599,11 @@ function MediaSection({
                       className="bg-background/90 p-1.5 rounded-sm disabled:opacity-50"
                       title="Set as primary"
                     >
-                      <Star className="size-3.5" />
+                      {busy ? (
+                        <Loader2 className="size-3.5 animate-spin" />
+                      ) : (
+                        <Star className="size-3.5" />
+                      )}
                     </button>
                   )}
                   <button
@@ -1599,7 +1613,11 @@ function MediaSection({
                     className="bg-background/90 p-1.5 rounded-sm disabled:opacity-50"
                     title="Edit crop"
                   >
-                    <CropIcon className="size-3.5" />
+                    {busy ? (
+                      <Loader2 className="size-3.5 animate-spin" />
+                    ) : (
+                      <CropIcon className="size-3.5" />
+                    )}
                   </button>
                   <button
                     type="button"
@@ -1608,7 +1626,11 @@ function MediaSection({
                     className="bg-background/90 p-1.5 rounded-sm disabled:opacity-50"
                     title="Replace image"
                   >
-                    <ImagePlus className="size-3.5" />
+                    {busy ? (
+                      <Loader2 className="size-3.5 animate-spin" />
+                    ) : (
+                      <ImagePlus className="size-3.5" />
+                    )}
                   </button>
                   <button
                     type="button"
@@ -1619,7 +1641,11 @@ function MediaSection({
                     className="bg-destructive/90 text-destructive-foreground p-1.5 rounded-sm disabled:opacity-50"
                     title="Delete"
                   >
-                    <Trash2 className="size-3.5" />
+                    {busy ? (
+                      <Loader2 className="size-3.5 animate-spin" />
+                    ) : (
+                      <Trash2 className="size-3.5" />
+                    )}
                   </button>
                 </div>
               </div>
@@ -2415,8 +2441,9 @@ function PublishSidebar({
         type="button"
         onClick={onPublish}
         disabled={saving}
-        className="w-full bg-primary text-primary-foreground text-[11px] uppercase tracking-[0.22em] py-3 disabled:opacity-50 hover:opacity-90 transition-opacity"
+        className="w-full flex items-center justify-center gap-2 bg-primary text-primary-foreground text-[11px] uppercase tracking-[0.22em] py-3 disabled:opacity-50 hover:opacity-90 transition-opacity"
       >
+        {saving && <Loader2 className="size-3.5 animate-spin" />}
         {saving ? "Saving…" : mode === "new" ? "Publish Product" : "Save & Publish"}
       </button>
 
@@ -2424,8 +2451,9 @@ function PublishSidebar({
         type="button"
         onClick={onSaveDraft}
         disabled={saving}
-        className="w-full border border-border text-[11px] uppercase tracking-[0.22em] py-3 disabled:opacity-50 hover:bg-secondary"
+        className="w-full flex items-center justify-center gap-2 border border-border text-[11px] uppercase tracking-[0.22em] py-3 disabled:opacity-50 hover:bg-secondary"
       >
+        {saving && <Loader2 className="size-3.5 animate-spin" />}
         {saving ? "Saving…" : "Save Draft"}
       </button>
 
@@ -3351,16 +3379,18 @@ export function ProductForm({ mode, initialProduct, initialCollectionIds }: Prod
             type="button"
             onClick={handleSaveDraft}
             disabled={saving}
-            className="border border-border text-[11px] uppercase tracking-[0.22em] px-4 py-2.5 hover:bg-secondary disabled:opacity-50"
+            className="flex items-center justify-center gap-2 border border-border text-[11px] uppercase tracking-[0.22em] px-4 py-2.5 hover:bg-secondary disabled:opacity-50"
           >
-            Save Draft
+            {saving && <Loader2 className="size-3.5 animate-spin" />}
+            {saving ? "Saving…" : "Save Draft"}
           </button>
           <button
             type="button"
             onClick={handlePublish}
             disabled={saving}
-            className="bg-primary text-primary-foreground text-[11px] uppercase tracking-[0.22em] px-4 py-2.5 hover:opacity-90 disabled:opacity-50"
+            className="flex items-center justify-center gap-2 bg-primary text-primary-foreground text-[11px] uppercase tracking-[0.22em] px-4 py-2.5 hover:opacity-90 disabled:opacity-50"
           >
+            {saving && <Loader2 className="size-3.5 animate-spin" />}
             {saving ? "Saving…" : "Publish"}
           </button>
         </div>

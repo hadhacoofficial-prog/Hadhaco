@@ -1,5 +1,6 @@
 import { createFileRoute, redirect, useNavigate } from "@tanstack/react-router";
 import { useState } from "react";
+import { Loader2 } from "lucide-react";
 import { sanitizeRedirect } from "@hadha/shared-utils";
 import { useAuthContext } from "@/providers/auth-context";
 import { api } from "@/lib/api/client";
@@ -202,9 +203,13 @@ function AdminLoginPage() {
             <button
               type="submit"
               disabled={loading}
+              aria-busy={loading}
               className="w-full bg-foreground text-background text-[11px] uppercase tracking-[0.22em] py-3.5 hover:opacity-80 transition-opacity disabled:opacity-50 disabled:cursor-not-allowed mt-2"
             >
-              {loading ? "Signing in…" : "Sign in"}
+              <span className="inline-flex items-center justify-center gap-2">
+                {loading && <Loader2 className="size-3.5 animate-spin" />}
+                {loading ? "Signing in…" : "Sign in"}
+              </span>
             </button>
           </form>
         </div>

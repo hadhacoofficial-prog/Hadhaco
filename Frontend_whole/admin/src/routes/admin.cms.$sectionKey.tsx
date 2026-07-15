@@ -7,6 +7,7 @@ import {
   ChevronUp,
   Clock,
   History,
+  Loader2,
   Plus,
   Save,
   Send,
@@ -162,17 +163,27 @@ function SectionEditor() {
           <button
             onClick={handleSaveDraft}
             disabled={saveDraftMutation.isPending || !!jsonError}
+            aria-busy={saveDraftMutation.isPending}
             className="inline-flex items-center gap-2 border border-border px-4 py-2 text-xs tracking-[0.18em] uppercase hover:bg-muted disabled:opacity-50 transition"
           >
-            <Save className="size-3.5" />
+            {saveDraftMutation.isPending ? (
+              <Loader2 className="size-3.5 animate-spin" />
+            ) : (
+              <Save className="size-3.5" />
+            )}
             {saveDraftMutation.isPending ? "Saving…" : "Save draft"}
           </button>
           <button
             onClick={handlePublish}
             disabled={publishMutation.isPending || !!jsonError}
+            aria-busy={publishMutation.isPending}
             className="inline-flex items-center gap-2 bg-primary text-primary-foreground px-4 py-2 text-xs tracking-[0.18em] uppercase hover:bg-primary/90 disabled:opacity-50 transition"
           >
-            <Send className="size-3.5" />
+            {publishMutation.isPending ? (
+              <Loader2 className="size-3.5 animate-spin" />
+            ) : (
+              <Send className="size-3.5" />
+            )}
             {publishMutation.isPending ? "Publishing…" : "Publish"}
           </button>
         </div>
@@ -289,36 +300,51 @@ function SectionItemsPanel({
         <div className="border-t border-border p-4 space-y-3">
           {isLoading && <p className="text-sm text-muted-foreground">Loading…</p>}
 
-          {items.map((item, idx) => (
-            <SectionItemCard
-              key={item.id}
-              item={item}
-              idx={idx}
-              total={items.length}
-              onMove={(dir) => moveItem(idx, dir)}
-              onToggle={() =>
-                updateMutation.mutate(
-                  { itemId: item.id, payload: { is_enabled: !item.is_enabled } },
-                  { onError: (e) => toast.error(toUserMessage(e)) },
-                )
-              }
-              onDelete={() =>
-                deleteMutation.mutate(item.id, {
-                  onSuccess: () => toast.success("Item deleted."),
-                  onError: (e) => toast.error(toUserMessage(e)),
-                })
-              }
-              onSaveConfig={(config) =>
-                updateMutation.mutate(
-                  { itemId: item.id, payload: { config } },
-                  {
-                    onSuccess: () => toast.success("Item saved."),
+          {items.map((item, idx) => {
+            const isTogglingThis =
+              updateMutation.isPending &&
+              updateMutation.variables?.itemId === item.id &&
+              "is_enabled" in updateMutation.variables.payload;
+            const isSavingThis =
+              updateMutation.isPending &&
+              updateMutation.variables?.itemId === item.id &&
+              "config" in updateMutation.variables.payload;
+            const isDeletingThis = deleteMutation.isPending && deleteMutation.variables === item.id;
+            return (
+              <SectionItemCard
+                key={item.id}
+                item={item}
+                idx={idx}
+                total={items.length}
+                isMoving={reorderMutation.isPending}
+                isToggling={isTogglingThis}
+                isDeleting={isDeletingThis}
+                isSavingConfig={isSavingThis}
+                onMove={(dir) => moveItem(idx, dir)}
+                onToggle={() =>
+                  updateMutation.mutate(
+                    { itemId: item.id, payload: { is_enabled: !item.is_enabled } },
+                    { onError: (e) => toast.error(toUserMessage(e)) },
+                  )
+                }
+                onDelete={() =>
+                  deleteMutation.mutate(item.id, {
+                    onSuccess: () => toast.success("Item deleted."),
                     onError: (e) => toast.error(toUserMessage(e)),
-                  },
-                )
-              }
-            />
-          ))}
+                  })
+                }
+                onSaveConfig={(config) =>
+                  updateMutation.mutate(
+                    { itemId: item.id, payload: { config } },
+                    {
+                      onSuccess: () => toast.success("Item saved."),
+                      onError: (e) => toast.error(toUserMessage(e)),
+                    },
+                  )
+                }
+              />
+            );
+          })}
 
           {/* Add item */}
           {addOpen ? (
@@ -337,9 +363,11 @@ function SectionItemsPanel({
                 <button
                   onClick={handleCreate}
                   disabled={createMutation.isPending}
-                  className="text-xs bg-primary text-primary-foreground px-3 py-1.5 uppercase tracking-[0.18em] disabled:opacity-50"
+                  aria-busy={createMutation.isPending}
+                  className="inline-flex items-center gap-1.5 text-xs bg-primary text-primary-foreground px-3 py-1.5 uppercase tracking-[0.18em] disabled:opacity-50"
                 >
-                  Add
+                  {createMutation.isPending && <Loader2 className="size-3 animate-spin" />}
+                  {createMutation.isPending ? "Adding…" : "Add"}
                 </button>
                 <button
                   onClick={() => setAddOpen(false)}
@@ -368,6 +396,10 @@ function SectionItemCard({
   item,
   idx,
   total,
+  isMoving,
+  isToggling,
+  isDeleting,
+  isSavingConfig,
   onMove,
   onToggle,
   onDelete,
@@ -376,6 +408,10 @@ function SectionItemCard({
   item: SectionItem;
   idx: number;
   total: number;
+  isMoving: boolean;
+  isToggling: boolean;
+  isDeleting: boolean;
+  isSavingConfig: boolean;
   onMove: (dir: -1 | 1) => void;
   onToggle: () => void;
   onDelete: () => void;
@@ -398,14 +434,16 @@ function SectionItemCard({
         <div className="flex flex-col gap-0.5 shrink-0">
           <button
             onClick={() => onMove(-1)}
-            disabled={idx === 0}
+            disabled={idx === 0 || isMoving}
+            aria-busy={isMoving}
             className="hover:text-primary disabled:opacity-20 p-0.5"
           >
             <ChevronUp className="size-3" />
           </button>
           <button
             onClick={() => onMove(1)}
-            disabled={idx === total - 1}
+            disabled={idx === total - 1 || isMoving}
+            aria-busy={isMoving}
             className="hover:text-primary disabled:opacity-20 p-0.5"
           >
             <ChevronDown className="size-3" />
@@ -419,12 +457,24 @@ function SectionItemCard({
         </button>
         <button
           onClick={onToggle}
-          className="p-1 text-xs text-muted-foreground hover:text-foreground"
+          disabled={isToggling}
+          aria-busy={isToggling}
+          className="inline-flex items-center gap-1 p-1 text-xs text-muted-foreground hover:text-foreground disabled:opacity-50"
         >
+          {isToggling && <Loader2 className="size-3 animate-spin" />}
           {item.is_enabled ? "Hide" : "Show"}
         </button>
-        <button onClick={onDelete} className="p-1 text-destructive hover:opacity-70">
-          <Trash2 className="size-3.5" />
+        <button
+          onClick={onDelete}
+          disabled={isDeleting}
+          aria-busy={isDeleting}
+          className="p-1 text-destructive hover:opacity-70 disabled:opacity-50"
+        >
+          {isDeleting ? (
+            <Loader2 className="size-3.5 animate-spin" />
+          ) : (
+            <Trash2 className="size-3.5" />
+          )}
         </button>
       </div>
       {open && (
@@ -438,10 +488,16 @@ function SectionItemCard({
           />
           <button
             onClick={handleSave}
-            className="inline-flex items-center gap-1.5 text-xs bg-primary text-primary-foreground px-3 py-1.5 uppercase tracking-[0.18em]"
+            disabled={isSavingConfig}
+            aria-busy={isSavingConfig}
+            className="inline-flex items-center gap-1.5 text-xs bg-primary text-primary-foreground px-3 py-1.5 uppercase tracking-[0.18em] disabled:opacity-50"
           >
-            <Check className="size-3" />
-            Save item
+            {isSavingConfig ? (
+              <Loader2 className="size-3 animate-spin" />
+            ) : (
+              <Check className="size-3" />
+            )}
+            {isSavingConfig ? "Saving…" : "Save item"}
           </button>
         </div>
       )}
@@ -512,10 +568,16 @@ function VersionHistoryPanel({
                         onError: (e) => toast.error(toUserMessage(e)),
                       })
                     }
-                    disabled={rollbackMutation.isPending}
-                    className="text-xs border border-border px-2 py-1 hover:bg-muted disabled:opacity-50 transition"
+                    disabled={rollbackMutation.isPending && rollbackMutation.variables === v.id}
+                    aria-busy={rollbackMutation.isPending && rollbackMutation.variables === v.id}
+                    className="inline-flex items-center gap-1.5 text-xs border border-border px-2 py-1 hover:bg-muted disabled:opacity-50 transition"
                   >
-                    Restore
+                    {rollbackMutation.isPending && rollbackMutation.variables === v.id && (
+                      <Loader2 className="size-3 animate-spin" />
+                    )}
+                    {rollbackMutation.isPending && rollbackMutation.variables === v.id
+                      ? "Restoring…"
+                      : "Restore"}
                   </button>
                 </div>
               </div>

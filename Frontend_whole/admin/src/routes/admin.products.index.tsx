@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import { createFileRoute, useNavigate, Link } from "@tanstack/react-router";
 import { useQuery, useMutation, useQueryClient, keepPreviousData } from "@tanstack/react-query";
-import { Search, Plus, Trash2, Pencil, FolderOpen, ChevronDown } from "lucide-react";
+import { Search, Plus, Trash2, Pencil, FolderOpen, ChevronDown, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { api } from "@/lib/api/client";
 import { queryKeys } from "@/lib/api/queryKeys";
@@ -132,83 +132,91 @@ function AdminProducts() {
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
-              {list.map((p) => (
-                <tr key={p.id} className="hover:bg-secondary/40">
-                  <td className="px-4 py-3">
-                    <div className="flex items-center gap-3">
-                      {p.primary_image ? (
-                        <ImageWithFallback
-                          src={p.primary_image}
-                          alt=""
-                          className="size-10 bg-secondary shrink-0"
-                        />
-                      ) : (
-                        <div className="size-10 bg-secondary shrink-0" />
-                      )}
-                      <span className="line-clamp-1 max-w-[240px]">{p.name}</span>
-                    </div>
-                  </td>
-                  <td className="px-4 py-3 font-mono text-xs text-muted-foreground">{p.sku}</td>
-                  <td className="px-4 py-3">
-                    {p.collections.length === 0 ? (
-                      <span className="text-muted-foreground text-xs">—</span>
-                    ) : (
-                      <div className="flex flex-wrap gap-1">
-                        {p.collections.slice(0, 2).map((c) => (
-                          <Link
-                            key={c.id}
-                            to="/admin/collections/$collectionId"
-                            params={{ collectionId: c.id }}
-                            className="text-[10px] uppercase tracking-[0.15em] px-2 py-0.5 bg-secondary text-muted-foreground hover:text-foreground transition"
-                          >
-                            {c.name}
-                          </Link>
-                        ))}
-                        {p.collections.length > 2 && (
-                          <span className="text-[10px] text-muted-foreground px-1 py-0.5">
-                            +{p.collections.length - 2}
-                          </span>
+              {list.map((p) => {
+                const isDeleting = deleteMutation.isPending && deleteMutation.variables === p.id;
+                return (
+                  <tr key={p.id} className="hover:bg-secondary/40">
+                    <td className="px-4 py-3">
+                      <div className="flex items-center gap-3">
+                        {p.primary_image ? (
+                          <ImageWithFallback
+                            src={p.primary_image}
+                            alt=""
+                            className="size-10 bg-secondary shrink-0"
+                          />
+                        ) : (
+                          <div className="size-10 bg-secondary shrink-0" />
                         )}
+                        <span className="line-clamp-1 max-w-[240px]">{p.name}</span>
                       </div>
-                    )}
-                  </td>
-                  <td className="px-4 py-3 font-display">{formatINR(p.base_price)}</td>
-                  <td className="px-4 py-3">{p.stock_quantity}</td>
-                  <td className="px-4 py-3">
-                    <span
-                      className={`text-[10px] uppercase tracking-[0.22em] px-2 py-0.5 ${
-                        p.status === "active"
-                          ? "bg-accent/15 text-accent"
-                          : p.status === "draft"
-                            ? "bg-secondary text-muted-foreground"
-                            : "bg-destructive/15 text-destructive"
-                      }`}
-                    >
-                      {p.status}
-                    </span>
-                  </td>
-                  <td className="px-4 py-3 text-right">
-                    <div className="flex items-center justify-end gap-3">
-                      <Link
-                        to="/admin/products/$productId"
-                        params={{ productId: p.id }}
-                        className="text-muted-foreground hover:text-foreground"
+                    </td>
+                    <td className="px-4 py-3 font-mono text-xs text-muted-foreground">{p.sku}</td>
+                    <td className="px-4 py-3">
+                      {p.collections.length === 0 ? (
+                        <span className="text-muted-foreground text-xs">—</span>
+                      ) : (
+                        <div className="flex flex-wrap gap-1">
+                          {p.collections.slice(0, 2).map((c) => (
+                            <Link
+                              key={c.id}
+                              to="/admin/collections/$collectionId"
+                              params={{ collectionId: c.id }}
+                              className="text-[10px] uppercase tracking-[0.15em] px-2 py-0.5 bg-secondary text-muted-foreground hover:text-foreground transition"
+                            >
+                              {c.name}
+                            </Link>
+                          ))}
+                          {p.collections.length > 2 && (
+                            <span className="text-[10px] text-muted-foreground px-1 py-0.5">
+                              +{p.collections.length - 2}
+                            </span>
+                          )}
+                        </div>
+                      )}
+                    </td>
+                    <td className="px-4 py-3 font-display">{formatINR(p.base_price)}</td>
+                    <td className="px-4 py-3">{p.stock_quantity}</td>
+                    <td className="px-4 py-3">
+                      <span
+                        className={`text-[10px] uppercase tracking-[0.22em] px-2 py-0.5 ${
+                          p.status === "active"
+                            ? "bg-accent/15 text-accent"
+                            : p.status === "draft"
+                              ? "bg-secondary text-muted-foreground"
+                              : "bg-destructive/15 text-destructive"
+                        }`}
                       >
-                        <Pencil className="size-4" />
-                      </Link>
-                      <button
-                        onClick={() => {
-                          if (confirm(`Delete "${p.name}"?`)) deleteMutation.mutate(p.id);
-                        }}
-                        disabled={deleteMutation.isPending}
-                        className="text-muted-foreground hover:text-destructive disabled:opacity-50"
-                      >
-                        <Trash2 className="size-4" />
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
+                        {p.status}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3 text-right">
+                      <div className="flex items-center justify-end gap-3">
+                        <Link
+                          to="/admin/products/$productId"
+                          params={{ productId: p.id }}
+                          className="text-muted-foreground hover:text-foreground"
+                        >
+                          <Pencil className="size-4" />
+                        </Link>
+                        <button
+                          onClick={() => {
+                            if (confirm(`Delete "${p.name}"?`)) deleteMutation.mutate(p.id);
+                          }}
+                          disabled={isDeleting}
+                          aria-busy={isDeleting}
+                          className="text-muted-foreground hover:text-destructive disabled:opacity-50"
+                        >
+                          {isDeleting ? (
+                            <Loader2 className="size-4 animate-spin" />
+                          ) : (
+                            <Trash2 className="size-4" />
+                          )}
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
               {list.length === 0 && (
                 <tr>
                   <td colSpan={7} className="px-4 py-10 text-center text-muted-foreground text-sm">

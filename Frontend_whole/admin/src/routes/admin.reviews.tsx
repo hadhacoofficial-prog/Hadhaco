@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Star, Check, X, Trash2 } from "lucide-react";
+import { Star, Check, X, Trash2, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { api } from "@/lib/api/client";
 import { queryKeys } from "@/lib/api/queryKeys";
@@ -122,6 +122,10 @@ function AdminReviews() {
           list.map((r) => {
             const isActionPending =
               actionMutation.isPending && actionMutation.variables?.id === r.id;
+            const isApprovePending =
+              isActionPending && actionMutation.variables?.action === "approve";
+            const isRejectPending =
+              isActionPending && actionMutation.variables?.action === "reject";
             const isDeletePending = deleteMutation.isPending && deleteMutation.variables === r.id;
             return (
               <article
@@ -191,20 +195,30 @@ function AdminReviews() {
                       <button
                         onClick={() => actionMutation.mutate({ id: r.id, action: "approve" })}
                         disabled={isActionPending}
+                        aria-busy={isApprovePending}
                         className="inline-flex items-center gap-1 border border-border px-3 py-2 text-xs uppercase tracking-[0.18em] hover:bg-accent hover:text-accent-foreground hover:border-accent disabled:opacity-50 transition"
                       >
-                        <Check className="size-3.5" />
-                        Approve
+                        {isApprovePending ? (
+                          <Loader2 className="size-3.5 animate-spin" />
+                        ) : (
+                          <Check className="size-3.5" />
+                        )}
+                        {isApprovePending ? "Approving..." : "Approve"}
                       </button>
                     )}
                     {!r.is_approved && !r.is_rejected && (
                       <button
                         onClick={() => actionMutation.mutate({ id: r.id, action: "reject" })}
                         disabled={isActionPending}
+                        aria-busy={isRejectPending}
                         className="inline-flex items-center gap-1 border border-border px-3 py-2 text-xs uppercase tracking-[0.18em] hover:bg-destructive hover:text-destructive-foreground hover:border-destructive disabled:opacity-50 transition"
                       >
-                        <X className="size-3.5" />
-                        Reject
+                        {isRejectPending ? (
+                          <Loader2 className="size-3.5 animate-spin" />
+                        ) : (
+                          <X className="size-3.5" />
+                        )}
+                        {isRejectPending ? "Rejecting..." : "Reject"}
                       </button>
                     )}
                     <button
@@ -214,10 +228,15 @@ function AdminReviews() {
                         }
                       }}
                       disabled={isDeletePending}
+                      aria-busy={isDeletePending}
                       className="inline-flex items-center gap-1 border border-border px-3 py-2 text-xs uppercase tracking-[0.18em] hover:bg-destructive hover:text-destructive-foreground hover:border-destructive disabled:opacity-50 transition"
                     >
-                      <Trash2 className="size-3.5" />
-                      Delete
+                      {isDeletePending ? (
+                        <Loader2 className="size-3.5 animate-spin" />
+                      ) : (
+                        <Trash2 className="size-3.5" />
+                      )}
+                      {isDeletePending ? "Deleting..." : "Delete"}
                     </button>
                   </div>
                 </div>

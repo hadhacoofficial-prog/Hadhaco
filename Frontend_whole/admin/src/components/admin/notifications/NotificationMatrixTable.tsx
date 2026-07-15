@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { toast } from "sonner";
 import { toUserMessage } from "@/lib/api/errors";
 import { Switch } from "@/components/ui/switch";
@@ -58,6 +58,9 @@ function groupByCategory(rules: NotificationRuleOut[]) {
 export function NotificationMatrixTable() {
   const { data: rules, isLoading } = useNotificationRules();
   const updateRule = useUpdateNotificationRule();
+  const [pendingField, setPendingField] = useState<{ eventType: string; field: string } | null>(
+    null,
+  );
 
   const groups = useMemo(() => groupByCategory(rules ?? []), [rules]);
 
@@ -65,14 +68,20 @@ export function NotificationMatrixTable() {
     eventType: string,
     data: Parameters<typeof updateRule.mutate>[0]["data"],
   ) => {
+    const field = Object.keys(data)[0] ?? "";
+    setPendingField({ eventType, field });
     updateRule.mutate(
       { eventType, data },
       {
         onSuccess: () => toast.success("Notification rule updated"),
         onError: (e) => toast.error(toUserMessage(e)),
+        onSettled: () => setPendingField(null),
       },
     );
   };
+
+  const isFieldPending = (eventType: string, field: string) =>
+    updateRule.isPending && pendingField?.eventType === eventType && pendingField.field === field;
 
   if (isLoading) {
     return (
@@ -135,7 +144,8 @@ export function NotificationMatrixTable() {
                     <td className="px-4 py-3 align-top">
                       <Switch
                         checked={rule.email_enabled}
-                        disabled={updateRule.isPending}
+                        disabled={isFieldPending(rule.event_type, "email_enabled")}
+                        aria-busy={isFieldPending(rule.event_type, "email_enabled")}
                         aria-label={`Email enabled for ${rule.display_name ?? rule.event_type}`}
                         onCheckedChange={(checked) =>
                           handleUpdate(rule.event_type, { email_enabled: checked })
@@ -145,7 +155,8 @@ export function NotificationMatrixTable() {
                     <td className="px-4 py-3 align-top">
                       <Switch
                         checked={rule.whatsapp_enabled}
-                        disabled={updateRule.isPending}
+                        disabled={isFieldPending(rule.event_type, "whatsapp_enabled")}
+                        aria-busy={isFieldPending(rule.event_type, "whatsapp_enabled")}
                         aria-label={`WhatsApp enabled for ${rule.display_name ?? rule.event_type}`}
                         onCheckedChange={(checked) =>
                           handleUpdate(rule.event_type, { whatsapp_enabled: checked })
@@ -155,7 +166,8 @@ export function NotificationMatrixTable() {
                     <td className="px-4 py-3 align-top">
                       <Switch
                         checked={rule.enabled}
-                        disabled={updateRule.isPending}
+                        disabled={isFieldPending(rule.event_type, "enabled")}
+                        aria-busy={isFieldPending(rule.event_type, "enabled")}
                         aria-label={`Master switch for ${rule.display_name ?? rule.event_type}`}
                         onCheckedChange={(checked) =>
                           handleUpdate(rule.event_type, { enabled: checked })
@@ -165,11 +177,15 @@ export function NotificationMatrixTable() {
                     <td className="px-4 py-3 align-top">
                       <Select
                         value={rule.priority}
+                        disabled={isFieldPending(rule.event_type, "priority")}
                         onValueChange={(value) =>
                           handleUpdate(rule.event_type, { priority: value })
                         }
                       >
-                        <SelectTrigger className="w-28 h-8 text-xs">
+                        <SelectTrigger
+                          className="w-28 h-8 text-xs"
+                          aria-busy={isFieldPending(rule.event_type, "priority")}
+                        >
                           <SelectValue />
                         </SelectTrigger>
                         <SelectContent>

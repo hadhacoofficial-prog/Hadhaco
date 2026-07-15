@@ -157,6 +157,7 @@ function AdminTemplates() {
         <button
           onClick={handleSave}
           disabled={!dirty || update.isPending}
+          aria-busy={update.isPending}
           className="flex items-center gap-2 rounded-md bg-foreground text-background px-4 py-2 text-sm font-medium disabled:opacity-40 hover:opacity-90 transition"
         >
           <Save className="size-4" />
@@ -332,6 +333,7 @@ function AdminTemplates() {
         <button
           onClick={handleSave}
           disabled={!dirty || update.isPending}
+          aria-busy={update.isPending}
           className="flex items-center gap-2 rounded-md bg-foreground text-background px-5 py-2.5 text-sm font-medium disabled:opacity-40 hover:opacity-90 transition"
         >
           <Save className="size-4" />

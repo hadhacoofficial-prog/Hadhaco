@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { ChevronDown, ChevronRight, Plus, Tag, Trash2, X } from "lucide-react";
+import { ChevronDown, ChevronRight, Loader2, Plus, Tag, Trash2, X } from "lucide-react";
 import { toast } from "sonner";
 import { api } from "@/lib/api/client";
 import { queryKeys } from "@/lib/api/queryKeys";
@@ -109,47 +109,55 @@ function AdminCoupons() {
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
-              {list.map((c) => (
-                <tr
-                  key={c.id}
-                  className="hover:bg-secondary/40 cursor-pointer"
-                  onClick={() => setEditing(c)}
-                >
-                  <td className="px-4 py-3 font-mono font-semibold">{c.code}</td>
-                  <td className="px-4 py-3 font-display">
-                    {c.coupon_type === "free_shipping"
-                      ? "Free Shipping"
-                      : c.coupon_type === "percentage"
-                        ? `${c.value}%`
-                        : `₹${c.value}`}
-                  </td>
-                  <td className="px-4 py-3 text-muted-foreground">
-                    {c.min_order_amount ? `₹${c.min_order_amount}` : "—"}
-                  </td>
-                  <td className="px-4 py-3 text-muted-foreground">
-                    {c.usage_count}
-                    {c.usage_limit ? `/${c.usage_limit}` : ""}
-                  </td>
-                  <td className="px-4 py-3">
-                    <StatusBadge status={c.status} />
-                  </td>
-                  <td className="px-4 py-3 text-muted-foreground text-xs">
-                    {c.campaign_name ?? "—"}
-                  </td>
-                  <td className="px-4 py-3 text-right">
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        deleteMutation.mutate(c.id);
-                      }}
-                      disabled={deleteMutation.isPending}
-                      className="text-muted-foreground hover:text-destructive disabled:opacity-50"
-                    >
-                      <Trash2 className="size-4" />
-                    </button>
-                  </td>
-                </tr>
-              ))}
+              {list.map((c) => {
+                const isDeletingRow = deleteMutation.isPending && deleteMutation.variables === c.id;
+                return (
+                  <tr
+                    key={c.id}
+                    className="hover:bg-secondary/40 cursor-pointer"
+                    onClick={() => setEditing(c)}
+                  >
+                    <td className="px-4 py-3 font-mono font-semibold">{c.code}</td>
+                    <td className="px-4 py-3 font-display">
+                      {c.coupon_type === "free_shipping"
+                        ? "Free Shipping"
+                        : c.coupon_type === "percentage"
+                          ? `${c.value}%`
+                          : `₹${c.value}`}
+                    </td>
+                    <td className="px-4 py-3 text-muted-foreground">
+                      {c.min_order_amount ? `₹${c.min_order_amount}` : "—"}
+                    </td>
+                    <td className="px-4 py-3 text-muted-foreground">
+                      {c.usage_count}
+                      {c.usage_limit ? `/${c.usage_limit}` : ""}
+                    </td>
+                    <td className="px-4 py-3">
+                      <StatusBadge status={c.status} />
+                    </td>
+                    <td className="px-4 py-3 text-muted-foreground text-xs">
+                      {c.campaign_name ?? "—"}
+                    </td>
+                    <td className="px-4 py-3 text-right">
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          deleteMutation.mutate(c.id);
+                        }}
+                        disabled={isDeletingRow}
+                        aria-busy={isDeletingRow}
+                        className="text-muted-foreground hover:text-destructive disabled:opacity-50"
+                      >
+                        {isDeletingRow ? (
+                          <Loader2 className="size-4 animate-spin" />
+                        ) : (
+                          <Trash2 className="size-4" />
+                        )}
+                      </button>
+                    </td>
+                  </tr>
+                );
+              })}
               {list.length === 0 && (
                 <tr>
                   <td colSpan={7} className="px-4 py-10 text-center text-muted-foreground text-sm">
@@ -720,9 +728,14 @@ function CouponForm({
         <button
           onClick={onSubmit}
           disabled={isPending}
+          aria-busy={isPending}
           className="w-full inline-flex items-center justify-center gap-2 bg-primary text-primary-foreground text-[11px] uppercase tracking-[0.22em] px-5 py-3 disabled:opacity-60 hover:bg-primary/90 transition"
         >
-          <Plus className="size-3.5" />
+          {isPending ? (
+            <Loader2 className="size-3.5 animate-spin" />
+          ) : (
+            <Plus className="size-3.5" />
+          )}
           {isPending ? "Saving…" : "Save coupon"}
         </button>
       </div>

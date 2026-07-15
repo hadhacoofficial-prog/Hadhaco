@@ -1,7 +1,7 @@
 import { useMemo } from "react";
 import { createFileRoute } from "@tanstack/react-router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Minus, Plus, AlertTriangle } from "lucide-react";
+import { Minus, Plus, AlertTriangle, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { api } from "@/lib/api/client";
 import { queryKeys } from "@/lib/api/queryKeys";
@@ -87,6 +87,8 @@ function AdminInventory() {
                 const isLow = lowStockIds.has(p.id);
                 const isRowPending =
                   adjustMutation.isPending && adjustMutation.variables?.id === p.id;
+                const isDecrementPending = isRowPending && adjustMutation.variables?.delta === -1;
+                const isIncrementPending = isRowPending && adjustMutation.variables?.delta === 1;
                 return (
                   <tr key={p.id}>
                     <td className="px-4 py-3">
@@ -110,16 +112,26 @@ function AdminInventory() {
                         <button
                           onClick={() => adjustMutation.mutate({ id: p.id, delta: -1 })}
                           disabled={isRowPending}
+                          aria-busy={isDecrementPending}
                           className="border border-border p-1 hover:bg-secondary disabled:opacity-50"
                         >
-                          <Minus className="size-3.5" />
+                          {isDecrementPending ? (
+                            <Loader2 className="size-3.5 animate-spin" />
+                          ) : (
+                            <Minus className="size-3.5" />
+                          )}
                         </button>
                         <button
                           onClick={() => adjustMutation.mutate({ id: p.id, delta: 1 })}
                           disabled={isRowPending}
+                          aria-busy={isIncrementPending}
                           className="border border-border p-1 hover:bg-secondary disabled:opacity-50"
                         >
-                          <Plus className="size-3.5" />
+                          {isIncrementPending ? (
+                            <Loader2 className="size-3.5 animate-spin" />
+                          ) : (
+                            <Plus className="size-3.5" />
+                          )}
                         </button>
                       </div>
                     </td>

@@ -2,7 +2,7 @@ import { useState } from "react";
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useQuery, useMutation, useQueryClient, keepPreviousData } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { Eye } from "lucide-react";
+import { Eye, Loader2 } from "lucide-react";
 import { api } from "@/lib/api/client";
 import { queryKeys } from "@/lib/api/queryKeys";
 import { toUserMessage } from "@/lib/api/errors";
@@ -117,84 +117,94 @@ function AdminOrders() {
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
-              {list.map((o) => (
-                <tr
-                  key={o.id}
-                  className="hover:bg-secondary cursor-pointer"
-                  onClick={() =>
-                    navigate({ to: "/admin/orders/$orderId", params: { orderId: o.id } })
-                  }
-                >
-                  <td className="px-4 py-3 font-mono text-xs">#{o.order_number}</td>
-                  <td className="px-4 py-3 text-muted-foreground">
-                    {new Date(o.created_at).toLocaleDateString("en-IN")}
-                  </td>
-                  <td className="px-4 py-3">{o.item_count}</td>
-                  <td className="px-4 py-3 font-display">{formatINR(o.total)}</td>
-                  <td className="px-4 py-3">
-                    <span
-                      className={`text-[10px] uppercase tracking-[0.22em] px-2 py-0.5 ${
-                        o.payment_status === "paid"
-                          ? "bg-accent/15 text-accent"
-                          : o.payment_status === "failed"
-                            ? "bg-destructive/15 text-destructive"
-                            : "bg-secondary text-muted-foreground"
-                      }`}
-                    >
-                      {o.payment_status}
-                    </span>
-                  </td>
-                  <td className="px-4 py-3">
-                    <select
-                      value={o.status}
-                      onClick={(e) => e.stopPropagation()}
-                      onChange={(e) => {
-                        e.stopPropagation();
-                        statusMutation.mutate({ id: o.id, status: e.target.value });
-                      }}
-                      disabled={statusMutation.isPending}
-                      className="border border-border bg-background text-xs px-2 py-1 disabled:opacity-50"
-                    >
-                      {STATUSES.map((s) => (
-                        <option key={s} value={s}>
-                          {s}
-                        </option>
-                      ))}
-                    </select>
-                  </td>
-                  <td className="px-4 py-3">
-                    <span
-                      className={`text-[10px] uppercase tracking-[0.22em] px-2 py-0.5 ${
-                        FULFILLMENT_STATUS_STYLES[o.fulfillment_status] ??
-                        "bg-secondary text-muted-foreground"
-                      }`}
-                    >
-                      {o.fulfillment_status.replace("_", " ")}
-                    </span>
-                  </td>
-                  <td className="px-4 py-3">
-                    {o.complimentary_gift ? (
-                      <span className="text-[10px] uppercase tracking-[0.16em] inline-flex items-center gap-1">
-                        <span>{o.complimentary_gift === "Traditional Sweet" ? "🍬" : "🌶️"}</span>
-                        <span className="text-muted-foreground">{o.complimentary_gift}</span>
+              {list.map((o) => {
+                const isRowUpdating =
+                  statusMutation.isPending && statusMutation.variables?.id === o.id;
+                return (
+                  <tr
+                    key={o.id}
+                    className="hover:bg-secondary cursor-pointer"
+                    onClick={() =>
+                      navigate({ to: "/admin/orders/$orderId", params: { orderId: o.id } })
+                    }
+                  >
+                    <td className="px-4 py-3 font-mono text-xs">#{o.order_number}</td>
+                    <td className="px-4 py-3 text-muted-foreground">
+                      {new Date(o.created_at).toLocaleDateString("en-IN")}
+                    </td>
+                    <td className="px-4 py-3">{o.item_count}</td>
+                    <td className="px-4 py-3 font-display">{formatINR(o.total)}</td>
+                    <td className="px-4 py-3">
+                      <span
+                        className={`text-[10px] uppercase tracking-[0.22em] px-2 py-0.5 ${
+                          o.payment_status === "paid"
+                            ? "bg-accent/15 text-accent"
+                            : o.payment_status === "failed"
+                              ? "bg-destructive/15 text-destructive"
+                              : "bg-secondary text-muted-foreground"
+                        }`}
+                      >
+                        {o.payment_status}
                       </span>
-                    ) : (
-                      <span className="text-muted-foreground">—</span>
-                    )}
-                  </td>
-                  <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
-                    <button
-                      onClick={() =>
-                        navigate({ to: "/admin/orders/$orderId", params: { orderId: o.id } })
-                      }
-                      className="flex items-center gap-1 text-[10px] uppercase tracking-[0.22em] text-muted-foreground hover:text-foreground transition"
-                    >
-                      <Eye className="h-3.5 w-3.5" />
-                      View
-                    </button>
-                  </td>
-                </tr>
-              ))}
+                    </td>
+                    <td className="px-4 py-3">
+                      <div className="inline-flex items-center gap-1.5">
+                        <select
+                          value={o.status}
+                          onClick={(e) => e.stopPropagation()}
+                          onChange={(e) => {
+                            e.stopPropagation();
+                            statusMutation.mutate({ id: o.id, status: e.target.value });
+                          }}
+                          disabled={isRowUpdating}
+                          aria-busy={isRowUpdating}
+                          className="border border-border bg-background text-xs px-2 py-1 disabled:opacity-50"
+                        >
+                          {STATUSES.map((s) => (
+                            <option key={s} value={s}>
+                              {s}
+                            </option>
+                          ))}
+                        </select>
+                        {isRowUpdating && (
+                          <Loader2 className="size-3.5 animate-spin text-muted-foreground" />
+                        )}
+                      </div>
+                    </td>
+                    <td className="px-4 py-3">
+                      <span
+                        className={`text-[10px] uppercase tracking-[0.22em] px-2 py-0.5 ${
+                          FULFILLMENT_STATUS_STYLES[o.fulfillment_status] ??
+                          "bg-secondary text-muted-foreground"
+                        }`}
+                      >
+                        {o.fulfillment_status.replace("_", " ")}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3">
+                      {o.complimentary_gift ? (
+                        <span className="text-[10px] uppercase tracking-[0.16em] inline-flex items-center gap-1">
+                          <span>{o.complimentary_gift === "Traditional Sweet" ? "🍬" : "🌶️"}</span>
+                          <span className="text-muted-foreground">{o.complimentary_gift}</span>
+                        </span>
+                      ) : (
+                        <span className="text-muted-foreground">—</span>
+                      )}
+                    </td>
+                    <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
+                      <button
+                        onClick={() =>
+                          navigate({ to: "/admin/orders/$orderId", params: { orderId: o.id } })
+                        }
+                        className="flex items-center gap-1 text-[10px] uppercase tracking-[0.22em] text-muted-foreground hover:text-foreground transition"
+                      >
+                        <Eye className="h-3.5 w-3.5" />
+                        View
+                      </button>
+                    </td>
+                  </tr>
+                );
+              })}
               {list.length === 0 && (
                 <tr>
                   <td colSpan={9} className="px-4 py-12 text-center text-muted-foreground text-sm">

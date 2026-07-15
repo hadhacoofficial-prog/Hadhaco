@@ -312,12 +312,13 @@ function CategoryDetailPage() {
             <AlertDialogAction
               onClick={() => deleteCategoryMutation.mutate()}
               disabled={deleteCategoryMutation.isPending}
+              aria-busy={deleteCategoryMutation.isPending}
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
             >
               {deleteCategoryMutation.isPending && (
                 <Loader2 className="size-3.5 animate-spin mr-2" />
               )}
-              Delete Category
+              {deleteCategoryMutation.isPending ? "Deleting…" : "Delete Category"}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

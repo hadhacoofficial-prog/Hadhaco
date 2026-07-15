@@ -67,7 +67,8 @@ export function SettingsForm() {
             <Switch
               id={flag.key}
               checked={flag.value}
-              disabled={mutation.isPending}
+              disabled={mutation.isPending && mutation.variables?.key === flag.key}
+              aria-busy={mutation.isPending && mutation.variables?.key === flag.key}
               onCheckedChange={(checked) => mutation.mutate({ key: flag.key, value: checked })}
             />
           </div>

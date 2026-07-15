@@ -105,8 +105,10 @@ export function TemplateEditor({ template }: { template: NotificationTemplateOut
                 size="sm"
                 onClick={handleDuplicate}
                 disabled={duplicateTemplate.isPending}
+                loading={duplicateTemplate.isPending}
               >
-                <Copy className="size-3.5 mr-1.5" /> Duplicate Template
+                <Copy className="size-3.5 mr-1.5" />{" "}
+                {duplicateTemplate.isPending ? "Duplicating..." : "Duplicate Template"}
               </Button>
             </div>
           </div>
@@ -127,8 +129,12 @@ export function TemplateEditor({ template }: { template: NotificationTemplateOut
                 />
               </div>
               <div className="flex justify-end">
-                <Button onClick={handleSave} disabled={!isDirty || updateTemplate.isPending}>
-                  Save Template
+                <Button
+                  onClick={handleSave}
+                  disabled={!isDirty || updateTemplate.isPending}
+                  loading={updateTemplate.isPending}
+                >
+                  {updateTemplate.isPending ? "Saving..." : "Save Template"}
                 </Button>
               </div>
             </>

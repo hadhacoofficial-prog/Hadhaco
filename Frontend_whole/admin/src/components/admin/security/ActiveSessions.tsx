@@ -1,6 +1,6 @@
 import { useCallback, useState } from "react";
 import { toast } from "sonner";
-import { Laptop, ShieldCheck, ShieldOff } from "lucide-react";
+import { Laptop, Loader2, ShieldCheck, ShieldOff } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
@@ -53,17 +53,20 @@ function deviceLabel(session: AdminSessionOut): string {
 type ConfirmAction = { type: "revoke-others" } | { type: "revoke-all" } | null;
 
 export function ActiveSessionsPanel({ is2faEnabled }: { is2faEnabled: boolean }) {
-  const { data, isLoading, isError, error, refetch } = useAdminSessions();
+  const { data, isLoading, isFetching, isError, error, refetch } = useAdminSessions();
   const revokeOne = useRevokeAdminSession();
   const revokeOthers = useRevokeOtherAdminSessions();
   const revokeAll = useRevokeAllAdminSessions();
   const [confirm, setConfirm] = useState<ConfirmAction>(null);
+  const [revokingId, setRevokingId] = useState<string | null>(null);
 
   const handleRevokeOne = useCallback(
     (session: AdminSessionOut) => {
+      setRevokingId(session.id);
       revokeOne.mutate(session.id, {
         onSuccess: () => toast.success("Session revoked"),
         onError: (e) => toast.error(toUserMessage(e)),
+        onSettled: () => setRevokingId(null),
       });
     },
     [revokeOne],
@@ -105,7 +108,13 @@ export function ActiveSessionsPanel({ is2faEnabled }: { is2faEnabled: boolean })
       <div className="bg-background border border-border p-6">
         <h3 className="font-semibold">Active Sessions</h3>
         <p className="text-sm text-destructive mt-2">{toUserMessage(error)}</p>
-        <Button variant="outline" size="sm" className="mt-3" onClick={() => refetch()}>
+        <Button
+          variant="outline"
+          size="sm"
+          className="mt-3"
+          loading={isFetching}
+          onClick={() => refetch()}
+        >
           Retry
         </Button>
       </div>
@@ -115,6 +124,7 @@ export function ActiveSessionsPanel({ is2faEnabled }: { is2faEnabled: boolean })
   const sessions = data?.sessions ?? [];
   const current = sessions.find((s) => s.is_current);
   const others = sessions.filter((s) => !s.is_current);
+  const isConfirming = revokeOthers.isPending || revokeAll.isPending;
 
   return (
     <div className="bg-background border border-border p-6">
@@ -147,7 +157,7 @@ export function ActiveSessionsPanel({ is2faEnabled }: { is2faEnabled: boolean })
             key={session.id}
             session={session}
             onRevoke={() => handleRevokeOne(session)}
-            revoking={revokeOne.isPending}
+            revoking={revokingId === session.id}
           />
         ))}
         {sessions.length === 0 && (
@@ -197,9 +207,11 @@ export function ActiveSessionsPanel({ is2faEnabled }: { is2faEnabled: boolean })
             <AlertDialogCancel>Cancel</AlertDialogCancel>
             <AlertDialogAction
               onClick={handleConfirm}
-              disabled={revokeOthers.isPending || revokeAll.isPending}
+              disabled={isConfirming}
+              aria-busy={isConfirming}
             >
-              Confirm
+              {isConfirming && <Loader2 className="size-4 animate-spin" />}
+              {isConfirming ? "Logging out..." : "Confirm"}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
@@ -252,10 +264,10 @@ function SessionRow({
           variant="ghost"
           size="sm"
           onClick={onRevoke}
-          disabled={revoking}
+          loading={revoking}
           aria-label={`Log out ${deviceLabel(session)} session`}
         >
-          Log out
+          {revoking ? "Logging out..." : "Log out"}
         </Button>
       )}
     </div>

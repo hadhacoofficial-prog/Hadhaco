@@ -61,6 +61,7 @@ function TwoFactorChallengePage() {
   const [code, setCode] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [useBackupCode, setUseBackupCode] = useState(false);
+  const [isCancelling, setIsCancelling] = useState(false);
   const validateMutation = useTwoFactorValidate();
 
   const handleVerify = useCallback(() => {
@@ -85,11 +86,13 @@ function TwoFactorChallengePage() {
   }, [code, validateMutation, redirectTo, navigate]);
 
   const handleCancel = useCallback(async () => {
+    setIsCancelling(true);
     try {
       await logout();
     } finally {
       sessionStorage.removeItem("hadha:2fa_verified");
       navigate({ to: "/admin/login", search: { redirect: undefined } });
+      setIsCancelling(false);
     }
   }, [logout, navigate]);
 
@@ -176,9 +179,11 @@ function TwoFactorChallengePage() {
             <button
               type="button"
               onClick={handleCancel}
-              className="text-xs text-muted-foreground hover:text-foreground transition"
+              disabled={isCancelling}
+              aria-busy={isCancelling}
+              className="text-xs text-muted-foreground hover:text-foreground transition disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              Cancel and sign out
+              {isCancelling ? "Signing out..." : "Cancel and sign out"}
             </button>
           </div>
         </div>

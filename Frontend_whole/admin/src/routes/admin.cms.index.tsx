@@ -18,6 +18,7 @@ import {
   Instagram,
   LayoutGrid,
   Layers,
+  Loader2,
   Mail,
   Megaphone,
   Navigation,
@@ -2586,6 +2587,7 @@ const SectionCard = memo(function SectionCard({
   isOver,
   onSelect,
   onToggle,
+  isToggling,
   onDragStart,
   onDragOver,
   onDrop,
@@ -2600,6 +2602,7 @@ const SectionCard = memo(function SectionCard({
   isOver: boolean;
   onSelect: (key: string) => void;
   onToggle: (section: AdminSection) => void;
+  isToggling: boolean;
   isDirty: boolean;
   onDragStart: (idx: number) => void;
   onDragOver: (idx: number, e: React.DragEvent) => void;
@@ -2666,10 +2669,18 @@ const SectionCard = memo(function SectionCard({
               e.stopPropagation();
               onToggle(section);
             }}
-            className="p-1.5 rounded-md hover:bg-muted transition-colors text-muted-foreground hover:text-foreground"
+            disabled={isToggling}
+            aria-busy={isToggling}
+            className="p-1.5 rounded-md hover:bg-muted transition-colors text-muted-foreground hover:text-foreground disabled:opacity-50"
             title={section.is_active ? "Hide section" : "Show section"}
           >
-            {section.is_active ? <Eye className="size-3.5" /> : <EyeOff className="size-3.5" />}
+            {isToggling ? (
+              <Loader2 className="size-3.5 animate-spin" />
+            ) : section.is_active ? (
+              <Eye className="size-3.5" />
+            ) : (
+              <EyeOff className="size-3.5" />
+            )}
           </button>
           <button
             onClick={(e) => {
@@ -2846,8 +2857,10 @@ function SectionEditorPanel({
                 <button
                   onClick={onPublishAnyWay}
                   disabled={isPublishing}
-                  className="px-2.5 py-1 text-[11px] bg-amber-600 text-white rounded-md hover:bg-amber-700 disabled:opacity-50 transition-colors"
+                  aria-busy={isPublishing}
+                  className="px-2.5 py-1 text-[11px] bg-amber-600 text-white rounded-md hover:bg-amber-700 disabled:opacity-50 transition-colors inline-flex items-center gap-1.5"
                 >
+                  {isPublishing && <Loader2 className="size-3 animate-spin" />}
                   {isPublishing ? "Publishing…" : "Publish anyway"}
                 </button>
               </div>
@@ -2869,17 +2882,27 @@ function SectionEditorPanel({
           <button
             onClick={onSaveDraft}
             disabled={isSaving || !isDirty}
+            aria-busy={isSaving}
             className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs border border-border rounded-lg hover:bg-muted disabled:opacity-40 transition-colors"
           >
-            <Save className="size-3.5" />
+            {isSaving ? (
+              <Loader2 className="size-3.5 animate-spin" />
+            ) : (
+              <Save className="size-3.5" />
+            )}
             {isSaving ? "Saving…" : "Save Draft"}
           </button>
           <button
             onClick={() => onPublish()}
             disabled={isPublishing}
+            aria-busy={isPublishing}
             className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 disabled:opacity-60 transition-colors"
           >
-            <Zap className="size-3.5" />
+            {isPublishing ? (
+              <Loader2 className="size-3.5 animate-spin" />
+            ) : (
+              <Zap className="size-3.5" />
+            )}
             {isPublishing ? "Publishing…" : "Publish"}
           </button>
         </div>
@@ -3579,25 +3602,43 @@ function AdminCmsEditor() {
           <button
             onClick={handleFlushCache}
             disabled={invalidateMutation.isPending}
+            aria-busy={invalidateMutation.isPending}
             className="inline-flex items-center gap-1.5 text-xs text-muted-foreground border border-border/60 px-3 py-1.5 rounded-lg hover:bg-muted disabled:opacity-50 transition-colors"
           >
-            <RefreshCw className="size-3.5" /> Flush Cache
+            {invalidateMutation.isPending ? (
+              <Loader2 className="size-3.5 animate-spin" />
+            ) : (
+              <RefreshCw className="size-3.5" />
+            )}
+            {invalidateMutation.isPending ? "Flushing…" : "Flush Cache"}
           </button>
           {activeSection && (
             <>
               <button
                 onClick={handleSaveDraft}
                 disabled={isSaving || !dirtyKeys.has(activeSection.section_key)}
+                aria-busy={isSaving}
                 className="inline-flex items-center gap-1.5 text-xs border border-border px-3 py-1.5 rounded-lg hover:bg-muted disabled:opacity-40 transition-colors"
               >
-                <Save className="size-3.5" /> Save Draft
+                {isSaving ? (
+                  <Loader2 className="size-3.5 animate-spin" />
+                ) : (
+                  <Save className="size-3.5" />
+                )}
+                {isSaving ? "Saving…" : "Save Draft"}
               </button>
               <button
                 onClick={() => handlePublish()}
                 disabled={isPublishing}
+                aria-busy={isPublishing}
                 className="inline-flex items-center gap-1.5 text-xs bg-primary text-primary-foreground px-3 py-1.5 rounded-lg hover:bg-primary/90 disabled:opacity-60 transition-colors"
               >
-                <Zap className="size-3.5" /> Publish
+                {isPublishing ? (
+                  <Loader2 className="size-3.5 animate-spin" />
+                ) : (
+                  <Zap className="size-3.5" />
+                )}
+                {isPublishing ? "Publishing…" : "Publish"}
               </button>
             </>
           )}
@@ -3633,6 +3674,9 @@ function AdminCmsEditor() {
                   isDirty={dirtyKeys.has(section.section_key)}
                   onSelect={handleSelectSection}
                   onToggle={handleToggle}
+                  isToggling={
+                    toggleMutation.isPending && toggleMutation.variables === section.section_key
+                  }
                   onDragStart={onDragStart}
                   onDragOver={onDragOver}
                   onDrop={onDrop}

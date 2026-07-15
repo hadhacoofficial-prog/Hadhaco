@@ -13,6 +13,7 @@ import {
   ChevronRight,
   ChevronDown,
   ChevronRight as ChevronRightIcon,
+  Loader2,
 } from "lucide-react";
 import { toast } from "sonner";
 import {
@@ -195,12 +196,18 @@ function AdminCategories() {
           <td className="px-4 py-3">
             <button
               onClick={() => toggleActiveMutation.mutate({ id: cat.id, is_active: !cat.is_active })}
-              className={`text-[10px] uppercase tracking-[0.2em] px-2 py-0.5 transition ${
+              disabled={
+                toggleActiveMutation.isPending && toggleActiveMutation.variables?.id === cat.id
+              }
+              className={`text-[10px] uppercase tracking-[0.2em] px-2 py-0.5 transition inline-flex items-center gap-1 disabled:opacity-60 ${
                 cat.is_active
                   ? "bg-accent/15 text-accent hover:bg-destructive/15 hover:text-destructive"
                   : "bg-secondary text-muted-foreground hover:bg-accent/15 hover:text-accent"
               }`}
             >
+              {toggleActiveMutation.isPending && toggleActiveMutation.variables?.id === cat.id && (
+                <Loader2 className="size-2.5 animate-spin" />
+              )}
               {cat.is_active ? "Active" : "Inactive"}
             </button>
           </td>
@@ -319,22 +326,28 @@ function AdminCategories() {
           <div className="flex gap-2 ml-auto">
             {(
               [
-                ["activate", "Activate"],
-                ["deactivate", "Deactivate"],
-                ["delete", "Delete"],
+                ["activate", "Activate", "Activating"],
+                ["deactivate", "Deactivate", "Deactivating"],
+                ["delete", "Delete", "Deleting"],
               ] as const
-            ).map(([action, label]) => (
-              <button
-                key={action}
-                onClick={() => bulkMutation.mutate({ ids: [...selected], action })}
-                disabled={bulkMutation.isPending}
-                className={`text-[10px] uppercase tracking-[0.2em] px-3 py-1.5 border border-border hover:bg-secondary transition ${
-                  action === "delete" ? "text-destructive hover:bg-destructive/10" : ""
-                }`}
-              >
-                {label}
-              </button>
-            ))}
+            ).map(([action, label, gerund]) => {
+              const isThisPending =
+                bulkMutation.isPending && bulkMutation.variables?.action === action;
+              return (
+                <button
+                  key={action}
+                  onClick={() => bulkMutation.mutate({ ids: [...selected], action })}
+                  disabled={bulkMutation.isPending}
+                  aria-busy={isThisPending}
+                  className={`text-[10px] uppercase tracking-[0.2em] px-3 py-1.5 border border-border hover:bg-secondary transition inline-flex items-center gap-1.5 disabled:opacity-60 ${
+                    action === "delete" ? "text-destructive hover:bg-destructive/10" : ""
+                  }`}
+                >
+                  {isThisPending && <Loader2 className="size-3 animate-spin" />}
+                  {isThisPending ? `${gerund} ${selected.size}…` : label}
+                </button>
+              );
+            })}
           </div>
         </div>
       )}
@@ -436,9 +449,12 @@ function AdminCategories() {
             <AlertDialogCancel>Cancel</AlertDialogCancel>
             <AlertDialogAction
               onClick={() => deleteId && deleteMutation.mutate(deleteId)}
+              disabled={deleteMutation.isPending}
+              aria-busy={deleteMutation.isPending}
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
             >
-              Delete
+              {deleteMutation.isPending && <Loader2 className="size-3.5 animate-spin mr-2" />}
+              {deleteMutation.isPending ? "Deleting…" : "Delete"}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

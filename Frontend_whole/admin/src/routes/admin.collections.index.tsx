@@ -13,6 +13,7 @@ import {
   ImageIcon,
   ChevronLeft,
   ChevronRight,
+  Loader2,
 } from "lucide-react";
 import { toast } from "sonner";
 import {
@@ -207,29 +208,35 @@ function AdminCollections() {
           <div className="flex gap-2 ml-auto">
             {(
               [
-                ["activate", "Activate"],
-                ["deactivate", "Deactivate"],
-                ["feature", "Feature"],
-                ["unfeature", "Unfeature"],
-                ["delete", "Delete"],
+                ["activate", "Activate", "Activating"],
+                ["deactivate", "Deactivate", "Deactivating"],
+                ["feature", "Feature", "Featuring"],
+                ["unfeature", "Unfeature", "Unfeaturing"],
+                ["delete", "Delete", "Deleting"],
               ] as const
-            ).map(([action, label]) => (
-              <button
-                key={action}
-                onClick={() =>
-                  bulkMutation.mutate({
-                    ids: [...selected],
-                    action,
-                  })
-                }
-                disabled={bulkMutation.isPending}
-                className={`text-[10px] uppercase tracking-[0.2em] px-3 py-1.5 border border-border hover:bg-secondary transition ${
-                  action === "delete" ? "text-destructive hover:bg-destructive/10" : ""
-                }`}
-              >
-                {label}
-              </button>
-            ))}
+            ).map(([action, label, gerund]) => {
+              const isThisActionPending =
+                bulkMutation.isPending && bulkMutation.variables?.action === action;
+              return (
+                <button
+                  key={action}
+                  onClick={() =>
+                    bulkMutation.mutate({
+                      ids: [...selected],
+                      action,
+                    })
+                  }
+                  disabled={bulkMutation.isPending}
+                  aria-busy={isThisActionPending}
+                  className={`text-[10px] uppercase tracking-[0.2em] px-3 py-1.5 border border-border hover:bg-secondary transition inline-flex items-center gap-1.5 disabled:opacity-60 ${
+                    action === "delete" ? "text-destructive hover:bg-destructive/10" : ""
+                  }`}
+                >
+                  {isThisActionPending && <Loader2 className="size-3 animate-spin" />}
+                  {isThisActionPending ? `${gerund} ${selected.size}…` : label}
+                </button>
+              );
+            })}
           </div>
         </div>
       )}
@@ -315,38 +322,59 @@ function AdminCollections() {
                     </div>
                   </td>
                   <td className="px-4 py-3">
-                    <button
-                      onClick={() =>
-                        toggleActiveMutation.mutate({
-                          id: col.id,
-                          is_active: !col.is_active,
-                        })
-                      }
-                      className={`text-[10px] uppercase tracking-[0.2em] px-2 py-0.5 transition ${
-                        col.is_active
-                          ? "bg-accent/15 text-accent hover:bg-destructive/15 hover:text-destructive"
-                          : "bg-secondary text-muted-foreground hover:bg-accent/15 hover:text-accent"
-                      }`}
-                    >
-                      {col.is_active ? "Active" : "Inactive"}
-                    </button>
+                    {(() => {
+                      const isThisRowToggling =
+                        toggleActiveMutation.isPending &&
+                        toggleActiveMutation.variables?.id === col.id;
+                      return (
+                        <button
+                          onClick={() =>
+                            toggleActiveMutation.mutate({
+                              id: col.id,
+                              is_active: !col.is_active,
+                            })
+                          }
+                          disabled={isThisRowToggling}
+                          aria-busy={isThisRowToggling}
+                          className={`text-[10px] uppercase tracking-[0.2em] px-2 py-0.5 transition inline-flex items-center gap-1.5 disabled:opacity-60 ${
+                            col.is_active
+                              ? "bg-accent/15 text-accent hover:bg-destructive/15 hover:text-destructive"
+                              : "bg-secondary text-muted-foreground hover:bg-accent/15 hover:text-accent"
+                          }`}
+                        >
+                          {isThisRowToggling && <Loader2 className="size-3 animate-spin" />}
+                          {col.is_active ? "Active" : "Inactive"}
+                        </button>
+                      );
+                    })()}
                   </td>
                   <td className="px-4 py-3">
-                    <button
-                      onClick={() =>
-                        toggleFeaturedMutation.mutate({
-                          id: col.id,
-                          is_featured: !col.is_featured,
-                        })
-                      }
-                      className="text-muted-foreground hover:text-foreground transition"
-                    >
-                      {col.is_featured ? (
-                        <Star className="size-4 fill-amber-400 text-amber-400" />
-                      ) : (
-                        <StarOff className="size-4" />
-                      )}
-                    </button>
+                    {(() => {
+                      const isThisRowToggling =
+                        toggleFeaturedMutation.isPending &&
+                        toggleFeaturedMutation.variables?.id === col.id;
+                      return (
+                        <button
+                          onClick={() =>
+                            toggleFeaturedMutation.mutate({
+                              id: col.id,
+                              is_featured: !col.is_featured,
+                            })
+                          }
+                          disabled={isThisRowToggling}
+                          aria-busy={isThisRowToggling}
+                          className="text-muted-foreground hover:text-foreground transition disabled:opacity-60"
+                        >
+                          {isThisRowToggling ? (
+                            <Loader2 className="size-4 animate-spin" />
+                          ) : col.is_featured ? (
+                            <Star className="size-4 fill-amber-400 text-amber-400" />
+                          ) : (
+                            <StarOff className="size-4" />
+                          )}
+                        </button>
+                      );
+                    })()}
                   </td>
                   <td className="px-4 py-3 text-muted-foreground">{col.sort_order}</td>
                   <td className="px-4 py-3 text-muted-foreground">{col.product_count}</td>
@@ -447,9 +475,12 @@ function AdminCollections() {
             <AlertDialogCancel>Cancel</AlertDialogCancel>
             <AlertDialogAction
               onClick={() => deleteId && deleteMutation.mutate(deleteId)}
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              disabled={deleteMutation.isPending}
+              aria-busy={deleteMutation.isPending}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90 inline-flex items-center gap-2 disabled:opacity-60"
             >
-              Delete
+              {deleteMutation.isPending && <Loader2 className="size-3.5 animate-spin" />}
+              {deleteMutation.isPending ? "Deleting…" : "Delete"}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

@@ -38,6 +38,9 @@ export function NotificationLogsTable() {
   const [search, setSearch] = useState("");
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [detailLog, setDetailLog] = useState<NotificationLogOut | null>(null);
+  const [retryScope, setRetryScope] = useState<
+    { type: "bulk" } | { type: "row"; id: string } | null
+  >(null);
 
   const filters: NotificationLogsFilter = {
     offset: (page - 1) * PAGE_SIZE,
@@ -65,15 +68,21 @@ export function NotificationLogsTable() {
     });
   };
 
-  const handleRetry = (logIds: string[]) => {
+  const handleRetry = (logIds: string[], scope: { type: "bulk" } | { type: "row"; id: string }) => {
+    setRetryScope(scope);
     retryLogs.mutate(logIds, {
       onSuccess: (result) => {
         toast.success(`Retried ${result.retried} of ${result.requested} notification(s)`);
         setSelected(new Set());
       },
       onError: (e) => toast.error(toUserMessage(e)),
+      onSettled: () => setRetryScope(null),
     });
   };
+
+  const isRowRetrying = (id: string) =>
+    retryLogs.isPending && retryScope?.type === "row" && retryScope.id === id;
+  const isBulkRetrying = retryLogs.isPending && retryScope?.type === "bulk";
 
   const exportCsv = () => {
     if (!data || data.items.length === 0) return;
@@ -160,8 +169,12 @@ export function NotificationLogsTable() {
           <Download className="size-3.5 mr-1.5" /> Export CSV
         </Button>
         {failedSelected.length > 0 && (
-          <Button onClick={() => handleRetry(failedSelected)} disabled={retryLogs.isPending}>
-            <RotateCcw className="size-3.5 mr-1.5" /> Retry selected ({failedSelected.length})
+          <Button
+            onClick={() => handleRetry(failedSelected, { type: "bulk" })}
+            loading={isBulkRetrying}
+          >
+            {!isBulkRetrying && <RotateCcw className="size-3.5 mr-1.5" />}
+            {isBulkRetrying ? "Retrying…" : `Retry selected (${failedSelected.length})`}
           </Button>
         )}
       </div>
@@ -237,10 +250,12 @@ export function NotificationLogsTable() {
                         <Button
                           variant="ghost"
                           size="sm"
-                          onClick={() => handleRetry([log.id])}
-                          disabled={retryLogs.isPending}
+                          onClick={() => handleRetry([log.id], { type: "row", id: log.id })}
+                          loading={isRowRetrying(log.id)}
+                          aria-busy={isRowRetrying(log.id)}
+                          aria-label={`Retry notification ${log.id}`}
                         >
-                          <RotateCcw className="size-3.5" />
+                          {!isRowRetrying(log.id) && <RotateCcw className="size-3.5" />}
                         </Button>
                       )}
                     </td>
@@ -281,8 +296,8 @@ export function NotificationLogsTable() {
       <NotificationDetailDrawer
         log={detailLog}
         onClose={() => setDetailLog(null)}
-        onRetry={(id) => handleRetry([id])}
-        retrying={retryLogs.isPending}
+        onRetry={(id) => handleRetry([id], { type: "row", id })}
+        retrying={!!detailLog && isRowRetrying(detailLog.id)}
       />
     </div>
   );

@@ -385,9 +385,12 @@ function CollectionDetailPage() {
             <AlertDialogCancel>Cancel</AlertDialogCancel>
             <AlertDialogAction
               onClick={() => removeProductId && removeProductMutation.mutate(removeProductId)}
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              disabled={removeProductMutation.isPending}
+              aria-busy={removeProductMutation.isPending}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90 inline-flex items-center gap-2 disabled:opacity-60"
             >
-              Remove
+              {removeProductMutation.isPending && <Loader2 className="size-3.5 animate-spin" />}
+              {removeProductMutation.isPending ? "Removing…" : "Remove"}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
@@ -408,12 +411,13 @@ function CollectionDetailPage() {
             <AlertDialogAction
               onClick={() => deleteCollectionMutation.mutate()}
               disabled={deleteCollectionMutation.isPending}
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              aria-busy={deleteCollectionMutation.isPending}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90 disabled:opacity-60"
             >
               {deleteCollectionMutation.isPending && (
                 <Loader2 className="size-3.5 animate-spin mr-2" />
               )}
-              Delete Collection
+              {deleteCollectionMutation.isPending ? "Deleting…" : "Delete Collection"}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

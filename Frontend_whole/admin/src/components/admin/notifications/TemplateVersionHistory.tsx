@@ -91,25 +91,35 @@ export function TemplateVersionHistory({ templateId }: { templateId: string }) {
         </p>
       ) : (
         <ul className="divide-y divide-border">
-          {versions.map((v) => (
-            <li key={v.id} className="py-3 flex items-center justify-between gap-3 text-sm">
-              <label className="flex items-center gap-2 cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={!!compareSelection.find((c) => c.id === v.id)}
-                  onChange={() => toggleCompare(v)}
-                  aria-label={`Select version ${v.version} for comparison`}
-                />
-                <span>Version {v.version}</span>
-              </label>
-              <span className="text-xs text-muted-foreground flex-1">
-                {new Date(v.created_at).toLocaleString()}
-              </span>
-              <Button variant="outline" size="sm" onClick={() => setConfirmRestore(v)}>
-                <Undo2 className="size-3.5 mr-1.5" /> Restore
-              </Button>
-            </li>
-          ))}
+          {versions.map((v) => {
+            const isRestoringThis = restore.isPending && restore.variables?.version === v.version;
+            return (
+              <li key={v.id} className="py-3 flex items-center justify-between gap-3 text-sm">
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={!!compareSelection.find((c) => c.id === v.id)}
+                    onChange={() => toggleCompare(v)}
+                    aria-label={`Select version ${v.version} for comparison`}
+                  />
+                  <span>Version {v.version}</span>
+                </label>
+                <span className="text-xs text-muted-foreground flex-1">
+                  {new Date(v.created_at).toLocaleString()}
+                </span>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setConfirmRestore(v)}
+                  disabled={isRestoringThis}
+                  loading={isRestoringThis}
+                >
+                  {!isRestoringThis && <Undo2 className="size-3.5 mr-1.5" />}
+                  {isRestoringThis ? "Restoring..." : "Restore"}
+                </Button>
+              </li>
+            );
+          })}
         </ul>
       )}
 
@@ -153,8 +163,12 @@ export function TemplateVersionHistory({ templateId }: { templateId: string }) {
             <Button variant="outline" onClick={() => setConfirmRestore(null)}>
               Cancel
             </Button>
-            <Button onClick={handleRestore} disabled={restore.isPending}>
-              Restore
+            <Button
+              onClick={handleRestore}
+              disabled={restore.isPending}
+              loading={restore.isPending}
+            >
+              {restore.isPending ? "Restoring..." : "Restore"}
             </Button>
           </DialogFooter>
         </DialogContent>

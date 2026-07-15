@@ -42,8 +42,9 @@ function actionLabel(entry: AuditLogEntry): string {
 export function LoginHistoryPanel() {
   const { data: profile } = useProfile();
   const [page, setPage] = useState(1);
+  const [pendingDirection, setPendingDirection] = useState<"prev" | "next" | null>(null);
   const pageSize = 20;
-  const { data, isLoading, isError, error, refetch } = useAdminLoginHistory(
+  const { data, isLoading, isFetching, isError, error, refetch } = useAdminLoginHistory(
     profile?.id,
     page,
     pageSize,
@@ -65,7 +66,13 @@ export function LoginHistoryPanel() {
       ) : isError ? (
         <div className="mt-4">
           <p className="text-sm text-destructive">{toUserMessage(error)}</p>
-          <Button variant="outline" size="sm" className="mt-3" onClick={() => refetch()}>
+          <Button
+            variant="outline"
+            size="sm"
+            className="mt-3"
+            loading={isFetching}
+            onClick={() => refetch()}
+          >
             Retry
           </Button>
         </div>
@@ -120,7 +127,11 @@ export function LoginHistoryPanel() {
             variant="outline"
             size="sm"
             disabled={page <= 1}
-            onClick={() => setPage((p) => Math.max(1, p - 1))}
+            loading={isFetching && pendingDirection === "prev"}
+            onClick={() => {
+              setPendingDirection("prev");
+              setPage((p) => Math.max(1, p - 1));
+            }}
           >
             Previous
           </Button>
@@ -131,7 +142,11 @@ export function LoginHistoryPanel() {
             variant="outline"
             size="sm"
             disabled={page >= totalPages}
-            onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+            loading={isFetching && pendingDirection === "next"}
+            onClick={() => {
+              setPendingDirection("next");
+              setPage((p) => Math.min(totalPages, p + 1));
+            }}
           >
             Next
           </Button>

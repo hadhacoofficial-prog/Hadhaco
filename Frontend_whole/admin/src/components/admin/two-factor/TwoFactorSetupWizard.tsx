@@ -1,5 +1,5 @@
 import { useState, useCallback, useEffect } from "react";
-import { Copy, Check, Download, Loader2 } from "lucide-react";
+import { Copy, Check, Download } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import {

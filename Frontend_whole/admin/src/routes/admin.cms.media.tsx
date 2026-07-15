@@ -1,6 +1,6 @@
 import { useRef, useState } from "react";
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { ArrowLeft, Image, Trash2, Upload, X } from "lucide-react";
+import { ArrowLeft, Image, Loader2, Trash2, Upload, X } from "lucide-react";
 import { toast } from "sonner";
 
 import { useMediaList, useUploadMedia, useDeleteMedia } from "@/hooks/cms/useMedia";
@@ -88,9 +88,14 @@ function MediaLibrary() {
           <button
             onClick={() => fileRef.current?.click()}
             disabled={uploadMutation.isPending}
+            aria-busy={uploadMutation.isPending}
             className="inline-flex items-center gap-2 bg-primary text-primary-foreground px-4 py-2 text-xs tracking-[0.18em] uppercase hover:bg-primary/90 disabled:opacity-60 transition"
           >
-            <Upload className="size-3.5" />
+            {uploadMutation.isPending ? (
+              <Loader2 className="size-3.5 animate-spin" />
+            ) : (
+              <Upload className="size-3.5" />
+            )}
             {uploadMutation.isPending ? "Uploading…" : "Upload"}
           </button>
         </div>
@@ -231,10 +236,15 @@ function MediaLibrary() {
               <button
                 onClick={() => handleDelete(selected)}
                 disabled={deleteMutation.isPending}
+                aria-busy={deleteMutation.isPending}
                 className="w-full inline-flex items-center justify-center gap-2 text-xs border border-destructive text-destructive py-1.5 hover:bg-destructive hover:text-destructive-foreground disabled:opacity-50 transition"
               >
-                <Trash2 className="size-3.5" />
-                Delete
+                {deleteMutation.isPending ? (
+                  <Loader2 className="size-3.5 animate-spin" />
+                ) : (
+                  <Trash2 className="size-3.5" />
+                )}
+                {deleteMutation.isPending ? "Deleting…" : "Delete"}
               </button>
             </div>
           </aside>

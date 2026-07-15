@@ -571,7 +571,11 @@ export function CategoryForm({ mode, category }: CategoryFormProps) {
                       disabled={imageBusy}
                       className="bg-background text-foreground text-xs px-3 py-1.5 hover:bg-secondary transition flex items-center gap-1.5 disabled:opacity-60"
                     >
-                      <CropIcon className="size-3.5" />
+                      {imageBusy ? (
+                        <Loader2 className="size-3.5 animate-spin" />
+                      ) : (
+                        <CropIcon className="size-3.5" />
+                      )}
                       Edit crop
                     </button>
                     <button
@@ -582,7 +586,11 @@ export function CategoryForm({ mode, category }: CategoryFormProps) {
                       disabled={imageBusy}
                       className="bg-destructive text-destructive-foreground text-xs px-3 py-1.5 hover:opacity-90 transition flex items-center gap-1.5 disabled:opacity-60"
                     >
-                      <Trash2 className="size-3.5" />
+                      {imageBusy ? (
+                        <Loader2 className="size-3.5 animate-spin" />
+                      ) : (
+                        <Trash2 className="size-3.5" />
+                      )}
                       Remove
                     </button>
                   </div>
@@ -644,7 +652,13 @@ export function CategoryForm({ mode, category }: CategoryFormProps) {
                 className="flex-1 bg-foreground text-background py-2.5 text-sm hover:opacity-90 transition disabled:opacity-60 flex items-center justify-center gap-2"
               >
                 {mutation.isPending && <Loader2 className="size-3.5 animate-spin" />}
-                {mode === "new" ? "Create Category" : "Save Changes"}
+                {mutation.isPending
+                  ? mode === "new"
+                    ? "Creating…"
+                    : "Saving…"
+                  : mode === "new"
+                    ? "Create Category"
+                    : "Save Changes"}
               </button>
             </div>
           </div>
