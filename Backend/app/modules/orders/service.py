@@ -560,7 +560,46 @@ class OrderService:
             raise NotFoundError("Order not found")
         if user_id and order.user_id != user_id:
             raise NotFoundError("Order not found")
-        return OrderResponse.model_validate(order)
+        response = OrderResponse.model_validate(order)
+        if user_id and order.status == "delivered":
+            await self._enrich_review_states(db, response, user_id)
+        return response
+
+    async def _enrich_review_states(
+        self, db: AsyncSession, response: OrderResponse, user_id: uuid.UUID
+    ) -> None:
+        """Attach product slugs and the customer's own review state to each
+        item of a delivered order, so the storefront can render Write Review /
+        Reviewed reminders without extra API calls.
+
+        Two bulk queries (slugs, reviews) regardless of item count. Read-only:
+        this only reports state and never gates who may submit a review.
+        """
+        from app.modules.reviews.repository import ReviewRepository
+
+        product_ids = [i.product_id for i in response.items if i.product_id]
+        if not product_ids:
+            return
+
+        slug_rows = await db.execute(
+            text("SELECT id, slug FROM products WHERE id = ANY(CAST(:pids AS uuid[]))"),
+            {"pids": [str(p) for p in product_ids]},
+        )
+        slugs = {r.id: r.slug for r in slug_rows.fetchall()}
+
+        reviews = await ReviewRepository().list_by_products_user(
+            db, product_ids=product_ids, user_id=user_id
+        )
+        reviews_by_product = {r.product_id: r for r in reviews}
+
+        for item in response.items:
+            if not item.product_id:
+                continue
+            review = reviews_by_product.get(item.product_id)
+            item.product_slug = slugs.get(item.product_id)
+            item.is_reviewed = review is not None
+            item.review_id = review.id if review else None
+            item.review_rating = review.rating if review else None
 
     async def list_my_orders(
         self,

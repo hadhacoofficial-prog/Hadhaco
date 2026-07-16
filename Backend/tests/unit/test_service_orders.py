@@ -14,6 +14,75 @@ from app.modules.orders.schemas import (
 )
 
 
+class TestOrderServiceReviewEnrichment:
+    def setup_method(self):
+        from app.modules.orders.service import OrderService
+
+        self.svc = OrderService()
+
+    async def test_enrich_review_states_marks_reviewed_and_unreviewed_items(self):
+        """Delivered-order items get product_slug + review state attached, one
+        bulk slug query and one bulk review query regardless of item count."""
+        user_id = uuid.uuid4()
+        pid_reviewed = uuid.uuid4()
+        pid_unreviewed = uuid.uuid4()
+        review_id = uuid.uuid4()
+
+        item_reviewed = MagicMock(product_id=pid_reviewed)
+        item_unreviewed = MagicMock(product_id=pid_unreviewed)
+        item_no_product = MagicMock(product_id=None)
+        response = MagicMock(items=[item_reviewed, item_unreviewed, item_no_product])
+
+        slug_row_1 = MagicMock(id=pid_reviewed, slug="reviewed-product")
+        slug_row_2 = MagicMock(id=pid_unreviewed, slug="unreviewed-product")
+        db = AsyncMock()
+        db.execute = AsyncMock(
+            return_value=MagicMock(
+                fetchall=MagicMock(return_value=[slug_row_1, slug_row_2])
+            )
+        )
+
+        review = MagicMock(product_id=pid_reviewed, id=review_id, rating=5)
+        with patch(
+            "app.modules.reviews.repository.ReviewRepository.list_by_products_user",
+            AsyncMock(return_value=[review]),
+        ):
+            await self.svc._enrich_review_states(db, response, user_id)
+
+        assert item_reviewed.product_slug == "reviewed-product"
+        assert item_reviewed.is_reviewed is True
+        assert item_reviewed.review_id == review_id
+        assert item_reviewed.review_rating == 5
+
+        assert item_unreviewed.product_slug == "unreviewed-product"
+        assert item_unreviewed.is_reviewed is False
+        assert item_unreviewed.review_id is None
+        assert item_unreviewed.review_rating is None
+
+        # Skipped item (no product_id) is left untouched — never assigned.
+        assert isinstance(item_no_product.product_slug, MagicMock)
+
+    async def test_get_order_enriches_only_for_delivered_customer_view(self):
+        """Enrichment only runs when a user_id is passed AND the order is
+        delivered — admin views (no user_id) and non-delivered orders skip it."""
+        db = AsyncMock()
+        user_id = uuid.uuid4()
+        mock_order = MagicMock(user_id=user_id, status="shipped")
+        with patch(
+            "app.modules.orders.service._repo.get_by_id",
+            AsyncMock(return_value=mock_order),
+        ):
+            with patch(
+                "app.modules.orders.schemas.OrderResponse.model_validate",
+                return_value=MagicMock(status="shipped"),
+            ):
+                with patch.object(
+                    self.svc, "_enrich_review_states", AsyncMock()
+                ) as enrich:
+                    await self.svc.get_order(db, mock_order.id, user_id=user_id)
+        enrich.assert_not_called()
+
+
 class TestOrderServiceGetOrder:
     def setup_method(self):
         from app.modules.orders.service import OrderService

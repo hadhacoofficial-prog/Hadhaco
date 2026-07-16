@@ -4,7 +4,7 @@ import uuid
 from typing import Any
 
 import structlog
-from jinja2 import BaseLoader, Environment
+from jinja2.sandbox import SandboxedEnvironment
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
@@ -22,6 +22,11 @@ from app.core.events import (
     UserRegisteredEvent,
     event_bus,
 )
+from app.modules.notifications.branding import get_brand_context_db
+from app.modules.notifications.context import (
+    format_inr_number,
+    load_order_context,
+)
 from app.modules.notifications.dispatcher import dispatcher
 from app.modules.notifications.models import NotificationLog, NotificationTemplate
 from app.modules.notifications.providers.registry import registry
@@ -35,7 +40,12 @@ from app.modules.settings.repository import SettingsRepository
 
 logger = structlog.get_logger(__name__)
 
-_jinja = Environment(loader=BaseLoader(), autoescape=True)
+# Sandboxed environments: admin-editable templates must not reach Python
+# internals (SSTI defense-in-depth). HTML bodies autoescape; subjects and
+# WhatsApp bodies are plain text, where autoescaping would leak entities
+# like &amp; into the copy.
+_jinja = SandboxedEnvironment(autoescape=True)
+_jinja_text = SandboxedEnvironment(autoescape=False)
 
 
 class NotificationService:
@@ -75,7 +85,13 @@ class NotificationService:
             logger.warning("no_email_template", event_type=event_type)
             return
 
-        rendered_subject = _jinja.from_string(template.subject or "").render(**context)
+        # Brand variables (env defaults + CMS footer overlay) are available to
+        # every template; the event context is merged on top so events can
+        # override any of them.
+        context = {**await get_brand_context_db(db), **context}
+        rendered_subject = _jinja_text.from_string(template.subject or "").render(
+            **context
+        )
         rendered_body = _jinja.from_string(template.template_body).render(**context)
 
         log = await self._repo.create_log(
@@ -139,7 +155,10 @@ class NotificationService:
             logger.warning("no_whatsapp_template", event_type=event_type)
             return
 
-        rendered_body = _jinja.from_string(template.template_body).render(**context)
+        context = {**await get_brand_context_db(db), **context}
+        rendered_body = _jinja_text.from_string(template.template_body).render(
+            **context
+        )
 
         variables = template.variables or {}
         wa_params: list[str] = variables.get("params", [])
@@ -316,14 +335,14 @@ class NotificationService:
             if log_entry.channel == "email":
                 if not template.template_body:
                     return
+                brand = await get_brand_context_db(db)
                 rendered_subject = (
                     log_entry.rendered_subject
-                    or _jinja.from_string(template.subject or "").render()
+                    or _jinja_text.from_string(template.subject or "").render(**brand)
                 )
-                rendered_body = (
-                    log_entry.rendered_body
-                    or _jinja.from_string(template.template_body).render()
-                )
+                rendered_body = log_entry.rendered_body or _jinja.from_string(
+                    template.template_body
+                ).render(**brand)
                 msg_id = await self._dispatcher.send_email(
                     db,
                     to=log_entry.recipient,
@@ -393,6 +412,18 @@ class NotificationService:
     def register_listeners(cls) -> None:
         svc = cls()
 
+        async def _profile_phone(db: AsyncSession, user_id: str) -> str | None:
+            """Look up the customer's phone so WhatsApp can dispatch for
+            events whose publishers only carry an email."""
+            if not user_id:
+                return None
+            from app.modules.profiles.repository import ProfileRepository
+
+            profile = await ProfileRepository().get_by_id(db, uuid.UUID(user_id))
+            if profile is None:
+                return None
+            return getattr(profile, "phone", None)
+
         async def _handle_user_registered(event: UserRegisteredEvent) -> None:
             from app.core.database import AsyncWorkerSessionLocal
 
@@ -412,9 +443,12 @@ class NotificationService:
             from app.core.database import AsyncWorkerSessionLocal
 
             async with AsyncWorkerSessionLocal() as db:
+                _, order_ctx = await load_order_context(db, event.order_id)
                 ctx = {
+                    **order_ctx,
                     "order_number": event.order_number,
-                    "total": event.total_amount,
+                    "total": order_ctx.get("total")
+                    or format_inr_number(event.total_amount),
                     "frontend_url": settings.FRONTEND_URL,
                 }
                 await svc.dispatch(
@@ -432,6 +466,7 @@ class NotificationService:
             from app.core.database import AsyncWorkerSessionLocal
 
             async with AsyncWorkerSessionLocal() as db:
+                _, order_ctx = await load_order_context(db, event.order_id)
                 await svc.dispatch(
                     db,
                     user_id=event.user_id,
@@ -439,19 +474,19 @@ class NotificationService:
                     recipient=event.customer_email,
                     recipient_phone=event.customer_phone or None,
                     context={
+                        **order_ctx,
                         "order_number": event.order_number,
-                        "amount": event.amount,
+                        "amount": format_inr_number(event.amount),
                         "frontend_url": settings.FRONTEND_URL,
                     },
                 )
 
         async def _handle_payment_failed(event: PaymentFailedEvent) -> None:
             from app.core.database import AsyncWorkerSessionLocal
-            from app.modules.orders.repository import OrderRepository
             from app.modules.profiles.repository import ProfileRepository
 
             async with AsyncWorkerSessionLocal() as db:
-                order = await OrderRepository().get_by_id(db, uuid.UUID(event.order_id))
+                order, order_ctx = await load_order_context(db, event.order_id)
                 if not order:
                     return
                 profile = await ProfileRepository().get_by_id(db, order.user_id)
@@ -465,6 +500,7 @@ class NotificationService:
                     recipient=profile.email,
                     recipient_phone=phone,
                     context={
+                        **order_ctx,
                         "order_number": order.order_number,
                         "reason": event.reason,
                         "frontend_url": settings.FRONTEND_URL,
@@ -475,11 +511,10 @@ class NotificationService:
             event: OrderStatusChangedEvent,
         ) -> None:
             from app.core.database import AsyncWorkerSessionLocal
-            from app.modules.orders.repository import OrderRepository
             from app.modules.profiles.repository import ProfileRepository
 
             async with AsyncWorkerSessionLocal() as db:
-                order = await OrderRepository().get_by_id(db, uuid.UUID(event.order_id))
+                order, order_ctx = await load_order_context(db, event.order_id)
                 if not order:
                     return
                 profile = await ProfileRepository().get_by_id(db, order.user_id)
@@ -494,7 +529,8 @@ class NotificationService:
                     recipient=profile.email,
                     recipient_phone=phone,
                     context={
-                        "order_number": event.order_number,
+                        **order_ctx,
+                        "order_number": order.order_number,
                         "old_status": event.old_status,
                         "new_status": event.new_status,
                         "frontend_url": settings.FRONTEND_URL,
@@ -503,11 +539,10 @@ class NotificationService:
 
         async def _handle_order_shipped(event: OrderShippedEvent) -> None:
             from app.core.database import AsyncWorkerSessionLocal
-            from app.modules.orders.repository import OrderRepository
             from app.modules.profiles.repository import ProfileRepository
 
             async with AsyncWorkerSessionLocal() as db:
-                order = await OrderRepository().get_by_id(db, uuid.UUID(event.order_id))
+                order, order_ctx = await load_order_context(db, event.order_id)
                 if not order:
                     return
                 profile = await ProfileRepository().get_by_id(db, order.user_id)
@@ -521,21 +556,23 @@ class NotificationService:
                     recipient=profile.email,
                     recipient_phone=phone,
                     context={
-                        "order_number": event.order_number,
-                        "tracking_number": event.tracking_number,
+                        **order_ctx,
+                        "order_number": order.order_number,
+                        "tracking_number": event.tracking_number
+                        or order_ctx.get("tracking_number", ""),
                         "tracking_url": event.tracking_url,
                         "awb": event.awb,
+                        "timeline_stage": 4,
                         "frontend_url": settings.FRONTEND_URL,
                     },
                 )
 
         async def _handle_order_delivered(event: OrderDeliveredEvent) -> None:
             from app.core.database import AsyncWorkerSessionLocal
-            from app.modules.orders.repository import OrderRepository
             from app.modules.profiles.repository import ProfileRepository
 
             async with AsyncWorkerSessionLocal() as db:
-                order = await OrderRepository().get_by_id(db, uuid.UUID(event.order_id))
+                order, order_ctx = await load_order_context(db, event.order_id)
                 if not order:
                     return
                 profile = await ProfileRepository().get_by_id(db, order.user_id)
@@ -549,7 +586,9 @@ class NotificationService:
                     recipient=profile.email,
                     recipient_phone=phone,
                     context={
-                        "order_number": event.order_number,
+                        **order_ctx,
+                        "order_number": order.order_number,
+                        "timeline_stage": 5,
                         "frontend_url": settings.FRONTEND_URL,
                     },
                 )
@@ -560,14 +599,17 @@ class NotificationService:
             from app.core.database import AsyncWorkerSessionLocal
 
             async with AsyncWorkerSessionLocal() as db:
+                _, order_ctx = await load_order_context(db, event.order_id)
                 await svc.dispatch(
                     db,
                     user_id=event.user_id,
                     event_type="refund_created",
                     recipient=event.customer_email,
+                    recipient_phone=await _profile_phone(db, event.user_id),
                     context={
+                        **order_ctx,
                         "order_number": event.order_number,
-                        "amount": event.amount,
+                        "amount": format_inr_number(event.amount),
                         "frontend_url": settings.FRONTEND_URL,
                     },
                 )
@@ -578,14 +620,17 @@ class NotificationService:
             from app.core.database import AsyncWorkerSessionLocal
 
             async with AsyncWorkerSessionLocal() as db:
+                _, order_ctx = await load_order_context(db, event.order_id)
                 await svc.dispatch(
                     db,
                     user_id=event.user_id,
                     event_type="refund_processed",
                     recipient=event.customer_email,
+                    recipient_phone=await _profile_phone(db, event.user_id),
                     context={
+                        **order_ctx,
                         "order_number": event.order_number,
-                        "amount": event.amount,
+                        "amount": format_inr_number(event.amount),
                         "frontend_url": settings.FRONTEND_URL,
                     },
                 )
@@ -602,8 +647,13 @@ class NotificationService:
                     context={
                         "order_number": event.order_number,
                         "refund_id": event.refund_id,
-                        "amount": event.amount,
+                        "amount": format_inr_number(event.amount),
                         "reason": event.reason,
+                        "admin_order_url": (
+                            f"{settings.ADMIN_URL.rstrip('/')}/orders/{event.order_id}"
+                            if event.order_id
+                            else settings.ADMIN_URL.rstrip("/")
+                        ),
                     },
                 )
 
@@ -622,6 +672,7 @@ class NotificationService:
                     )
                     if profile and hasattr(profile, "phone"):
                         phone = profile.phone
+                _, order_ctx = await load_order_context(db, event.order_id)
                 await svc.dispatch(
                     db,
                     user_id=event.user_id or None,
@@ -629,6 +680,7 @@ class NotificationService:
                     recipient=email,
                     recipient_phone=phone,
                     context={
+                        **order_ctx,
                         "order_number": event.order_number,
                         "frontend_url": settings.FRONTEND_URL,
                     },

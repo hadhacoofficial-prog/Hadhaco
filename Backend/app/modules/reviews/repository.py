@@ -65,6 +65,25 @@ class ReviewRepository:
         )
         return {r for r in result.scalars().all() if r is not None}
 
+    async def list_by_products_user(
+        self, db: AsyncSession, *, product_ids: list[uuid.UUID], user_id: uuid.UUID
+    ) -> list[Review]:
+        """Return the user's reviews across the given products in one query.
+
+        Read-only helper for post-delivery review reminders (orders page /
+        product page); never used to gate review submission.
+        """
+        if not product_ids:
+            return []
+        result = await db.execute(
+            select(Review).where(
+                Review.product_id.in_(product_ids),
+                Review.user_id == user_id,
+                Review.deleted_at.is_(None),
+            )
+        )
+        return list(result.scalars().all())
+
     async def get_by_product_user(
         self, db: AsyncSession, *, product_id: uuid.UUID, user_id: uuid.UUID
     ) -> Review | None:

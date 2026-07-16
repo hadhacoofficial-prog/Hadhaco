@@ -1,7 +1,7 @@
 # Hadha.co — Notification System Documentation
 
 > **Status:** Feature-complete and production-ready.
-> **Last updated:** 2026-07-14
+> **Last updated:** 2026-07-15 — premium design-system upgrade (see §13 and AUDIT.md)
 
 ---
 
@@ -19,6 +19,7 @@
 10. [WhatsApp Webhook Setup](#10-whatsapp-webhook-setup)
 11. [Production Deployment Checklist](#11-production-deployment-checklist)
 12. [Troubleshooting Guide](#12-troubleshooting-guide)
+13. [Email Design System & Premium Templates](#13-email-design-system--premium-templates)
 
 ---
 
@@ -623,6 +624,98 @@ ORDER BY send_count DESC;
 
 ---
 
+## 13. Email Design System & Premium Templates
+
+> Added 2026-07-15; rebuilt 2026-07-16 on the **storefront's exact visual
+> identity** (no invented tokens), then simplified 2026-07-16 to a
+> **luxury-minimal** design (Apple/Tiffany-adjacent — one primary CTA, no
+> footer navigation), then given a **final production audit** 2026-07-16.
+> Pre-upgrade audit: [AUDIT.md](AUDIT.md). Trigger verification:
+> [INTEGRATION_MATRIX.md](INTEGRATION_MATRIX.md). URL verification:
+> [URL_AUDIT.md](URL_AUDIT.md). **Final sign-off, read this one first:**
+> [PRODUCTION_READINESS_REPORT.md](PRODUCTION_READINESS_REPORT.md).
+
+### Storefront identity mapping (extracted, not invented)
+
+| Email element | Storefront source |
+|---|---|
+| Palette (navy `#21334f`, gold `#c99846`, cream `#faf6f1`, slate `#1f2733`, silver, destructive `#be2323`) | `packages/shared-ui/src/globals.css` `:root` oklch tokens → hex; `.dark` tokens drive email dark mode |
+| Typography (Cinzel display/CTAs, Cormorant Garamond decorative, Inter body) | `--font-serif-display` / `--font-serif-body` / `--font-sans` |
+| Sharp corners everywhere | `--radius: 0rem` |
+| CTA letterforms (Cinzel 11px uppercase, tracking 0.24em) + gradients | ProductCard "Add to cart" bar; `--gradient-luxury` / `--gradient-gold` |
+| Header — wordmark/logo only, hairline rule beneath. No motto, no nav links. | `storefront/src/components/site/Header.tsx` (simplified further per luxury-minimal brief) |
+| Footer — brand mark, short italic description, email/phone/website, plain gold social wordmarks (no boxes), "Need help? Contact Support · Track Order", Privacy · Terms, copyright. **No Shopping/Company link columns** — removed entirely (was CMS-driven; that machinery was deleted). | `storefront/src/components/site/Footer.tsx`, simplified to the luxury-minimal keep-list |
+| Primary CTA — one full-width button per email (`cta_block()`); order emails lead with **Track Your Order**, with a quiet underlined secondary link (e.g. View Order) beneath, never a second competing button. | ProductCard CTA language, reduced to single-intent |
+| Product cards — real product image (`OrderItem.image_url`, 80×80), name, variant/SKU/qty, price, "View Product →". Monogram is a last-resort fallback only. | ProductCard image treatment |
+| Brand facts (names, motto, address, socials) | `packages/shared-utils/src/config/brand.ts` |
+| Prices `Rs. 1,299.00` (en-IN grouping) | `formatINR` in `packages/shared-utils` |
+
+### Single source of truth
+
+Default template content is **generated in Python** and seeded into
+`notification_templates` by migration `0051_premium_notification_templates`:
+
+| Module | Responsibility |
+|---|---|
+| `app/modules/notifications/emails/components.py` | Design system: brand tokens + reusable components (header, footer, hero, buttons, product cards, order summary, addresses, 5-step timeline, notes). Emits email-client-safe HTML fragments containing Jinja placeholders. |
+| `app/modules/notifications/emails/catalog.py` | Composes components into the 17 default email templates + 10 WhatsApp templates. |
+| `app/modules/notifications/branding.py` | `get_brand_context()` / `get_brand_context_db()` — brand identity + every deep link (derived from `FRONTEND_URL`), **overlaid at send time by the CMS `footer` section config** (the same row the storefront footer renders from: logo, address, phone, email, socials, copyright name). Injected into every render; event context overrides it. |
+| `app/modules/notifications/welcome.py` | Welcome-email bridge — publishes `UserRegisteredEvent` on the first authenticated `GET /me` after signup (Supabase handles signup client-side, so no backend hook existed). Idempotent via Redis SETNX + notification-log check. |
+| `app/modules/notifications/context.py` | `build_order_context()` / `load_order_context()` — items (with product links + image fallbacks), addresses, ₹-formatted pricing breakdown, payment/tracking facts, timeline stage. |
+
+DB template bodies stay **standalone HTML documents** (no `{% extends %}`) because
+the admin Template Editor previews them client-side. Reuse happens at authoring
+time in the Python builder; a change to the design system means regenerating and
+re-seeding via a new migration (snapshotting old versions).
+
+### Email engineering
+
+600px hybrid table layout, inline CSS, MSO conditionals for Outlook, hidden
+preheader, bulletproof table buttons, mobile breakpoints (`.stack`, `.px`), and
+dark-mode support (`prefers-color-scheme` + `dm-*` utility classes). Product
+images fall back to a styled monogram cell when `image_url` is empty.
+
+### New brand settings (all optional, env-overridable)
+
+`BRAND_NAME`, `BRAND_TAGLINE`, `BRAND_LOGO_URL`, `BRAND_ADDRESS`,
+`SUPPORT_EMAIL`, `SUPPORT_PHONE`, `SOCIAL_INSTAGRAM_URL`, `SOCIAL_FACEBOOK_URL`,
+`SOCIAL_YOUTUBE_URL`.
+
+### New order-lifecycle events
+
+`order_confirmed`, `order_processing`, `order_packed`,
+`order_return_requested`, `order_returned` — fired by the existing
+`OrderStatusChangedEvent` publisher; rules are auto-created at startup by
+`sync_notification_rules()` (WhatsApp defaults ON only for `order_packed`).
+
+### Rendering hardening
+
+- Templates render in `jinja2.sandbox.SandboxedEnvironment` (SSTI defense).
+- Subjects and WhatsApp bodies render **without** autoescape (plain text) —
+  HTML entities no longer leak into subjects.
+- Brand context is also merged into legacy-log retry re-renders.
+
+### ⚠️ WhatsApp: Meta template re-registration required
+
+The upgraded WhatsApp templates use new parameter lists (e.g. `order_created`
+is now `customer_name, order_number, total, order_url`). Each template must be
+re-registered/approved in Meta Business Manager with matching placeholder
+counts before enabling the channel. `order_packed` is a brand-new Meta template.
+
+### Previews
+
+```bash
+cd Backend
+hadha/Scripts/python.exe scripts/render_email_previews.py
+```
+
+Writes every rendered template plus an interactive `gallery.html` (grouped
+sidebar, desktop/mobile toggle, WhatsApp bubbles) to
+`Backend/scripts/email_previews/` (gitignored). A `.claude/launch.json` entry
+(`email-previews`, port 8765) serves it.
+
+---
+
 ## File Reference
 
 ### Backend
@@ -636,6 +729,11 @@ app/modules/notifications/
 ├── repository.py          — All DB operations (666 lines)
 ├── router.py              — FastAPI routes (385 lines)
 ├── dispatcher.py          — Thin adapter to providers
+├── branding.py            — Brand context injected into every render
+├── context.py             — Rich order context builders (items, addresses, pricing, timeline)
+├── emails/
+│   ├── components.py      — Email design system (reusable HTML components)
+│   └── catalog.py         — Default template catalog (17 email + 10 WhatsApp)
 └── providers/
     ├── base.py            — Abstract base classes for Email/WhatsApp
     ├── registry.py        — Provider registry (singleton pattern)
@@ -657,7 +755,10 @@ alembic/versions/
 ├── 0042_unified_notifications.py       — Core tables, default templates/rules
 ├── 0043_notification_provider_settings.py — Provider config table
 ├── 0044_notification_registry_refinements.py — Lifecycle timestamps, template versioning
-└── 0045_notification_log_whatsapp_params.py — whatsapp_params JSONB for deterministic retries
+├── 0045_notification_log_whatsapp_params.py — whatsapp_params JSONB for deterministic retries
+├── 0051_premium_notification_templates.py — Premium design-system templates (snapshots old versions)
+├── 0052_delivered_review_cta_templates.py — Post-delivery review CTA panel
+└── 0053_final_audit_cta_and_status_templates.py — CTA wording fixes + 3 new order-status templates
 ```
 
 ### Frontend

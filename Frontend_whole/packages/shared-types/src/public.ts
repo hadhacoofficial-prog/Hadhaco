@@ -126,6 +126,15 @@ export interface PublicReview {
   images: { id: string; url: string; sort_order: number }[];
 }
 
+/** Read-only reminder state for the product-page review banner. */
+export interface MyProductReviewStatus {
+  product_id: string;
+  has_purchased_delivered: boolean;
+  has_reviewed: boolean;
+  review_id: string | null;
+  rating: number | null;
+}
+
 export interface ReviewSummary {
   product_id: string;
   review_count: number;

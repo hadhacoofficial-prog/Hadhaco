@@ -12,15 +12,14 @@ import {
   RefreshCw,
   AlertTriangle,
   Pencil,
-  X,
-  Upload,
 } from "lucide-react";
-import { toast } from "sonner";
 import { SiteLayout } from "@/components/site/SiteLayout";
 import { Breadcrumbs } from "@/components/site/Breadcrumbs";
 import { QuantityStepper } from "@/components/site/QuantityStepper";
 import { ProductGrid } from "@/components/site/ProductGrid";
 import { InventoryBadge } from "@/components/site/InventoryBadge";
+import { StarRating, WriteReviewModal } from "@/components/site/WriteReviewModal";
+import { useAuthContext } from "@/providers/auth-context";
 import { useCart, cartLineKey } from "@/stores/cart";
 import { useBuyNowStore } from "@/stores/buyNow";
 import { computeQuantityBounds } from "@/lib/cartQuantity";
@@ -32,10 +31,20 @@ import { queryKeys } from "@/lib/api/queryKeys";
 import { toProductDetail, toProduct, toReview } from "@/lib/api/mappers";
 import { supabase } from "@/lib/supabase/client";
 import type { ProductListResponse } from "@/types/admin";
-import type { ProductDetail, ProductVariant, PublicReview, ReviewSummary } from "@/types/public";
+import type {
+  MyProductReviewStatus,
+  ProductDetail,
+  ProductVariant,
+  PublicReview,
+  ReviewSummary,
+} from "@/types/public";
 import type { Product, ProductSpec, Review } from "@/types/shop";
 
 export const Route = createFileRoute("/products/$slug")({
+  // ?review=1 deep-links (from emails / order reminders) open the Reviews tab.
+  validateSearch: (search: Record<string, unknown>): { review?: string } => ({
+    review: search.review ? String(search.review) : undefined,
+  }),
   loader: async ({ params }) => {
     const productDetail = await api
       .get<ProductDetail>(`/products/${params.slug}`)
@@ -90,7 +99,9 @@ export const Route = createFileRoute("/products/$slug")({
 
 function ProductPage() {
   const { product, related, slug } = Route.useLoaderData();
+  const search = Route.useSearch();
   const navigate = useNavigate();
+  const { isAuthenticated } = useAuthContext();
   const [active, setActive] = useState(0);
   const [qty, setQty] = useState(1);
   const [tab, setTab] = useState<"details" | "specs" | "reviews">("details");
@@ -192,6 +203,18 @@ function ProductPage() {
   const avgRating = reviewSummary?.average_rating ?? product.rating ?? 0;
   const reviewCount = reviewSummary?.review_count ?? product.reviewCount ?? 0;
 
+  // Purchased-and-delivered review reminder banner (read-only state — never
+  // gates who may submit a review, see Backend/app/modules/reviews/service.py).
+  const { data: myReviewStatus, refetch: refetchMyReviewStatus } = useQuery({
+    queryKey: queryKeys.reviews.myStatus(product.id),
+    queryFn: () => api.get<MyProductReviewStatus>(`/reviews/products/${product.id}/my-status`),
+    enabled: isAuthenticated,
+    staleTime: 60_000,
+  });
+  const showPurchasedBanner = Boolean(
+    myReviewStatus?.has_purchased_delivered && !myReviewStatus.has_reviewed,
+  );
+
   const [showReviewModal, setShowReviewModal] = useState(false);
 
   const gallery = product.gallery ?? [product.image];
@@ -274,6 +297,12 @@ function ProductPage() {
       reviewsRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
     }, 0);
   }, []);
+
+  // Deep link from emails/order reminders: /products/slug?review=1 opens the
+  // Reviews tab and scrolls straight to it.
+  useEffect(() => {
+    if (search.review) scrollToReviews();
+  }, [search.review, scrollToReviews]);
 
   // Show Notify Me / sold-out state when product has no variants and is out of stock
   const globalSoldOut = !hasVariants && liveAvailableStock === 0;
@@ -552,6 +581,27 @@ function ProductPage() {
         </div>
       </div>
 
+      {showPurchasedBanner && (
+        <div className="px-4 md:px-8 pt-8">
+          <div className="flex flex-wrap items-center justify-between gap-4 bg-accent/10 border border-accent/30 px-6 py-5">
+            <div>
+              <p className="font-display text-lg">You purchased this product.</p>
+              <p className="text-sm text-muted-foreground mt-0.5">
+                Share your experience with other customers.
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => setShowReviewModal(true)}
+              className="shrink-0 inline-flex items-center gap-2 bg-primary text-primary-foreground text-[11px] uppercase tracking-[0.22em] px-5 py-3 hover:bg-accent hover:text-accent-foreground transition"
+            >
+              <Pencil className="size-3.5" />
+              Write a Review
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Tabs */}
       <div
         id="product-reviews"
@@ -629,6 +679,8 @@ function ProductPage() {
           onSuccess={() => {
             queryClient.invalidateQueries({ queryKey: queryKeys.reviews.forProduct(product.id) });
             queryClient.invalidateQueries({ queryKey: queryKeys.reviews.summary(product.id) });
+            queryClient.invalidateQueries({ queryKey: queryKeys.reviews.myStatus(product.id) });
+            refetchMyReviewStatus();
           }}
         />
       )}
@@ -637,41 +689,6 @@ function ProductPage() {
 }
 
 // ── Reviews section ────────────────────────────────────────────────────────────
-
-function StarRating({
-  value,
-  onChange,
-  size = "md",
-}: {
-  value: number;
-  onChange?: (v: number) => void;
-  size?: "sm" | "md" | "lg";
-}) {
-  const [hovered, setHovered] = useState(0);
-  const sz = size === "lg" ? "size-7" : size === "md" ? "size-5" : "size-3.5";
-  return (
-    <div className="flex gap-1">
-      {Array.from({ length: 5 }).map((_, i) => {
-        const filled = i < (hovered || value);
-        return (
-          <button
-            key={i}
-            type="button"
-            onClick={() => onChange?.(i + 1)}
-            onMouseEnter={() => onChange && setHovered(i + 1)}
-            onMouseLeave={() => onChange && setHovered(0)}
-            className={`${onChange ? "cursor-pointer" : "cursor-default pointer-events-none"}`}
-            aria-label={`Rate ${i + 1} star${i > 0 ? "s" : ""}`}
-          >
-            <Star
-              className={`${sz} ${filled ? "fill-accent text-accent" : "text-border"} transition-colors`}
-            />
-          </button>
-        );
-      })}
-    </div>
-  );
-}
 
 function ReviewCard({ review }: { review: Review }) {
   const [imgIdx, setImgIdx] = useState(0);
@@ -771,156 +788,6 @@ function ReviewsSection({
         {displayReviews.length === 0 && (
           <p className="text-sm text-muted-foreground">No reviews yet.</p>
         )}
-      </div>
-    </div>
-  );
-}
-
-function WriteReviewModal({
-  productId,
-  onClose,
-  onSuccess,
-}: {
-  productId: string;
-  onClose: () => void;
-  onSuccess: () => void;
-}) {
-  const [rating, setRating] = useState(0);
-  const [body, setBody] = useState("");
-  const [image, setImage] = useState<File | null>(null);
-  const [imagePreview, setImagePreview] = useState<string | null>(null);
-  const [submitting, setSubmitting] = useState(false);
-  const fileInputRef = useRef<HTMLInputElement>(null);
-
-  const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    setImage(file);
-    setImagePreview(URL.createObjectURL(file));
-  };
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (rating === 0) {
-      toast.error("Please select a rating.");
-      return;
-    }
-    if (!body.trim()) {
-      toast.error("Please write a review description.");
-      return;
-    }
-    setSubmitting(true);
-    try {
-      const form = new FormData();
-      form.append("product_id", productId);
-      form.append("rating", String(rating));
-      form.append("body", body.trim());
-      if (image) form.append("images", image);
-
-      await api.upload("/reviews", form);
-      toast.success("Review submitted! It will appear after approval.");
-      onSuccess();
-      onClose();
-    } catch (err: unknown) {
-      const msg = (err as { message?: string })?.message ?? "Failed to submit review.";
-      toast.error(msg);
-    } finally {
-      setSubmitting(false);
-    }
-  };
-
-  return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-foreground/40 backdrop-blur-sm p-4"
-      onClick={(e) => e.target === e.currentTarget && onClose()}
-    >
-      <div className="bg-background border border-border w-full max-w-md p-6 relative">
-        <button
-          type="button"
-          onClick={onClose}
-          className="absolute top-4 right-4 text-muted-foreground hover:text-foreground"
-          aria-label="Close"
-        >
-          <X className="size-5" />
-        </button>
-        <h2 className="font-display text-2xl mb-1">Write a Review</h2>
-        <p className="text-sm text-muted-foreground mb-6">
-          Your review will be visible after admin approval.
-        </p>
-        <form onSubmit={handleSubmit} className="space-y-5">
-          <div>
-            <label className="text-[11px] uppercase tracking-[0.22em] text-muted-foreground block mb-2">
-              Rating <span className="text-destructive">*</span>
-            </label>
-            <StarRating value={rating} onChange={setRating} size="lg" />
-          </div>
-          <div>
-            <label
-              htmlFor="review-body"
-              className="text-[11px] uppercase tracking-[0.22em] text-muted-foreground block mb-2"
-            >
-              Review <span className="text-destructive">*</span>
-            </label>
-            <textarea
-              id="review-body"
-              rows={4}
-              value={body}
-              onChange={(e) => setBody(e.target.value)}
-              placeholder="Share your experience with this product…"
-              className="w-full border border-border bg-background px-3 py-2.5 text-sm resize-none focus:outline-none focus:border-foreground transition"
-              maxLength={2000}
-            />
-            <p className="text-[11px] text-muted-foreground mt-1 text-right">{body.length}/2000</p>
-          </div>
-          <div>
-            <label className="text-[11px] uppercase tracking-[0.22em] text-muted-foreground block mb-2">
-              Photo (optional)
-            </label>
-            {imagePreview ? (
-              <div className="relative inline-block">
-                <img
-                  src={imagePreview}
-                  alt="Preview"
-                  className="size-20 object-cover border border-border"
-                />
-                <button
-                  type="button"
-                  onClick={() => {
-                    setImage(null);
-                    setImagePreview(null);
-                  }}
-                  className="absolute -top-2 -right-2 bg-destructive text-destructive-foreground rounded-full size-5 flex items-center justify-center"
-                  aria-label="Remove image"
-                >
-                  <X className="size-3" />
-                </button>
-              </div>
-            ) : (
-              <button
-                type="button"
-                onClick={() => fileInputRef.current?.click()}
-                className="flex items-center gap-2 border border-dashed border-border px-4 py-3 text-sm text-muted-foreground hover:border-foreground hover:text-foreground transition"
-              >
-                <Upload className="size-4" />
-                Upload photo
-              </button>
-            )}
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept="image/*"
-              className="hidden"
-              onChange={handleImageChange}
-            />
-          </div>
-          <button
-            type="submit"
-            disabled={submitting}
-            className="w-full bg-primary text-primary-foreground text-[11px] uppercase tracking-[0.22em] py-3.5 hover:bg-accent hover:text-accent-foreground transition disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            {submitting ? "Submitting…" : "Submit Review"}
-          </button>
-        </form>
       </div>
     </div>
   );

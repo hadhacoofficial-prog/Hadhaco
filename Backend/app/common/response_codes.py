@@ -94,6 +94,7 @@ class ResponseCode(StrEnum):
     # ── Reviews ──────────────────────────────────────────────────────────────
     REVIEW_LISTED = "REVIEW_LISTED"
     REVIEW_SUMMARY_FETCHED = "REVIEW_SUMMARY_FETCHED"
+    REVIEW_STATUS_FETCHED = "REVIEW_STATUS_FETCHED"
     REVIEW_SUBMITTED = "REVIEW_SUBMITTED"
     REVIEW_UPDATED = "REVIEW_UPDATED"
     REVIEW_DELETED = "REVIEW_DELETED"

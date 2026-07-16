@@ -98,6 +98,21 @@ class AdminReviewOut(ReviewOut):
     product_name: str | None = None
 
 
+# ── My review status (post-delivery reminder visibility) ─────────────────────
+
+
+class MyProductReviewStatus(BaseModel):
+    """Read-only reminder state for the product page banner — reports whether
+    the viewer bought the product (delivered) and already reviewed it. Never
+    used to gate who may submit a review."""
+
+    product_id: uuid.UUID
+    has_purchased_delivered: bool
+    has_reviewed: bool
+    review_id: uuid.UUID | None = None
+    rating: int | None = None
+
+
 # ── Rating summary ────────────────────────────────────────────────────────────
 
 

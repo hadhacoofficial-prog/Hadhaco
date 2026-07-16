@@ -35,6 +35,21 @@ class NotificationRepository:
         )
         return result.scalar_one_or_none()
 
+    async def has_log_for_user_event(
+        self, db: AsyncSession, *, user_id: str | uuid.UUID, event_type: str
+    ) -> bool:
+        """True when any log exists for (user, event) — idempotence check for
+        one-time notifications like the welcome email."""
+        result = await db.execute(
+            select(NotificationLog.id)
+            .where(
+                NotificationLog.user_id == uuid.UUID(str(user_id)),
+                NotificationLog.event_type == event_type,
+            )
+            .limit(1)
+        )
+        return result.scalar_one_or_none() is not None
+
     async def list_templates(self, db: AsyncSession) -> list[NotificationTemplate]:
         result = await db.execute(
             select(NotificationTemplate).order_by(NotificationTemplate.event_type)

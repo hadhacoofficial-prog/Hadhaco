@@ -17,6 +17,12 @@ class OrderItemResponse(BaseModel):
     tax_rate: float
     tax_amount: float
     line_total: float
+    # Post-delivery review reminder state — filled by OrderService.get_order
+    # for customer views of DELIVERED orders only; None everywhere else.
+    product_slug: str | None = None
+    is_reviewed: bool | None = None
+    review_id: uuid.UUID | None = None
+    review_rating: int | None = None
 
     model_config = {"from_attributes": True}
 

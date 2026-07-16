@@ -126,6 +126,26 @@ class ReviewService:
     ) -> dict[str, Any] | None:
         return await self._repo.rating_summary(db, product_id)
 
+    async def my_review_status(
+        self, db: AsyncSession, *, product_id: uuid.UUID, user_id: uuid.UUID
+    ) -> dict[str, Any]:
+        """Reminder visibility for the product-page review banner. Read-only:
+        reports purchased-and-delivered / already-reviewed state and never
+        gates who may submit a review."""
+        review = await self._repo.get_by_product_user(
+            db, product_id=product_id, user_id=user_id
+        )
+        has_purchased = await self._repo.has_delivered_order_item(
+            db, user_id=user_id, product_id=product_id
+        )
+        return {
+            "product_id": product_id,
+            "has_purchased_delivered": has_purchased,
+            "has_reviewed": review is not None,
+            "review_id": review.id if review else None,
+            "rating": review.rating if review else None,
+        }
+
     # ── Votes ─────────────────────────────────────────────────────────────────
 
     async def vote(

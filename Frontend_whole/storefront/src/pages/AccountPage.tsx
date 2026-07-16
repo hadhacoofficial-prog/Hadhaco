@@ -22,6 +22,7 @@ import {
   EyeOff,
   Camera,
   Loader2,
+  Pencil,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -29,6 +30,7 @@ import { SiteLayout } from "@/components/site/SiteLayout";
 import { PageLoader } from "@/components/common/PageLoader";
 import { OrderTrackingSection } from "@/components/customer/OrderTrackingSection";
 import { Breadcrumbs } from "@/components/site/Breadcrumbs";
+import { WriteReviewModal } from "@/components/site/WriteReviewModal";
 import { Sheet, SheetContent, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { Skeleton } from "@/components/ui/skeleton";
 import { api } from "@/lib/api/client";
@@ -575,6 +577,7 @@ function TotalRow({
 // ── Order detail (expanded) ────────────────────────────────────────────────────
 
 function OrderDetailExpanded({ order }: { order: CustomerOrderResponse }) {
+  const queryClient = useQueryClient();
   const date = new Date(order.created_at).toLocaleDateString("en-IN", {
     year: "numeric",
     month: "long",
@@ -585,6 +588,11 @@ function OrderDetailExpanded({ order }: { order: CustomerOrderResponse }) {
     minute: "2-digit",
   });
   const methodLabel = order.payment_method === "razorpay" ? "Razorpay" : order.payment_method;
+  const isDelivered = order.status === "delivered";
+  const [reviewTarget, setReviewTarget] = useState<{
+    productId: string;
+    productName: string;
+  } | null>(null);
 
   return (
     <div className="mt-5 space-y-5 border-t border-border pt-5">
@@ -656,11 +664,99 @@ function OrderDetailExpanded({ order }: { order: CustomerOrderResponse }) {
                   <span className="ml-1">({formatINR(item.unit_price)} each)</span>
                 )}
               </p>
+              {isDelivered && item.is_reviewed !== null && item.is_reviewed !== undefined && (
+                <p className="text-[11px] mt-1">
+                  {item.is_reviewed ? (
+                    <span className="text-accent">🟢 Reviewed</span>
+                  ) : (
+                    <span className="text-amber-600">🟡 Write Review</span>
+                  )}
+                </p>
+              )}
             </div>
             <p className="text-sm shrink-0">{formatINR(item.unit_price * item.quantity)}</p>
           </div>
         ))}
       </div>
+
+      {isDelivered && (
+        <div className="border-t border-border pt-4 space-y-3">
+          <p className="text-[11px] uppercase tracking-[0.22em] text-muted-foreground">Reviews</p>
+          {order.items.map((item) => {
+            if (item.is_reviewed === null || item.is_reviewed === undefined) return null;
+            return item.is_reviewed ? (
+              <div
+                key={item.id}
+                className="flex flex-wrap items-center justify-between gap-3 bg-secondary/40 border border-border px-4 py-3.5"
+              >
+                <div>
+                  <p className="text-sm">
+                    <span className="text-accent">✅</span> Thank you for reviewing{" "}
+                    <span className="font-medium">{item.product_name}</span>.
+                  </p>
+                  {item.review_rating != null && (
+                    <p
+                      className="text-sm mt-1"
+                      aria-label={`Your rating: ${item.review_rating} of 5`}
+                    >
+                      {"★".repeat(item.review_rating)}
+                      <span className="text-border">{"★".repeat(5 - item.review_rating)}</span>
+                    </p>
+                  )}
+                </div>
+                {item.product_slug && (
+                  <Link
+                    to="/products/$slug"
+                    params={{ slug: item.product_slug }}
+                    search={{ review: "1" }}
+                    className="text-[11px] uppercase tracking-[0.2em] underline underline-offset-4 hover:text-accent transition"
+                  >
+                    View Your Review
+                  </Link>
+                )}
+              </div>
+            ) : (
+              <div
+                key={item.id}
+                className="flex flex-wrap items-center justify-between gap-4 bg-accent/10 border border-accent/30 px-4 py-4"
+              >
+                <div>
+                  <p className="text-accent text-sm tracking-wide" aria-hidden>
+                    ★★★★★
+                  </p>
+                  <p className="font-display text-base mt-1">How did you like this product?</p>
+                  <p className="text-xs text-muted-foreground mt-0.5">
+                    Your feedback helps other customers.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() =>
+                    setReviewTarget({ productId: item.product_id, productName: item.product_name })
+                  }
+                  className="shrink-0 inline-flex items-center gap-2 bg-primary text-primary-foreground text-[11px] uppercase tracking-[0.22em] px-4 py-2.5 hover:bg-accent hover:text-accent-foreground transition"
+                >
+                  <Pencil className="size-3.5" />
+                  Write Review
+                </button>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {reviewTarget && (
+        <WriteReviewModal
+          productId={reviewTarget.productId}
+          orderId={order.id}
+          productName={reviewTarget.productName}
+          onClose={() => setReviewTarget(null)}
+          onSuccess={() => {
+            queryClient.invalidateQueries({ queryKey: queryKeys.orders.detail(order.id) });
+            queryClient.invalidateQueries({ queryKey: queryKeys.orders.list({}) });
+          }}
+        />
+      )}
 
       <div className="border-t border-border pt-4 space-y-2">
         <TotalRow label="Subtotal" value={formatINR(order.subtotal)} />

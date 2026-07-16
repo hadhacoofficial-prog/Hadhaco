@@ -16,6 +16,7 @@ from app.core.dependencies import (
 from app.modules.reviews.schemas import (
     AdminReviewAction,
     AdminReviewOut,
+    MyProductReviewStatus,
     ProductRatingSummary,
     ReviewCreate,
     ReviewOut,
@@ -83,6 +84,25 @@ async def product_rating_summary(
 
 
 # ── Customer (auth required) ──────────────────────────────────────────────────
+
+
+@router.get(
+    "/products/{product_id}/my-status",
+    response_model=BaseSuccessResponse[MyProductReviewStatus],
+)
+async def my_review_status(
+    product_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    user=Depends(get_current_user),
+):
+    """Read-only reminder state for the product-page review banner — does not
+    change who may review (see MyProductReviewStatus)."""
+    data = await _svc.my_review_status(db, product_id=product_id, user_id=user.id)
+    return ok(
+        MyProductReviewStatus(**data),
+        ResponseCode.REVIEW_STATUS_FETCHED,
+        "Review status fetched successfully",
+    )
 
 
 @router.post("", response_model=BaseSuccessResponse[ReviewOut], status_code=201)

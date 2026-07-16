@@ -99,6 +99,7 @@ export const queryKeys = {
     all: ["reviews"] as const,
     forProduct: (productId: string) => ["reviews", "product", productId] as const,
     summary: (productId: string) => ["reviews", "summary", productId] as const,
+    myStatus: (productId: string) => ["reviews", "my-status", productId] as const,
   },
 
   cms: {

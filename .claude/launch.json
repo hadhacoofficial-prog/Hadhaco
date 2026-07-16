@@ -46,5 +46,17 @@
       ],
       "port": 8090
     },
+    {
+      "name": "email-previews",
+      "runtimeExecutable": "F:\\Work\\Hadha.co\\Project\\Backend\\hadha\\Scripts\\python.exe",
+      "runtimeArgs": [
+        "-m",
+        "http.server",
+        "8765",
+        "--directory",
+        "F:\\Work\\Hadha.co\\Project\\Backend\\scripts\\email_previews"
+      ],
+      "port": 8765
+    }
   ]
 }

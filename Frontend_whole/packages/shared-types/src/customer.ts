@@ -82,6 +82,12 @@ export interface OrderItemResponse {
   unit_price: number;
   quantity: number;
   line_total: number;
+  // Post-delivery review reminder state — present only on customer views of
+  // DELIVERED orders; null/undefined everywhere else.
+  product_slug?: string | null;
+  is_reviewed?: boolean | null;
+  review_id?: string | null;
+  review_rating?: number | null;
 }
 
 export interface CustomerOrderResponse {

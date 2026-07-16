@@ -151,6 +151,28 @@ class Settings(BaseSettings):
     EMAIL_FROM_NAME: str = "Hadha.co"
     ADMIN_ALERT_EMAIL: str = "admin@hadha.co"
 
+    # ── Brand identity (notification templates) ────────────────────────────────
+    # All optional; defaults mirror the storefront's canonical BRAND config
+    # (Frontend_whole/packages/shared-utils/src/config/brand.ts) so emails and
+    # the site speak with one voice. CMS "footer" section config overrides
+    # these at send time (see app/modules/notifications/branding.py).
+    BRAND_NAME: str = "Hadha Silver Jewellery"
+    BRAND_SHORT_NAME: str = "Hadha"
+    BRAND_LEGAL_NAME: str = "Popula Dabba's Hadha"
+    BRAND_TAGLINE: str = "92.5 Silver Jewellery"
+    BRAND_DESCRIPTION: str = (
+        "Popula Dabba's Hadha — handcrafted 92.5 silver jewellery rooted in "
+        "South Indian heritage, made for everyday and treasured for a lifetime."
+    )
+    BRAND_LOGO_URL: str = ""
+    BRAND_LOGO_DARK_URL: str = ""
+    BRAND_ADDRESS: str = "MVP Sector 1, MVP Colony, Visakhapatnam 530017"
+    SUPPORT_EMAIL: str = "hello@hadha.co"
+    SUPPORT_PHONE: str = "+91 98765 43210"
+    SOCIAL_INSTAGRAM_URL: str = "https://instagram.com/hadha"
+    SOCIAL_FACEBOOK_URL: str = "https://facebook.com/hadha"
+    SOCIAL_YOUTUBE_URL: str = "https://youtube.com/@hadha"
+
     # ── WhatsApp (Meta Business Cloud API) ─────────────────────────────────────
     WHATSAPP_ENABLED: bool = False
     WHATSAPP_BUSINESS_PHONE: str = ""

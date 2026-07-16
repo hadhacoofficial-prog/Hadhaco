@@ -98,6 +98,78 @@ NOTIFICATION_EVENTS: list[NotificationEventDef] = [
         default_whatsapp_enabled=True,
     ),
     NotificationEventDef(
+        event_type="order_confirmed",
+        display_name="Order Confirmed",
+        category=NotificationCategory.ORDERS,
+        description="Sent when an order is manually confirmed by the team.",
+        default_email_enabled=True,
+        default_whatsapp_enabled=False,
+    ),
+    NotificationEventDef(
+        event_type="order_processing",
+        display_name="Order Processing",
+        category=NotificationCategory.ORDERS,
+        description="Sent when an order moves into preparation.",
+        default_email_enabled=True,
+        default_whatsapp_enabled=False,
+    ),
+    NotificationEventDef(
+        event_type="order_packed",
+        display_name="Order Packed",
+        category=NotificationCategory.ORDERS,
+        description="Sent when an order is packed and ready to ship.",
+        default_email_enabled=True,
+        default_whatsapp_enabled=True,
+    ),
+    NotificationEventDef(
+        event_type="order_return_requested",
+        display_name="Return Requested",
+        category=NotificationCategory.ORDERS,
+        description="Sent when a customer's return request is received.",
+        default_email_enabled=True,
+        default_whatsapp_enabled=False,
+    ),
+    NotificationEventDef(
+        event_type="order_returned",
+        display_name="Return Received",
+        category=NotificationCategory.ORDERS,
+        description="Sent when returned items are received back at the studio.",
+        default_email_enabled=True,
+        default_whatsapp_enabled=False,
+    ),
+    NotificationEventDef(
+        event_type="order_payment_failed",
+        display_name="Payment Failed (Order Status)",
+        category=NotificationCategory.PAYMENTS,
+        description=(
+            "Sent when an order is manually marked payment-failed via the "
+            "admin status endpoint (distinct from the automatic webhook-driven "
+            "payment_failed notification)."
+        ),
+        default_email_enabled=True,
+        default_whatsapp_enabled=False,
+    ),
+    NotificationEventDef(
+        event_type="order_payment_expired",
+        display_name="Payment Expired",
+        category=NotificationCategory.PAYMENTS,
+        description="Sent when an order's payment window expires and stock is released.",
+        default_email_enabled=True,
+        default_whatsapp_enabled=False,
+    ),
+    NotificationEventDef(
+        event_type="order_refunded",
+        display_name="Order Refunded (Order Status)",
+        category=NotificationCategory.PAYMENTS,
+        description=(
+            "Sent when an order is manually marked refunded via the admin "
+            "status endpoint (distinct from the refund-service-driven "
+            "refund_processed notification)."
+        ),
+        default_email_enabled=True,
+        default_whatsapp_enabled=False,
+    ),
+    NotificationEventDef(
         event_type="order_cancelled",
         display_name="Order Cancelled",
         category=NotificationCategory.ORDERS,
