@@ -1,0 +1,66 @@
+══════════════════════════════════════════════════════════════════════
+          HADHA.CO PERFORMANCE BENCHMARK REPORT
+          Generated: 2026-07-16T16:34:38.478Z
+══════════════════════════════════════════════════════════════════════
+
+─── EXECUTIVE SUMMARY ────────────────────────────────────────────────
+  Total Requests:         5543
+  Requests/sec:           9.82
+  Total Iterations:       851
+  Iterations/sec:         1.51
+  Avg Response Time:      4.50s
+  P90 Response Time:      7.62s
+  P95 Response Time:      7.90s
+  P99 Response Time:      0us
+  Max Response Time:      14.52s
+  HTTP 2xx Count:         4972
+  HTTP 5xx Count:         0
+  Timeout Count:          83 (14.7%)
+  API Success Rate:       89.70%
+  API Error Count:        571
+  Check Pass Rate:        93.94%
+  Checks Passed:          9985
+  Checks Failed:          644
+
+─── GROUP BREAKDOWN ──────────────────────────────────────────────────
+  Group                               Passed   Failed   Rate    
+  ───────────────────────────────────────────────────────────
+  setup                               1        0        100.0%
+  Read — Products List                808      12       98.5%
+  Read — Product Detail               808      12       98.5%
+  Read — Search                       808      12       98.5%
+  Read — Homepage                     796      24       97.1%
+  Write — Add to Cart                 886      30       96.7%
+  Write — View Cart                   902      14       98.5%
+  Read — Categories                   804      14       98.3%
+  Write — Attempt Checkout (no auth)  458      458      50.0%
+  Read — Collections                  806      8        99.0%
+  Write — Cart Operations             896      20       97.8%
+  Write — Cleanup                     446      10       97.8%
+  Read — Filtered Products            792      12       98.5%
+  Read — Featured Products            774      18       97.7%
+
+─── ENDPOINT LATENCY (p95) ───────────────────────────────────────────
+  Endpoint                            Avg        P95        Max       
+  ─────────────────────────────────────────────────────────────────
+  products                            5.08s      8.06s      10.00s    
+  categories                          4.90s      7.97s      10.00s    
+  homepage                            4.86s      7.97s      10.00s    
+  collections                         4.78s      7.86s      10.00s    
+  cart                                4.85s      7.75s      14.52s    
+  search                              4.60s      7.34s      10.00s    
+  checkout                            15.2ms     61.7ms     615.5ms   
+
+─── BUSINESS METRICS ─────────────────────────────────────────────────
+  product_view_success                98.54% (404 pass, 6 fail)
+  cart_add_success                    100.00% (458 pass, 0 fail)
+  search_success                      98.54% (404 pass, 6 fail)
+
+─── BOTTLENECK INDICATORS ────────────────────────────────────────────
+  ⚠  83 request timeouts (14.7%) — connection pool or DB saturation likely
+  ⚠  P95 latency 7.90s exceeds 5s — poor user experience
+  ⚠  Average latency 4.50s exceeds 2s — system bottleneck
+
+══════════════════════════════════════════════════════════════════════
+  Thresholds: See k6 output for pass/fail status
+══════════════════════════════════════════════════════════════════════

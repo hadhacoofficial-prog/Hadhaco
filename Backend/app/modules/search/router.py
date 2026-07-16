@@ -60,7 +60,7 @@ async def autocomplete(
     )
 
 
-@router.get("/search/trending", response_model=BaseSuccessResponse[dict])
+@router.get("/search/trending", response_model=BaseSuccessResponse)
 async def trending_searches(
     limit: int = Query(10, ge=1, le=20),
     db: AsyncSession = Depends(get_db),

@@ -1,0 +1,266 @@
+﻿
+         /\      Grafana   /ÔÇ¥ÔÇ¥/  
+    /\  /  \     |\  __   /  /   
+   /  \/    \    | |/ /  /   ÔÇ¥ÔÇ¥\ 
+  /          \   |   (  |  (ÔÇ¥)  |
+ / __________ \  |_|\_\  \_____/ 
+
+     execution: local
+        script: F:\Work\Hadha.co\Project\k6\inventory\concurrency.js
+        output: -
+
+     scenarios: (100.00%) 1 scenario, 100 max VUs, 5m30s max duration (incl. graceful stop):
+              * concurrency_100: 1 iterations for each of 100 VUs (maxDuration: 5m0s, exec: buySameProduct, gracefulStop: 30s)
+
+
+Run               [ 100% ] setup()
+concurrency_100   [   0% ]
+
+Run               [ 100% ] setup()
+concurrency_100   [   0% ]
+k6.exe : time="2026-07-16T17:28:40+05:30" level=info msg="Concurrency test target: 92.5 Sterling Silver Infinity Heart 
+Charm Bracelet with Blue Stone Accents | Elegant Women's Bracelet (ID: 644481ff-30eb-48cc-89a9-424e2b3cf5cd, Stock: 1, 
+Slug: 925-sterling-silver-infinity-heart-charm-bracelet-with-blue-stone-accents-elegant-womens-bracelet)" 
+source=console
+At line:1 char:11
++ $Output = & "C:\Users\Admin\AppData\Local\Temp\k6.exe" run "F:\Work\H ...
++           ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (time="2026-07-1... source=console:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+
+running (0m03.0s), 100/100 VUs, 0 complete and 0 interrupted iterations
+concurrency_100   [   0% ] 100 VUs  0m00.6s/5m0s  000/100 iters, 1 per VU
+
+running (0m04.0s), 100/100 VUs, 0 complete and 0 interrupted iterations
+concurrency_100   [   0% ] 100 VUs  0m01.6s/5m0s  000/100 iters, 1 per VU
+
+running (0m05.0s), 100/100 VUs, 0 complete and 0 interrupted iterations
+concurrency_100   [   0% ] 100 VUs  0m02.6s/5m0s  000/100 iters, 1 per VU
+
+running (0m06.0s), 100/100 VUs, 0 complete and 0 interrupted iterations
+concurrency_100   [   0% ] 100 VUs  0m03.6s/5m0s  000/100 iters, 1 per VU
+
+running (0m07.0s), 100/100 VUs, 0 complete and 0 interrupted iterations
+concurrency_100   [   0% ] 100 VUs  0m04.6s/5m0s  000/100 iters, 1 per VU
+
+running (0m08.0s), 100/100 VUs, 0 complete and 0 interrupted iterations
+concurrency_100   [   0% ] 100 VUs  0m05.6s/5m0s  000/100 iters, 1 per VU
+
+running (0m09.0s), 100/100 VUs, 0 complete and 0 interrupted iterations
+concurrency_100   [   0% ] 100 VUs  0m06.6s/5m0s  000/100 iters, 1 per VU
+
+running (0m10.0s), 100/100 VUs, 0 complete and 0 interrupted iterations
+concurrency_100   [   0% ] 100 VUs  0m07.6s/5m0s  000/100 iters, 1 per VU
+
+running (0m11.0s), 100/100 VUs, 0 complete and 0 interrupted iterations
+concurrency_100   [   0% ] 100 VUs  0m08.6s/5m0s  000/100 iters, 1 per VU
+
+running (0m12.0s), 100/100 VUs, 0 complete and 0 interrupted iterations
+concurrency_100   [   0% ] 100 VUs  0m09.6s/5m0s  000/100 iters, 1 per VU
+
+running (0m13.0s), 100/100 VUs, 0 complete and 0 interrupted iterations
+concurrency_100   [   0% ] 100 VUs  0m10.6s/5m0s  000/100 iters, 1 per VU
+time="2026-07-16T17:28:51+05:30" level=warning msg="Request Failed" error="Delete 
+\"http://localhost:8000/api/v1/cart\": request timeout"
+time="2026-07-16T17:28:51+05:30" level=warning msg="Request Failed" error="Delete 
+\"http://localhost:8000/api/v1/cart\": request timeout"
+time="2026-07-16T17:28:51+05:30" level=warning msg="Request Failed" error="Delete 
+\"http://localhost:8000/api/v1/cart\": request timeout"
+time="2026-07-16T17:28:51+05:30" level=warning msg="Request Failed" error="Delete 
+\"http://localhost:8000/api/v1/cart\": request timeout"
+time="2026-07-16T17:28:51+05:30" level=warning msg="Request Failed" error="Delete 
+\"http://localhost:8000/api/v1/cart\": request timeout"
+
+running (0m14.0s), 095/100 VUs, 5 complete and 0 interrupted iterations
+concurrency_100   [   5% ] 100 VUs  0m11.6s/5m0s  005/100 iters, 1 per VU
+time="2026-07-16T17:28:52+05:30" level=warning msg="Request Failed" error="Delete 
+\"http://localhost:8000/api/v1/cart\": request timeout"
+time="2026-07-16T17:28:52+05:30" level=warning msg="Request Failed" error="Delete 
+\"http://localhost:8000/api/v1/cart\": request timeout"
+time="2026-07-16T17:28:52+05:30" level=warning msg="Request Failed" error="Delete 
+\"http://localhost:8000/api/v1/cart\": request timeout"
+time="2026-07-16T17:28:52+05:30" level=warning msg="Request Failed" error="Delete 
+\"http://localhost:8000/api/v1/cart\": request timeout"
+time="2026-07-16T17:28:52+05:30" level=warning msg="Request Failed" error="Delete 
+\"http://localhost:8000/api/v1/cart\": request timeout"
+time="2026-07-16T17:28:52+05:30" level=warning msg="Request Failed" error="Delete 
+\"http://localhost:8000/api/v1/cart\": request timeout"
+
+running (0m15.0s), 089/100 VUs, 11 complete and 0 interrupted iterations
+concurrency_100   [  11% ] 100 VUs  0m12.6s/5m0s  011/100 iters, 1 per VU
+time="2026-07-16T17:28:53+05:30" level=warning msg="Request Failed" error="Delete 
+\"http://localhost:8000/api/v1/cart\": request timeout"
+time="2026-07-16T17:28:53+05:30" level=warning msg="Request Failed" error="Delete 
+\"http://localhost:8000/api/v1/cart\": request timeout"
+time="2026-07-16T17:28:53+05:30" level=warning msg="Request Failed" error="Delete 
+\"http://localhost:8000/api/v1/cart\": request timeout"
+time="2026-07-16T17:28:53+05:30" level=warning msg="Request Failed" error="Delete 
+\"http://localhost:8000/api/v1/cart\": request timeout"
+time="2026-07-16T17:28:53+05:30" level=warning msg="Request Failed" error="Delete 
+\"http://localhost:8000/api/v1/cart\": request timeout"
+time="2026-07-16T17:28:53+05:30" level=warning msg="Request Failed" error="Delete 
+\"http://localhost:8000/api/v1/cart\": request timeout"
+time="2026-07-16T17:28:53+05:30" level=warning msg="Request Failed" error="Delete 
+\"http://localhost:8000/api/v1/cart\": request timeout"
+
+running (0m16.0s), 082/100 VUs, 18 complete and 0 interrupted iterations
+concurrency_100   [  18% ] 100 VUs  0m13.6s/5m0s  018/100 iters, 1 per VU
+time="2026-07-16T17:28:54+05:30" level=warning msg="Request Failed" error="Delete 
+\"http://localhost:8000/api/v1/cart\": request timeout"
+time="2026-07-16T17:28:54+05:30" level=warning msg="Request Failed" error="Delete 
+\"http://localhost:8000/api/v1/cart\": request timeout"
+time="2026-07-16T17:28:54+05:30" level=warning msg="Request Failed" error="Delete 
+\"http://localhost:8000/api/v1/cart\": request timeout"
+time="2026-07-16T17:28:54+05:30" level=warning msg="Request Failed" error="Delete 
+\"http://localhost:8000/api/v1/cart\": request timeout"
+time="2026-07-16T17:28:54+05:30" level=warning msg="Request Failed" error="Delete 
+\"http://localhost:8000/api/v1/cart\": request timeout"
+time="2026-07-16T17:28:54+05:30" level=warning msg="Request Failed" error="Delete 
+\"http://localhost:8000/api/v1/cart\": request timeout"
+time="2026-07-16T17:28:54+05:30" level=warning msg="Request Failed" error="Delete 
+\"http://localhost:8000/api/v1/cart\": request timeout"
+time="2026-07-16T17:28:55+05:30" level=warning msg="Request Failed" error="Delete 
+\"http://localhost:8000/api/v1/cart\": request timeout"
+
+running (0m17.0s), 074/100 VUs, 26 complete and 0 interrupted iterations
+concurrency_100   [  26% ] 100 VUs  0m14.6s/5m0s  026/100 iters, 1 per VU
+time="2026-07-16T17:28:55+05:30" level=warning msg="Request Failed" error="Delete 
+\"http://localhost:8000/api/v1/cart\": request timeout"
+time="2026-07-16T17:28:55+05:30" level=warning msg="Request Failed" error="Delete 
+\"http://localhost:8000/api/v1/cart\": request timeout"
+time="2026-07-16T17:28:55+05:30" level=warning msg="Request Failed" error="Delete 
+\"http://localhost:8000/api/v1/cart\": request timeout"
+time="2026-07-16T17:28:55+05:30" level=warning msg="Request Failed" error="Delete 
+\"http://localhost:8000/api/v1/cart\": request timeout"
+time="2026-07-16T17:28:55+05:30" level=warning msg="Request Failed" error="Delete 
+\"http://localhost:8000/api/v1/cart\": request timeout"
+time="2026-07-16T17:28:55+05:30" level=warning msg="Request Failed" error="Delete 
+\"http://localhost:8000/api/v1/cart\": request timeout"
+time="2026-07-16T17:28:55+05:30" level=warning msg="Request Failed" error="Delete 
+\"http://localhost:8000/api/v1/cart\": request timeout"
+
+running (0m18.0s), 067/100 VUs, 33 complete and 0 interrupted iterations
+concurrency_100   [  33% ] 100 VUs  0m15.6s/5m0s  033/100 iters, 1 per VU
+time="2026-07-16T17:28:56+05:30" level=warning msg="Request Failed" error="Delete 
+\"http://localhost:8000/api/v1/cart\": request timeout"
+time="2026-07-16T17:28:56+05:30" level=warning msg="Request Failed" error="Delete 
+\"http://localhost:8000/api/v1/cart\": request timeout"
+time="2026-07-16T17:28:56+05:30" level=warning msg="Request Failed" error="Delete 
+\"http://localhost:8000/api/v1/cart\": request timeout"
+time="2026-07-16T17:28:56+05:30" level=warning msg="Request Failed" error="Delete 
+\"http://localhost:8000/api/v1/cart\": request timeout"
+time="2026-07-16T17:28:56+05:30" level=warning msg="Request Failed" error="Delete 
+\"http://localhost:8000/api/v1/cart\": request timeout"
+time="2026-07-16T17:28:56+05:30" level=warning msg="Request Failed" error="Delete 
+\"http://localhost:8000/api/v1/cart\": request timeout"
+time="2026-07-16T17:28:56+05:30" level=warning msg="Request Failed" error="Delete 
+\"http://localhost:8000/api/v1/cart\": request timeout"
+
+running (0m19.0s), 060/100 VUs, 40 complete and 0 interrupted iterations
+concurrency_100   [  40% ] 100 VUs  0m16.6s/5m0s  040/100 iters, 1 per VU
+time="2026-07-16T17:28:57+05:30" level=warning msg="Request Failed" error="Delete 
+\"http://localhost:8000/api/v1/cart\": request timeout"
+time="2026-07-16T17:28:57+05:30" level=warning msg="Request Failed" error="Delete 
+\"http://localhost:8000/api/v1/cart\": request timeout"
+time="2026-07-16T17:28:57+05:30" level=warning msg="Request Failed" error="Delete 
+\"http://localhost:8000/api/v1/cart\": request timeout"
+time="2026-07-16T17:28:57+05:30" level=warning msg="Request Failed" error="Delete 
+\"http://localhost:8000/api/v1/cart\": request timeout"
+time="2026-07-16T17:28:57+05:30" level=warning msg="Request Failed" error="Delete 
+\"http://localhost:8000/api/v1/cart\": request timeout"
+time="2026-07-16T17:28:57+05:30" level=warning msg="Request Failed" error="Delete 
+\"http://localhost:8000/api/v1/cart\": request timeout"
+time="2026-07-16T17:28:57+05:30" level=warning msg="Request Failed" error="Delete 
+\"http://localhost:8000/api/v1/cart\": request timeout"
+time="2026-07-16T17:28:58+05:30" level=warning msg="Request Failed" error="Delete 
+\"http://localhost:8000/api/v1/cart\": request timeout"
+
+running (0m20.0s), 052/100 VUs, 48 complete and 0 interrupted iterations
+concurrency_100   [  48% ] 100 VUs  0m17.6s/5m0s  048/100 iters, 1 per VU
+time="2026-07-16T17:28:58+05:30" level=warning msg="Request Failed" error="Delete 
+\"http://localhost:8000/api/v1/cart\": request timeout"
+time="2026-07-16T17:28:58+05:30" level=warning msg="Request Failed" error="Delete 
+\"http://localhost:8000/api/v1/cart\": request timeout"
+time="2026-07-16T17:28:58+05:30" level=warning msg="Request Failed" error="Delete 
+\"http://localhost:8000/api/v1/cart\": request timeout"
+time="2026-07-16T17:28:58+05:30" level=warning msg="Request Failed" error="Delete 
+\"http://localhost:8000/api/v1/cart\": request timeout"
+time="2026-07-16T17:28:58+05:30" level=warning msg="Request Failed" error="Delete 
+\"http://localhost:8000/api/v1/cart\": request timeout"
+time="2026-07-16T17:28:58+05:30" level=warning msg="Request Failed" error="Delete 
+\"http://localhost:8000/api/v1/cart\": request timeout"
+time="2026-07-16T17:28:58+05:30" level=warning msg="Request Failed" error="Delete 
+\"http://localhost:8000/api/v1/cart\": request timeout"
+time="2026-07-16T17:28:58+05:30" level=warning msg="Request Failed" error="Delete 
+\"http://localhost:8000/api/v1/cart\": request timeout"
+
+running (0m21.0s), 044/100 VUs, 56 complete and 0 interrupted iterations
+concurrency_100   [  56% ] 100 VUs  0m18.6s/5m0s  056/100 iters, 1 per VU
+time="2026-07-16T17:28:59+05:30" level=warning msg="Request Failed" error="Delete 
+\"http://localhost:8000/api/v1/cart\": request timeout"
+time="2026-07-16T17:28:59+05:30" level=warning msg="Request Failed" error="Delete 
+\"http://localhost:8000/api/v1/cart\": request timeout"
+
+running (0m22.0s), 033/100 VUs, 67 complete and 0 interrupted iterations
+concurrency_100   [  67% ] 100 VUs  0m19.6s/5m0s  067/100 iters, 1 per VU
+
+running (0m23.0s), 019/100 VUs, 81 complete and 0 interrupted iterations
+concurrency_100   [  81% ] 100 VUs  0m20.6s/5m0s  081/100 iters, 1 per VU
+
+running (0m24.0s), 006/100 VUs, 94 complete and 0 interrupted iterations
+concurrency_100   [  94% ] 100 VUs  0m21.6s/5m0s  094/100 iters, 1 per VU
+
+running (0m25.0s), 000/100 VUs, 100 complete and 0 interrupted iterations
+concurrency_100 Ô£ô [ 100% ] 100 VUs  0m22.1s/5m0s  100/100 iters, 1 per VU
+time="2026-07-16T17:29:03+05:30" level=info msg="Stock before: 1, Stock after: 1, Sold delta: 0" source=console
+
+     Ô£ô concurrency ÔÇö expected stock exhaustion
+
+     Ôûê setup
+
+       Ô£ô setup_find_product ÔÇö HTTP 2xx
+
+     Ôûê Inventory Concurrency ÔÇö Buy Same Product
+
+       Ô£ô concurrency_add_to_cart ÔÇö HTTP 2xx
+       Ô£ù concurrency_create_payment ÔÇö HTTP 2xx
+        Ôå│  0% ÔÇö Ô£ô 0 / Ô£ù 100
+       Ô£ù concurrency_cleanup ÔÇö HTTP 2xx
+        Ôå│  42% ÔÇö Ô£ô 42 / Ô£ù 58
+
+     Ôûê teardown
+
+       Ô£ô teardown_verify_stock ÔÇö HTTP 2xx
+       Ô£ô inventory ÔÇö stock never negative
+       Ô£ô inventory ÔÇö no overselling
+
+     api_errors..............................: 158    6.281024/s
+     api_latency.............................: avg=5.67s    min=2.51ms   med=7.41s   max=14.21s   p(90)=10.24s  p(95)=12.03s  
+   Ô£ù api_success_rate........................: 47.68% 144 out of 302
+     checks..................................: 60.89% 246 out of 404
+     data_received...........................: 626 kB 25 kB/s
+     data_sent...............................: 77 kB  3.1 kB/s
+     group_duration..........................: avg=17.32s   min=11.42s   med=17.74s  max=22.12s   p(90)=21.29s  p(95)=21.63s  
+     http_req_blocked........................: avg=405.8┬Ás  min=0s       med=0s      max=8.04ms   p(90)=1.33ms  p(95)=1.87ms  
+     http_req_connecting.....................: avg=303.17┬Ás min=0s       med=0s      max=6.62ms   p(90)=1.2ms   p(95)=1.57ms  
+   Ô£ù http_req_duration.......................: avg=5.67s    min=2.51ms   med=7.41s   max=14.21s   p(90)=10.24s  p(95)=12.03s  
+     Ô£ù { endpoint:/cart/items }..............: avg=7.64s    min=1.22s    med=7.51s   max=14.21s   p(90)=13.01s  p(95)=13.7s   
+     Ô£ô { endpoint:/orders/create-payment }...: avg=6.5ms    min=2.51ms   med=4.53ms  max=105.96ms p(90)=7.8ms   p(95)=12.02ms 
+       { expected_response:true }............: avg=7.87s    min=599.09ms med=8.35s   max=14.21s   p(90)=12.2s   p(95)=13.27s  
+   Ô£ù http_req_failed.........................: 52.31% 158 out of 302
+     http_req_receiving......................: avg=868.98┬Ás min=0s       med=311.7┬Ás max=13.21ms  p(90)=2.18ms  p(95)=4.41ms  
+     http_req_sending........................: avg=138.54┬Ás min=0s       med=0s      max=5.07ms   p(90)=563.5┬Ás p(95)=781.97┬Ás
+     http_req_tls_handshaking................: avg=0s       min=0s       med=0s      max=0s       p(90)=0s      p(95)=0s      
+     http_req_waiting........................: avg=5.67s    min=504.8┬Ás  med=7.41s   max=14.21s   p(90)=10.24s  p(95)=12.03s  
+     http_reqs...............................: 302    12.005501/s
+     iteration_duration......................: avg=17.32s   min=11.42s   med=17.74s  max=22.12s   p(90)=21.29s  p(95)=21.63s  
+     iterations..............................: 100    3.975331/s
+     vus.....................................: 0      min=0          max=100
+     vus_max.................................: 100    min=100        max=100
+
+
+running (0m25.2s), 000/100 VUs, 100 complete and 0 interrupted iterations
+concurrency_100 Ô£ô [ 100% ] 100 VUs  0m22.1s/5m0s  100/100 iters, 1 per VU
+time="2026-07-16T17:29:03+05:30" level=error msg="thresholds on metrics 'api_success_rate, http_req_duration, 
+http_req_duration{endpoint:/cart/items}, http_req_failed' have been crossed"

@@ -40,7 +40,10 @@ class CartRepository:
 
     async def get_by_id(self, db: AsyncSession, cart_id: uuid.UUID) -> Cart | None:
         result = await db.execute(
-            select(Cart).where(Cart.id == cart_id).options(selectinload(Cart.items))
+            select(Cart)
+            .where(Cart.id == cart_id)
+            .options(selectinload(Cart.items))
+            .execution_options(populate_existing=True)
         )
         return result.scalar_one_or_none()
 

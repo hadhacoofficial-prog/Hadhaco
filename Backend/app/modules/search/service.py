@@ -156,12 +156,33 @@ class SearchService:
         )
 
     async def trending_searches(self, db: AsyncSession, limit: int = 10) -> list[dict]:
-        """Top searches from the materialized view (refreshed by scheduler)."""
-        result = await db.execute(
-            text(
-                "SELECT query, search_count FROM trending_searches "
-                "ORDER BY search_count DESC LIMIT :limit"
-            ),
-            {"limit": limit},
-        )
-        return [{"query": row[0], "count": row[1]} for row in result.fetchall()]
+        """Top searches from the materialized view (refreshed by scheduler).
+
+        Falls back to a live aggregation from search_history when the
+        materialized view hasn't been created yet.
+        """
+        try:
+            result = await db.execute(
+                text(
+                    "SELECT query, search_count FROM trending_searches "
+                    "ORDER BY search_count DESC LIMIT :limit"
+                ),
+                {"limit": limit},
+            )
+            return [{"query": row[0], "count": row[1]} for row in result.fetchall()]
+        except Exception:
+            pass
+        try:
+            result = await db.execute(
+                text(
+                    "SELECT query, COUNT(*) AS search_count "
+                    "FROM search_history "
+                    "WHERE created_at >= NOW() - INTERVAL '7 days' "
+                    "GROUP BY query "
+                    "ORDER BY search_count DESC LIMIT :limit"
+                ),
+                {"limit": limit},
+            )
+            return [{"query": row[0], "count": row[1]} for row in result.fetchall()]
+        except Exception:
+            return []

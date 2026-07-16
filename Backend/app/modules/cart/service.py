@@ -52,10 +52,14 @@ class CartService:
             cart = await _repo.get_for_user(db, user_id)
             if not cart:
                 cart = await _repo.create(db, user_id, None)
+                cart = await _repo.get_by_id(db, cart.id)
+                assert cart is not None
         elif session_id:
             cart = await _repo.get_by_session(db, session_id)
             if not cart:
                 cart = await _repo.create(db, None, session_id)
+                cart = await _repo.get_by_id(db, cart.id)
+                assert cart is not None
         else:
             raise ValidationError("Either user_id or session_id is required")
         return cart
