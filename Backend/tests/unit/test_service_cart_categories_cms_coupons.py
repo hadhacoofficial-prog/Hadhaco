@@ -886,6 +886,10 @@ class TestCartServiceSuccessPaths:
                 "app.modules.cart.service._repo.create",
                 AsyncMock(return_value=mock_cart),
             ),
+            patch(
+                "app.modules.cart.service._repo.get_by_id",
+                AsyncMock(return_value=mock_cart),
+            ),
         ):
             result = await self.svc.get_cart(db, user_id=uuid.uuid4())
         assert result.item_count == 0
@@ -910,6 +914,10 @@ class TestCartServiceSuccessPaths:
             ),
             patch(
                 "app.modules.cart.service._repo.create",
+                AsyncMock(return_value=mock_cart),
+            ),
+            patch(
+                "app.modules.cart.service._repo.get_by_id",
                 AsyncMock(return_value=mock_cart),
             ),
         ):
@@ -950,11 +958,9 @@ class TestCartServiceSuccessPaths:
                 AsyncMock(return_value=mock_cart),
             ),
             patch.object(
-                self.svc, "_fetch_available_stock", AsyncMock(return_value=10)
-            ),
-            patch.object(self.svc, "_fetch_max_order_qty", AsyncMock(return_value=0)),
-            patch.object(
-                self.svc, "_fetch_product_price", AsyncMock(return_value=999.0)
+                self.svc,
+                "_fetch_add_item_validations",
+                AsyncMock(return_value=(10, True, False, 0, 999.0)),
             ),
             patch("app.modules.cart.service._repo.upsert_item", AsyncMock()),
             patch(

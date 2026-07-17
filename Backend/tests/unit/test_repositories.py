@@ -58,6 +58,15 @@ def _all_result(rows):
     return r
 
 
+def _unique_all_result(rows):
+    """For queries using select(Model, window_fn) that call unique().all().
+    rows should be a list of tuples: [(obj, count), ...]
+    """
+    r = MagicMock()
+    r.unique.return_value.all.return_value = rows
+    return r
+
+
 def _first(value):
     """Mock result.first() → value"""
     r = MagicMock()
@@ -183,13 +192,13 @@ class TestProductRepository:
 
     async def test_list_paginated_returns_items_and_total(self):
         mock_prod = MagicMock()
-        db = _db(_scalar_one(5), _scalars_result([mock_prod]))
+        db = _db(_unique_all_result([(mock_prod, 5)]))
         items, total = await self.repo.list_paginated(db)
         assert total == 5
         assert items == [mock_prod]
 
     async def test_list_paginated_with_all_filters(self):
-        db = _db(_scalar_one(0), _scalars_result([]))
+        db = _db(_unique_all_result([]))
         items, total = await self.repo.list_paginated(
             db,
             status="active",

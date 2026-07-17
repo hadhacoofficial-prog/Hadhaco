@@ -16,14 +16,14 @@ export function ShopByGender() {
   const { data, isLoading } = useNavigationCategories();
 
   const categories = data?.[active] ?? [];
-  const activeLabel = data?.gender_meta[active]?.name ?? active;
+  const activeLabel = data?.gender_meta?.[active]?.name ?? active;
 
   // Build sorted tab list from backend gender_meta; fall back to fixed order
   const tabs = GENDER_KEYS.map((key) => ({
     id: key,
-    label: data?.gender_meta[key]?.name ?? key.charAt(0).toUpperCase() + key.slice(1),
-    image_url: data?.gender_meta[key]?.image_url ?? null,
-    sort_order: data?.gender_meta[key]?.sort_order ?? GENDER_KEYS.indexOf(key),
+    label: data?.gender_meta?.[key]?.name ?? key.charAt(0).toUpperCase() + key.slice(1),
+    image_url: data?.gender_meta?.[key]?.image_url ?? null,
+    sort_order: data?.gender_meta?.[key]?.sort_order ?? GENDER_KEYS.indexOf(key),
   })).sort((a, b) => a.sort_order - b.sort_order);
 
   return (

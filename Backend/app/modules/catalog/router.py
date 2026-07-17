@@ -3,7 +3,7 @@ import json
 import uuid
 
 import redis.asyncio as aioredis
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Query, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.common.response_codes import ResponseCode
@@ -11,7 +11,6 @@ from app.common.responses import BaseSuccessResponse, deleted, ok
 from app.core.database import get_db
 from app.core.dependencies import require_admin
 from app.core.redis import (
-    bust_product_list_cache,
     get_redis,
     safe_redis_get,
     safe_redis_setex,
@@ -108,43 +107,110 @@ async def list_products(
         sort_dir=sort_dir,
         include_collections=include_collections,
     )
-    cached = await safe_redis_get(redis, cache_key)
-    if cached:
-        return ok(
-            ProductListResponse.model_validate_json(cached),
-            ResponseCode.PRODUCT_LISTED,
-            "Products listed successfully",
-        )
 
-    result = await _service.list_products(
-        db,
-        page=page,
-        page_size=page_size,
-        status="active",
-        category_id=resolved_category_id,
-        collection_id=resolved_collection_id,
-        metal_type=metal_type,
-        gender=gender,
-        is_featured=is_featured,
-        is_new_arrival=is_new_arrival,
-        is_best_seller=is_best_seller,
-        min_price=min_price,
-        max_price=max_price,
-        search=search,
-        sort_by=sort_by,
-        sort_dir=sort_dir,
-        include_collections=include_collections,
+    from app.core.cache import TTL_PRODUCT_LIST, add_cache_headers, cache_swr
+
+    async def _fetch_products() -> dict:
+        result = await _service.list_products(
+            db,
+            page=page,
+            page_size=page_size,
+            status="active",
+            category_id=resolved_category_id,
+            collection_id=resolved_collection_id,
+            metal_type=metal_type,
+            gender=gender,
+            is_featured=is_featured,
+            is_new_arrival=is_new_arrival,
+            is_best_seller=is_best_seller,
+            min_price=min_price,
+            max_price=max_price,
+            search=search,
+            sort_by=sort_by,
+            sort_dir=sort_dir,
+            include_collections=include_collections,
+        )
+        return result.model_dump(mode="json")
+
+    # SWR: ttl=300s (5 min fresh), swr_window=300s (serve stale up to 10 min
+    # while background-refreshing).  Request coalescing prevents stampedes
+    # when the 5-min TTL expires under concurrent traffic.
+    result = await cache_swr(
+        redis,
+        cache_key,
+        ttl=_PRODUCT_LIST_TTL,
+        swr_window=_PRODUCT_LIST_TTL,
+        fetch_fn=_fetch_products,
     )
-    await safe_redis_setex(
-        redis, cache_key, _PRODUCT_LIST_TTL, result.model_dump_json()
+    from fastapi.responses import JSONResponse
+
+    response = JSONResponse(
+        content=ok(
+            result, ResponseCode.PRODUCT_LISTED, "Products listed successfully"
+        ).model_dump(mode="json")
     )
-    return ok(result, ResponseCode.PRODUCT_LISTED, "Products listed successfully")
+    add_cache_headers(
+        response, TTL_PRODUCT_LIST, stale_while_revalidate=TTL_PRODUCT_LIST
+    )
+    return response
 
 
 @router.get("/products/{slug}", response_model=BaseSuccessResponse[ProductResponse])
-async def get_product_by_slug(slug: str, db: AsyncSession = Depends(get_db)):
+async def get_product_by_slug(
+    slug: str,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    redis: aioredis.Redis = Depends(get_redis),
+):
+    from app.core.cache import (
+        PREFIX_PRODUCT_DETAIL,
+        TTL_PRODUCT_DETAIL,
+        check_not_modified,
+        make_etag,
+        not_modified_response,
+    )
+
+    cache_key = f"{PREFIX_PRODUCT_DETAIL}:{slug}"
+    cached = await safe_redis_get(redis, cache_key)
+    if cached:
+        etag = make_etag(cached)
+        if check_not_modified(request, etag):
+            return not_modified_response()
+        resp = ok(
+            ProductResponse.model_validate_json(cached),
+            ResponseCode.PRODUCT_FETCHED,
+            "Product fetched successfully",
+        )
+        import json as _json
+
+        from fastapi.responses import JSONResponse as _JSONResp
+
+        content = _json.loads(resp.model_dump_json())
+        response = _JSONResp(content=content)
+        from app.core.cache import add_cache_headers
+
+        add_cache_headers(response, TTL_PRODUCT_DETAIL, etag=etag)
+        return response
+
     result = await _service.get_by_slug(db, slug)
-    return ok(result, ResponseCode.PRODUCT_FETCHED, "Product fetched successfully")
+    serialized = result.model_dump_json()
+    await safe_redis_setex(redis, cache_key, TTL_PRODUCT_DETAIL, serialized)
+    etag = make_etag(serialized)
+
+    import json as _json
+
+    from fastapi.responses import JSONResponse as _JSONResp
+
+    content = _json.loads(
+        ok(
+            result, ResponseCode.PRODUCT_FETCHED, "Product fetched successfully"
+        ).model_dump_json()
+    )
+    response = _JSONResp(content=content)
+    from app.core.cache import add_cache_headers
+
+    add_cache_headers(response, TTL_PRODUCT_DETAIL, etag=etag)
+    return response
 
 
 # ---------- Admin ----------
@@ -201,7 +267,9 @@ async def create_product(
     from app.common.responses import created
 
     result = await _service.create(db, payload)
-    await bust_product_list_cache(redis)
+    from app.core.cache import bust_all_product_caches
+
+    await bust_all_product_caches(redis)
     return created(result, ResponseCode.PRODUCT_CREATED, "Product created successfully")
 
 
@@ -250,7 +318,9 @@ async def update_product(
     redis: aioredis.Redis = Depends(get_redis),
 ):
     result = await _service.update(db, product_id, payload)
-    await bust_product_list_cache(redis)
+    from app.core.cache import bust_all_product_caches
+
+    await bust_all_product_caches(redis)
     return ok(result, ResponseCode.PRODUCT_UPDATED, "Product updated successfully")
 
 
@@ -266,7 +336,9 @@ async def delete_product(
     redis: aioredis.Redis = Depends(get_redis),
 ):
     await _service.delete(db, product_id)
-    await bust_product_list_cache(redis)
+    from app.core.cache import bust_all_product_caches
+
+    await bust_all_product_caches(redis)
     return deleted(ResponseCode.PRODUCT_DELETED, "Product deleted successfully")
 
 
@@ -288,7 +360,9 @@ async def add_variant(
     from app.common.responses import created
 
     variant = await _service.add_variant(db, product_id, payload)
-    await bust_product_list_cache(redis)
+    from app.core.cache import bust_all_product_caches
+
+    await bust_all_product_caches(redis)
     return created(
         ProductVariantResponse.model_validate(variant),
         ResponseCode.PRODUCT_VARIANT_CREATED,
@@ -308,7 +382,9 @@ async def update_variant(
     redis: aioredis.Redis = Depends(get_redis),
 ):
     variant = await _service.update_variant(db, variant_id, payload)
-    await bust_product_list_cache(redis)
+    from app.core.cache import bust_all_product_caches
+
+    await bust_all_product_caches(redis)
     return ok(
         ProductVariantResponse.model_validate(variant),
         ResponseCode.PRODUCT_VARIANT_UPDATED,
@@ -327,8 +403,14 @@ async def delete_variant(
     db: AsyncSession = Depends(get_db),
     redis: aioredis.Redis = Depends(get_redis),
 ):
-    await _service.delete_variant(db, variant_id)
-    await bust_product_list_cache(redis)
+    from app.core.exceptions import NotFoundError
+
+    product_id = await _service.delete_variant(db, variant_id)
+    if product_id is None:
+        raise NotFoundError("Variant not found")
+    from app.core.cache import bust_all_product_caches
+
+    await bust_all_product_caches(redis)
     return deleted(ResponseCode.PRODUCT_VARIANT_DELETED, "Variant deleted successfully")
 
 
@@ -345,8 +427,12 @@ async def upsert_attribute(
     product_id: uuid.UUID,
     payload: ProductAttributeCreateRequest,
     db: AsyncSession = Depends(get_db),
+    redis: aioredis.Redis = Depends(get_redis),
 ):
     await _service.upsert_attribute(db, product_id, payload)
+    from app.core.cache import bust_all_product_caches
+
+    await bust_all_product_caches(redis)
     return ok(
         None, ResponseCode.PRODUCT_ATTRIBUTE_UPSERTED, "Attribute upserted successfully"
     )
@@ -362,8 +448,12 @@ async def delete_attribute(
     product_id: uuid.UUID,
     attr_name: str,
     db: AsyncSession = Depends(get_db),
+    redis: aioredis.Redis = Depends(get_redis),
 ):
     await _service.delete_attribute(db, product_id, attr_name)
+    from app.core.cache import bust_all_product_caches
+
+    await bust_all_product_caches(redis)
     return deleted(
         ResponseCode.PRODUCT_ATTRIBUTE_DELETED, "Attribute deleted successfully"
     )
@@ -409,8 +499,12 @@ async def adjust_stock(
     product_id: uuid.UUID,
     payload: StockAdjustRequest,
     db: AsyncSession = Depends(get_db),
+    redis: aioredis.Redis = Depends(get_redis),
 ):
     new_qty = await _service.adjust_stock(db, product_id, payload)
+    from app.core.cache import bust_all_product_caches
+
+    await bust_all_product_caches(redis)
     return ok(
         {"stock_quantity": new_qty},
         ResponseCode.PRODUCT_STOCK_ADJUSTED,

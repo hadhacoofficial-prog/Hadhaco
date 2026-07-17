@@ -1,19 +1,29 @@
-import json
 import uuid
 
 import redis.asyncio as aioredis
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Query, Request
+from fastapi.responses import JSONResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.common.response_codes import ResponseCode
 from app.common.responses import BaseSuccessResponse, deleted, ok
+from app.core.cache import (
+    PREFIX_COLLECTION_DETAIL,
+    TTL_COLLECTION_DETAIL,
+    TTL_COLLECTION_LIST,
+    add_cache_headers,
+    bust_collection_detail_cache,
+    bust_sitemap_cache,
+    cache_swr,
+    check_not_modified,
+    make_etag,
+    not_modified_response,
+)
 from app.core.database import get_db
 from app.core.dependencies import require_admin
 from app.core.redis import (
     get_redis,
     safe_redis_delete,
-    safe_redis_get,
-    safe_redis_setex,
 )
 from app.modules.collections.schemas import (
     AddProductsToCollectionRequest,
@@ -45,34 +55,80 @@ async def _bust_list_cache(redis: aioredis.Redis) -> None:
     "/collections", response_model=BaseSuccessResponse[list[CollectionResponse]]
 )
 async def list_collections(
+    request: Request,
     db: AsyncSession = Depends(get_db),
     redis: aioredis.Redis = Depends(get_redis),
 ):
-    cached = await safe_redis_get(redis, _LIST_CACHE_KEY)
-    if cached:
-        result = [CollectionResponse.model_validate(c) for c in json.loads(cached)]
-        return ok(
-            result, ResponseCode.COLLECTION_LISTED, "Collections listed successfully"
-        )
+    async def _fetch():
+        result = await _service.list_active(db)
+        return [c.model_dump(mode="json") for c in result]
 
-    result = await _service.list_active(db)
-    await safe_redis_setex(
+    data = await cache_swr(
         redis,
         _LIST_CACHE_KEY,
-        _LIST_CACHE_TTL,
-        json.dumps([c.model_dump(mode="json") for c in result]),
+        ttl=TTL_COLLECTION_LIST,
+        swr_window=TTL_COLLECTION_LIST,
+        fetch_fn=_fetch,
     )
-    return ok(result, ResponseCode.COLLECTION_LISTED, "Collections listed successfully")
+
+    import json as _json
+
+    serialized = _json.dumps(
+        ok(
+            data,
+            ResponseCode.COLLECTION_LISTED,
+            "Collections listed successfully",
+        ).model_dump(mode="json"),
+        default=str,
+    )
+    etag = make_etag(serialized)
+    if check_not_modified(request, etag):
+        return not_modified_response()
+
+    response = JSONResponse(content=_json.loads(serialized))
+    add_cache_headers(
+        response,
+        TTL_COLLECTION_LIST,
+        stale_while_revalidate=TTL_COLLECTION_LIST,
+        etag=etag,
+    )
+    return response
 
 
 @router.get(
     "/collections/{slug}", response_model=BaseSuccessResponse[CollectionResponse]
 )
-async def get_collection(slug: str, db: AsyncSession = Depends(get_db)):
-    result = await _service.get_by_slug(db, slug)
-    return ok(
-        result, ResponseCode.COLLECTION_FETCHED, "Collection fetched successfully"
+async def get_collection(
+    slug: str,
+    db: AsyncSession = Depends(get_db),
+    redis: aioredis.Redis = Depends(get_redis),
+):
+    cache_key = f"{PREFIX_COLLECTION_DETAIL}:{slug}"
+
+    async def _fetch():
+        result = await _service.get_by_slug(db, slug)
+        return result.model_dump(mode="json")
+
+    data = await cache_swr(
+        redis,
+        cache_key,
+        ttl=TTL_COLLECTION_DETAIL,
+        swr_window=TTL_COLLECTION_DETAIL,
+        fetch_fn=_fetch,
     )
+    response = JSONResponse(
+        content=ok(
+            data,
+            ResponseCode.COLLECTION_FETCHED,
+            "Collection fetched successfully",
+        ).model_dump(mode="json")
+    )
+    add_cache_headers(
+        response,
+        TTL_COLLECTION_DETAIL,
+        stale_while_revalidate=TTL_COLLECTION_DETAIL,
+    )
+    return response
 
 
 # ── Admin ────────────────────────────────────────────────────────────────────
@@ -135,6 +191,8 @@ async def create_collection(
 
     result = await _service.create(db, payload)
     await _bust_list_cache(redis)
+    await bust_collection_detail_cache(redis, slug=result.slug)
+    await bust_sitemap_cache(redis)
     return created(
         result, ResponseCode.COLLECTION_CREATED, "Collection created successfully"
     )
@@ -153,6 +211,7 @@ async def update_collection(
 ):
     result = await _service.update(db, col_id, payload)
     await _bust_list_cache(redis)
+    await bust_collection_detail_cache(redis, slug=result.slug)
     return ok(
         result, ResponseCode.COLLECTION_UPDATED, "Collection updated successfully"
     )
@@ -169,8 +228,10 @@ async def delete_collection(
     db: AsyncSession = Depends(get_db),
     redis: aioredis.Redis = Depends(get_redis),
 ):
-    await _service.delete(db, col_id)
+    slug = await _service.delete(db, col_id)
     await _bust_list_cache(redis)
+    await bust_collection_detail_cache(redis, slug=slug)
+    await bust_sitemap_cache(redis)
     return deleted(ResponseCode.COLLECTION_DELETED, "Collection deleted successfully")
 
 
@@ -226,8 +287,10 @@ async def add_products_to_collection(
     col_id: uuid.UUID,
     payload: AddProductsToCollectionRequest,
     db: AsyncSession = Depends(get_db),
+    redis: aioredis.Redis = Depends(get_redis),
 ):
     await _service.add_products(db, col_id, payload)
+    await _bust_list_cache(redis)
     return ok(
         None, ResponseCode.COLLECTION_PRODUCTS_ADDED, "Products added to collection"
     )
@@ -243,8 +306,10 @@ async def remove_product_from_collection(
     col_id: uuid.UUID,
     product_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
+    redis: aioredis.Redis = Depends(get_redis),
 ):
     await _service.remove_product(db, col_id, product_id)
+    await _bust_list_cache(redis)
     return deleted(
         ResponseCode.COLLECTION_PRODUCT_REMOVED, "Product removed from collection"
     )
@@ -259,6 +324,8 @@ async def reorder_collection_products(
     col_id: uuid.UUID,
     payload: ReorderProductsRequest,
     db: AsyncSession = Depends(get_db),
+    redis: aioredis.Redis = Depends(get_redis),
 ):
     await _service.reorder_products(db, col_id, payload)
+    await _bust_list_cache(redis)
     return ok(None, ResponseCode.COLLECTION_UPDATED, "Products reordered")

@@ -1,0 +1,331 @@
+{
+    "root_group": {
+        "groups": {
+            "Smoke — Health": {
+                "id": "eebc1e07def18474cfec085245deb39d",
+                "groups": {},
+                "checks": {
+                        "health — HTTP 200": {
+                            "path": "::Smoke — Health::health — HTTP 200",
+                            "id": "b898ff651ac4a356b54d38139d367dfd",
+                            "passes": 28,
+                            "fails": 0,
+                            "name": "health — HTTP 200"
+                        },
+                        "health/ready — responds": {
+                            "name": "health/ready — responds",
+                            "path": "::Smoke — Health::health/ready — responds",
+                            "id": "1b886dd6e2ff232860cde0117ce91e23",
+                            "passes": 28,
+                            "fails": 0
+                        }
+                    },
+                "name": "Smoke — Health",
+                "path": "::Smoke — Health"
+            },
+            "Smoke — Product List": {
+                "id": "549ad5c6c85f87b9ccf52f7f7ec50cde",
+                "groups": {},
+                "checks": {
+                        "smoke_products — HTTP 2xx": {
+                            "name": "smoke_products — HTTP 2xx",
+                            "path": "::Smoke — Product List::smoke_products — HTTP 2xx",
+                            "id": "a688f6300e872f5b9b7d1f8435b76a2c",
+                            "passes": 28,
+                            "fails": 0
+                        },
+                        "products — success": {
+                            "path": "::Smoke — Product List::products — success",
+                            "id": "b95e3d891442b8c1ae9cb0ca722af530",
+                            "passes": 28,
+                            "fails": 0,
+                            "name": "products — success"
+                        },
+                        "products — has items": {
+                            "name": "products — has items",
+                            "path": "::Smoke — Product List::products — has items",
+                            "id": "da7637c37df67cf65a937270485491cb",
+                            "passes": 28,
+                            "fails": 0
+                        }
+                    },
+                "name": "Smoke — Product List",
+                "path": "::Smoke — Product List"
+            },
+            "Smoke — Categories": {
+                "name": "Smoke — Categories",
+                "path": "::Smoke — Categories",
+                "id": "4ff40f506e449fa0061dadcd17fc064a",
+                "groups": {},
+                "checks": {
+                        "smoke_categories — HTTP 2xx": {
+                            "id": "dd24e915a7c02b9e3696ffdb156a60d1",
+                            "passes": 28,
+                            "fails": 0,
+                            "name": "smoke_categories — HTTP 2xx",
+                            "path": "::Smoke — Categories::smoke_categories — HTTP 2xx"
+                        },
+                        "categories — success": {
+                            "fails": 0,
+                            "name": "categories — success",
+                            "path": "::Smoke — Categories::categories — success",
+                            "id": "48a44642e7ef1a3509ea943a76f7d049",
+                            "passes": 28
+                        }
+                    }
+            },
+            "Smoke — Collections": {
+                "name": "Smoke — Collections",
+                "path": "::Smoke — Collections",
+                "id": "6a0fa413f492b9f6ada8a62119824364",
+                "groups": {},
+                "checks": {
+                        "smoke_collections — HTTP 2xx": {
+                            "name": "smoke_collections — HTTP 2xx",
+                            "path": "::Smoke — Collections::smoke_collections — HTTP 2xx",
+                            "id": "084979cf9974f488f57ed09499386cbc",
+                            "passes": 28,
+                            "fails": 0
+                        },
+                        "collections — success": {
+                            "name": "collections — success",
+                            "path": "::Smoke — Collections::collections — success",
+                            "id": "8f17c11e932f0a5cca36adf78ee41393",
+                            "passes": 28,
+                            "fails": 0
+                        }
+                    }
+            },
+            "Smoke — Search": {
+                "id": "3743fd2db68cebbb4e70de29dd020299",
+                "groups": {},
+                "checks": {
+                        "smoke_search — HTTP 2xx": {
+                            "name": "smoke_search — HTTP 2xx",
+                            "path": "::Smoke — Search::smoke_search — HTTP 2xx",
+                            "id": "fe080923e45b888d5ba3f4c959e888c5",
+                            "passes": 28,
+                            "fails": 0
+                        },
+                        "search — success": {
+                            "name": "search — success",
+                            "path": "::Smoke — Search::search — success",
+                            "id": "6c412e3b44496ff83642eaaab7bcc738",
+                            "passes": 28,
+                            "fails": 0
+                        }
+                    },
+                "name": "Smoke — Search",
+                "path": "::Smoke — Search"
+            },
+            "Smoke — Homepage": {
+                "name": "Smoke — Homepage",
+                "path": "::Smoke — Homepage",
+                "id": "deab5ddeb1cff191d580ad2093d51389",
+                "groups": {},
+                "checks": {
+                        "smoke_homepage — HTTP 2xx": {
+                            "name": "smoke_homepage — HTTP 2xx",
+                            "path": "::Smoke — Homepage::smoke_homepage — HTTP 2xx",
+                            "id": "6e939868b403542652b17e954612dde7",
+                            "passes": 28,
+                            "fails": 0
+                        },
+                        "homepage — success": {
+                            "name": "homepage — success",
+                            "path": "::Smoke — Homepage::homepage — success",
+                            "id": "117acbaab1b34cf878a2e48a3bf43333",
+                            "passes": 28,
+                            "fails": 0
+                        }
+                    }
+            },
+            "Smoke — Cart": {
+                "name": "Smoke — Cart",
+                "path": "::Smoke — Cart",
+                "id": "46336a7100db99d55644d0f99ee1679b",
+                "groups": {},
+                "checks": {
+                        "smoke_cart — HTTP 2xx": {
+                            "name": "smoke_cart — HTTP 2xx",
+                            "path": "::Smoke — Cart::smoke_cart — HTTP 2xx",
+                            "id": "7943f16c9bfc1587d096e908f5b29c17",
+                            "passes": 28,
+                            "fails": 0
+                        },
+                        "cart — success": {
+                            "id": "094b7b35c778348bb2020d4dd9778d1e",
+                            "passes": 28,
+                            "fails": 0,
+                            "name": "cart — success",
+                            "path": "::Smoke — Cart::cart — success"
+                        }
+                    }
+            },
+            "Smoke — Trending": {
+                "name": "Smoke — Trending",
+                "path": "::Smoke — Trending",
+                "id": "97ba3d5b161fa7c05aefa388cd04a9b7",
+                "groups": {},
+                "checks": {
+                        "smoke_trending — HTTP 2xx": {
+                            "name": "smoke_trending — HTTP 2xx",
+                            "path": "::Smoke — Trending::smoke_trending — HTTP 2xx",
+                            "id": "abe2e755641b975d586f53eaedd60431",
+                            "passes": 28,
+                            "fails": 0
+                        },
+                        "trending — success": {
+                            "name": "trending — success",
+                            "path": "::Smoke — Trending::trending — success",
+                            "id": "63d7cd7ec926cc367a93d362736928a3",
+                            "passes": 28,
+                            "fails": 0
+                        }
+                    }
+            }
+        },
+        "checks": {},
+        "name": "",
+        "path": "",
+        "id": "d41d8cd98f00b204e9800998ecf8427e"
+    },
+    "metrics": {
+        "http_req_connecting": {
+            "avg": 0.004056349206349207,
+            "min": 0,
+            "med": 0,
+            "max": 0.5111,
+            "p(90)": 0,
+            "p(95)": 0
+        },
+        "http_req_tls_handshaking": {
+            "p(90)": 0,
+            "p(95)": 0,
+            "avg": 0,
+            "min": 0,
+            "med": 0,
+            "max": 0
+        },
+        "http_req_waiting": {
+            "p(90)": 2988.11094,
+            "p(95)": 3016.006445,
+            "avg": 963.9990749999998,
+            "min": 0.5067,
+            "med": 925.3074,
+            "max": 3612.7333
+        },
+        "http_req_blocked": {
+            "avg": 0.12403055555555556,
+            "min": 0,
+            "med": 0,
+            "max": 15.3632,
+            "p(90)": 0,
+            "p(95)": 0
+        },
+        "http_req_sending": {
+            "max": 0.6007,
+            "p(90)": 0,
+            "p(95)": 0,
+            "avg": 0.019321031746031746,
+            "min": 0,
+            "med": 0
+        },
+        "data_sent": {
+            "count": 25032,
+            "rate": 205.30221714141337
+        },
+        "http_req_receiving": {
+            "p(90)": 2.5551400000000006,
+            "p(95)": 4.74431,
+            "avg": 1.0543511904761906,
+            "min": 0,
+            "med": 0.5085999999999999,
+            "max": 11.5064
+        },
+        "vus_max": {
+            "min": 2,
+            "max": 2,
+            "value": 2
+        },
+        "http_req_failed": {
+            "passes": 28,
+            "fails": 224,
+            "thresholds": {
+                "rate<0.05": true
+            },
+            "value": 0.1111111111111111
+        },
+        "vus": {
+            "max": 2,
+            "value": 2,
+            "min": 2
+        },
+        "iteration_duration": {
+            "med": 9734.6561,
+            "max": 10012.24,
+            "p(90)": 9921.606380000001,
+            "p(95)": 9967.36625,
+            "avg": 8694.991539285713,
+            "min": 6119.2645
+        },
+        "http_req_duration": {
+            "max": 3612.7333,
+            "p(90)": 2989.43349,
+            "p(95)": 3016.337435,
+            "avg": 965.0727472222221,
+            "min": 1.0541,
+            "med": 925.3074,
+            "thresholds": {
+                "p(95)<2000": true,
+                "max<10000": false
+            }
+        },
+        "http_reqs": {
+            "count": 252,
+            "rate": 2.0668008437055034
+        },
+        "http_req_duration{expected_response:true}": {
+            "p(90)": 1058.5209800000002,
+            "p(95)": 1355.608995,
+            "avg": 704.993695535714,
+            "min": 1.0541,
+            "med": 812.0813,
+            "max": 1476.4427
+        },
+        "group_duration": {
+            "avg": 1086.86928125,
+            "min": 298.5352,
+            "med": 957.1066000000001,
+            "max": 3634.468,
+            "p(90)": 2999.2082200000004,
+            "p(95)": 3019.242585
+        },
+        "checks": {
+            "passes": 476,
+            "fails": 0,
+            "value": 1
+        },
+        "api_latency": {
+            "avg": 805.358071428571,
+            "min": 298.5352,
+            "med": 925.3074,
+            "max": 1476.4427,
+            "p(90)": 1146.32265,
+            "p(95)": 1363.148075
+        },
+        "api_success_rate": {
+            "passes": 196,
+            "fails": 0,
+            "value": 1
+        },
+        "data_received": {
+            "count": 3278856,
+            "rate": 26891.834711066876
+        },
+        "iterations": {
+            "rate": 0.2296445381895004,
+            "count": 28
+        }
+    }
+}

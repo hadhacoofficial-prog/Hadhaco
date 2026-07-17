@@ -107,6 +107,25 @@ class CatalogService:
         )
 
         product_ids = [p.id for p in items]
+
+        # Batch-load exactly 2 images per product (primary + secondary)
+        # instead of selectinload which loaded ALL images for ALL products.
+        images_map = await _repo.get_images_for_products(db, product_ids)
+
+        # Collect ALL image IDs (both primary + secondary) for variant loading
+        all_image_ids: list[uuid.UUID] = []
+        for imgs in images_map.values():
+            all_image_ids.extend(img.id for img in imgs)
+
+        # Batch-load image variants only for the fetched images (not ALL
+        # images for ALL products as selectinload did before).
+        variants_map = await _repo.get_image_variants_for_images(db, all_image_ids)
+
+        # Attach variants to images in-memory
+        for imgs in images_map.values():
+            for img in imgs:
+                img.variants = variants_map.get(img.id, [])
+
         # Skip the collections join entirely for callers that never render
         # collection badges (e.g. homepage rails) — pass
         # include_collections=false to opt out.
@@ -118,25 +137,31 @@ class CatalogService:
 
         list_items = []
         for p in items:
-            sorted_imgs = [
-                ProductImageResponse.from_image(img)
-                for img in sorted(p.images, key=lambda i: i.sort_order)
-            ]
-            primary = next((img for img in sorted_imgs if img.is_primary), None)
-            if primary is None and sorted_imgs:
-                primary = sorted_imgs[0]
-            secondary_imgs = [img for img in sorted_imgs if img is not primary]
-            secondary = secondary_imgs[0] if secondary_imgs else None
-            # Storefront listing contexts (cards, collections, search,
-            # wishlist) default to the medium variant so grid cards aren't
-            # upscaled from the tiny 200x200 thumbnail; admin tables render
-            # much smaller previews and opt into thumbnail_url via
-            # image_variant="thumbnail". Either way, falls back down the
-            # chain to whichever variant actually exists. Cache-busting
-            # already happened inside ProductImageResponse.from_image().
-            primary_img = _pick_image_url(primary, image_variant) if primary else None
+            imgs = images_map.get(p.id, [])
+            primary = next((img for img in imgs if img.is_primary), None)
+            if primary is None and imgs:
+                primary = imgs[0]
+            secondary = next((img for img in imgs if img is not primary), None)
+
+            sorted_primary_variants = (
+                sorted(
+                    primary.variants,
+                    key=lambda v: (v.breakpoint, v.variant_name, v.dpr),
+                )
+                if primary
+                else []
+            )
+            primary_img = (
+                _pick_image_url(ProductImageResponse.from_image(primary), image_variant)
+                if primary
+                else None
+            )
             secondary_img = (
-                _pick_image_url(secondary, image_variant) if secondary else None
+                _pick_image_url(
+                    ProductImageResponse.from_image(secondary), image_variant
+                )
+                if secondary
+                else None
             )
             cols = [
                 ProductCollectionRef.model_validate(c) for c in col_map.get(p.id, [])
@@ -159,11 +184,15 @@ class CatalogService:
                     is_new_arrival=p.is_new_arrival,
                     is_best_seller=p.is_best_seller,
                     created_at=p.created_at,
+                    average_rating=p.average_rating,
+                    review_count=p.review_count,
                     primary_image=primary_img,
                     secondary_image=secondary_img,
-                    primary_image_variants=primary.variants if primary else [],
+                    primary_image_variants=sorted_primary_variants,
                     primary_image_focus_point=(
-                        primary.focus_point if primary else None
+                        ProductImageResponse.from_image(primary).focus_point
+                        if primary
+                        else None
                     ),
                     collections=cols,
                 )
@@ -300,9 +329,16 @@ class CatalogService:
             db, variant_id, payload.model_dump(exclude_unset=True)
         )
 
-    async def delete_variant(self, db: AsyncSession, variant_id: uuid.UUID) -> None:
-        if not await _repo.delete_variant(db, variant_id):
-            raise NotFoundError("Variant not found")
+    async def delete_variant(
+        self, db: AsyncSession, variant_id: uuid.UUID
+    ) -> uuid.UUID | None:
+        """Delete a variant. Returns the parent product_id if found, else None."""
+        variant = await _repo.get_variant(db, variant_id)
+        if not variant:
+            return None
+        product_id = variant.product_id
+        await _repo.delete_variant(db, variant_id)
+        return product_id
 
     # ---------- Attributes ----------
 

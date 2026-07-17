@@ -150,11 +150,14 @@ class CollectionService:
         await _attach_image_urls(db, [result])
         return result
 
-    async def delete(self, db: AsyncSession, col_id: uuid.UUID) -> None:
+    async def delete(self, db: AsyncSession, col_id: uuid.UUID) -> str | None:
+        """Delete a collection. Returns the slug for cache invalidation."""
         existing = await _repo.get_by_id(db, col_id)
         if not existing:
             raise NotFoundError("Collection not found")
+        slug = existing.slug
         await _repo.soft_delete(db, col_id)
+        return slug
 
     async def bulk_action(self, db: AsyncSession, payload: BulkActionRequest) -> None:
         if payload.action == "delete":

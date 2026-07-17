@@ -80,6 +80,10 @@ class RequestLoggingMiddleware(BaseHTTPMiddleware):
         if request.url.path in _SKIP_PATHS:
             return await call_next(request)
 
+        from app.core.profiling import profiler
+
+        profiler.begin_request()
+
         ip = _client_ip(request)
         # Bind IP early so every log line inside the handler also carries it.
         structlog.contextvars.bind_contextvars(ip=ip)
@@ -87,6 +91,11 @@ class RequestLoggingMiddleware(BaseHTTPMiddleware):
         t0 = time.perf_counter()
         response = await call_next(request)
         duration_ms = round((time.perf_counter() - t0) * 1000, 2)
+
+        # Normalise path: strip query string and collapse path-parameter
+        # segments so that /products/42 and /products/7 track as one bucket.
+        _normalised = request.url.path
+        profiler.end_request(path=_normalised, duration_ms=duration_ms)
 
         status = response.status_code
         fields: dict = {

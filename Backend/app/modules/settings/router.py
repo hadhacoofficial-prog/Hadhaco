@@ -2,13 +2,21 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 
+import redis.asyncio as aioredis
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.common.response_codes import ResponseCode
 from app.common.responses import BaseSuccessResponse, ok
+from app.core.cache import (
+    PREFIX_FEATURE_FLAG,
+    TTL_FEATURE_FLAG,
+    add_cache_headers,
+    bust_feature_flag_cache,
+)
 from app.core.database import get_db
 from app.core.dependencies import require_2fa_verified, require_admin
+from app.core.redis import get_redis, safe_redis_get, safe_redis_setex
 from app.modules.settings.schemas import (
     FeatureFlagOut,
     FeatureFlagUpdate,
@@ -48,6 +56,10 @@ async def set_flag(
     admin=Depends(require_2fa_verified),
 ):
     result = await _svc.set_flag(db, key=key, data=data, updated_by=admin.id)
+    from app.core.redis import get_redis_pool
+
+    redis = get_redis_pool()
+    await bust_feature_flag_cache(redis, key)
     return ok(
         result, ResponseCode.SETTINGS_FLAG_UPDATED, "Feature flag updated successfully"
     )
@@ -185,7 +197,23 @@ async def test_whatsapp_provider(
 
 
 @public_router.get("/flags/{key}", response_model=BaseSuccessResponse[FeatureFlagOut])
-async def get_public_flag(key: str, db: AsyncSession = Depends(get_db)):
+async def get_public_flag(
+    key: str,
+    db: AsyncSession = Depends(get_db),
+    redis: aioredis.Redis = Depends(get_redis),
+):
+    cache_key = f"{PREFIX_FEATURE_FLAG}:{key}"
+    cached = await safe_redis_get(redis, cache_key)
+    if cached:
+        import json as _json
+
+        from fastapi.responses import JSONResponse
+
+        content = _json.loads(cached)
+        response = JSONResponse(content=content)
+        add_cache_headers(response, TTL_FEATURE_FLAG)
+        return response
+
     flag = await _svc.get_flag(db, key=key)
     result = (
         FeatureFlagOut.model_validate(flag)
@@ -194,6 +222,16 @@ async def get_public_flag(key: str, db: AsyncSession = Depends(get_db)):
             key=key, value=False, description=None, updated_at=datetime.now(UTC)
         )
     )
-    return ok(
+    response_data = ok(
         result, ResponseCode.SETTINGS_FLAGS_LISTED, "Feature flag fetched successfully"
     )
+    import json as _json
+
+    from fastapi.responses import JSONResponse
+
+    serialized = _json.dumps(_json.loads(response_data.model_dump_json()), default=str)
+    await safe_redis_setex(redis, cache_key, TTL_FEATURE_FLAG, serialized)
+    content = _json.loads(serialized)
+    response = JSONResponse(content=content)
+    add_cache_headers(response, TTL_FEATURE_FLAG)
+    return response

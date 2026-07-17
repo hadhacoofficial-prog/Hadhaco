@@ -1,3 +1,5 @@
+import threading
+import time as _time
 from collections.abc import AsyncGenerator
 
 import structlog
@@ -70,10 +72,21 @@ AsyncWorkerSessionLocal = async_sessionmaker(
 _POOL_CAPACITY = settings.DATABASE_POOL_SIZE + settings.DATABASE_MAX_OVERFLOW
 
 
+_checkout_start_tls = threading.local()
+
+
 @event.listens_for(engine.sync_engine, "checkout")
 def _on_pool_checkout(dbapi_conn, conn_rec, conn_proxy) -> None:  # type: ignore[misc]
     pool = engine.pool
     checked_out = pool.checkedout()  # type: ignore[attr-defined]
+
+    # Measure actual wait time from when the session requested a connection.
+    now = _time.monotonic()
+    wait_ms = 0.0
+    prev = getattr(_checkout_start_tls, "_checkout_start", None)
+    if prev is not None:
+        wait_ms = max(0.0, (now - prev) * 1000)
+
     if checked_out >= _POOL_CAPACITY - 1:
         _pool_log.warning(
             "pool_near_capacity",
@@ -81,6 +94,10 @@ def _on_pool_checkout(dbapi_conn, conn_rec, conn_proxy) -> None:  # type: ignore
             capacity=_POOL_CAPACITY,
             overflow=pool.overflow(),  # type: ignore[attr-defined]
         )
+    # Record pool utilisation for profiling
+    from app.core.profiling import profiler
+
+    profiler.record_pool_checkout(wait_ms, checked_out, _POOL_CAPACITY)
 
 
 def get_pool_status() -> dict[str, int]:
@@ -106,6 +123,7 @@ async def get_db() -> AsyncGenerator[AsyncSession, None]:
     The explicit commit/rollback inside the try/except controls the transaction;
     the finally clause is intentionally omitted — it would call close() twice.
     """
+    _checkout_start_tls._checkout_start = _time.monotonic()  # type: ignore[attr-defined]
     async with AsyncSessionLocal() as session:
         try:
             yield session
@@ -113,3 +131,21 @@ async def get_db() -> AsyncGenerator[AsyncSession, None]:
         except Exception:
             await session.rollback()
             raise
+
+
+# ── SQL query profiling ───────────────────────────────────────────────────────
+
+
+@event.listens_for(engine.sync_engine, "before_cursor_execute")
+def _before_query(conn, cursor, statement, parameters, context, executemany):  # type: ignore[misc]
+    conn.info.setdefault("query_start_time", []).append(_time.perf_counter())
+
+
+@event.listens_for(engine.sync_engine, "after_cursor_execute")
+def _after_query(conn, cursor, statement, parameters, context, executemany):  # type: ignore[misc]
+    start_times = conn.info.get("query_start_time", [])
+    if start_times:
+        elapsed_ms = (_time.perf_counter() - start_times.pop()) * 1000
+        from app.core.profiling import profiler
+
+        profiler.record_query(elapsed_ms, str(statement)[:500])

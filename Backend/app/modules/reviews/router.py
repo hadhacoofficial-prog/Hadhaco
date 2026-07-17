@@ -2,17 +2,27 @@ from __future__ import annotations
 
 import uuid
 
-from fastapi import APIRouter, Depends, File, Form, Query, UploadFile
+import redis.asyncio as aioredis
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.common.response_codes import ResponseCode
 from app.common.responses import BaseSuccessResponse, deleted, ok
+from app.core.cache import (
+    PREFIX_REVIEW_LIST,
+    PREFIX_REVIEW_SUMMARY,
+    TTL_REVIEW_LIST,
+    TTL_REVIEW_SUMMARY,
+    add_cache_headers,
+    bust_review_cache,
+)
 from app.core.database import get_db
 from app.core.dependencies import (
     get_current_user,
     get_current_user_optional,
     require_admin,
 )
+from app.core.redis import get_redis, safe_redis_get, safe_redis_setex
 from app.modules.reviews.schemas import (
     AdminReviewAction,
     AdminReviewOut,
@@ -41,9 +51,24 @@ async def list_product_reviews(
     offset: int = Query(0, ge=0),
     limit: int = Query(20, ge=1, le=100),
     db: AsyncSession = Depends(get_db),
+    redis: aioredis.Redis = Depends(get_redis),
     user=Depends(get_current_user_optional),
 ):
     viewer_user_id = user.id if user else None
+    # Only cache when no user is logged in (anonymous browsing)
+    if viewer_user_id is None:
+        cache_key = f"{PREFIX_REVIEW_LIST}:{product_id}:{offset}:{limit}"
+        cached = await safe_redis_get(redis, cache_key)
+        if cached:
+            import json as _json
+
+            from fastapi.responses import JSONResponse
+
+            content = _json.loads(cached)
+            response = JSONResponse(content=content)
+            add_cache_headers(response, TTL_REVIEW_LIST, private=True)
+            return response
+
     result = await _svc.list_product_reviews(
         db,
         product_id=product_id,
@@ -51,7 +76,24 @@ async def list_product_reviews(
         offset=offset,
         limit=limit,
     )
-    return ok(result, ResponseCode.REVIEW_LISTED, "Reviews listed successfully")
+    response_data = ok(
+        result, ResponseCode.REVIEW_LISTED, "Reviews listed successfully"
+    )
+    if viewer_user_id is None:
+        import json as _json
+
+        from fastapi.responses import JSONResponse
+
+        serialized = _json.dumps(
+            _json.loads(response_data.model_dump_json()), default=str
+        )
+        cache_key = f"{PREFIX_REVIEW_LIST}:{product_id}:{offset}:{limit}"
+        await safe_redis_setex(redis, cache_key, TTL_REVIEW_LIST, serialized)
+        content = _json.loads(serialized)
+        response = JSONResponse(content=content)
+        add_cache_headers(response, TTL_REVIEW_LIST, private=True)
+        return response
+    return response_data
 
 
 @router.get(
@@ -61,7 +103,20 @@ async def list_product_reviews(
 async def product_rating_summary(
     product_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
+    redis: aioredis.Redis = Depends(get_redis),
 ):
+    cache_key = f"{PREFIX_REVIEW_SUMMARY}:{product_id}"
+    cached = await safe_redis_get(redis, cache_key)
+    if cached:
+        import json as _json
+
+        from fastapi.responses import JSONResponse
+
+        content = _json.loads(cached)
+        response = JSONResponse(content=content)
+        add_cache_headers(response, TTL_REVIEW_SUMMARY)
+        return response
+
     data = await _svc.rating_summary(db, product_id)
     if data is None:
         summary = ProductRatingSummary(
@@ -76,11 +131,21 @@ async def product_rating_summary(
         )
     else:
         summary = ProductRatingSummary(**data)
-    return ok(
+    response_data = ok(
         summary,
         ResponseCode.REVIEW_SUMMARY_FETCHED,
         "Rating summary fetched successfully",
     )
+    import json as _json
+
+    from fastapi.responses import JSONResponse
+
+    serialized = _json.dumps(_json.loads(response_data.model_dump_json()), default=str)
+    await safe_redis_setex(redis, cache_key, TTL_REVIEW_SUMMARY, serialized)
+    content = _json.loads(serialized)
+    response = JSONResponse(content=content)
+    add_cache_headers(response, TTL_REVIEW_SUMMARY)
+    return response
 
 
 # ── Customer (auth required) ──────────────────────────────────────────────────
@@ -132,6 +197,10 @@ async def submit_review(
         data=data,
         images=images or None,
     )
+    from app.core.redis import get_redis_pool
+
+    redis = get_redis_pool()
+    await bust_review_cache(redis, str(data.product_id))
     return created(
         result, ResponseCode.REVIEW_SUBMITTED, "Review submitted successfully"
     )
@@ -145,6 +214,10 @@ async def edit_review(
     user=Depends(get_current_user),
 ):
     result = await _svc.edit_review(db, review_id=review_id, user_id=user.id, data=data)
+    from app.core.redis import get_redis_pool
+
+    redis = get_redis_pool()
+    await bust_review_cache(redis, str(result.product_id))
     return ok(result, ResponseCode.REVIEW_UPDATED, "Review updated successfully")
 
 
@@ -156,7 +229,15 @@ async def delete_review(
     db: AsyncSession = Depends(get_db),
     user=Depends(get_current_user),
 ):
+    review = await _svc._repo.get_by_id(db, review_id)
+    if not review:
+        raise HTTPException(status_code=404, detail="Review not found")
+    product_id = str(review.product_id)
     await _svc.delete_review(db, review_id=review_id, user_id=user.id)
+    from app.core.redis import get_redis_pool
+
+    redis = get_redis_pool()
+    await bust_review_cache(redis, product_id)
     return deleted(ResponseCode.REVIEW_DELETED, "Review deleted successfully")
 
 
@@ -274,6 +355,10 @@ async def admin_review_action(
     result = await _svc.admin_action(
         db, review_id=review_id, action=body.action, admin_identifier=admin_id
     )
+    from app.core.redis import get_redis_pool
+
+    redis = get_redis_pool()
+    await bust_review_cache(redis, str(result.product_id))
     return ok(
         result, ResponseCode.REVIEW_ACTION_APPLIED, "Review action applied successfully"
     )
@@ -287,5 +372,13 @@ async def admin_delete_review(
     db: AsyncSession = Depends(get_db),
     _=Depends(require_admin),
 ):
+    review = await _svc._repo.get_by_id(db, review_id)
+    if not review:
+        raise HTTPException(status_code=404, detail="Review not found")
+    product_id = str(review.product_id)
     await _svc.admin_delete(db, review_id=review_id)
+    from app.core.redis import get_redis_pool
+
+    redis = get_redis_pool()
+    await bust_review_cache(redis, product_id)
     return deleted(ResponseCode.REVIEW_DELETED, "Review deleted successfully")

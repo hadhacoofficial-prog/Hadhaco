@@ -1,18 +1,27 @@
 import uuid
 
 import redis.asyncio as aioredis
-from fastapi import APIRouter, Depends, Query, status
+from fastapi import APIRouter, Depends, Query, Request, status
+from fastapi.responses import JSONResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.common.response_codes import ResponseCode
 from app.common.responses import BaseSuccessResponse, deleted, ok
+from app.core.cache import (
+    PREFIX_CATEGORY_TREE,
+    TTL_CATEGORY_TREE,
+    add_cache_headers,
+    bust_category_tree_cache,
+    cache_swr,
+    check_not_modified,
+    make_etag,
+    not_modified_response,
+)
 from app.core.database import get_db
 from app.core.dependencies import require_admin
 from app.core.redis import (
     get_redis,
     safe_redis_delete,
-    safe_redis_get,
-    safe_redis_setex,
 )
 from app.modules.categories.schemas import (
     BulkCategoryActionRequest,
@@ -40,15 +49,54 @@ _NAV_TTL = 24 * 60 * 60
 
 async def _bust_all_nav_caches(redis: aioredis.Redis) -> None:
     await safe_redis_delete(redis, _NAVBAR_CACHE_KEY, _NAV_CACHE_KEY)
+    await bust_category_tree_cache(redis)
 
 
 # ── Public endpoints ──────────────────────────────────────────────────────────
 
 
 @router.get("/categories", response_model=BaseSuccessResponse[list[CategoryTreeNode]])
-async def list_categories(db: AsyncSession = Depends(get_db)):
-    result = await _svc.get_tree(db)
-    return ok(result, ResponseCode.CATEGORY_LISTED, "Categories fetched successfully")
+async def list_categories(
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    redis: aioredis.Redis = Depends(get_redis),
+):
+    cache_key = f"{PREFIX_CATEGORY_TREE}:all"
+
+    async def _fetch_tree():
+        result = await _svc.get_tree(db)
+        return [n.model_dump(mode="json") for n in result]
+
+    data = await cache_swr(
+        redis,
+        cache_key,
+        ttl=TTL_CATEGORY_TREE,
+        swr_window=TTL_CATEGORY_TREE,
+        fetch_fn=_fetch_tree,
+    )
+
+    import json as _json
+
+    serialized = _json.dumps(
+        ok(
+            data,
+            ResponseCode.CATEGORY_LISTED,
+            "Categories fetched successfully",
+        ).model_dump(mode="json"),
+        default=str,
+    )
+    etag = make_etag(serialized)
+    if check_not_modified(request, etag):
+        return not_modified_response()
+
+    response = JSONResponse(content=_json.loads(serialized))
+    add_cache_headers(
+        response,
+        TTL_CATEGORY_TREE,
+        stale_while_revalidate=TTL_CATEGORY_TREE,
+        etag=etag,
+    )
+    return response
 
 
 @router.get(
@@ -58,19 +106,28 @@ async def navbar_categories(
     db: AsyncSession = Depends(get_db),
     redis: aioredis.Redis = Depends(get_redis),
 ):
-    cached = await safe_redis_get(redis, _NAVBAR_CACHE_KEY)
-    if cached:
-        return ok(
-            NavbarCategoriesResponse.model_validate_json(cached),
+    async def _fetch_navbar():
+        result = await _svc.get_navbar(db)
+        return result.model_dump()
+
+    data = await cache_swr(
+        redis,
+        _NAVBAR_CACHE_KEY,
+        ttl=_NAVBAR_TTL,
+        swr_window=_NAVBAR_TTL,
+        fetch_fn=_fetch_navbar,
+    )
+    response = JSONResponse(
+        content=ok(
+            data,
             ResponseCode.CATEGORY_LISTED,
             "Categories fetched successfully",
-        )
-
-    result = await _svc.get_navbar(db)
-    await safe_redis_setex(
-        redis, _NAVBAR_CACHE_KEY, _NAVBAR_TTL, result.model_dump_json()
+        ).model_dump(mode="json")
     )
-    return ok(result, ResponseCode.CATEGORY_LISTED, "Categories fetched successfully")
+    add_cache_headers(
+        response, _NAVBAR_TTL, stale_while_revalidate=_NAVBAR_TTL, immutable=True
+    )
+    return response
 
 
 @router.get(
@@ -81,21 +138,28 @@ async def navigation_categories(
     db: AsyncSession = Depends(get_db),
     redis: aioredis.Redis = Depends(get_redis),
 ):
-    cached = await safe_redis_get(redis, _NAV_CACHE_KEY)
-    if cached:
-        return ok(
-            NavigationCategoriesResponse.model_validate_json(cached),
+    async def _fetch_navigation():
+        result = await _svc.get_navigation(db)
+        return result.model_dump()
+
+    data = await cache_swr(
+        redis,
+        _NAV_CACHE_KEY,
+        ttl=_NAV_TTL,
+        swr_window=_NAV_TTL,
+        fetch_fn=_fetch_navigation,
+    )
+    response = JSONResponse(
+        content=ok(
+            data,
             ResponseCode.CATEGORY_LISTED,
             "Navigation categories fetched successfully",
-        )
-
-    result = await _svc.get_navigation(db)
-    await safe_redis_setex(redis, _NAV_CACHE_KEY, _NAV_TTL, result.model_dump_json())
-    return ok(
-        result,
-        ResponseCode.CATEGORY_LISTED,
-        "Navigation categories fetched successfully",
+        ).model_dump(mode="json")
     )
+    add_cache_headers(
+        response, _NAV_TTL, stale_while_revalidate=_NAV_TTL, immutable=True
+    )
+    return response
 
 
 # ── Admin endpoints ───────────────────────────────────────────────────────────

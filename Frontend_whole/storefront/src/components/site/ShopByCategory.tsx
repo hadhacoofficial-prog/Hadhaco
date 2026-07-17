@@ -13,7 +13,7 @@ export function ShopByCategory() {
     staleTime: 10 * 60_000,
   });
 
-  const collections = (raw ?? []).map(toCollection);
+  const collections = (Array.isArray(raw) ? raw : []).map(toCollection);
 
   if (collections.length === 0) return null;
 

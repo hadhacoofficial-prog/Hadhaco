@@ -32,7 +32,7 @@ export function FilterPanel({
     staleTime: 10 * 60_000,
     enabled: !hideCollection,
   });
-  const collections = (raw ?? []).map(toCollection);
+  const collections = (Array.isArray(raw) ? raw : []).map(toCollection);
 
   return (
     <div className="space-y-8 text-sm">

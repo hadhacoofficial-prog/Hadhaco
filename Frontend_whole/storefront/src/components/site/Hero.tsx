@@ -359,19 +359,21 @@ const SlideBackground = memo(function SlideBackground({
       {slide.media.tabletUrl && (
         <source media="(max-width: 1023px)" srcSet={slide.media.tabletUrl} />
       )}
-      <img
-        src={slide.media.desktopUrl}
-        alt={slide.content.seoAlt}
-        className="absolute inset-0 w-full h-full object-cover"
-        style={{
-          opacity: isActive ? 1 : 0,
-          transition: `opacity ${durationMs}ms ${easing}`,
-        }}
-        fetchPriority={isPreload ? "high" : "low"}
-        loading={isPreload ? "eager" : "lazy"}
-        width={1920}
-        height={1080}
-      />
+      {slide.media.desktopUrl ? (
+        <img
+          src={slide.media.desktopUrl}
+          alt={slide.content.seoAlt}
+          className="absolute inset-0 w-full h-full object-cover"
+          style={{
+            opacity: isActive ? 1 : 0,
+            transition: `opacity ${durationMs}ms ${easing}`,
+          }}
+          fetchPriority={isPreload ? "high" : "low"}
+          loading={isPreload ? "eager" : "lazy"}
+          width={1920}
+          height={1080}
+        />
+      ) : null}
     </picture>
   );
 });

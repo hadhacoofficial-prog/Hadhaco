@@ -552,6 +552,14 @@ class TestCatalogServiceRead:
                 AsyncMock(return_value=([mock_product], 1)),
             ),
             patch(
+                "app.modules.catalog.service._repo.get_images_for_products",
+                AsyncMock(return_value={}),
+            ),
+            patch(
+                "app.modules.catalog.service._repo.get_image_variants_for_images",
+                AsyncMock(return_value={}),
+            ),
+            patch(
                 "app.modules.catalog.service._repo.get_collections_for_products",
                 AsyncMock(return_value={}),
             ),
@@ -777,16 +785,14 @@ class TestCatalogServiceVariantsAndAttributes:
                     db, uuid.uuid4(), ProductVariantUpdateRequest(name="Updated")
                 )
 
-    async def test_delete_variant_raises_404(self):
-        from app.core.exceptions import NotFoundError
-
+    async def test_delete_variant_returns_none_when_not_found(self):
         db = AsyncMock()
         with patch(
-            "app.modules.catalog.service._repo.delete_variant",
-            AsyncMock(return_value=False),
+            "app.modules.catalog.service._repo.get_variant",
+            AsyncMock(return_value=None),
         ):
-            with pytest.raises(NotFoundError):
-                await self.svc.delete_variant(db, uuid.uuid4())
+            result = await self.svc.delete_variant(db, uuid.uuid4())
+            assert result is None
 
     async def test_upsert_attribute_raises_404_when_product_not_found(self):
         from app.core.exceptions import NotFoundError

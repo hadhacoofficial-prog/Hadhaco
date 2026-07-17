@@ -156,6 +156,54 @@ class CartService:
         cart = await self._get_or_create(db, user_id, session_id)
         return _build_summary(cart)
 
+    async def _fetch_add_item_validations(
+        self,
+        db: AsyncSession,
+        product_id: uuid.UUID,
+        variant_id: uuid.UUID | None = None,
+    ) -> tuple[int, bool, bool, int, float]:
+        """Single-query fetch: available_stock, track_inventory, allow_backorder,
+        max_order_quantity, and price. Reduces 3 queries to 1."""
+        if variant_id:
+            row = await db.execute(
+                text(
+                    "SELECT GREATEST(pv.stock_quantity - pv.reserved_quantity"
+                    " - pv.sold_quantity, 0) AS available,"
+                    " p.track_inventory, p.allow_backorder,"
+                    " p.max_order_quantity,"
+                    " p.base_price + COALESCE(v.price_adjustment, 0) AS price"
+                    " FROM product_variants pv"
+                    " JOIN products p ON p.id = pv.product_id"
+                    " LEFT JOIN product_variants v ON v.id = pv.id"
+                    " WHERE pv.id = :vid AND pv.product_id = :pid"
+                    " AND p.deleted_at IS NULL AND p.status = 'active'"
+                    " AND pv.is_active = true"
+                ),
+                {"vid": str(variant_id), "pid": str(product_id)},
+            )
+        else:
+            row = await db.execute(
+                text(
+                    "SELECT GREATEST(stock_quantity - reserved_quantity"
+                    " - sold_quantity, 0) AS available,"
+                    " track_inventory, allow_backorder,"
+                    " max_order_quantity, base_price AS price"
+                    " FROM products WHERE id = :pid"
+                    " AND deleted_at IS NULL AND status = 'active'"
+                ),
+                {"pid": str(product_id)},
+            )
+        result = row.fetchone()
+        if not result:
+            raise NotFoundError("Product not found or unavailable")
+        return (
+            int(result[0]),
+            bool(result[1]),
+            bool(result[2]),
+            int(result[3]),
+            float(result[4]),
+        )
+
     async def add_item(
         self,
         db: AsyncSession,
@@ -163,27 +211,24 @@ class CartService:
         user_id: uuid.UUID | None = None,
         session_id: str | None = None,
     ) -> CartSummary:
-        # Validate available stock BEFORE touching the cart.
-        # Cart does NOT reserve stock — it just stores intent.
-        available = await self._fetch_available_stock(
-            db, payload.product_id, payload.variant_id
+        # Single combined query: stock + max_order + price (saves 2 DB round-trips)
+        available, track_inventory, allow_backorder, max_qty, unit_price = (
+            await self._fetch_add_item_validations(
+                db, payload.product_id, payload.variant_id
+            )
         )
-        if payload.quantity > available:
+        if track_inventory and not allow_backorder and payload.quantity > available:
             if available <= 0:
                 raise InventoryError("This product is currently out of stock.")
             raise InventoryError(
                 f"Only {available} item(s) available. Please adjust your quantity."
             )
-        max_qty = await self._fetch_max_order_qty(db, payload.product_id)
         if max_qty > 0 and payload.quantity > max_qty:
             raise ValidationError(
                 f"Maximum {max_qty} item(s) allowed per order for this product."
             )
 
         cart = await self._get_or_create(db, user_id, session_id)
-        unit_price = await self._fetch_product_price(
-            db, payload.product_id, payload.variant_id
-        )
         await _repo.upsert_item(
             db,
             cart.id,
@@ -214,16 +259,17 @@ class CartService:
         if not item:
             raise NotFoundError("Cart item not found")
 
-        # Validate if increasing quantity
+        # Validate if increasing quantity (single combined query)
         if payload.quantity > item.quantity:
-            available = await self._fetch_available_stock(
-                db, item.product_id, item.variant_id
+            available, track_inventory, allow_backorder, max_qty, _price = (
+                await self._fetch_add_item_validations(
+                    db, item.product_id, item.variant_id
+                )
             )
-            if payload.quantity > available:
+            if track_inventory and not allow_backorder and payload.quantity > available:
                 raise InventoryError(
                     f"Only {available} item(s) available. Please adjust your quantity."
                 )
-            max_qty = await self._fetch_max_order_qty(db, item.product_id)
             if max_qty > 0 and payload.quantity > max_qty:
                 raise ValidationError(
                     f"Maximum {max_qty} item(s) allowed per order for this product."

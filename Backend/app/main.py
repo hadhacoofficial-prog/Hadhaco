@@ -2,6 +2,7 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
 
 from app.core.config import (
@@ -71,10 +72,10 @@ async def lifespan(app: FastAPI):
 
     # Sync the code-defined Notification Event Registry into notification_rules
     # (insert-missing-only — never overwrites an admin's existing rule row).
-    from app.core.database import AsyncSessionLocal
+    from app.core.database import AsyncWorkerSessionLocal
     from app.modules.notifications.event_registry import sync_notification_rules
 
-    async with AsyncSessionLocal() as _sync_db:
+    async with AsyncWorkerSessionLocal() as _sync_db:
         await sync_notification_rules(_sync_db)
 
     # Start background job scheduler
@@ -83,8 +84,24 @@ async def lifespan(app: FastAPI):
     queue = build_queue()
     queue.start()
 
+    # ── Cache warming (startup-only) ─────────────────────────────────────────
+    # Pre-populate Redis for high-traffic storefront endpoints so the first
+    # visitor never pays the cold-cache penalty.  Runs once at startup;
+    # SWR handles freshness afterwards (no periodic re-warming needed).
+    import asyncio as _asyncio
+
+    from app.core.cache_warmer import start_warm_loop
+
+    _warm_task = _asyncio.create_task(start_warm_loop())
+    _log.info("cache_warm_started")
+
     yield
 
+    _warm_task.cancel()
+    try:
+        await _warm_task
+    except _asyncio.CancelledError:
+        pass
     queue.shutdown()
     await close_redis()
 
@@ -105,11 +122,12 @@ def create_app() -> FastAPI:
             allowed_hosts=settings.allowed_hosts_list,
         )
 
-    # Middleware execution order (request in): CORS → Audit → Security → RequestID → RequestLogging → app
+    # Middleware execution order (request in): CORS → Audit → Security → RequestID → RequestLogging → GZip → app
     # Starlette executes last-added first, so we add them in reverse execution order.
+    app.add_middleware(GZipMiddleware, minimum_size=500)
     app.add_middleware(
         RequestLoggingMiddleware
-    )  # innermost: runs after RequestID has bound context
+    )  # innermost (before GZip): runs after RequestID has bound context
     app.add_middleware(
         RequestIDMiddleware
     )  # binds request_id, method, path to context vars
@@ -217,11 +235,11 @@ def _mount_routers(app: FastAPI) -> None:
         from fastapi import Response
         from sqlalchemy import text
 
-        from app.core.database import AsyncSessionLocal, get_pool_status
+        from app.core.database import AsyncWorkerSessionLocal, get_pool_status
 
         checks: dict = {}
         try:
-            async with AsyncSessionLocal() as db:
+            async with AsyncWorkerSessionLocal() as db:
                 await db.execute(text("SELECT 1"))
             checks["db"] = "ok"
         except Exception as exc:
@@ -251,6 +269,73 @@ def _mount_routers(app: FastAPI) -> None:
     @app.get("/health/live", tags=["ops"], include_in_schema=False)
     async def liveness() -> dict:
         return {"status": "alive"}
+
+    @app.get("/health/metrics", tags=["ops"], include_in_schema=False)
+    async def metrics():
+        import json
+
+        from fastapi import Response
+
+        from app.core.config import settings
+        from app.core.database import get_pool_status
+        from app.core.profiling import profiler
+
+        if settings.PROFILING_ENABLED:
+            data = profiler.snapshot()
+        else:
+            data = {
+                "pool": {
+                    "runtime": get_pool_status(),
+                },
+                "profiling": "disabled",
+            }
+        data["pool"]["runtime"] = get_pool_status()
+
+        # ── Live Redis server-side stats ──────────────────────────────────
+        try:
+            from app.core.cache import (
+                _MAX_SWR_TASKS,
+                _coalesce_locks,
+                _swr_refresh_tasks,
+            )
+            from app.core.redis import get_redis_pool
+
+            redis = get_redis_pool()
+            info = await redis.info("stats")  # type: ignore[union-attr]
+            mem = await redis.info("memory")  # type: ignore[union-attr]
+            data["redis_server"] = {
+                "keyspace_hits": info.get("keyspace_hits", 0),
+                "keyspace_misses": info.get("keyspace_misses", 0),
+                "hit_rate_pct": round(
+                    info.get("keyspace_hits", 0)
+                    / max(
+                        1, info.get("keyspace_hits", 0) + info.get("keyspace_misses", 0)
+                    )
+                    * 100,
+                    1,
+                ),
+                "expired_keys": info.get("expired_keys", 0),
+                "evicted_keys": info.get("evicted_keys", 0),
+                "total_connections": info.get("total_connections_received", 0),
+                "total_commands": info.get("total_commands_processed", 0),
+                "used_memory_human": mem.get("used_memory_human", "unknown"),
+                "mem_fragmentation_ratio": mem.get("mem_fragmentation_ratio", 0),
+            }
+            data["swr"] = {
+                "active_tasks": len(_swr_refresh_tasks),
+                "max_tasks": _MAX_SWR_TASKS,
+                "active_locks": len(_coalesce_locks),
+            }
+            from app.core.redis import get_circuit_state
+
+            data["circuit_breaker"] = get_circuit_state()
+        except Exception:
+            data["redis_server"] = {"error": "unavailable"}
+
+        return Response(
+            content=json.dumps(data, indent=2),
+            media_type="application/json",
+        )
 
     @app.get("/", include_in_schema=False)
     async def root() -> dict:

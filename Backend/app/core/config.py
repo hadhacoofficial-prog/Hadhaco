@@ -33,6 +33,7 @@ class Settings(BaseSettings):
     LOG_SQL: bool = False  # echo SQL statements; never enable in production
     APP_VERSION: str = "1.0.0"
     ENABLE_DEV_AUTH: bool = False
+    PROFILING_ENABLED: bool = True
 
     # ── API ────────────────────────────────────────────────────────────────────
     API_HOST: str = (

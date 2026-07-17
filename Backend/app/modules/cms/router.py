@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import uuid
 from typing import Annotated
 
@@ -10,6 +11,16 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.common.response_codes import ResponseCode
 from app.common.responses import BaseSuccessResponse, deleted, ok
+from app.core.cache import (
+    PREFIX_CMS_HOME_LEGACY,
+    PREFIX_CMS_PAGE,
+    TTL_CMS_HOME_LEGACY,
+    TTL_CMS_HOMEPAGE,
+    TTL_CMS_PAGE,
+    add_cache_headers,
+    bust_cms_page_cache,
+    cache_swr,
+)
 from app.core.database import get_db
 from app.core.dependencies import require_admin
 from app.core.redis import get_redis
@@ -52,9 +63,35 @@ _media_svc = CmsMediaService()
 
 
 @router.get("/home", response_model=BaseSuccessResponse[dict])
-async def get_home(db: AsyncSession = Depends(get_db)):
-    data = await _svc.get_home_data(db)
-    return ok(data, ResponseCode.CMS_HOME_FETCHED, "Home page data fetched")
+async def get_home(
+    db: AsyncSession = Depends(get_db),
+    redis: aioredis.Redis = Depends(get_redis),
+):
+    cache_key = PREFIX_CMS_HOME_LEGACY
+
+    async def _fetch_home(db: AsyncSession) -> dict:
+        data = await _svc.get_home_data(db)
+        payload = {
+            "success": True,
+            "code": ResponseCode.CMS_HOME_FETCHED.value,
+            "message": "Home page data fetched",
+            "data": data,
+        }
+        return json.loads(json.dumps(payload, default=str))
+
+    result = await cache_swr(
+        redis,
+        cache_key,
+        ttl=TTL_CMS_HOME_LEGACY,
+        swr_window=TTL_CMS_HOME_LEGACY,
+        fetch_fn=_fetch_home,
+        db=db,
+    )
+    response = JSONResponse(content=result)
+    add_cache_headers(
+        response, TTL_CMS_HOME_LEGACY, stale_while_revalidate=TTL_CMS_HOME_LEGACY
+    )
+    return response
 
 
 # ── Public: homepage (new rich endpoint) ───────────────────────────────────────
@@ -65,28 +102,63 @@ async def get_homepage(
     db: AsyncSession = Depends(get_db),
     redis: aioredis.Redis = Depends(get_redis),
 ):
-    data = await _svc.get_homepage(db, redis)
-    payload = ok(
-        HomepageDataOut(**data),
-        ResponseCode.CMS_HOMEPAGE_FETCHED,
-        "Homepage data fetched",
-    )
-    import json as _json
+    cache_key = "cms:homepage"
 
-    content = _json.loads(payload.model_dump_json())
-    return JSONResponse(
-        content=content,
-        headers={"Cache-Control": "no-store"},
+    async def _fetch_homepage(db: AsyncSession) -> dict:
+        data = await _svc._build_homepage(db)
+        payload = ok(
+            HomepageDataOut(**data),
+            ResponseCode.CMS_HOMEPAGE_FETCHED,
+            "Homepage data fetched",
+        )
+        return json.loads(payload.model_dump_json())
+
+    result = await cache_swr(
+        redis,
+        cache_key,
+        ttl=TTL_CMS_HOMEPAGE,
+        swr_window=TTL_CMS_HOMEPAGE,
+        fetch_fn=_fetch_homepage,
+        db=db,
     )
+    response = JSONResponse(content=result)
+    add_cache_headers(
+        response,
+        TTL_CMS_HOMEPAGE,
+        stale_while_revalidate=TTL_CMS_HOMEPAGE,
+        immutable=True,
+    )
+    return response
 
 
 # ── Public: pages ─────────────────────────────────────────────────────────────
 
 
 @router.get("/pages/{slug}", response_model=BaseSuccessResponse[CmsPageOut])
-async def get_page(slug: str, db: AsyncSession = Depends(get_db)):
-    result = await _svc.get_page(db, slug)
-    return ok(result, ResponseCode.CMS_PAGE_FETCHED, "Page fetched")
+async def get_page(
+    slug: str,
+    db: AsyncSession = Depends(get_db),
+    redis: aioredis.Redis = Depends(get_redis),
+):
+    cache_key = f"{PREFIX_CMS_PAGE}:{slug}"
+
+    async def _fetch_page(slug: str, db: AsyncSession) -> dict:
+        result = await _svc.get_page(db, slug)
+        response_data = ok(result, ResponseCode.CMS_PAGE_FETCHED, "Page fetched")
+        return json.loads(response_data.model_dump_json())
+
+    result = await cache_swr(
+        redis,
+        cache_key,
+        ttl=TTL_CMS_PAGE,
+        swr_window=TTL_CMS_PAGE,
+        fetch_fn=_fetch_page,
+        slug=slug,
+        db=db,
+    )
+    response = JSONResponse(content=result)
+    add_cache_headers(response, TTL_CMS_PAGE, stale_while_revalidate=TTL_CMS_PAGE)
+    return response
 
 
 # ── Admin: banners ─────────────────────────────────────────────────────────────
@@ -466,6 +538,10 @@ async def create_page(
     from app.common.responses import created
 
     result = await _svc.create_page(db, data)
+    from app.core.redis import get_redis_pool
+
+    redis = get_redis_pool()
+    await bust_cms_page_cache(redis, result.slug)
     return created(result, ResponseCode.CMS_PAGE_CREATED, "Page created")
 
 
@@ -477,4 +553,8 @@ async def update_page(
     _=Depends(require_admin),
 ):
     result = await _svc.update_page(db, page_id, data)
+    from app.core.redis import get_redis_pool
+
+    redis = get_redis_pool()
+    await bust_cms_page_cache(redis, result.slug)
     return ok(result, ResponseCode.CMS_PAGE_UPDATED, "Page updated")

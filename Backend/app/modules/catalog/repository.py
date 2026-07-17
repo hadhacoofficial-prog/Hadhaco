@@ -100,6 +100,15 @@ class ProductRepository:
         sort_dir: str = "desc",
         include_deleted: bool = False,
     ) -> tuple[list[Product], int]:
+        """Return paginated products with total count.
+
+        Uses COUNT(*) OVER() window function so count + data are fetched in a
+        single round-trip (saves one DB round-trip vs the previous separate
+        count query).  Relationship eager-loads (images / variants) are NOT
+        applied here — call ``get_images_for_products`` and
+        ``get_image_variants_for_images`` for list-view image hydration, which
+        fetches only the 2 images per product that the UI actually renders.
+        """
         filters: list[ColumnElement[bool]] = []
         if not include_deleted:
             filters.append(Product.deleted_at.is_(None))
@@ -146,30 +155,128 @@ class ProductRepository:
                 )
             )
 
-        base_q = select(Product).where(and_(*filters)) if filters else select(Product)
-
-        count_q = (
-            select(func.count(Product.id)).where(and_(*filters))
-            if filters
-            else select(func.count(Product.id))
-        )
-        total_result = await db.execute(count_q)
-        total: int = total_result.scalar_one()
+        where_clause = and_(*filters) if filters else None
+        count_window = func.count().over().label("_total_count")
 
         sort_col = getattr(Product, sort_by, Product.created_at)
         order = sort_col.desc() if sort_dir == "desc" else sort_col.asc()
 
         list_q = (
-            base_q.options(
-                selectinload(Product.images).selectinload(Image.variants),
-                selectinload(Product.variants),
-            )
+            select(Product, count_window)
+            .options(selectinload(Product.variants))
             .order_by(order)
             .offset((page - 1) * page_size)
             .limit(page_size)
         )
+        if where_clause is not None:
+            list_q = list_q.where(where_clause)
         result = await db.execute(list_q)
-        return list(result.scalars().all()), total
+        rows = result.unique().all()
+        if not rows:
+            return [], 0
+        total: int = rows[0][1]
+        items = [row[0] for row in rows]
+        return items, total
+
+    # ------------------------------------------------------------------ #
+    #  List-view image hydration — replaces heavy selectinload(Product.images
+    #  ).selectinload(Image.variants) which loaded ALL images for ALL products.
+    #  Instead, we fetch exactly 2 images per product (primary + first
+    #  secondary) in a single batch query, then fetch image_variants only for
+    #  the primary images.
+    # ------------------------------------------------------------------ #
+
+    async def get_images_for_products(
+        self, db: AsyncSession, product_ids: list[uuid.UUID]
+    ) -> dict[uuid.UUID, list]:
+        """Fetch exactly 2 images (primary + secondary) per product.
+
+        Returns ``{product_id: [primary_img, secondary_img]}`` — each img
+        has its ``.variants`` relationship populated (via selectinload in the
+        calling batch query).
+        """
+        if not product_ids:
+            return {}
+
+        from sqlalchemy.orm import selectinload as _sel
+
+        from app.modules.media.models import Image
+
+        # Step 1: CTE ranks images per product (only ID + owner_id + rn)
+        # — avoids the JSONB-hashing issue with .unique() on full Image rows.
+        ranked_q = (
+            select(
+                Image.id.label("_image_id"),
+                Image.owner_id.label("_owner_id"),
+                func.row_number()
+                .over(
+                    partition_by=Image.owner_id,
+                    order_by=(
+                        Image.is_primary.desc(),
+                        Image.sort_order.asc(),
+                        Image.created_at.asc(),
+                    ),
+                )
+                .label("_rn"),
+            )
+            .where(
+                Image.owner_type == "product",
+                Image.deleted_at.is_(None),
+                Image.owner_id.in_(product_ids),
+            )
+            .subquery()
+        )
+
+        ids_q = select(ranked_q.c._image_id, ranked_q.c._owner_id).where(
+            ranked_q.c._rn <= 2
+        )
+        result = await db.execute(ids_q)
+        id_rows = result.all()
+        if not id_rows:
+            return {}
+
+        image_ids = [row[0] for row in id_rows]
+        owner_map: dict[uuid.UUID, uuid.UUID] = {row[0]: row[1] for row in id_rows}
+
+        # Step 2: batch-load full Image objects (with selectinload for variants)
+        imgs_result = await db.execute(
+            select(Image).where(Image.id.in_(image_ids)).options(_sel(Image.variants))
+        )
+        images = imgs_result.scalars().all()
+
+        # Step 3: build {product_id: [img, ...]} preserving sort order from CTE
+        id_order: dict[uuid.UUID, int] = {
+            row[0]: idx for idx, row in enumerate(id_rows)
+        }
+        mapping: dict[uuid.UUID, list] = {}
+        for img in images:
+            pid = owner_map.get(img.id)
+            if pid is not None:
+                mapping.setdefault(pid, []).append(img)
+        # Sort each product's images by the CTE row number
+        for pid in mapping:
+            mapping[pid].sort(key=lambda i: id_order.get(i.id, 999))
+        return mapping
+
+    async def get_image_variants_for_images(
+        self, db: AsyncSession, image_ids: list[uuid.UUID]
+    ) -> dict[uuid.UUID, list]:
+        """Fetch ImageVariant rows for the given image IDs.
+
+        Returns ``{image_id: [ImageVariant, ...]}``.
+        """
+        if not image_ids:
+            return {}
+
+        from app.modules.media.models import ImageVariant
+
+        result = await db.execute(
+            select(ImageVariant).where(ImageVariant.image_id.in_(image_ids))
+        )
+        mapping: dict[uuid.UUID, list] = {}
+        for iv in result.scalars().all():
+            mapping.setdefault(iv.image_id, []).append(iv)
+        return mapping
 
     async def create(self, db: AsyncSession, data: dict[str, Any]) -> Product:
         product = Product(**data)

@@ -14,10 +14,11 @@ import pytest
 def _stock_row(
     available: int, track: bool = True, backorder: bool = False
 ) -> MagicMock:
-    """Build a fake fetchone() row for _fetch_available_stock."""
+    """Build a fake fetchone() row for _fetch_add_item_validations."""
     row = MagicMock()
-    # row[0] = available, row[1] = track_inventory, row[2] = allow_backorder
-    row.__getitem__ = lambda self, i: [available, track, backorder][i]
+    # row[0]=available, row[1]=track_inventory, row[2]=allow_backorder,
+    # row[3]=max_order_quantity, row[4]=price
+    row.__getitem__ = lambda self, i: [available, track, backorder, 0, 100.0][i]
     return row
 
 
@@ -96,7 +97,9 @@ class TestAddItemStockValidation:
         payload = self._payload(quantity=1)
 
         with patch.object(
-            self.svc, "_fetch_available_stock", AsyncMock(return_value=0)
+            self.svc,
+            "_fetch_add_item_validations",
+            AsyncMock(return_value=(0, True, False, 0, 100.0)),
         ):
             with pytest.raises(InventoryError, match="out of stock"):
                 await self.svc.add_item(db, payload, user_id=uuid.uuid4())
@@ -108,7 +111,9 @@ class TestAddItemStockValidation:
         payload = self._payload(quantity=5)
 
         with patch.object(
-            self.svc, "_fetch_available_stock", AsyncMock(return_value=3)
+            self.svc,
+            "_fetch_add_item_validations",
+            AsyncMock(return_value=(3, True, False, 0, 100.0)),
         ):
             with pytest.raises(InventoryError, match="3 item"):
                 await self.svc.add_item(db, payload, user_id=uuid.uuid4())
@@ -126,27 +131,23 @@ class TestAddItemStockValidation:
         mock_cart.expires_at = datetime.now(UTC) + timedelta(days=30)
 
         with patch.object(
-            self.svc, "_fetch_available_stock", AsyncMock(return_value=10)
+            self.svc,
+            "_fetch_add_item_validations",
+            AsyncMock(return_value=(10, True, False, 0, 500.0)),
         ):
             with patch.object(
-                self.svc, "_fetch_max_order_qty", AsyncMock(return_value=0)
+                self.svc, "_get_or_create", AsyncMock(return_value=mock_cart)
             ):
-                with patch.object(
-                    self.svc, "_get_or_create", AsyncMock(return_value=mock_cart)
+                with patch(
+                    "app.modules.cart.service._repo.upsert_item", AsyncMock()
                 ):
-                    with patch.object(
-                        self.svc, "_fetch_product_price", AsyncMock(return_value=500.0)
+                    with patch(
+                        "app.modules.cart.service._repo.get_by_id",
+                        AsyncMock(return_value=mock_cart),
                     ):
-                        with patch(
-                            "app.modules.cart.service._repo.upsert_item", AsyncMock()
-                        ):
-                            with patch(
-                                "app.modules.cart.service._repo.get_by_id",
-                                AsyncMock(return_value=mock_cart),
-                            ):
-                                result = await self.svc.add_item(
-                                    db, payload, user_id=uuid.uuid4()
-                                )
+                        result = await self.svc.add_item(
+                            db, payload, user_id=uuid.uuid4()
+                        )
 
         assert result is not None
 
@@ -163,28 +164,24 @@ class TestAddItemStockValidation:
         mock_cart.expires_at = datetime.now(UTC) + timedelta(days=30)
 
         with patch.object(
-            self.svc, "_fetch_available_stock", AsyncMock(return_value=5)
+            self.svc,
+            "_fetch_add_item_validations",
+            AsyncMock(return_value=(5, True, False, 0, 100.0)),
         ):
             with patch.object(
-                self.svc, "_fetch_max_order_qty", AsyncMock(return_value=0)
+                self.svc, "_get_or_create", AsyncMock(return_value=mock_cart)
             ):
-                with patch.object(
-                    self.svc, "_get_or_create", AsyncMock(return_value=mock_cart)
+                with patch(
+                    "app.modules.cart.service._repo.upsert_item", AsyncMock()
                 ):
-                    with patch.object(
-                        self.svc, "_fetch_product_price", AsyncMock(return_value=100.0)
+                    with patch(
+                        "app.modules.cart.service._repo.get_by_id",
+                        AsyncMock(return_value=mock_cart),
                     ):
-                        with patch(
-                            "app.modules.cart.service._repo.upsert_item", AsyncMock()
-                        ):
-                            with patch(
-                                "app.modules.cart.service._repo.get_by_id",
-                                AsyncMock(return_value=mock_cart),
-                            ):
-                                # Should not raise
-                                await self.svc.add_item(
-                                    db, payload, user_id=uuid.uuid4()
-                                )
+                        # Should not raise
+                        await self.svc.add_item(
+                            db, payload, user_id=uuid.uuid4()
+                        )
 
 
 # ── TestUpdateItemStockValidation ─────────────────────────────────────────────
@@ -228,7 +225,9 @@ class TestUpdateItemStockValidation:
             "app.modules.cart.service._repo.get_by_id", AsyncMock(return_value=cart)
         ):
             with patch.object(
-                self.svc, "_fetch_available_stock", AsyncMock(return_value=5)
+                self.svc,
+                "_fetch_add_item_validations",
+                AsyncMock(return_value=(5, True, False, 0, 100.0)),
             ):
                 with pytest.raises(InventoryError, match="5 item"):
                     await self.svc.update_item(
@@ -261,7 +260,9 @@ class TestUpdateItemStockValidation:
                 "app.modules.cart.service._repo.update_item_quantity", AsyncMock()
             ):
                 with patch.object(
-                    self.svc, "_fetch_available_stock", AsyncMock(return_value=3)
+                    self.svc,
+                    "_fetch_add_item_validations",
+                    AsyncMock(return_value=(3, True, False, 0, 100.0)),
                 ) as mock_fetch:
                     await self.svc.update_item(
                         db, cart.id, item_id, payload, user_id=user_id
@@ -295,7 +296,9 @@ class TestUpdateItemStockValidation:
                 "app.modules.cart.service._repo.update_item_quantity", AsyncMock()
             ):
                 with patch.object(
-                    self.svc, "_fetch_available_stock", AsyncMock(return_value=5)
+                    self.svc,
+                    "_fetch_add_item_validations",
+                    AsyncMock(return_value=(5, True, False, 0, 100.0)),
                 ) as mock_fetch:
                     await self.svc.update_item(
                         db, cart.id, item_id, payload, user_id=user_id

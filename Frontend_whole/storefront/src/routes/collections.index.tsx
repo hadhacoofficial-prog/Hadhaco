@@ -27,7 +27,7 @@ function CollectionsIndex() {
     staleTime: 10 * 60_000,
   });
 
-  const collections = (raw ?? []).map(toCollection);
+  const collections = (Array.isArray(raw) ? raw : []).map(toCollection);
 
   return (
     <SiteLayout>
