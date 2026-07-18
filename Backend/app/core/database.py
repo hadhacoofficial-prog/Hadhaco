@@ -129,7 +129,14 @@ async def get_db() -> AsyncGenerator[AsyncSession, None]:
             yield session
             await session.commit()
         except Exception:
-            await session.rollback()
+            try:
+                await session.rollback()
+            except Exception:
+                # Rollback can fail when the session is still provisioning its
+                # first connection (no queries were executed yet).  Silently
+                # ignore so the context manager can still close() cleanly and
+                # return the connection to the pool.
+                pass
             raise
 
 
