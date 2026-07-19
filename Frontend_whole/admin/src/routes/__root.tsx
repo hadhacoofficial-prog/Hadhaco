@@ -11,6 +11,7 @@ import { useEffect, type ReactNode } from "react";
 
 import appCss from "../styles.css?url";
 import { reportLovableError } from "../lib/lovable-error-reporting";
+import { initSentry } from "../lib/sentry";
 import markAsset from "../assets/hadha-mark.png";
 import { AuthProvider } from "../providers/AuthProvider";
 import { Toaster } from "../components/ui/sonner";
@@ -18,6 +19,8 @@ import { PageLoader } from "../components/common/PageLoader";
 import { RouteTransition } from "../components/common/RouteTransition";
 import { useProfile } from "../hooks/auth/useProfile";
 import { useAuthContext } from "../providers/auth-context";
+
+initSentry();
 
 function NotFoundComponent() {
   return (

@@ -1,0 +1,68 @@
+# Recording rules for Hadha.co
+# Pre-compute expensive PromQL queries to reduce dashboard load time.
+
+groups:
+  # ── Application metrics ────────────────────────────────────────────────────
+  - name: hadha_application
+    interval: 30s
+    rules:
+      - record: job:http_requests:rate5m
+        expr: sum(rate(http_requests_total[5m])) by (job, handler, method, status)
+
+      - record: job:http_requests:rate5m:by_handler
+        expr: sum(rate(http_requests_total[5m])) by (handler)
+
+      - record: job:http_request_duration_seconds:p95
+        expr: histogram_quantile(0.95, sum(rate(http_request_duration_seconds_bucket[5m])) by (le, handler))
+
+      - record: job:http_request_duration_seconds:p50
+        expr: histogram_quantile(0.50, sum(rate(http_request_duration_seconds_bucket[5m])) by (le, handler))
+
+      - record: job:http_request_duration_seconds:p99
+        expr: histogram_quantile(0.99, sum(rate(http_request_duration_seconds_bucket[5m])) by (le, handler))
+
+      - record: job:http_request_duration_seconds:avg
+        expr: sum(rate(http_request_duration_seconds_sum[5m])) / sum(rate(http_requests_total[5m]))
+
+      - record: job:http_errors:rate5m
+        expr: sum(rate(http_requests_total{status=~"5.."}[5m])) by (job)
+
+      - record: job:http_errors:error_ratio5m
+        expr: >
+          sum(rate(http_requests_total{status=~"5.."}[5m]))
+          / sum(rate(http_requests_total[5m]))
+
+  # ── Redis metrics ──────────────────────────────────────────────────────────
+  - name: hadha_redis
+    interval: 30s
+    rules:
+      - record: redis:hit_ratio:ratio
+        expr: >
+          redis_keyspace_hits_total
+          / (redis_keyspace_hits_total + redis_keyspace_misses_total)
+
+      - record: redis:commands:rate5m
+        expr: rate(redis_commands_processed_total[5m])
+
+  # ── Container metrics ──────────────────────────────────────────────────────
+  - name: hadha_container
+    interval: 30s
+    rules:
+      - record: container:cpu_usage:percent
+        expr: rate(container_cpu_usage_seconds_total{name=~"hadha-.*"}[5m]) * 100
+
+      - record: container:memory_usage:bytes
+        expr: container_memory_usage_bytes{name=~"hadha-.*"}
+
+  # ── Host metrics ───────────────────────────────────────────────────────────
+  - name: hadha_host
+    interval: 30s
+    rules:
+      - record: host:cpu_usage:percent
+        expr: 100 - (avg(rate(node_cpu_seconds_total{mode="idle"}[5m])) * 100)
+
+      - record: host:memory_usage:percent
+        expr: 100 * (1 - node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes)
+
+      - record: host:disk_usage:percent
+        expr: 100 * (1 - node_filesystem_avail_bytes{mountpoint="/"} / node_filesystem_size_bytes{mountpoint="/"})

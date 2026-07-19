@@ -1,0 +1,26 @@
+# Grafana alerting notification policies for Hadha.co
+
+apiVersion: 1
+
+policies:
+  - orgId: 1
+    receiver: hadha-admin-email
+    group_by:
+      - alertname
+      - severity
+    group_wait: 30s
+    group_interval: 5m
+    repeat_interval: 4h
+    routes:
+      - receiver: hadha-admin-email
+        matchers:
+          - severity = critical
+        group_wait: 10s
+        group_interval: 2m
+        repeat_interval: 1h
+      - receiver: hadha-admin-email
+        matchers:
+          - severity = warning
+        group_wait: 30s
+        group_interval: 5m
+        repeat_interval: 4h

@@ -55,8 +55,18 @@ IMAGE_RETENTION="${IMAGE_RETENTION:-168h}"  # 7 days; override via env
 INFRA_IMAGES=(
   "redis:7-alpine"
   "rediscommander/redis-commander:latest"
+  "oliver006/redis_exporter:v1.61.0"
   "amir20/dozzle:v8"
   "nginx:stable-alpine"
+  "prom/prometheus:v2.53.0"
+  "grafana/grafana:11.1.0"
+  "grafana/loki:3.1.0"
+  "grafana/promtail:3.1.0"
+  "prom/node-exporter:v1.8.1"
+  "gcr.io/cadvisor/cadvisor:v0.49.1"
+  "louislam/uptime-kuma:2.0.2"
+  "glitchtip/glitchtip:6.2.2"
+  "postgres:16-alpine"
 )
 
 # ── Compose wrapper ───────────────────────────────────────────────────────────
@@ -345,6 +355,10 @@ command -v jq     >/dev/null 2>&1 || die "jq is not installed (install: apt-get 
 [[ -n "${REDIS_UI_PASSWORD:-}"  ]] || die "REDIS_UI_PASSWORD is required (Redis Commander auth)"
 [[ -n "${DOZZLE_USERNAME:-}"    ]] || die "DOZZLE_USERNAME is required (Dozzle auth)"
 [[ -n "${DOZZLE_PASSWORD:-}"    ]] || die "DOZZLE_PASSWORD is required (Dozzle auth)"
+[[ -n "${GRAFANA_USERNAME:-}"   ]] || die "GRAFANA_USERNAME is required (Grafana auth)"
+[[ -n "${GRAFANA_PASSWORD:-}"   ]] || die "GRAFANA_PASSWORD is required (Grafana auth)"
+[[ -n "${GLITCHTIP_DB_PASSWORD:-}" ]] || die "GLITCHTIP_DB_PASSWORD is required (GlitchTip PostgreSQL)"
+[[ -n "${GLITCHTIP_SECRET_KEY:-}"  ]] || die "GLITCHTIP_SECRET_KEY is required (GlitchTip session signing)"
 
 log "Image tag    : ${IMAGE_TAG}"
 log "Backend      : ${BACKEND_IMAGE}"
@@ -361,7 +375,10 @@ step_start "Validate compose configuration"
 
 export BACKEND_IMAGE STOREFRONT_IMAGE ADMIN_IMAGE REDIS_PASSWORD \
        REDIS_UI_USERNAME REDIS_UI_PASSWORD \
-       DOZZLE_USERNAME DOZZLE_PASSWORD
+       DOZZLE_USERNAME DOZZLE_PASSWORD \
+       GRAFANA_USERNAME GRAFANA_PASSWORD \
+       GLITCHTIP_DB_PASSWORD GLITCHTIP_SECRET_KEY \
+       GLITCHTIP_DSN GLITCHTIP_FRONTEND_DSN
 
 COMPOSE_VALIDATE_OUTPUT=$(dc config 2>&1) || {
   step_fail "docker compose config returned non-zero"

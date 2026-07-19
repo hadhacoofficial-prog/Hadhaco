@@ -218,6 +218,11 @@ class Settings(BaseSettings):
     ORDER_NUMBER_PREFIX: str = "HD"
     INVOICE_NUMBER_PREFIX: str = "INV"
 
+    # ── Monitoring & Error Tracking ──────────────────────────────────────────
+    SENTRY_DSN: str = ""  # GlitchTip/Sentry DSN for error tracking
+    SENTRY_TRACES_SAMPLE_RATE: float = 0.1  # 10% of transactions traced
+    ENABLE_PROMETHEUS: bool = True  # expose /metrics for Prometheus scraping
+
     # ── Derived helpers ───────────────────────────────────────────────────────
     # R2 aliases — media/invoices services use the short names.
     @property

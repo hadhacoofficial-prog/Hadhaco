@@ -4,13 +4,30 @@ Full-stack Docker setup for the Hadha.co project.
 
 ## Services
 
+### Application
+
 | Service         | URL                        | Description                             |
 |-----------------|----------------------------|-----------------------------------------|
 | backend         | http://localhost:8000      | FastAPI (uvicorn --reload)              |
-| frontend        | http://localhost:8080      | React + TanStack Start (Vite / Nitro)   |
+| storefront      | http://localhost:8080      | React + TanStack Start (Vite / Nitro)   |
+| admin           | http://localhost:8081      | React Admin Portal                      |
 | hadha-redis     | localhost:6379             | Redis 7 (AOF persistence)               |
 | redis-commander | http://localhost:8082      | Browser-based Redis key browser         |
-| dozzle          | http://localhost:8081      | Real-time container log viewer          |
+| dozzle          | http://localhost:8083      | Real-time container log viewer          |
+
+### Monitoring & Observability
+
+| Service          | URL                         | Description                               |
+|------------------|-----------------------------|-------------------------------------------|
+| prometheus       | http://localhost:9090        | Metrics collection & storage              |
+| grafana          | http://localhost:3000        | Dashboards & visualization (admin/admin)  |
+| loki             | localhost:3100               | Log aggregation (internal)                |
+| promtail         | localhost:9080               | Log collection agent (internal)           |
+| node-exporter    | localhost:9100               | Host system metrics (internal)            |
+| cadvisor         | http://localhost:8084        | Container resource metrics                |
+| uptime-kuma      | http://localhost:3002        | Uptime monitoring dashboard               |
+| glitchtip        | http://localhost:8001        | Error tracking (Sentry-compatible)        |
+| glitchtip-db     | localhost:5433               | GlitchTip PostgreSQL database             |
 
 ## Prerequisites
 

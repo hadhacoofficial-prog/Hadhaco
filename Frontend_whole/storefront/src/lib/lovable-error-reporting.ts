@@ -1,3 +1,5 @@
+import * as Sentry from "@sentry/react";
+
 type LovableErrorOptions = {
   mechanism?: "manual" | "onerror" | "unhandledrejection" | "react_error_boundary";
   handled?: boolean;
@@ -20,6 +22,16 @@ declare global {
 
 export function reportLovableError(error: unknown, context: Record<string, unknown> = {}) {
   if (typeof window === "undefined") return;
+
+  // Send to Sentry/GlitchTip
+  Sentry.withScope((scope) => {
+    scope.setTag("source", "react_error_boundary");
+    scope.setTag("route", window.location.pathname);
+    scope.setLevel("error");
+    Sentry.captureException(error);
+  });
+
+  // Send to Lovable platform (if available)
   window.__lovableEvents?.captureException?.(
     error,
     {
@@ -33,4 +45,14 @@ export function reportLovableError(error: unknown, context: Record<string, unkno
       severity: "error",
     },
   );
+}
+
+export function reportUnhandledError(error: unknown) {
+  if (typeof window === "undefined") return;
+  Sentry.withScope((scope) => {
+    scope.setTag("source", "unhandled");
+    scope.setTag("route", window.location.pathname);
+    scope.setLevel("error");
+    Sentry.captureException(error);
+  });
 }

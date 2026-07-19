@@ -67,6 +67,10 @@ APScheduler==3.10.4
 # ── Logging ──────────────────────────────────────────────────────────────────
 structlog==24.4.0
 
+# ── Monitoring & Error Tracking ─────────────────────────────────────────────
+prometheus-fastapi-instrumentator==8.0.2
+sentry-sdk[fastapi]==2.14.0
+
 # ── Utilities ────────────────────────────────────────────────────────────────
 python-slugify==8.0.4
 phonenumbers==8.13.50

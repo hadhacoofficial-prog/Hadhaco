@@ -10,14 +10,14 @@ name: hadha
 #   6379 → redis           direct access for local debugging
 #   8082 → redis-commander
 #   8083 → dozzle
-#
-# Key design notes:
-#   • storefront/admin both bind-mount ./Frontend_whole:/app so source edits
-#     trigger hot-reload in both containers simultaneously.
-#   • Named volumes shadow /app/node_modules so Linux-built native binaries
-#     (esbuild, etc.) are never overwritten by the Windows host copy.
-#   • SERVER_API_BASE_URL is injected here (not in .env) so the Nitro SSR
-#     server calls the backend over the Docker-internal network, not localhost.
+#   9090 → prometheus
+#   3000 → grafana
+#   3100 → loki
+#   9081 → promtail
+#   8084 → cAdvisor
+#   9100 → node-exporter (host)
+#   3002 → uptime-kuma
+#   8001 → glitchtip
 # ─────────────────────────────────────────────────────────────────────────────
 
 services:
@@ -44,6 +44,7 @@ services:
         condition: service_healthy
     networks:
       - hadha-network
+      - hadha-monitoring
     sysctls:
       net.ipv6.conf.all.disable_ipv6: "1"
     healthcheck:
@@ -63,13 +64,10 @@ services:
     restart: unless-stopped
     env_file: ./Frontend_whole/storefront/.env
     environment:
-      # Browser-side: resolved by the user's browser on the host
       VITE_API_BASE_URL: "http://localhost:8000/api/v1"
-      # SSR-side: resolved inside the Docker network (overrides .env default)
       SERVER_API_BASE_URL: "http://hadha-backend:8000/api/v1"
     volumes:
       - ./Frontend_whole:/app
-      # Named volume keeps Linux-built node_modules separate from Windows host copy
       - storefront_node_modules:/app/node_modules
     ports:
       - "8080:8080"
@@ -150,6 +148,8 @@ services:
     restart: unless-stopped
     environment:
       REDIS_HOSTS: "hadha:hadha-redis:6379:0:${REDIS_PASSWORD:-}"
+      HTTP_USER: ${REDIS_UI_USERNAME:-admin-redis-ui}
+      HTTP_PASSWORD: ${REDIS_UI_PASSWORD:-hadha2026@admin-redis-ui}
     ports:
       - "8082:8081"
     depends_on:
@@ -175,10 +175,12 @@ services:
     restart: unless-stopped
     environment:
       DOZZLE_NO_ANALYTICS: "true"
+      DOZZLE_AUTH_PROVIDER: simple
     ports:
       - "8083:8080"
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
+      - ./deploy/monitoring/dozzle/users.yml:/data/users.yml:ro
     networks:
       - hadha-network
     healthcheck:
@@ -188,19 +190,348 @@ services:
       retries: 3
       start_period: 10s
 
+  # ── Redis Exporter — Prometheus metrics for Redis ──────────────────────────
+  redis-exporter:
+    image: oliver006/redis_exporter:v1.61.0
+    container_name: hadha-redis-exporter
+    restart: unless-stopped
+    environment:
+      REDIS_ADDR: "redis://hadha-redis:6379"
+      REDIS_PASSWORD: "${REDIS_PASSWORD:-}"
+    ports:
+      - "9121:9121"
+    depends_on:
+      hadha-redis:
+        condition: service_healthy
+    networks:
+      - hadha-network
+      - hadha-monitoring
+    deploy:
+      resources:
+        limits:
+          memory: 32M
+          cpus: "0.1"
+
+  # ── Prometheus — metrics (localhost:9090) ─────────────────────────────────────
+  prometheus:
+    image: prom/prometheus:v2.53.0
+    container_name: hadha-prometheus
+    restart: unless-stopped
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.path=/prometheus"
+      - "--storage.tsdb.retention.time=2d"
+      - "--storage.tsdb.wal-segment-size=32MB"
+      - "--web.enable-lifecycle"
+      - "--web.enable-admin-api"
+    volumes:
+      - ./deploy/monitoring/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./deploy/monitoring/prometheus/rules:/etc/prometheus/rules:ro
+      - prometheus_data:/prometheus
+    ports:
+      - "9090:9090"
+    networks:
+      - hadha-network
+      - hadha-monitoring
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:9090/-/healthy"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+          cpus: "0.5"
+
+  # ── Grafana — dashboards (localhost:3000) ─────────────────────────────────────
+  grafana:
+    image: grafana/grafana:11.1.0
+    container_name: hadha-grafana
+    restart: unless-stopped
+    environment:
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_USERNAME:-admin}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_PASSWORD:-admin}
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Admin
+      GF_LOG_LEVEL: "warn"
+    volumes:
+      - ./deploy/monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./deploy/monitoring/grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - grafana_data:/var/lib/grafana
+    ports:
+      - "3000:3000"
+    depends_on:
+      prometheus:
+        condition: service_healthy
+      loki:
+        condition: service_healthy
+    networks:
+      - hadha-network
+      - hadha-monitoring
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:3000/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+          cpus: "0.5"
+
+  # ── Loki — log aggregation (localhost:3100) ──────────────────────────────────
+  loki:
+    image: grafana/loki:3.1.0
+    container_name: hadha-loki
+    restart: unless-stopped
+    command: -config.file=/etc/loki/loki-config.yml
+    volumes:
+      - ./deploy/monitoring/loki/loki-config.yml:/etc/loki/loki-config.yml:ro
+      - loki_data:/loki
+    ports:
+      - "3100:3100"
+    networks:
+      - hadha-network
+      - hadha-monitoring
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:3100/ready"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 20s
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+          cpus: "0.5"
+
+  # ── Promtail — log collection agent (localhost:9081) ─────────────────────────
+  promtail:
+    image: grafana/promtail:3.1.0
+    container_name: hadha-promtail
+    restart: unless-stopped
+    command: -config.file=/etc/promtail/promtail-config.yml
+    volumes:
+      - ./deploy/monitoring/promtail/promtail-config.yml:/etc/promtail/promtail-config.yml:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - /var/lib/docker/containers:/var/lib/docker/containers:ro
+      - promtail_positions:/tmp
+    ports:
+      - "9081:9080"
+    depends_on:
+      loki:
+        condition: service_healthy
+    networks:
+      - hadha-network
+      - hadha-monitoring
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:9080/ready"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    deploy:
+      resources:
+        limits:
+          memory: 64M
+          cpus: "0.1"
+
+  # ── Node Exporter — host metrics ─────────────────────────────────────────────
+  node-exporter:
+    image: prom/node-exporter:v1.8.1
+    container_name: hadha-node-exporter
+    restart: unless-stopped
+    command:
+      - "--path.procfs=/host/proc"
+      - "--path.sysfs=/host/sys"
+      - "--path.rootfs=/host/root"
+      - "--collector.filesystem.mount-points-exclude=^/(sys|proc|dev|host|etc)($$|/)"
+      - "--collector.filesystem.fs-types-exclude=^(sysfs|procfs|devpts|tmpfs|hugetlbfs|cgroup|cgroup2|overlay|fuse.*|nsfs|debugfs|pstore|securityfs|bpf|mqueue|autofs|tracefs|configfs|efivarfs|rpc_pipefs|nfsd)$"
+    volumes:
+      - /proc:/host/proc:ro
+      - /sys:/host/sys:ro
+      - /:/host/root:ro
+    ports:
+      - "9100:9100"
+    networks:
+      - hadha-network
+      - hadha-monitoring
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:9100/metrics"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    deploy:
+      resources:
+        limits:
+          memory: 32M
+          cpus: "0.1"
+
+  # ── cAdvisor — container metrics (localhost:8084) ────────────────────────────
+  cadvisor:
+    image: gcr.io/cadvisor/cadvisor:v0.49.1
+    container_name: hadha-cadvisor
+    restart: unless-stopped
+    privileged: true
+    volumes:
+      - /:/rootfs:ro
+      - /var/run:/var/run:ro
+      - /sys:/sys:ro
+      - /var/lib/docker/:/var/lib/docker:ro
+      - /dev/disk/:/dev/disk:ro
+    ports:
+      - "8084:8080"
+    networks:
+      - hadha-network
+      - hadha-monitoring
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8080/healthz"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+    deploy:
+      resources:
+        limits:
+          memory: 128M
+          cpus: "0.25"
+
+  # ── Uptime Kuma — uptime monitoring (localhost:3002) ─────────────────────────
+  uptime-kuma:
+    image: louislam/uptime-kuma:2.0.2
+    container_name: hadha-uptime-kuma
+    restart: unless-stopped
+    volumes:
+      - uptime_kuma_data:/app/data
+    ports:
+      - "3002:3001"
+    networks:
+      - hadha-network
+    healthcheck:
+      test: ["CMD", "node", "-e", "require('http').get('http://localhost:3001', r => { process.exit(r.statusCode >= 200 && r.statusCode < 400 ? 0 : 1) }).on('error', () => process.exit(1))"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+    deploy:
+      resources:
+        limits:
+          memory: 128M
+          cpus: "0.25"
+
+  # ── GlitchTip — error tracking (localhost:8001) ──────────────────────────────
+  glitchtip:
+    image: glitchtip/glitchtip:6.1.8
+    container_name: hadha-glitchtip
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: "postgres://glitchtip:${GLITCHTIP_DB_PASSWORD:-glitchtip}@hadha-glitchtip-db:5432/glitchtip"
+      SECRET_KEY: "${GLITCHTIP_SECRET_KEY:-dev-secret-key-change-in-production}"
+      GLITCHTIP_DOMAIN: "http://localhost:8001"
+      PORT: "8000"
+      VALKEY_URL: "redis://:${REDIS_PASSWORD:-}@hadha-redis:6379/1"
+    ports:
+      - "8001:8000"
+    depends_on:
+      hadha-glitchtip-db:
+        condition: service_healthy
+      hadha-redis:
+        condition: service_healthy
+    networks:
+      - hadha-network
+    healthcheck:
+      test: ["CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/_health/')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+          cpus: "0.5"
+
+  # ── GlitchTip Worker — processes error events ────────────────────────────────
+  glitchtip-worker:
+    image: glitchtip/glitchtip:6.1.8
+    container_name: hadha-glitchtip-worker
+    command: /code/bin/run-worker.sh
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: "postgres://glitchtip:${GLITCHTIP_DB_PASSWORD:-glitchtip}@hadha-glitchtip-db:5432/glitchtip"
+      SECRET_KEY: "${GLITCHTIP_SECRET_KEY:-dev-secret-key-change-in-production}"
+      GLITCHTIP_DOMAIN: "http://localhost:8001"
+      PORT: "8000"
+      VALKEY_URL: "redis://:${REDIS_PASSWORD:-}@hadha-redis:6379/1"
+    depends_on:
+      hadha-glitchtip-db:
+        condition: service_healthy
+      hadha-redis:
+        condition: service_healthy
+    networks:
+      - hadha-network
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+          cpus: "0.25"
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "2"
+
+  # ── GlitchTip PostgreSQL ─────────────────────────────────────────────────────
+  hadha-glitchtip-db:
+    image: postgres:16-alpine
+    container_name: hadha-glitchtip-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: glitchtip
+      POSTGRES_USER: glitchtip
+      POSTGRES_PASSWORD: ${GLITCHTIP_DB_PASSWORD:-glitchtip}
+    volumes:
+      - glitchtip_db_data:/var/lib/postgresql/data
+    ports:
+      - "5433:5432"
+    networks:
+      - hadha-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U glitchtip -d glitchtip"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    deploy:
+      resources:
+        limits:
+          memory: 128M
+          cpus: "0.25"
+
 # ─────────────────────────────────────────────────────────────────────────────
 # Volumes
 # ─────────────────────────────────────────────────────────────────────────────
 volumes:
   redis_data:
-  # One volume per frontend service — shadows /app/node_modules so Linux-built
-  # binaries are never merged with the Windows host copy on the bind-mount.
   storefront_node_modules:
   admin_node_modules:
+  prometheus_data:
+  grafana_data:
+  loki_data:
+  promtail_positions:
+  uptime_kuma_data:
+  glitchtip_db_data:
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Networks
 # ─────────────────────────────────────────────────────────────────────────────
 networks:
   hadha-network:
+    driver: bridge
+  hadha-monitoring:
     driver: bridge

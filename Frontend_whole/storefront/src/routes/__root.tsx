@@ -13,6 +13,7 @@ import { GlobalJewelleryBackground } from "../components/site/GlobalJewelleryBac
 
 import appCss from "../styles.css?url";
 import { reportLovableError } from "../lib/lovable-error-reporting";
+import { initSentry } from "../lib/sentry";
 import markAsset from "../assets/hadha-mark.png";
 import { AuthProvider } from "../providers/AuthProvider";
 import { RouteTransition } from "../components/common/RouteTransition";
@@ -31,6 +32,8 @@ import { useBuyNowStore } from "../stores/buyNow";
 import { useWishlist } from "../stores/wishlist";
 import { useRecentlyViewed } from "../stores/recentlyViewed";
 import { useRecentSearches } from "../stores/search";
+
+initSentry();
 
 function NotFoundComponent() {
   return (

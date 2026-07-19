@@ -1,5 +1,7 @@
 from contextlib import asynccontextmanager
+import logging
 
+import structlog
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
@@ -115,6 +117,46 @@ def create_app() -> FastAPI:
         openapi_url="/openapi.json" if not settings.is_production else None,
         lifespan=lifespan,
     )
+
+    # ── Prometheus metrics instrumentation ──────────────────────────────────
+    if settings.ENABLE_PROMETHEUS:
+        try:
+            from prometheus_fastapi_instrumentator import Instrumentator
+
+            instrumentator = Instrumentator(
+                should_group_status_codes=False,
+                should_ignore_untemplated=True,
+                should_instrument_requests_inprogress=True,
+                excluded_handlers=["/metrics", "/health", "/health/ready", "/health/live"],
+                inprogress_name="http_requests_in_progress",
+                inprogress_labels=True,
+            )
+            instrumentator.instrument(app)
+            instrumentator.expose(app, endpoint="/metrics", include_in_schema=False)
+        except ImportError:
+            pass  # prometheus-fastapi-instrumentator not installed
+
+    # ── GlitchTip / Sentry error tracking ──────────────────────────────────
+    if settings.SENTRY_DSN:
+        try:
+            import sentry_sdk
+            from sentry_sdk.integrations.logging import LoggingIntegration
+
+            sentry_logging = LoggingIntegration(
+                level=logging.INFO,
+                event_level=logging.ERROR,
+            )
+            sentry_sdk.init(
+                dsn=settings.SENTRY_DSN,
+                environment=settings.APP_ENV,
+                release=settings.APP_VERSION,
+                traces_sample_rate=settings.SENTRY_TRACES_SAMPLE_RATE,
+                integrations=[sentry_logging],
+                send_default_pii=False,
+                attach_stacktrace=True,
+            )
+        except ImportError:
+            pass  # sentry-sdk not installed
 
     if settings.is_production:
         app.add_middleware(
