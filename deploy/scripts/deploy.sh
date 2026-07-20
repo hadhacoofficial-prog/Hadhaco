@@ -676,6 +676,37 @@ fi
 step_end
 
 # =============================================================================
+# STEP 8.6: Force-recreate loki config (persistent "not a directory" issue)
+# =============================================================================
+step_start "Force-recreate monitoring configs"
+
+LOKI_CFG="${APP_DIR}/monitoring/loki/loki-config.yml"
+PROMTAIL_CFG="${APP_DIR}/monitoring/promtail/promtail-config.yml"
+PROMETHEUS_CFG="${APP_DIR}/monitoring/prometheus/prometheus.yml"
+
+for cfg in "${LOKI_CFG}" "${PROMTAIL_CFG}" "${PROMETHEUS_CFG}"; do
+  log "  [STAT] ${cfg}: $(stat -c '%F (inode %i, size %s, perms %A)' "${cfg}" 2>/dev/null || echo 'MISSING')"
+
+  if [[ ! -f "${cfg}" ]]; then
+    # Try CI source path (with deploy/ prefix from SCP strip_components:0)
+    for prefix in "/tmp/hadha-deploy/deploy" "/tmp/hadha-deploy"; do
+      src_cfg="${prefix}/${cfg#${APP_DIR}/}"
+      if [[ -f "${src_cfg}" ]]; then
+        rm -rf "${cfg}" 2>/dev/null
+        mkdir -p "$(dirname "${cfg}")"
+        cp -f "${src_cfg}" "${cfg}"
+        log "  [RESTORE] ${cfg} ← ${src_cfg}"
+        break
+      fi
+    done
+  fi
+done
+
+sync
+log "  [OK] Config files verified after sync"
+step_end
+
+# =============================================================================
 # STEP 9: Start containers
 # =============================================================================
 step_start "Start containers"
