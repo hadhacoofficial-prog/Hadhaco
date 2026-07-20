@@ -97,6 +97,21 @@ if [[ -z "${REDIS_PASSWORD:-}" ]] && [[ -f "${ENV_FILE}" ]]; then
 fi
 export REDIS_PASSWORD="${REDIS_PASSWORD:-}"
 
+# ── Ensure file-mount paths are files, not directories ─────────────────────────
+FILE_MOUNT_PATHS=(
+  "${APP_DIR}/dozzle/users.yml"
+  "${APP_DIR}/nginx/nginx.conf"
+  "${APP_DIR}/monitoring/prometheus/prometheus.yml"
+  "${APP_DIR}/monitoring/loki/loki-config.yml"
+  "${APP_DIR}/monitoring/promtail/promtail-config.yml"
+)
+for fpath in "${FILE_MOUNT_PATHS[@]}"; do
+  if [[ -d "${fpath}" ]]; then
+    log "[FIX] ${fpath} is a directory — removing (stale mount path)"
+    rm -rf "${fpath}"
+  fi
+done
+
 # ── Restart with previous images ──────────────────────────────────────────────
 log "Restarting containers with previous images..."
 if ! dc up -d --remove-orphans --pull never 2>&1 | tee -a "${LOG_FILE}"; then

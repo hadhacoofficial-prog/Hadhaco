@@ -357,6 +357,15 @@ jobs:
             mkdir -p /opt/hadha/nginx/conf.d
             cp -f /tmp/hadha-deploy/deploy/nginx/conf.d/*.conf                    /opt/hadha/nginx/conf.d/
 
+            # Install monitoring configs (prometheus, loki, promtail)
+            mkdir -p /opt/hadha/monitoring/prometheus/rules
+            cp -f /tmp/hadha-deploy/deploy/monitoring/prometheus/prometheus.yml    /opt/hadha/monitoring/prometheus/
+            cp -f /tmp/hadha-deploy/deploy/monitoring/prometheus/rules/*.yml      /opt/hadha/monitoring/prometheus/rules/
+            mkdir -p /opt/hadha/monitoring/loki
+            cp -f /tmp/hadha-deploy/deploy/monitoring/loki/loki-config.yml        /opt/hadha/monitoring/loki/
+            mkdir -p /opt/hadha/monitoring/promtail
+            cp -f /tmp/hadha-deploy/deploy/monitoring/promtail/promtail-config.yml /opt/hadha/monitoring/promtail/
+
             rm -rf /tmp/hadha-deploy
 
             # Execute deployment

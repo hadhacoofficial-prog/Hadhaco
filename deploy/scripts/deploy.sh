@@ -619,6 +619,37 @@ MIGRATIONS_COMPLETED=true
 step_end
 
 # =============================================================================
+# STEP 8.5: Ensure file-mount paths are files, not directories
+# =============================================================================
+step_start "Verify file-mount paths"
+
+# If a host path that should be a file is a directory (from failed deploys),
+# Docker will fail with "not a directory" on bind-mount.  Remove stale dirs.
+FILE_MOUNT_PATHS=(
+  "${APP_DIR}/dozzle/users.yml"
+  "${APP_DIR}/nginx/nginx.conf"
+  "${APP_DIR}/monitoring/prometheus/prometheus.yml"
+  "${APP_DIR}/monitoring/loki/loki-config.yml"
+  "${APP_DIR}/monitoring/promtail/promtail-config.yml"
+)
+
+CLEANED=0
+for fpath in "${FILE_MOUNT_PATHS[@]}"; do
+  if [[ -d "${fpath}" ]]; then
+    log "  [FIX] ${fpath} is a directory — removing (will be recreated or is stale)"
+    rm -rf "${fpath}"
+    CLEANED=$((CLEANED + 1))
+  fi
+done
+
+if [[ ${CLEANED} -gt 0 ]]; then
+  log "Cleaned ${CLEANED} stale directory mount(s)"
+else
+  log "All file-mount paths are correct"
+fi
+step_end
+
+# =============================================================================
 # STEP 9: Start containers
 # =============================================================================
 step_start "Start containers"
