@@ -588,6 +588,33 @@ log "Dozzle auth file written to ${DOZZLE_DIR}/users.yml (password bcrypt-hashed
 step_end
 
 # =============================================================================
+# STEP 7.6: Generate nginx basic-auth file for monitoring endpoints
+# =============================================================================
+step_start "Generate nginx basic-auth file"
+
+NGINX_DIR="${APP_DIR}/nginx"
+HTPASSWD_FILE="${NGINX_DIR}/.htpasswd"
+
+# Safety: remove stale directory at file path (can happen from failed deploys)
+if [[ -d "${HTPASSWD_FILE}" ]]; then
+  rm -rf "${HTPASSWD_FILE}"
+  log "Removed stale directory at ${HTPASSWD_FILE}"
+fi
+
+mkdir -p "${NGINX_DIR}"
+
+if [[ -z "${MONITORING_USERNAME:-}" ]] || [[ -z "${MONITORING_PASSWORD:-}" ]]; then
+  die "MONITORING_USERNAME and MONITORING_PASSWORD are required for monitoring basic auth"
+fi
+
+htpasswd -cb "${HTPASSWD_FILE}" "${MONITORING_USERNAME}" "${MONITORING_PASSWORD}" 2>/dev/null \
+  || die "Failed to generate htpasswd file"
+
+chmod 644 "${HTPASSWD_FILE}"
+log "Basic-auth file written to ${HTPASSWD_FILE}"
+step_end
+
+# =============================================================================
 # STEP 8: Database migrations
 # =============================================================================
 step_start "Database migrations (Supabase)"
@@ -628,6 +655,7 @@ step_start "Verify file-mount paths"
 FILE_MOUNT_PATHS=(
   "${APP_DIR}/dozzle/users.yml"
   "${APP_DIR}/nginx/nginx.conf"
+  "${APP_DIR}/nginx/.htpasswd"
   "${APP_DIR}/monitoring/prometheus/prometheus.yml"
   "${APP_DIR}/monitoring/loki/loki-config.yml"
   "${APP_DIR}/monitoring/promtail/promtail-config.yml"

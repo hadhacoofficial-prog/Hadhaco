@@ -101,6 +101,7 @@ export REDIS_PASSWORD="${REDIS_PASSWORD:-}"
 FILE_MOUNT_PATHS=(
   "${APP_DIR}/dozzle/users.yml"
   "${APP_DIR}/nginx/nginx.conf"
+  "${APP_DIR}/nginx/.htpasswd"
   "${APP_DIR}/monitoring/prometheus/prometheus.yml"
   "${APP_DIR}/monitoring/loki/loki-config.yml"
   "${APP_DIR}/monitoring/promtail/promtail-config.yml"
