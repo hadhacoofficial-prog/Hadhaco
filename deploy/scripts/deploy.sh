@@ -713,6 +713,14 @@ step_start "Start containers"
 DEPLOYMENT_STATE="COMPOSING"
 COMPOSE_UPDATED=true
 
+log "  Removing stale containers with file bind mounts (Compose caches mount type)..."
+for c in hadha-loki hadha-promtail hadha-prometheus hadha-grafana; do
+  if docker ps -a --format '{{.Names}}' 2>/dev/null | grep -qFx "${c}"; then
+    docker rm -f "${c}" 2>/dev/null || true
+    log "  Removed stale container: ${c}"
+  fi
+done
+
 if ! dc up -d --remove-orphans --pull never 2>&1 | tee -a "${LOG_FILE}"; then
   rollback_and_exit "docker compose up failed"
 fi

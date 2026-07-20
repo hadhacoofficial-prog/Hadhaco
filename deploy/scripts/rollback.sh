@@ -115,6 +115,15 @@ for fpath in "${FILE_MOUNT_PATHS[@]}"; do
   fi
 done
 
+# ── Remove stale containers with file bind mounts ──────────────────────────────
+log "Removing stale containers with file bind mounts (Compose caches mount type)..."
+for c in hadha-loki hadha-promtail hadha-prometheus hadha-grafana; do
+  if docker ps -a --format '{{.Names}}' 2>/dev/null | grep -qFx "${c}"; then
+    docker rm -f "${c}" 2>/dev/null || true
+    log "  Removed stale container: ${c}"
+  fi
+done
+
 # ── Restart with previous images ──────────────────────────────────────────────
 log "Restarting containers with previous images..."
 if ! dc up -d --remove-orphans --pull never 2>&1 | tee -a "${LOG_FILE}"; then
