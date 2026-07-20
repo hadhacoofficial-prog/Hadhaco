@@ -352,6 +352,15 @@ jobs:
             cp -f /tmp/hadha-deploy/deploy/scripts/*.sh                           /opt/hadha/scripts/
             cp -f /tmp/hadha-deploy/deploy/docker/docker-compose.production.yml   /opt/hadha/
 
+            # Remove stale directories that should be files (from failed deploys)
+            for f in /opt/hadha/dozzle/users.yml \
+                     /opt/hadha/nginx/nginx.conf \
+                     /opt/hadha/monitoring/prometheus/prometheus.yml \
+                     /opt/hadha/monitoring/loki/loki-config.yml \
+                     /opt/hadha/monitoring/promtail/promtail-config.yml; do
+              if [ -d "$f" ]; then rm -rf "$f" && echo "Removed stale directory: $f"; fi
+            done
+
             # Install nginx configs — nginx.conf to root, conf.d/ for all server blocks
             cp -f /tmp/hadha-deploy/deploy/nginx/nginx.conf                       /opt/hadha/nginx/
             mkdir -p /opt/hadha/nginx/conf.d
