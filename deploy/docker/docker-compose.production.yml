@@ -242,7 +242,6 @@ services:
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
       - /opt/hadha/dozzle:/data
-      - ./deploy/monitoring/dozzle/users.yml:/data/users.yml:ro
     networks:
       - hadha-internal
     healthcheck:
