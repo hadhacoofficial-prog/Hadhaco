@@ -108,7 +108,7 @@ FILE_MOUNT_PATHS=(
 for fpath in "${FILE_MOUNT_PATHS[@]}"; do
   if [[ -d "${fpath}" ]]; then
     log "[FIX] ${fpath} is a directory — removing (stale mount path)"
-    rm -rf "${fpath}"
+    sudo rm -rf "${fpath}"
   fi
 done
 

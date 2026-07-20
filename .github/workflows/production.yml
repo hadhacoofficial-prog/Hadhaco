@@ -358,7 +358,7 @@ jobs:
                      /opt/hadha/monitoring/prometheus/prometheus.yml \
                      /opt/hadha/monitoring/loki/loki-config.yml \
                      /opt/hadha/monitoring/promtail/promtail-config.yml; do
-              if [ -d "$f" ]; then rm -rf "$f" && echo "Removed stale directory: $f"; fi
+              if [ -d "$f" ]; then sudo rm -rf "$f" && echo "Removed stale directory: $f"; fi
             done
 
             # Install nginx configs — nginx.conf to root, conf.d/ for all server blocks
