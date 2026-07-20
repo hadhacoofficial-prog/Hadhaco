@@ -611,7 +611,7 @@ services:
 
   # ── GlitchTip — error tracking (Sentry-compatible) ───────────────────────────
   glitchtip:
-    image: glitchtip/glitchtip:6.1.8
+    image: glitchtip/glitchtip:6.2.2
     container_name: hadha-glitchtip
     restart: unless-stopped
     environment:
@@ -649,7 +649,7 @@ services:
 
   # ── GlitchTip Worker — processes error events ────────────────────────────────
   glitchtip-worker:
-    image: glitchtip/glitchtip:6.1.8
+    image: glitchtip/glitchtip:6.2.2
     container_name: hadha-glitchtip-worker
     command: /code/bin/run-worker.sh
     restart: unless-stopped

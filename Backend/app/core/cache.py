@@ -105,7 +105,7 @@ def make_etag(data: str | bytes) -> str:
     """Generate an ETag from response content."""
     if isinstance(data, str):
         data = data.encode()
-    return f'"{hashlib.md5(data).hexdigest()}"'
+    return f'"{hashlib.md5(data, usedforsecurity=False).hexdigest()}"'
 
 
 # ── Cache TTL constants ──────────────────────────────────────────────────────
