@@ -379,9 +379,7 @@ jobs:
             mkdir -p /opt/hadha/monitoring/promtail
             cat /tmp/hadha-deploy/deploy/monitoring/promtail/promtail-config.yml > /opt/hadha/monitoring/promtail/promtail-config.yml
 
-            rm -rf /tmp/hadha-deploy
-
-            # Execute deployment
+            # Execute deployment — temp dir kept for deploy.sh fallback copies
             export BACKEND_IMAGE STOREFRONT_IMAGE ADMIN_IMAGE IMAGE_TAG
             export GHCR_USERNAME GHCR_TOKEN GIT_COMMIT_SHA GIT_COMMIT_AUTHOR
             export REDIS_PASSWORD RESEND_API_KEY RESEND_FROM_EMAIL RESEND_TO_EMAIL
@@ -389,6 +387,8 @@ jobs:
             export GRAFANA_USERNAME GRAFANA_PASSWORD GLITCHTIP_DB_PASSWORD GLITCHTIP_SECRET_KEY
 
             /opt/hadha/scripts/deploy.sh "${IMAGE_TAG}"
+
+            rm -rf /tmp/hadha-deploy
 
       - name: Notify deployment failure (if SSH step failed)
         if: failure()

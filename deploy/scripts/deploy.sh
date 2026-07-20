@@ -650,6 +650,29 @@ if [[ ${CLEANED} -gt 0 ]]; then
 else
   log "All file-mount paths are correct"
 fi
+
+# Fallback: restore any missing or non-file monitoring configs from CI source
+# (which is still at /tmp/hadha-deploy — CI cleans it after this step)
+RESTORED=0
+for fpath in "${FILE_MOUNT_PATHS[@]}"; do
+  if [[ ! -f "${fpath}" ]]; then
+    # Derive CI source path: /opt/hadha/... → /tmp/hadha-deploy/...
+    src_path="/tmp/hadha-deploy/${fpath#${APP_DIR}/}"
+    if [[ -f "${src_path}" ]]; then
+      rm -rf "${fpath}" 2>/dev/null
+      mkdir -p "$(dirname "${fpath}")"
+      cp -f "${src_path}" "${fpath}" 2>/dev/null
+      log "  [RESTORE] ${fpath} ← ${src_path}"
+      RESTORED=$((RESTORED + 1))
+    else
+      log "  [WARN] ${fpath} is not a regular file and no CI source at ${src_path}"
+      log "  [DIAG] File info: $(file "${fpath}" 2>/dev/null || echo 'MISSING')"
+    fi
+  fi
+done
+if [[ ${RESTORED} -gt 0 ]]; then
+  log "Restored ${RESTORED} file(s) from CI source"
+fi
 step_end
 
 # =============================================================================
