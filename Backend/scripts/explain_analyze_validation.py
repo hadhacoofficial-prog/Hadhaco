@@ -65,9 +65,18 @@ async def main() -> None:
 
     # ── Table stats ───────────────────────────────────────────────────────────
     print("### TABLE SIZES ###\n")
-    for tbl in ["products", "categories", "collections", "product_collections",
-                 "search_history", "orders", "images", "image_variants",
-                 "product_variants", "product_attributes"]:
+    for tbl in [
+        "products",
+        "categories",
+        "collections",
+        "product_collections",
+        "search_history",
+        "orders",
+        "images",
+        "image_variants",
+        "product_variants",
+        "product_attributes",
+    ]:
         try:
             q = psycopg.sql.SQL("SELECT COUNT(*) FROM {}").format(
                 psycopg.sql.Identifier(tbl)
@@ -357,19 +366,23 @@ async def main() -> None:
         elif has_seq:
             status = "INFO (Seq Scan OK for small table)"
 
-        print(f"\n  => Execution Time: {exec_time_ms:.1f}ms | "
-              f"Index Used: {'YES' if has_index or has_bitmap else 'NO'} | "
-              f"Seq Scan: {'YES' if has_seq else 'NO'} | "
-              f"Status: {status}")
+        print(
+            f"\n  => Execution Time: {exec_time_ms:.1f}ms | "
+            f"Index Used: {'YES' if has_index or has_bitmap else 'NO'} | "
+            f"Seq Scan: {'YES' if has_seq else 'NO'} | "
+            f"Status: {status}"
+        )
 
-        results.append({
-            "label": label,
-            "elapsed_ms": elapsed,
-            "exec_time_ms": exec_time_ms,
-            "seq_scan": has_seq,
-            "index_scan": has_index or has_bitmap,
-            "status": status,
-        })
+        results.append(
+            {
+                "label": label,
+                "elapsed_ms": elapsed,
+                "exec_time_ms": exec_time_ms,
+                "seq_scan": has_seq,
+                "index_scan": has_index or has_bitmap,
+                "status": status,
+            }
+        )
 
     # ── Summary ───────────────────────────────────────────────────────────────
     print(f"\n{'=' * 80}")
@@ -378,18 +391,22 @@ async def main() -> None:
 
     for r in results:
         err = f"ERROR: {r.get('error', '')}" if "error" in r else ""
-        print(f"  {r['label']:50s} => exec={r.get('exec_time_ms', 0):7.1f}ms "
-              f"index={'YES' if r.get('index_scan') else 'NO '} "
-              f"seq={'YES' if r.get('seq_scan') else 'NO '} "
-              f"{r.get('status', '')} {err}")
+        print(
+            f"  {r['label']:50s} => exec={r.get('exec_time_ms', 0):7.1f}ms "
+            f"index={'YES' if r.get('index_scan') else 'NO '} "
+            f"seq={'YES' if r.get('seq_scan') else 'NO '} "
+            f"{r.get('status', '')} {err}"
+        )
 
     pass_count = sum(1 for r in results if "PASS" in r.get("status", ""))
     warn_count = sum(1 for r in results if "WARN" in r.get("status", ""))
     info_count = sum(1 for r in results if "INFO" in r.get("status", ""))
     err_count = sum(1 for r in results if "error" in r)
 
-    print(f"\n  TOTAL: {len(results)} queries | "
-          f"PASS: {pass_count} | WARN: {warn_count} | INFO: {info_count} | ERROR: {err_count}")
+    print(
+        f"\n  TOTAL: {len(results)} queries | "
+        f"PASS: {pass_count} | WARN: {warn_count} | INFO: {info_count} | ERROR: {err_count}"
+    )
 
     if seq_scan_found:
         print("\n  WARNING: Seq Scans detected — review above for large tables.")

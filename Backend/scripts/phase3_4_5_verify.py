@@ -14,14 +14,17 @@ BASE_URL = "http://localhost:8000"
 
 def _docker_exec(cmd: list[str]) -> str:
     r = subprocess.run(
-        ["docker", "exec", "hadha-redis"] + cmd, capture_output=True, text=True, timeout=5
+        ["docker", "exec", "hadha-redis"] + cmd,
+        capture_output=True,
+        text=True,
+        timeout=5,
     )
     return r.stdout.strip()
 
 
 def _redis_keys(pattern: str = "*") -> list[str]:
     raw = _docker_exec(["redis-cli", "KEYS", pattern])
-    return [l for l in raw.splitlines() if l]
+    return [line for line in raw.splitlines() if line]
 
 
 def _redis_ttl(key: str) -> int:
@@ -32,14 +35,18 @@ def _redis_ttl(key: str) -> int:
         return -1
 
 
-async def _timed_get(client: httpx.AsyncClient, url: str) -> tuple[httpx.Response, float]:
+async def _timed_get(
+    client: httpx.AsyncClient, url: str
+) -> tuple[httpx.Response, float]:
     t0 = time.perf_counter()
     r = await client.get(url)
     return r, (time.perf_counter() - t0) * 1000
 
 
 async def load_token() -> str:
-    with open(r"C:\Users\Admin\AppData\Local\Temp\k6-token.txt", encoding="utf-8-sig") as f:
+    with open(
+        r"C:\Users\Admin\AppData\Local\Temp\k6-token.txt", encoding="utf-8-sig"
+    ) as f:
         return f.read().strip()
 
 
@@ -74,7 +81,9 @@ async def phase3_invalidation_proof(client: httpx.AsyncClient, token: str):
             )
             print(f"  PUT /admin/products/{pid}: status={r.status_code} (bust trigger)")
 
-            r, t3 = await _timed_get(client, f"{BASE_URL}/api/v1/products?page=1&page_size=5")
+            r, t3 = await _timed_get(
+                client, f"{BASE_URL}/api/v1/products?page=1&page_size=5"
+            )
             busted = t3 > t2 * 1.5
             results.append(("Product List", busted, t2, t3))
             print(f"  GET /products (post-bust): {t3:.1f}ms, busted={busted}")
@@ -86,7 +95,9 @@ async def phase3_invalidation_proof(client: httpx.AsyncClient, token: str):
 
     # Test 3: Search cache
     print("\n--- Test 3: Search cache ---")
-    r, t_s = await _timed_get(client, f"{BASE_URL}/api/v1/search?q=ring&page=1&page_size=10")
+    r, t_s = await _timed_get(
+        client, f"{BASE_URL}/api/v1/search?q=ring&page=1&page_size=10"
+    )
     print(f"  GET /search?q=ring: {t_s:.1f}ms")
 
     # Test 4: Navbar / Navigation HTTP headers
@@ -158,7 +169,7 @@ async def phase4_sql_profiling(client: httpx.AsyncClient):
     r = await client.get(f"{BASE_URL}/health/metrics")
     final = r.json()
 
-    print(f"\n--- Pool Status ---")
+    print("\n--- Pool Status ---")
     print(f"  Capacity: {final['pool']['capacity']}")
     print(f"  Peak checked out: {final['pool']['peak_checked_out']}")
     print(f"  Peak utilization: {final['pool']['peak_utilization_pct']}%")
@@ -166,7 +177,7 @@ async def phase4_sql_profiling(client: httpx.AsyncClient):
     print(f"  Max wait time: {final['pool']['max_wait_ms']:.1f}ms")
     print(f"  Avg wait time: {final['pool']['avg_wait_ms']:.1f}ms")
 
-    print(f"\n--- Redis Profiling ---")
+    print("\n--- Redis Profiling ---")
     print(f"  Total calls: {final['redis']['total_calls']}")
     print(f"  Total time: {final['redis']['total_ms']:.1f}ms")
     print(f"  Max single call: {final['redis']['max_ms']:.1f}ms")
@@ -207,7 +218,7 @@ async def phase5_pool_load(client: httpx.AsyncClient):
 
     print(f"\n  Wall-clock time: {total_time:.1f}ms")
     success = 0
-    for i, (ep, resp) in enumerate(zip(endpoints, responses)):
+    for i, (ep, resp) in enumerate(zip(endpoints, responses, strict=False)):
         if isinstance(resp, Exception):
             print(f"  [{i+1}] {ep}: ERROR - {resp}")
         else:
@@ -218,8 +229,10 @@ async def phase5_pool_load(client: httpx.AsyncClient):
     r = await client.get(f"{BASE_URL}/health/metrics")
     after = r.json()
 
-    print(f"\n--- Post-Load Pool Stats ---")
-    print(f"  Peak checked out: {after['pool']['peak_checked_out']}/{after['pool']['capacity']}")
+    print("\n--- Post-Load Pool Stats ---")
+    print(
+        f"  Peak checked out: {after['pool']['peak_checked_out']}/{after['pool']['capacity']}"
+    )
     print(f"  Peak utilization: {after['pool']['peak_utilization_pct']}%")
     print(f"  Total checkout waits: {after['pool']['total_checkout_waits']}")
     print(f"  Max wait time: {after['pool']['max_wait_ms']:.1f}ms")
@@ -227,11 +240,11 @@ async def phase5_pool_load(client: httpx.AsyncClient):
 
     delta_queries = after["sql"]["total_queries"] - before["sql"]["total_queries"]
     delta_ms = after["sql"]["total_ms"] - before["sql"]["total_ms"]
-    print(f"\n--- SQL During Load ---")
+    print("\n--- SQL During Load ---")
     print(f"  Queries: {delta_queries}")
     print(f"  Total time: {delta_ms:.1f}ms")
 
-    print(f"\n--- POOL VERDICT ---")
+    print("\n--- POOL VERDICT ---")
     pct = after["pool"]["peak_utilization_pct"]
     if pct <= 75:
         print(f"  PASS: Peak {pct}% <= 75% -- no pressure")

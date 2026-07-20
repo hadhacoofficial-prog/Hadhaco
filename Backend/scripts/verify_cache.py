@@ -12,7 +12,6 @@ Requirements: httpx, redis (sync client)
 
 from __future__ import annotations
 
-import json
 import statistics
 import sys
 import time
@@ -30,17 +29,47 @@ MEASURE_REQUESTS = 10  # requests per endpoint to measure cold/warm latency
 # Endpoints to test (path, method, description, is_cacheable, expected_cache_prefix)
 ENDPOINTS = [
     # Catalog
-    ("/api/v1/products?page=1&page_size=20", "GET", "Product List", True, "products:list:v1:"),
-    ("/api/v1/products?is_featured=true&page_size=5", "GET", "Product List (Featured)", True, "products:list:v1:"),
+    (
+        "/api/v1/products?page=1&page_size=20",
+        "GET",
+        "Product List",
+        True,
+        "products:list:v1:",
+    ),
+    (
+        "/api/v1/products?is_featured=true&page_size=5",
+        "GET",
+        "Product List (Featured)",
+        True,
+        "products:list:v1:",
+    ),
     # We'll discover product slugs dynamically
     ("/api/v1/categories", "GET", "Category Tree", True, "categories:tree:v1:"),
-    ("/api/v1/categories/navbar", "GET", "Categories Navbar", True, "categories:navbar:v1"),
-    ("/api/v1/categories/navigation", "GET", "Categories Navigation", True, "navigation:categories:v2"),
+    (
+        "/api/v1/categories/navbar",
+        "GET",
+        "Categories Navbar",
+        True,
+        "categories:navbar:v1",
+    ),
+    (
+        "/api/v1/categories/navigation",
+        "GET",
+        "Categories Navigation",
+        True,
+        "navigation:categories:v2",
+    ),
     # Collections
     ("/api/v1/collections", "GET", "Collections List", True, "collections:list:v1"),
     # Search
     ("/api/v1/search?q=silver&page=1", "GET", "Search", True, "search:v1:"),
-    ("/api/v1/search/autocomplete?q=silver&limit=5", "GET", "Autocomplete", True, "autocomplete:v1:"),
+    (
+        "/api/v1/search/autocomplete?q=silver&limit=5",
+        "GET",
+        "Autocomplete",
+        True,
+        "autocomplete:v1:",
+    ),
     ("/api/v1/search/trending", "GET", "Trending", True, "trending:v1"),
     # CMS
     ("/api/v1/cms/home", "GET", "CMS Home (Legacy)", True, "cms:home:v1"),
@@ -131,7 +160,8 @@ def diff_redis_info(before: dict, after: dict) -> dict:
             )
             * 100
         ),
-        "commands_delta": after["total_commands_processed"] - before["total_commands_processed"],
+        "commands_delta": after["total_commands_processed"]
+        - before["total_commands_processed"],
         "evictions_delta": after["evicted_keys"] - before["evicted_keys"],
         "expired_delta": after["expired_keys"] - before["expired_keys"],
     }
@@ -216,12 +246,14 @@ def get_key_details(r: redis.Redis, pattern: str, limit: int = 5) -> list[dict]:
         ttl = r.ttl(key)
         val = r.get(key)
         size = len(val) if val else 0
-        results.append({
-            "key": str(key)[:80],
-            "ttl": ttl,
-            "size_bytes": size,
-            "size_human": f"{size / 1024:.1f}KB" if size > 1024 else f"{size}B",
-        })
+        results.append(
+            {
+                "key": str(key)[:80],
+                "ttl": ttl,
+                "size_bytes": size,
+                "size_human": f"{size / 1024:.1f}KB" if size > 1024 else f"{size}B",
+            }
+        )
         if len(results) >= limit:
             break
     return results
@@ -239,9 +271,11 @@ def phase1_verify_cache(client: httpx.Client, r: redis.Redis) -> None:
     print("\n[0] Initial Redis state")
     redis_before = get_redis_info(r)
     pool_before = get_pool_metrics(client)
-    print(f"    Redis: {redis_before['used_memory_human']} memory, "
-          f"{redis_before['keyspace_hits']} hits, {redis_before['keyspace_misses']} misses "
-          f"({redis_before['hit_ratio']:.1f}% hit ratio)")
+    print(
+        f"    Redis: {redis_before['used_memory_human']} memory, "
+        f"{redis_before['keyspace_hits']} hits, {redis_before['keyspace_misses']} misses "
+        f"({redis_before['hit_ratio']:.1f}% hit ratio)"
+    )
     print(f"    Pool:  {pool_before.get('pool', {})}")
 
     # 1. Discover product slugs
@@ -250,8 +284,11 @@ def phase1_verify_cache(client: httpx.Client, r: redis.Redis) -> None:
 
     for path, method, desc, is_cacheable, cache_prefix in ENDPOINTS:
         er = EndpointResult(
-            path=path, method=method, description=desc,
-            is_cacheable=is_cacheable, cache_prefix=cache_prefix,
+            path=path,
+            method=method,
+            description=desc,
+            is_cacheable=is_cacheable,
+            cache_prefix=cache_prefix,
         )
         results.append(er)
 
@@ -267,25 +304,39 @@ def phase1_verify_cache(client: httpx.Client, r: redis.Redis) -> None:
                 # Add product detail endpoint
                 slug = items[0]["slug"]
                 pid = items[0]["id"]
-                results.insert(1, EndpointResult(
-                    path=f"/api/v1/products/{slug}",
-                    method="GET", description="Product Detail",
-                    is_cacheable=True, cache_prefix=f"product:detail:v1:",
-                    product_slug=slug, product_id=pid,
-                ))
+                results.insert(
+                    1,
+                    EndpointResult(
+                        path=f"/api/v1/products/{slug}",
+                        method="GET",
+                        description="Product Detail",
+                        is_cacheable=True,
+                        cache_prefix="product:detail:v1:",
+                        product_slug=slug,
+                        product_id=pid,
+                    ),
+                )
                 # Add review endpoint
-                results.append(EndpointResult(
-                    path=f"/api/v1/reviews/products/{pid}",
-                    method="GET", description="Reviews List",
-                    is_cacheable=True, cache_prefix=f"reviews:list:v1:",
-                    review_product_id=pid,
-                ))
-                results.append(EndpointResult(
-                    path=f"/api/v1/reviews/products/{pid}/summary",
-                    method="GET", description="Review Summary",
-                    is_cacheable=True, cache_prefix=f"reviews:summary:v1:",
-                    review_product_id=pid,
-                ))
+                results.append(
+                    EndpointResult(
+                        path=f"/api/v1/reviews/products/{pid}",
+                        method="GET",
+                        description="Reviews List",
+                        is_cacheable=True,
+                        cache_prefix="reviews:list:v1:",
+                        review_product_id=pid,
+                    )
+                )
+                results.append(
+                    EndpointResult(
+                        path=f"/api/v1/reviews/products/{pid}/summary",
+                        method="GET",
+                        description="Review Summary",
+                        is_cacheable=True,
+                        cache_prefix="reviews:summary:v1:",
+                        review_product_id=pid,
+                    )
+                )
                 print(f"    Found: {slug[:60]}...")
     except Exception as e:
         print(f"    Warning: Could not discover products: {e}")
@@ -308,7 +359,7 @@ def phase1_verify_cache(client: httpx.Client, r: redis.Redis) -> None:
                     er.cold_cache_control = resp.headers.get("cache-control")
                     er.cold_etag = resp.headers.get("etag")
                     er.cold_response_size = len(resp.content)
-            except Exception as e:
+            except Exception:
                 elapsed_ms = (time.perf_counter() - t0) * 1000
                 er.cold_latencies.append(elapsed_ms)
                 er.cold_status_codes.append(0)
@@ -320,7 +371,9 @@ def phase1_verify_cache(client: httpx.Client, r: redis.Redis) -> None:
         if count > 0:
             details = get_key_details(r, f"{prefix}*", limit=2)
             for d in details:
-                print(f"    {prefix}: {count} keys | sample: {d['key']} TTL={d['ttl']}s Size={d['size_human']}")
+                print(
+                    f"    {prefix}: {count} keys | sample: {d['key']} TTL={d['ttl']}s Size={d['size_human']}"
+                )
 
     # 5. Measure WARM requests (cache hit → should be fast)
     print(f"\n[5] Measuring WARM requests ({MEASURE_REQUESTS} per endpoint)...")
@@ -336,7 +389,7 @@ def phase1_verify_cache(client: httpx.Client, r: redis.Redis) -> None:
                     er.warm_cache_control = resp.headers.get("cache-control")
                     er.warm_etag = resp.headers.get("etag")
                     er.warm_response_size = len(resp.content)
-            except Exception as e:
+            except Exception:
                 elapsed_ms = (time.perf_counter() - t0) * 1000
                 er.warm_latencies.append(elapsed_ms)
                 er.warm_status_codes.append(0)
@@ -345,11 +398,12 @@ def phase1_verify_cache(client: httpx.Client, r: redis.Redis) -> None:
     print("\n[6] Testing ETag / 304 Not Modified...")
     for er in results:
         if er.cold_etag and er.is_cacheable:
-            for i in range(3):
+            for _i in range(3):
                 t0 = time.perf_counter()
                 try:
                     resp = client.request(
-                        er.method, f"{BASE_URL}{er.path}",
+                        er.method,
+                        f"{BASE_URL}{er.path}",
                         headers={"If-None-Match": er.cold_etag},
                     )
                     elapsed_ms = (time.perf_counter() - t0) * 1000
@@ -391,11 +445,19 @@ def phase1_verify_cache(client: httpx.Client, r: redis.Redis) -> None:
     print("=" * 72)
 
     print("\n-- Redis Statistics --")
-    print(f"  Before:  {redis_before['keyspace_hits']} hits, {redis_before['keyspace_misses']} misses")
-    print(f"  After:   {redis_after['keyspace_hits']} hits, {redis_after['keyspace_misses']} misses")
-    print(f"  Delta:   {redis_diff['hits_delta']} hits, {redis_diff['misses_delta']} misses")
+    print(
+        f"  Before:  {redis_before['keyspace_hits']} hits, {redis_before['keyspace_misses']} misses"
+    )
+    print(
+        f"  After:   {redis_after['keyspace_hits']} hits, {redis_after['keyspace_misses']} misses"
+    )
+    print(
+        f"  Delta:   {redis_diff['hits_delta']} hits, {redis_diff['misses_delta']} misses"
+    )
     print(f"  Ratio:   {redis_diff['hit_ratio']:.1f}% during test")
-    print(f"  Memory:  {redis_after['used_memory_human']} (peak: {redis_after['used_memory_peak_human']})")
+    print(
+        f"  Memory:  {redis_after['used_memory_human']} (peak: {redis_after['used_memory_peak_human']})"
+    )
     print(f"  Evictions: {redis_diff['evictions_delta']}")
     print(f"  Expired:   {redis_diff['expired_delta']}")
 
@@ -404,20 +466,34 @@ def phase1_verify_cache(client: httpx.Client, r: redis.Redis) -> None:
     print(f"  After:  {pool_after.get('pool', {})}")
 
     print("\n-- Endpoint Results --")
-    print(f"{'Endpoint':<30} {'Cold Avg':>10} {'Cold P95':>10} {'Warm Avg':>10} {'Warm P95':>10} {'Speedup':>8} {'304s':>5} {'Status':<30}")
+    print(
+        f"{'Endpoint':<30} {'Cold Avg':>10} {'Cold P95':>10} {'Warm Avg':>10} {'Warm P95':>10} {'Speedup':>8} {'304s':>5} {'Status':<30}"
+    )
     print("-" * 130)
     for er in results:
         if not er.cold_latencies or not er.warm_latencies:
             continue
         cold_avg = statistics.mean(er.cold_latencies)
         cold_sorted = sorted(er.cold_latencies)
-        cold_p95 = cold_sorted[int(len(cold_sorted) * 0.95)] if len(cold_sorted) > 1 else cold_sorted[-1]
+        cold_p95 = (
+            cold_sorted[int(len(cold_sorted) * 0.95)]
+            if len(cold_sorted) > 1
+            else cold_sorted[-1]
+        )
         warm_avg = statistics.mean(er.warm_latencies)
         warm_sorted = sorted(er.warm_latencies)
-        warm_p95 = warm_sorted[int(len(warm_sorted) * 0.95)] if len(warm_sorted) > 1 else warm_sorted[-1]
+        warm_p95 = (
+            warm_sorted[int(len(warm_sorted) * 0.95)]
+            if len(warm_sorted) > 1
+            else warm_sorted[-1]
+        )
         speedup = cold_avg / max(0.1, warm_avg)
 
-        dominant_status = max(set(er.cold_status_codes), key=er.cold_status_codes.count) if er.cold_status_codes else 0
+        dominant_status = (
+            max(set(er.cold_status_codes), key=er.cold_status_codes.count)
+            if er.cold_status_codes
+            else 0
+        )
         if dominant_status == 404:
             status_label = "NO DATA (404)"
         elif dominant_status == 500:
@@ -425,7 +501,9 @@ def phase1_verify_cache(client: httpx.Client, r: redis.Redis) -> None:
         elif dominant_status == 0:
             status_label = "CONNECTION FAILED"
         else:
-            status_label = er.warm_cache_control or er.cold_cache_control or "no CC header"
+            status_label = (
+                er.warm_cache_control or er.cold_cache_control or "no CC header"
+            )
         if len(status_label) > 30:
             status_label = status_label[:27] + "..."
         print(
@@ -439,7 +517,7 @@ def phase1_verify_cache(client: httpx.Client, r: redis.Redis) -> None:
         if count > 0:
             details = get_key_details(r, f"{prefix}*", limit=1)
             ttl_str = f"TTL={details[0]['ttl']}s" if details else ""
-            size_str = details[0]['size_human'] if details else ""
+            size_str = details[0]["size_human"] if details else ""
             print(f"  {prefix:<30} {count:>5} keys  {ttl_str:<10} {size_str}")
 
 
@@ -455,21 +533,29 @@ def phase2_verify_invalidation(client: httpx.Client, r: redis.Redis) -> None:
     invalidation_tests = [
         {
             "name": "Product List Cache",
-            "populate": lambda: client.get(f"{BASE_URL}/api/v1/products?page=1&page_size=5"),
+            "populate": lambda: client.get(
+                f"{BASE_URL}/api/v1/products?page=1&page_size=5"
+            ),
             "key_pattern": "products:list:v1:*",
-            "verify_key": lambda: next(r.scan_iter(match="products:list:v1:*", count=10), None),
+            "verify_key": lambda: next(
+                r.scan_iter(match="products:list:v1:*", count=10), None
+            ),
         },
         {
             "name": "Product Detail Cache",
             "populate": lambda: _populate_product_detail(client),
             "key_pattern": "product:detail:v1:*",
-            "verify_key": lambda: next(r.scan_iter(match="product:detail:v1:*", count=10), None),
+            "verify_key": lambda: next(
+                r.scan_iter(match="product:detail:v1:*", count=10), None
+            ),
         },
         {
             "name": "Category Tree Cache",
             "populate": lambda: client.get(f"{BASE_URL}/api/v1/categories"),
             "key_pattern": "categories:tree:v1*",
-            "verify_key": lambda: next(r.scan_iter(match="categories:tree:v1*", count=10), None),
+            "verify_key": lambda: next(
+                r.scan_iter(match="categories:tree:v1*", count=10), None
+            ),
         },
         {
             "name": "Collections List Cache",
@@ -487,7 +573,9 @@ def phase2_verify_invalidation(client: httpx.Client, r: redis.Redis) -> None:
             "name": "Search Cache",
             "populate": lambda: client.get(f"{BASE_URL}/api/v1/search?q=bracelet"),
             "key_pattern": "search:v1:*",
-            "verify_key": lambda: next(r.scan_iter(match="search:v1:*", count=10), None),
+            "verify_key": lambda: next(
+                r.scan_iter(match="search:v1:*", count=10), None
+            ),
         },
         {
             "name": "Trending Cache",
@@ -508,12 +596,16 @@ def phase2_verify_invalidation(client: httpx.Client, r: redis.Redis) -> None:
         resp = test["populate"]()
         key = test["verify_key"]()
         if key is None:
-            print(f"  SKIP: Could not populate cache (endpoint returned {resp.status_code})")
-            results_summary.append({
-                "name": test["name"],
-                "status": "SKIP",
-                "reason": f"endpoint returned {resp.status_code}",
-            })
+            print(
+                f"  SKIP: Could not populate cache (endpoint returned {resp.status_code})"
+            )
+            results_summary.append(
+                {
+                    "name": test["name"],
+                    "status": "SKIP",
+                    "reason": f"endpoint returned {resp.status_code}",
+                }
+            )
             continue
 
         ttl_after_populate = r.ttl(str(key))
@@ -536,20 +628,23 @@ def phase2_verify_invalidation(client: httpx.Client, r: redis.Redis) -> None:
         key_after = test["verify_key"]()
         ttl_after_warm = r.ttl(str(key_after)) if key_after else None
 
-        print(f"  [3] Warm request: {resp_warm.status_code} {warm_ms:.1f}ms TTL={ttl_after_warm}s")
+        print(
+            f"  [3] Warm request: {resp_warm.status_code} {warm_ms:.1f}ms TTL={ttl_after_warm}s"
+        )
 
         # Step 5: Verify the cache key was repopulated
-        cache_hit = key_after is not None and (ttl_after_warm or 0) < (ttl_after_populate or 0)
         print(f"  [4] Cache key repopulated: {bool(key_after)}")
 
         status = "PASS" if key_after else "FAIL"
-        results_summary.append({
-            "name": test["name"],
-            "status": status,
-            "ttl_populated": ttl_after_populate,
-            "ttl_warm": ttl_after_warm,
-            "warm_latency_ms": round(warm_ms, 1),
-        })
+        results_summary.append(
+            {
+                "name": test["name"],
+                "status": status,
+                "ttl_populated": ttl_after_populate,
+                "ttl_warm": ttl_after_warm,
+                "warm_latency_ms": round(warm_ms, 1),
+            }
+        )
 
     print("\n-- Invalidation Verification Summary --")
     for r_item in results_summary:
@@ -591,7 +686,9 @@ def phase6_verify_http_cache(client: httpx.Client) -> None:
         ("/api/v1/settings/flags/test_flag", "Feature Flag"),
     ]
 
-    print(f"\n{'Endpoint':<30} {'Cache-Control':<45} {'ETag':<20} {'Vary':<30} {'304?':>5}")
+    print(
+        f"\n{'Endpoint':<30} {'Cache-Control':<45} {'ETag':<20} {'Vary':<30} {'304?':>5}"
+    )
     print("-" * 135)
 
     for path, desc in endpoints_to_check:
@@ -600,7 +697,6 @@ def phase6_verify_http_cache(client: httpx.Client) -> None:
             cc = resp.headers.get("cache-control", "MISSING")
             etag = resp.headers.get("etag", "MISSING")
             vary = resp.headers.get("vary", "MISSING")
-            status = resp.status_code
 
             # Test 304
             not_modified = "N/A"
@@ -688,20 +784,26 @@ def _print_metrics(data: dict) -> None:
     pool = data.get("pool", {})
     sql = data.get("sql", {})
     redis_m = data.get("redis", {})
-    print(f"  Pool:   capacity={pool.get('capacity')} "
-          f"peak_checked_out={pool.get('peak_checked_out')} "
-          f"peak_util={pool.get('peak_utilization_pct', 0):.0f}% "
-          f"waits={pool.get('total_checkout_waits')} "
-          f"max_wait={pool.get('max_wait_ms', 0):.1f}ms")
-    print(f"  SQL:    queries={sql.get('total_queries')} "
-          f"total={sql.get('total_ms', 0):.1f}ms "
-          f"avg={sql.get('avg_ms', 0):.1f}ms "
-          f"slow={sql.get('slow_queries')}")
-    print(f"  Redis:  calls={redis_m.get('total_calls')} "
-          f"total={redis_m.get('total_ms', 0):.1f}ms "
-          f"avg={redis_m.get('avg_ms', 0):.1f}ms "
-          f"max={redis_m.get('max_ms', 0):.1f}ms "
-          f"errors={redis_m.get('errors')}")
+    print(
+        f"  Pool:   capacity={pool.get('capacity')} "
+        f"peak_checked_out={pool.get('peak_checked_out')} "
+        f"peak_util={pool.get('peak_utilization_pct', 0):.0f}% "
+        f"waits={pool.get('total_checkout_waits')} "
+        f"max_wait={pool.get('max_wait_ms', 0):.1f}ms"
+    )
+    print(
+        f"  SQL:    queries={sql.get('total_queries')} "
+        f"total={sql.get('total_ms', 0):.1f}ms "
+        f"avg={sql.get('avg_ms', 0):.1f}ms "
+        f"slow={sql.get('slow_queries')}"
+    )
+    print(
+        f"  Redis:  calls={redis_m.get('total_calls')} "
+        f"total={redis_m.get('total_ms', 0):.1f}ms "
+        f"avg={redis_m.get('avg_ms', 0):.1f}ms "
+        f"max={redis_m.get('max_ms', 0):.1f}ms "
+        f"errors={redis_m.get('errors')}"
+    )
     print(f"  Requests: {data.get('requests_total')}")
 
 

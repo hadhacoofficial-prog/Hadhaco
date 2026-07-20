@@ -37,7 +37,9 @@ if not DATABASE_URL:
     sys.exit(1)
 
 if "asyncpg" not in DATABASE_URL:
-    DATABASE_URL = DATABASE_URL.replace("postgresql+psycopg://", "postgresql+asyncpg://")
+    DATABASE_URL = DATABASE_URL.replace(
+        "postgresql+psycopg://", "postgresql+asyncpg://"
+    )
     DATABASE_URL = DATABASE_URL.replace("postgresql://", "postgresql+asyncpg://")
 
 
@@ -52,7 +54,6 @@ WHERE p.deleted_at IS NULL
   AND p.status = 'active'
 ORDER BY p.created_at DESC
 LIMIT 20 OFFSET 0""",
-
     "B_product_list_with_variants_selectinload": """EXPLAIN (ANALYZE, BUFFERS, COSTS, FORMAT TEXT)
 SELECT p.*
 FROM products p
@@ -61,14 +62,12 @@ WHERE p.deleted_at IS NULL
   AND p.status = 'active'
 ORDER BY p.created_at DESC
 LIMIT 20 OFFSET 0""",
-
     "C_category_tree_active": """EXPLAIN (ANALYZE, BUFFERS, COSTS, FORMAT TEXT)
 SELECT c.id, c.parent_id, c.name, c.slug, c.sort_order, c.is_active
 FROM categories c
 WHERE c.is_active = TRUE
   AND c.deleted_at IS NULL
 ORDER BY c.sort_order ASC, c.name ASC""",
-
     "D_collection_list_admin_with_product_count": """EXPLAIN (ANALYZE, BUFFERS, COSTS, FORMAT TEXT)
 SELECT
     c.id, c.name, c.slug, c.is_active, c.is_featured, c.sort_order, c.updated_at,
@@ -82,7 +81,6 @@ LEFT JOIN (
 WHERE c.deleted_at IS NULL
 ORDER BY c.sort_order ASC, c.name ASC
 LIMIT 20 OFFSET 0""",
-
     "E_search_fts_tsvector": """EXPLAIN (ANALYZE, BUFFERS, COSTS, FORMAT TEXT)
 SELECT p.id, p.name, p.slug, p.base_price, p.compare_at_price,
        p.stock_quantity, p.metal_type, p.is_featured,
@@ -93,7 +91,6 @@ WHERE p.deleted_at IS NULL
   AND p.search_vector @@ plainto_tsquery('english', 'gold ring')
 ORDER BY rank DESC
 LIMIT 20 OFFSET 0""",
-
     "F_search_ilike_fallback": """EXPLAIN (ANALYZE, BUFFERS, COSTS, FORMAT TEXT)
 SELECT p.id, p.name, p.slug, p.base_price, p.compare_at_price,
        p.stock_quantity, p.metal_type, p.is_featured
@@ -103,7 +100,6 @@ WHERE p.deleted_at IS NULL
   AND (p.name ILIKE '%gold ring%' OR p.description ILIKE '%gold ring%' OR p.sku ILIKE '%gold ring%')
 ORDER BY p.created_at DESC
 LIMIT 20 OFFSET 0""",
-
     "G_order_history_with_item_count": """EXPLAIN (ANALYZE, BUFFERS, COSTS, FORMAT TEXT)
 SELECT o.*,
        (SELECT COUNT(*) FROM order_items oi WHERE oi.order_id = o.id) AS _item_count
@@ -111,20 +107,17 @@ FROM orders o
 WHERE o.user_id = (SELECT id FROM profiles LIMIT 1)
 ORDER BY o.created_at DESC
 LIMIT 10 OFFSET 0""",
-
     "H_product_detail_by_slug": """EXPLAIN (ANALYZE, BUFFERS, COSTS, FORMAT TEXT)
 SELECT p.*
 FROM products p
 WHERE p.slug = (SELECT slug FROM products WHERE deleted_at IS NULL AND status = 'active' LIMIT 1)
   AND p.deleted_at IS NULL""",
-
     "I_product_variants_by_product_id": """EXPLAIN (ANALYZE, BUFFERS, COSTS, FORMAT TEXT)
 SELECT pv.*
 FROM product_variants pv
 WHERE pv.product_id = (
     SELECT id FROM products WHERE deleted_at IS NULL AND status = 'active' LIMIT 1
 )""",
-
     "J_product_images_by_owner": """EXPLAIN (ANALYZE, BUFFERS, COSTS, FORMAT TEXT)
 SELECT i.*
 FROM images i
@@ -134,7 +127,6 @@ WHERE i.owner_type = 'product'
   )
   AND i.deleted_at IS NULL
 ORDER BY i.sort_order""",
-
     "K_image_variants_by_image_ids": """EXPLAIN (ANALYZE, BUFFERS, COSTS, FORMAT TEXT)
 SELECT iv.*
 FROM image_variants iv
@@ -147,7 +139,6 @@ WHERE iv.image_id IN (
       )
       AND i.deleted_at IS NULL
 )""",
-
     "L_review_listing_by_product": """EXPLAIN (ANALYZE, BUFFERS, COSTS, FORMAT TEXT)
 SELECT r.*
 FROM reviews r
@@ -158,7 +149,6 @@ WHERE r.product_id = (
   AND r.is_approved = TRUE
 ORDER BY r.created_at DESC
 LIMIT 20 OFFSET 0""",
-
     "M_autocomplete_prefix_ilike": """EXPLAIN (ANALYZE, BUFFERS, COSTS, FORMAT TEXT)
 SELECT DISTINCT name
 FROM products
@@ -167,7 +157,6 @@ WHERE deleted_at IS NULL
   AND name ILIKE 'gold%'
 ORDER BY name
 LIMIT 8""",
-
     "N_category_admin_with_subqueries": """EXPLAIN (ANALYZE, BUFFERS, COSTS, FORMAT TEXT)
 SELECT
     c.id, c.parent_id, c.name, c.slug, c.primary_image_id,
@@ -207,9 +196,19 @@ async def run() -> None:
     async with engine.connect() as conn:
         # First: table stats
         print(">> Table row counts:")
-        for tbl in ["products", "product_variants", "images", "image_variants",
-                     "categories", "collections", "product_collections",
-                     "orders", "order_items", "reviews", "review_votes"]:
+        for tbl in [
+            "products",
+            "product_variants",
+            "images",
+            "image_variants",
+            "categories",
+            "collections",
+            "product_collections",
+            "orders",
+            "order_items",
+            "reviews",
+            "review_votes",
+        ]:
             try:
                 r = await conn.execute(text(f"SELECT COUNT(*) FROM {tbl}"))
                 cnt = r.scalar_one()

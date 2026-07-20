@@ -55,8 +55,12 @@ async def main() -> None:
         info = await r.info("server")
         print(f"  Ping: {'PASS' if pong else 'FAIL'}")
         print(f"  Redis Version: {info.get('redis_version', 'unknown')}")
-        print(f"  Connected Clients: {(await r.info('clients')).get('connected_clients', '?')}")
-        print(f"  Used Memory: {(await r.info('memory')).get('used_memory_human', '?')}")
+        print(
+            f"  Connected Clients: {(await r.info('clients')).get('connected_clients', '?')}"
+        )
+        print(
+            f"  Used Memory: {(await r.info('memory')).get('used_memory_human', '?')}"
+        )
         print(f"  Uptime: {info.get('uptime_in_seconds', 0)}s")
     except Exception as e:
         print(f"  FAIL: {e}")
@@ -93,28 +97,38 @@ async def main() -> None:
         ("small_string", "hello world"),
         ("empty_string", ""),
         ("unicode", "Test product: gold ring with diamond"),
-        ("large_json", json.dumps({
-            "products": [
+        (
+            "large_json",
+            json.dumps(
                 {
-                    "id": str(i),
-                    "name": f"Product {i}",
-                    "description": f"This is a detailed description for product {i}. " * 20,
-                    "price": 99.99 + i,
-                    "tags": ["gold", "diamond", "ring", "necklace", "bracelet"],
-                    "variants": [{"color": "gold", "size": str(s)} for s in range(10)],
+                    "products": [
+                        {
+                            "id": str(i),
+                            "name": f"Product {i}",
+                            "description": f"This is a detailed description for product {i}. "
+                            * 20,
+                            "price": 99.99 + i,
+                            "tags": ["gold", "diamond", "ring", "necklace", "bracelet"],
+                            "variants": [
+                                {"color": "gold", "size": str(s)} for s in range(10)
+                            ],
+                        }
+                        for i in range(20)
+                    ],
+                    "total": 20,
+                    "page": 1,
                 }
-                for i in range(20)
-            ],
-            "total": 20,
-            "page": 1,
-        })),
+            ),
+        ),
     ]
 
     for name, value in test_cases:
         compressed = _compress_value(value)
         decompressed = _decompress_value(compressed)
         original_size = len(value.encode("utf-8"))
-        compressed_size = len(compressed.encode("utf-8")) if compressed != value else original_size
+        compressed_size = (
+            len(compressed.encode("utf-8")) if compressed != value else original_size
+        )
         ratio = original_size / compressed_size if compressed_size > 0 else 0
 
         is_compressed = compressed != value
@@ -194,7 +208,9 @@ async def main() -> None:
                 age_seconds = time.time() - data.get("t", 0) if has_timestamp else -1
                 data_size = len(decompressed)
                 print(f"  Key: {key}")
-                print(f"  SWR Structure: data={'PRESENT' if has_data else 'MISSING'}, timestamp={'PRESENT' if has_timestamp else 'MISSING'}")
+                print(
+                    f"  SWR Structure: data={'PRESENT' if has_data else 'MISSING'}, timestamp={'PRESENT' if has_timestamp else 'MISSING'}"
+                )
                 print(f"  Cache Age: {age_seconds:.0f}s")
                 print(f"  TTL Remaining: {ttl}s")
                 print(f"  Data Size: {data_size:,d} bytes")
@@ -204,11 +220,13 @@ async def main() -> None:
                         print(f"  Products in cache: {len(d['items'])}")
                     if "total" in d:
                         print(f"  Total products: {d['total']}")
-                print(f"  SWR: VALID" if has_data and has_timestamp else "  SWR: INVALID")
+                print(
+                    "  SWR: VALID" if has_data and has_timestamp else "  SWR: INVALID"
+                )
             except json.JSONDecodeError:
                 print(f"  Key: {key}")
                 print(f"  Value: (compressed, {len(raw)} bytes)")
-                print(f"  SWR: CANNOT PARSE (may be raw serialized)")
+                print("  SWR: CANNOT PARSE (may be raw serialized)")
         else:
             print(f"  Key: {key} => EMPTY (expired or not warmed)")
     else:
@@ -221,6 +239,7 @@ async def main() -> None:
 
     # Hit the health endpoint to get circuit breaker state
     import urllib.request
+
     try:
         req = urllib.request.Request("http://localhost:8000/health/ready")
         with urllib.request.urlopen(req, timeout=5) as resp:
@@ -231,7 +250,9 @@ async def main() -> None:
             print(f"  Failure Count: {cb.get('failure_count', '?')}")
             print(f"  Last Failure: {cb.get('last_failure', 'none')}")
             pool_status = health.get("details", {}).get("pool", {})
-            print(f"  DB Pool: {pool_status.get('checked_out', '?')}/{pool_status.get('capacity', '?')} ({pool_status.get('size', '?')} size)")
+            print(
+                f"  DB Pool: {pool_status.get('checked_out', '?')}/{pool_status.get('capacity', '?')} ({pool_status.get('size', '?')} size)"
+            )
             print(f"  Redis: {health.get('details', {}).get('redis', 'unknown')}")
     except Exception as e:
         print(f"  Health endpoint unavailable: {e}")
@@ -279,13 +300,15 @@ async def main() -> None:
         if size > 10000:  # >10KB
             large_keys.append((key, size))
 
-    print(f"\n  Total hadha:* memory: {total_key_bytes:,d} bytes ({total_key_bytes/1024:.1f} KB)")
+    print(
+        f"\n  Total hadha:* memory: {total_key_bytes:,d} bytes ({total_key_bytes/1024:.1f} KB)"
+    )
     if large_keys:
         print(f"  Large keys (>{10 // 1024}KB):")
         for k, s in sorted(large_keys, key=lambda x: -x[1]):
             print(f"    {k}: {s:,d} bytes ({s/1024:.1f} KB)")
     else:
-        print(f"  No large keys found (all under 10KB)")
+        print("  No large keys found (all under 10KB)")
 
     print()
 
@@ -315,14 +338,18 @@ async def main() -> None:
     print("=" * 80)
     print("PHASE 3 SUMMARY")
     print("=" * 80)
-    print(f"  Redis Connectivity:  PASS")
-    print(f"  Compression:         PASS (round-trip verified for all sizes)")
+    print("  Redis Connectivity:  PASS")
+    print("  Compression:         PASS (round-trip verified for all sizes)")
     print(f"  Cache Warming:       {warmed}/{len(expected_patterns)} key groups warmed")
-    print(f"  SWR Structure:       VALID" if product_keys else "  SWR Structure:       N/A (no product keys)")
-    print(f"  Circuit Breaker:     Available via /health/ready")
+    print(
+        "  SWR Structure:       VALID"
+        if product_keys
+        else "  SWR Structure:       N/A (no product keys)"
+    )
+    print("  Circuit Breaker:     Available via /health/ready")
     print(f"  Memory:              {total_key_bytes/1024:.1f} KB total")
     print(f"  Large Keys:          {len(large_keys)} (all under limit)")
-    print(f"  Overall:             PASS")
+    print("  Overall:             PASS")
 
     await r.aclose()
 

@@ -2,9 +2,9 @@
 
 import asyncio
 import subprocess
-import httpx
 import time
-import json
+
+import httpx
 
 BASE_URL = "http://localhost:8000"
 
@@ -14,7 +14,10 @@ ENDPOINTS = [
     ("CMS Homepage", "/api/v1/cms/homepage"),
     ("Product List", "/api/v1/products?page=1&page_size=10"),
     ("Product List (pg2)", "/api/v1/products?page=2&page_size=10"),
-    ("Product Detail", "/api/v1/products/elegant-925-sterling-silver-cz-link-bracelet-for-women-premium-sparkling-everyday-luxury"),
+    (
+        "Product Detail",
+        "/api/v1/products/elegant-925-sterling-silver-cz-link-bracelet-for-women-premium-sparkling-everyday-luxury",
+    ),
     ("Categories", "/api/v1/categories"),
     ("Navbar Categories", "/api/v1/categories/navbar"),
     ("Navigation Categories", "/api/v1/categories/navigation"),
@@ -44,7 +47,9 @@ async def get_redis_stats(client: httpx.AsyncClient) -> dict:
     """Get Redis INFO stats via docker exec (not httpx)."""
     result = subprocess.run(
         ["docker", "exec", "hadha-redis", "redis-cli", "INFO", "stats"],
-        capture_output=True, text=True, timeout=5
+        capture_output=True,
+        text=True,
+        timeout=5,
     )
     stats = {}
     for line in result.stdout.splitlines():
@@ -57,7 +62,9 @@ async def get_redis_stats(client: httpx.AsyncClient) -> dict:
 async def get_redis_memory(client: httpx.AsyncClient) -> dict:
     result = subprocess.run(
         ["docker", "exec", "hadha-redis", "redis-cli", "INFO", "memory"],
-        capture_output=True, text=True, timeout=5
+        capture_output=True,
+        text=True,
+        timeout=5,
     )
     stats = {}
     for line in result.stdout.splitlines():
@@ -75,7 +82,9 @@ async def get_profiler_stats(client: httpx.AsyncClient) -> dict:
 async def count_redis_keys() -> int:
     result = subprocess.run(
         ["docker", "exec", "hadha-redis", "redis-cli", "DBSIZE"],
-        capture_output=True, text=True, timeout=5
+        capture_output=True,
+        text=True,
+        timeout=5,
     )
     # DBSIZE returns "N\r\n"
     output = result.stdout.strip()
@@ -104,7 +113,7 @@ async def run():
             print(f"  {status_icon} {r['name']:30s} {r['latency_ms']:7.1f}ms")
 
         # --- Collect post-cold profiler ---
-        profiler_after_cold = await get_profiler_stats(client)
+        await get_profiler_stats(client)
 
         # --- Warm pass (all from cache) ---
         print("\n--- WARM PASS (all served from cache) ---")
@@ -130,53 +139,71 @@ async def run():
 
         # Latency comparison
         print("\n--- Latency: Cold vs Warm ---")
-        print(f"  {'Endpoint':30s} {'Cold (ms)':>10s} {'Warm (ms)':>10s} {'Speedup':>8s}")
+        print(
+            f"  {'Endpoint':30s} {'Cold (ms)':>10s} {'Warm (ms)':>10s} {'Speedup':>8s}"
+        )
         print(f"  {'-'*30} {'-'*10} {'-'*10} {'-'*8}")
         cold_total = 0
         warm_total = 0
-        for cold, warm in zip(cold_results, warm_results):
+        for cold, warm in zip(cold_results, warm_results, strict=False):
             if cold["status"] == 200:
-                speedup = f"{cold['latency_ms'] / max(warm['latency_ms'], 0.1):.1f}x" if warm["latency_ms"] > 0 else "∞"
-                print(f"  {cold['name']:30s} {cold['latency_ms']:10.1f} {warm['latency_ms']:10.1f} {speedup:>8s}")
+                speedup = (
+                    f"{cold['latency_ms'] / max(warm['latency_ms'], 0.1):.1f}x"
+                    if warm["latency_ms"] > 0
+                    else "∞"
+                )
+                print(
+                    f"  {cold['name']:30s} {cold['latency_ms']:10.1f} {warm['latency_ms']:10.1f} {speedup:>8s}"
+                )
                 cold_total += cold["latency_ms"]
                 warm_total += warm["latency_ms"]
         total_speedup = f"{cold_total / max(warm_total, 0.1):.1f}x"
-        print(f"  {'TOTAL':30s} {cold_total:10.1f} {warm_total:10.1f} {total_speedup:>8s}")
+        print(
+            f"  {'TOTAL':30s} {cold_total:10.1f} {warm_total:10.1f} {total_speedup:>8s}"
+        )
 
         # Redis hit ratio
         hits = int(redis_stats.get("keyspace_hits", 0))
         misses = int(redis_stats.get("keyspace_misses", 0))
         total = hits + misses
         hit_ratio = (hits / total * 100) if total > 0 else 0
-        print(f"\n--- Redis Hit Ratio ---")
+        print("\n--- Redis Hit Ratio ---")
         print(f"  Hits: {hits}  |  Misses: {misses}  |  Total: {total}")
         print(f"  Hit ratio: {hit_ratio:.1f}%")
 
         # Redis memory
-        print(f"\n--- Redis Memory ---")
-        print(f"  Used: {redis_mem.get('used_memory_human', '?')} / {redis_mem.get('maxmemory_human', '?')}")
+        print("\n--- Redis Memory ---")
+        print(
+            f"  Used: {redis_mem.get('used_memory_human', '?')} / {redis_mem.get('maxmemory_human', '?')}"
+        )
         print(f"  Keys in DB: {key_count}")
 
         # Profiler delta
-        print(f"\n--- Profiler (from /health/metrics) ---")
+        print("\n--- Profiler (from /health/metrics) ---")
         p_before = profiler_before
         p_after = profiler_after_warm
-        delta_queries = p_after["sql"]["total_queries"] - p_before["sql"]["total_queries"]
+        delta_queries = (
+            p_after["sql"]["total_queries"] - p_before["sql"]["total_queries"]
+        )
         delta_sql_ms = p_after["sql"]["total_ms"] - p_before["sql"]["total_ms"]
         delta_redis = p_after["redis"]["total_calls"] - p_before["redis"]["total_calls"]
         print(f"  SQL queries executed: {delta_queries}")
         print(f"  SQL total time: {delta_sql_ms:.1f}ms")
         print(f"  Redis calls (profiler): {delta_redis}")
-        print(f"  Pool peak: {p_after['pool']['peak_checked_out']}/{p_after['pool']['capacity']} ({p_after['pool']['peak_utilization_pct']}%)")
+        print(
+            f"  Pool peak: {p_after['pool']['peak_checked_out']}/{p_after['pool']['capacity']} ({p_after['pool']['peak_utilization_pct']}%)"
+        )
 
         # Verdict
-        print(f"\n--- VERDICT ---")
+        print("\n--- VERDICT ---")
         if hit_ratio >= 95:
             print(f"  PASS: Redis hit ratio {hit_ratio:.1f}% >= 95%")
         elif hit_ratio >= 80:
             print(f"  WARN: Redis hit ratio {hit_ratio:.1f}% — below 95% target")
         else:
-            print(f"  FAIL: Redis hit ratio {hit_ratio:.1f}% — significantly below target")
+            print(
+                f"  FAIL: Redis hit ratio {hit_ratio:.1f}% — significantly below target"
+            )
 
         if warm_total > 0 and cold_total / max(warm_total, 0.1) >= 2.0:
             print(f"  PASS: Warm latency {total_speedup} faster than cold")

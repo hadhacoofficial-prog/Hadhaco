@@ -1,12 +1,13 @@
 #!/usr/bin/env python3
 """Generate the UAT customer-journey.spec.ts file."""
+
 import os
 
 OUT = os.path.join(os.path.dirname(__file__), "customer-journey.spec.ts")
 
 PARTS = []
 
-PARTS.append(r'''/**
+PARTS.append(r"""/**
  * Hadha.co - End-to-End Customer Journey UAT
  *
  * Validates the COMPLETE customer journey as a REAL CUSTOMER.
@@ -81,9 +82,9 @@ function setupMonitoring(page: Page) {
     uat.networkErrors.push(`${errorText}: ${url}`);
   });
 }
-''')
+""")
 
-PARTS.append(r'''
+PARTS.append(r"""
 // ═════════════════════════════════════════════════════════════════════════════
 //  SECTION 1: HOMEPAGE & BROWSING
 // ═════════════════════════════════════════════════════════════════════════════
@@ -196,9 +197,9 @@ test.describe.serial('1. Homepage & Browsing', () => {
     await expect(fab.first()).toBeVisible();
   });
 });
-''')
+""")
 
-PARTS.append(r'''
+PARTS.append(r"""
 // ═════════════════════════════════════════════════════════════════════════════
 //  SECTION 2: COLLECTIONS
 // ═════════════════════════════════════════════════════════════════════════════
@@ -255,9 +256,9 @@ test.describe.serial('2. Collections', () => {
     }
   });
 });
-''')
+""")
 
-PARTS.append(r'''
+PARTS.append(r"""
 // ═════════════════════════════════════════════════════════════════════════════
 //  SECTION 3: PRODUCTS LISTING
 // ═════════════════════════════════════════════════════════════════════════════
@@ -286,9 +287,9 @@ test.describe.serial('3. Products Listing', () => {
     expect(uat.productSlug).toBeTruthy();
   });
 });
-''')
+""")
 
-PARTS.append(r'''
+PARTS.append(r"""
 // ═════════════════════════════════════════════════════════════════════════════
 //  SECTION 4: PRODUCT DETAIL
 // ═════════════════════════════════════════════════════════════════════════════
@@ -372,9 +373,9 @@ test.describe.serial('4. Product Detail', () => {
     expect(errors.filter((e) => !isExpectedConsoleError(e))).toHaveLength(0);
   });
 });
-''')
+""")
 
-PARTS.append(r'''
+PARTS.append(r"""
 // ═════════════════════════════════════════════════════════════════════════════
 //  SECTION 5: SEARCH
 // ═════════════════════════════════════════════════════════════════════════════
@@ -460,9 +461,9 @@ test.describe.serial('5. Search', () => {
     await expect(page.locator('body')).toBeVisible();
   });
 });
-''')
+""")
 
-PARTS.append(r'''
+PARTS.append(r"""
 // ═════════════════════════════════════════════════════════════════════════════
 //  SECTION 6: AUTHENTICATION
 // ═════════════════════════════════════════════════════════════════════════════
@@ -601,9 +602,9 @@ test.describe.serial('6. Authentication', () => {
     await expect(page.getByRole('button', { name: /^(Overview|Orders|Addresses|Wishlist|Profile|Security)$/ })).toHaveCount(0);
   });
 });
-''')
+""")
 
-PARTS.append(r'''
+PARTS.append(r"""
 // ═════════════════════════════════════════════════════════════════════════════
 //  SECTION 7: WISHLIST
 // ═════════════════════════════════════════════════════════════════════════════
@@ -656,9 +657,9 @@ test.describe.serial('7. Wishlist', () => {
     await expect(page.locator('header').first()).toBeVisible();
   });
 });
-''')
+""")
 
-PARTS.append(r'''
+PARTS.append(r"""
 // ═════════════════════════════════════════════════════════════════════════════
 //  SECTION 8: CART
 // ═════════════════════════════════════════════════════════════════════════════
@@ -722,9 +723,9 @@ test.describe.serial('8. Cart', () => {
     await expect(page.locator('main').first()).toBeVisible();
   });
 });
-''')
+""")
 
-PARTS.append(r'''
+PARTS.append(r"""
 // ═════════════════════════════════════════════════════════════════════════════
 //  SECTION 9: CHECKOUT
 // ═════════════════════════════════════════════════════════════════════════════
@@ -827,9 +828,9 @@ test.describe.serial('9. Checkout', () => {
     await expect(page.getByText(/stock|changed|oops/i).first()).toBeVisible();
   });
 });
-''')
+""")
 
-PARTS.append(r'''
+PARTS.append(r"""
 // ═════════════════════════════════════════════════════════════════════════════
 //  SECTION 10: ACCOUNT MANAGEMENT
 // ═════════════════════════════════════════════════════════════════════════════
@@ -910,9 +911,9 @@ test.describe.serial('10. Account Management', () => {
     await expect(page.getByRole('button', { name: /sign out/i }).first()).toBeVisible();
   });
 });
-''')
+""")
 
-PARTS.append(r'''
+PARTS.append(r"""
 // ═════════════════════════════════════════════════════════════════════════════
 //  SECTION 11: STATIC PAGES
 // ═════════════════════════════════════════════════════════════════════════════
@@ -974,9 +975,9 @@ test.describe.serial('11. Static Pages', () => {
     expect(await page.getByText(/visakhapatnam|hyderabad|bengaluru|chennai/i).count()).toBeGreaterThan(0);
   });
 });
-''')
+""")
 
-PARTS.append(r'''
+PARTS.append(r"""
 // ═════════════════════════════════════════════════════════════════════════════
 //  SECTION 12: SECURITY & ROUTE GUARDS
 // ═════════════════════════════════════════════════════════════════════════════
@@ -1012,9 +1013,9 @@ test.describe.serial('12. Security & Route Guards', () => {
     await expect(page.getByRole('link', { name: /go home/i }).first()).toBeVisible({ timeout: 10000 });
   });
 });
-''')
+""")
 
-PARTS.append(r'''
+PARTS.append(r"""
 // ═════════════════════════════════════════════════════════════════════════════
 //  SECTION 13: MOBILE LAYOUT
 // ═════════════════════════════════════════════════════════════════════════════
@@ -1054,9 +1055,9 @@ test.describe.serial('13. Mobile Layout', () => {
     await expect(page.locator('div[role="dialog"][aria-modal="true"]')).toBeVisible({ timeout: 5000 });
   });
 });
-''')
+""")
 
-PARTS.append(r'''
+PARTS.append(r"""
 // ═════════════════════════════════════════════════════════════════════════════
 //  SECTION 14: UAT SUMMARY
 // ═════════════════════════════════════════════════════════════════════════════
@@ -1085,7 +1086,7 @@ test.describe('14. UAT Summary', () => {
     console.log(`Network errors: ${uat.networkErrors.length}`);
   });
 });
-''')
+""")
 
 with open(OUT, "w", encoding="utf-8") as f:
     f.write("".join(PARTS))

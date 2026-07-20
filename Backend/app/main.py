@@ -1,7 +1,6 @@
-from contextlib import asynccontextmanager
 import logging
+from contextlib import asynccontextmanager
 
-import structlog
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
@@ -127,7 +126,12 @@ def create_app() -> FastAPI:
                 should_group_status_codes=False,
                 should_ignore_untemplated=True,
                 should_instrument_requests_inprogress=True,
-                excluded_handlers=["/metrics", "/health", "/health/ready", "/health/live"],
+                excluded_handlers=[
+                    "/metrics",
+                    "/health",
+                    "/health/ready",
+                    "/health/live",
+                ],
                 inprogress_name="http_requests_in_progress",
                 inprogress_labels=True,
             )

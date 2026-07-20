@@ -1,12 +1,14 @@
 """Phase 2 live measurement — compare product list API latency."""
+
+import json
+import subprocess
 import time
 import urllib.request
-import json
 
 BASE = "http://localhost:8000/api/v1"
 
 # Flush Redis cache first
-import subprocess
+
 subprocess.run(
     ["docker", "exec", "hadha-redis", "redis-cli", "FLUSHDB"],
     capture_output=True,
@@ -17,7 +19,7 @@ print("Redis cache flushed.\n")
 def get(path: str, label: str) -> float:
     url = f"{BASE}{path}"
     times = []
-    for i in range(5):
+    for _i in range(5):
         start = time.perf_counter()
         req = urllib.request.Request(url)
         resp = urllib.request.urlopen(req)
@@ -45,7 +47,9 @@ subprocess.run(
 )
 time.sleep(0.5)
 t3 = get("/products?page=1&page_size=10&gender=unisex", "GET /products?gender=unisex")
-t4 = get("/products?page=1&page_size=10&gender=unisex", "GET /products?gender=unisex (warm)")
+t4 = get(
+    "/products?page=1&page_size=10&gender=unisex", "GET /products?gender=unisex (warm)"
+)
 
 print("\n=== Category-filtered products (cold) ===")
 subprocess.run(
@@ -57,12 +61,19 @@ time.sleep(0.5)
 req = urllib.request.Request(f"{BASE}/categories/navigation")
 resp = urllib.request.urlopen(req)
 cats = json.loads(resp.read())
-data = json.loads(cats.get("data", "{}") if isinstance(cats.get("data"), str) else json.dumps(cats.get("data", {})))
+data = json.loads(
+    cats.get("data", "{}")
+    if isinstance(cats.get("data"), str)
+    else json.dumps(cats.get("data", {}))
+)
 nav = data if isinstance(data, list) else data.get("categories", [])
 if nav and len(nav) > 0:
     cat_id = nav[0].get("id", "")
     if cat_id:
-        t5 = get(f"/products?page=1&page_size=10&category_id={cat_id}", "GET /products?category_id=...")
+        t5 = get(
+            f"/products?page=1&page_size=10&category_id={cat_id}",
+            "GET /products?category_id=...",
+        )
     else:
         print("  No category_id found, skipping")
 else:
@@ -71,7 +82,7 @@ else:
 
 # Summary
 print(f"\n{'='*70}")
-print(f"  SUMMARY")
+print("  SUMMARY")
 print(f"{'='*70}")
 print(f"  Product list cold DB query (after optimization): {t1:.1f}ms avg")
 print(f"  Product list warm Redis hit:                     {t2:.1f}ms avg")

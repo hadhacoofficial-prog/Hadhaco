@@ -14,9 +14,10 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 import httpx
-from app.core.config import settings
-from app.core.database import AsyncSessionLocal, engine
 from sqlalchemy import text
+
+from app.core.config import settings
+from app.core.database import AsyncSessionLocal
 
 ADMIN_EMAIL = "admin@hadha.co"
 ADMIN_PASSWORD = "Admin123!@#"
@@ -84,7 +85,12 @@ async def ensure_profile(user_id: str, email: str, role: str) -> None:
                 "INSERT INTO profiles (id, email, role, is_active, full_name) "
                 "VALUES (:uid, :email, :role, true, :name)"
             ),
-            {"uid": user_id, "email": email, "role": role, "name": email.split("@")[0].title()},
+            {
+                "uid": user_id,
+                "email": email,
+                "role": role,
+                "name": email.split("@")[0].title(),
+            },
         )
         await session.commit()
         print(f"  Profile {email} created (role={role})")
@@ -103,7 +109,7 @@ async def main() -> None:
     await ensure_profile(admin_id, ADMIN_EMAIL, "admin")
     await ensure_profile(customer_id, CUSTOMER_EMAIL, "customer")
 
-    print(f"\n--- Credentials for k6 ---")
+    print("\n--- Credentials for k6 ---")
     print(f"  DEV_EMAIL={ADMIN_EMAIL}")
     print(f"  DEV_PASSWORD={ADMIN_PASSWORD}")
     print(f"  CUSTOMER_EMAIL={CUSTOMER_EMAIL}")

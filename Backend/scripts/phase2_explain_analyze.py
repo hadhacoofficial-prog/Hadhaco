@@ -3,14 +3,17 @@
 Runs against live Supabase DB via the sync Alembic URL (EXPLAIN ANALYZE
 requires a non-async connection in psycopg2).
 """
-import os, sys
+
+import os
+import sys
+
 os.chdir(os.path.dirname(os.path.dirname(__file__)))
 sys.path.insert(0, ".")
 
-from dotenv import load_dotenv
+from dotenv import load_dotenv  # noqa: E402
+
 load_dotenv()
-import sqlalchemy as sa
-from sqlalchemy import create_engine, text
+from sqlalchemy import create_engine, text  # noqa: E402
 
 DATABASE_URL = os.getenv("ALEMBIC_DATABASE_URL")
 if not DATABASE_URL:

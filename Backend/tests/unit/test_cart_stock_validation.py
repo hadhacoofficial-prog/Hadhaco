@@ -138,9 +138,7 @@ class TestAddItemStockValidation:
             with patch.object(
                 self.svc, "_get_or_create", AsyncMock(return_value=mock_cart)
             ):
-                with patch(
-                    "app.modules.cart.service._repo.upsert_item", AsyncMock()
-                ):
+                with patch("app.modules.cart.service._repo.upsert_item", AsyncMock()):
                     with patch(
                         "app.modules.cart.service._repo.get_by_id",
                         AsyncMock(return_value=mock_cart),
@@ -171,17 +169,13 @@ class TestAddItemStockValidation:
             with patch.object(
                 self.svc, "_get_or_create", AsyncMock(return_value=mock_cart)
             ):
-                with patch(
-                    "app.modules.cart.service._repo.upsert_item", AsyncMock()
-                ):
+                with patch("app.modules.cart.service._repo.upsert_item", AsyncMock()):
                     with patch(
                         "app.modules.cart.service._repo.get_by_id",
                         AsyncMock(return_value=mock_cart),
                     ):
                         # Should not raise
-                        await self.svc.add_item(
-                            db, payload, user_id=uuid.uuid4()
-                        )
+                        await self.svc.add_item(db, payload, user_id=uuid.uuid4())
 
 
 # ── TestUpdateItemStockValidation ─────────────────────────────────────────────

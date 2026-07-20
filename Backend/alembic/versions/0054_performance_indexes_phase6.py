@@ -67,12 +67,8 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    op.execute(
-        "DROP INDEX IF EXISTS idx_product_collections_product"
-    )
-    op.execute(
-        "DROP INDEX IF EXISTS idx_search_history_created_query"
-    )
+    op.execute("DROP INDEX IF EXISTS idx_product_collections_product")
+    op.execute("DROP INDEX IF EXISTS idx_search_history_created_query")
     with op.get_context().autocommit_block():
         op.execute(
             "DROP INDEX CONCURRENTLY IF EXISTS idx_products_active_price_covering"
