@@ -564,7 +564,7 @@ mkdir -p "${DOZZLE_DIR}"
 
 # Safety: remove stale directory at file path (can happen from failed deploys)
 if [[ -d "${DOZZLE_DIR}/users.yml" ]]; then
-  sudo rm -rf "${DOZZLE_DIR}/users.yml"
+  rm -rf "${DOZZLE_DIR}/users.yml"
   log "Removed stale directory at ${DOZZLE_DIR}/users.yml"
 fi
 
@@ -636,9 +636,12 @@ FILE_MOUNT_PATHS=(
 CLEANED=0
 for fpath in "${FILE_MOUNT_PATHS[@]}"; do
   if [[ -d "${fpath}" ]]; then
-    log "  [FIX] ${fpath} is a directory — removing (will be recreated or is stale)"
-    sudo rm -rf "${fpath}"
-    CLEANED=$((CLEANED + 1))
+    if rm -rf "${fpath}" 2>/dev/null; then
+      log "  [FIX] ${fpath} was a directory — removed"
+      CLEANED=$((CLEANED + 1))
+    else
+      log "  [WARN] ${fpath} is a directory but cannot remove (permission) — container may fail"
+    fi
   fi
 done
 

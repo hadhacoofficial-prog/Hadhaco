@@ -358,22 +358,26 @@ jobs:
                      /opt/hadha/monitoring/prometheus/prometheus.yml \
                      /opt/hadha/monitoring/loki/loki-config.yml \
                      /opt/hadha/monitoring/promtail/promtail-config.yml; do
-              if [ -d "$f" ]; then sudo rm -rf "$f" && echo "Removed stale directory: $f"; fi
+              if [ -d "$f" ]; then rmdir "$f" 2>/dev/null || rm -rf "$f" 2>/dev/null || echo "WARN: cannot remove $f (may need root)"; fi
             done
 
             # Install nginx configs — nginx.conf to root, conf.d/ for all server blocks
-            cp -f /tmp/hadha-deploy/deploy/nginx/nginx.conf                       /opt/hadha/nginx/
+            cat /tmp/hadha-deploy/deploy/nginx/nginx.conf > /opt/hadha/nginx/nginx.conf
             mkdir -p /opt/hadha/nginx/conf.d
-            cp -f /tmp/hadha-deploy/deploy/nginx/conf.d/*.conf                    /opt/hadha/nginx/conf.d/
+            for f in /tmp/hadha-deploy/deploy/nginx/conf.d/*.conf; do
+              cat "$f" > "/opt/hadha/nginx/conf.d/$(basename "$f")"
+            done
 
             # Install monitoring configs (prometheus, loki, promtail)
             mkdir -p /opt/hadha/monitoring/prometheus/rules
-            cp -f /tmp/hadha-deploy/deploy/monitoring/prometheus/prometheus.yml    /opt/hadha/monitoring/prometheus/
-            cp -f /tmp/hadha-deploy/deploy/monitoring/prometheus/rules/*.yml      /opt/hadha/monitoring/prometheus/rules/
+            cat /tmp/hadha-deploy/deploy/monitoring/prometheus/prometheus.yml > /opt/hadha/monitoring/prometheus/prometheus.yml
+            for f in /tmp/hadha-deploy/deploy/monitoring/prometheus/rules/*.yml; do
+              cat "$f" > "/opt/hadha/monitoring/prometheus/rules/$(basename "$f")"
+            done
             mkdir -p /opt/hadha/monitoring/loki
-            cp -f /tmp/hadha-deploy/deploy/monitoring/loki/loki-config.yml        /opt/hadha/monitoring/loki/
+            cat /tmp/hadha-deploy/deploy/monitoring/loki/loki-config.yml > /opt/hadha/monitoring/loki/loki-config.yml
             mkdir -p /opt/hadha/monitoring/promtail
-            cp -f /tmp/hadha-deploy/deploy/monitoring/promtail/promtail-config.yml /opt/hadha/monitoring/promtail/
+            cat /tmp/hadha-deploy/deploy/monitoring/promtail/promtail-config.yml > /opt/hadha/monitoring/promtail/promtail-config.yml
 
             rm -rf /tmp/hadha-deploy
 

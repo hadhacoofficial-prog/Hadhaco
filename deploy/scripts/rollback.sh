@@ -107,8 +107,11 @@ FILE_MOUNT_PATHS=(
 )
 for fpath in "${FILE_MOUNT_PATHS[@]}"; do
   if [[ -d "${fpath}" ]]; then
-    log "[FIX] ${fpath} is a directory — removing (stale mount path)"
-    sudo rm -rf "${fpath}"
+    if rm -rf "${fpath}" 2>/dev/null; then
+      log "[FIX] ${fpath} was a directory — removed"
+    else
+      log "[WARN] ${fpath} is a directory but cannot remove — container may fail"
+    fi
   fi
 done
 
