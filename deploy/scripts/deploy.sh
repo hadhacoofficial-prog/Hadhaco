@@ -562,6 +562,12 @@ step_start "Generate Dozzle authentication file"
 DOZZLE_DIR="${APP_DIR}/dozzle"
 mkdir -p "${DOZZLE_DIR}"
 
+# Safety: remove stale directory at file path (can happen from failed deploys)
+if [[ -d "${DOZZLE_DIR}/users.yml" ]]; then
+  rm -rf "${DOZZLE_DIR}/users.yml"
+  log "Removed stale directory at ${DOZZLE_DIR}/users.yml"
+fi
+
 if ! command -v htpasswd >/dev/null 2>&1; then
   die "htpasswd not found — run: apt-get install -y apache2-utils"
 fi
