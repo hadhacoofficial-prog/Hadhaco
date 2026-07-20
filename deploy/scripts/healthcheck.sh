@@ -173,8 +173,8 @@ log "  External HTTP probe → ${APP_URL}"
 EXTERNAL_OK=false
 HTTP_STATUS="000"
 for attempt in 1 2 3; do
-  HTTP_STATUS=$(curl -sf -o /dev/null -w "%{http_code}" \
-    --max-time 15 --connect-timeout 5 "${APP_URL}" 2>/dev/null || echo "000")
+  HTTP_STATUS=$(curl -so /dev/null -w "%{http_code}" \
+    --max-time 15 --connect-timeout 5 "${APP_URL}" 2>/dev/null) || HTTP_STATUS="000"
   if [[ "${HTTP_STATUS}" =~ ^[23] ]]; then
     pass "External HTTP → ${HTTP_STATUS} (${APP_URL})"
     EXTERNAL_OK=true
@@ -187,8 +187,8 @@ for attempt in 1 2 3; do
 done
 [[ "${EXTERNAL_OK}" == "true" ]] || fail "External HTTP → ${HTTP_STATUS} (${APP_URL})"
 
-API_STATUS=$(curl -sf -o /dev/null -w "%{http_code}" \
-  --max-time 10 "${API_URL}/health/live" 2>/dev/null || echo "000")
+API_STATUS=$(curl -so /dev/null -w "%{http_code}" \
+  --max-time 10 "${API_URL}/health/live" 2>/dev/null) || API_STATUS="000"
 if [[ "${API_STATUS}" =~ ^[23] ]]; then
   pass "Backend API /health/live → ${API_STATUS} (${API_URL})"
 else

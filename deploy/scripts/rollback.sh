@@ -130,6 +130,14 @@ if ! dc up -d --remove-orphans --pull never 2>&1 | tee -a "${LOG_FILE}"; then
   die "Failed to restart containers during rollback — manual intervention required"
 fi
 
+# ── Reload nginx to re-resolve upstream hostnames ──────────────────────────────
+log "Reloading nginx to re-resolve upstream hostnames..."
+if docker exec hadha-nginx nginx -s reload 2>/dev/null; then
+  log "  ✓ nginx reloaded"
+else
+  log "  [WARN] nginx reload failed — health checks may fail"
+fi
+
 # ── Health check after rollback ───────────────────────────────────────────────
 log "Running health checks on rolled-back deployment..."
 if "${SCRIPTS_DIR}/healthcheck.sh" 2>&1 | tee -a "${LOG_FILE}"; then

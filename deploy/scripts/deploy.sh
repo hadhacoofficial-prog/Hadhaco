@@ -725,7 +725,19 @@ if ! dc up -d --remove-orphans --pull never 2>&1 | tee -a "${LOG_FILE}"; then
   rollback_and_exit "docker compose up failed"
 fi
 CONTAINERS_RESTARTED=true
-log "Containers started — waiting for health checks..."
+log "Containers started"
+
+# ── Reload nginx to re-resolve upstream hostnames ──────────────────────────────
+# Nginx caches upstream DNS at startup.  When upstream containers (backend,
+# storefront, admin) are recreated they get new IPs — force nginx to re-resolve.
+log "  Reloading nginx to re-resolve upstream hostnames..."
+if docker exec hadha-nginx nginx -s reload 2>/dev/null; then
+  log "  ✓ nginx reloaded"
+else
+  log "  [WARN] nginx reload failed — external health checks may fail"
+fi
+
+log "Waiting for health checks..."
 step_end
 
 # =============================================================================
