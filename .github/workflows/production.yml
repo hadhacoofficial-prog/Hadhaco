@@ -369,12 +369,6 @@ jobs:
             docker network inspect hadha >/dev/null 2>&1 || \
               docker network create --driver bridge hadha 2>/dev/null || true
 
-            # ── Ensure infrastructure is running ────────────────────────────
-            echo "[$(date +'%H:%M:%S')] Ensuring infrastructure stack..."
-            docker compose --env-file "${APP_DIR}/.env.production" \
-              -f "${APP_DIR}/docker-compose.infrastructure.yml" \
-              up -d --remove-orphans --pull never 2>&1 || true
-
             # ── Execute deployment ──────────────────────────────────────────
             echo "[$(date +'%H:%M:%S')] Executing deploy.sh..."
             export BACKEND_IMAGE STOREFRONT_IMAGE ADMIN_IMAGE IMAGE_TAG

@@ -566,24 +566,33 @@ services:
       - no-new-privileges:true
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Volumes
+# Volumes — marked external because they may have been created by a previous
+# project name. Docker will reuse the existing volumes without warnings.
 # ─────────────────────────────────────────────────────────────────────────────
 volumes:
   redis_data:
+    external: true
     name: hadha_redis_data
   nginx_logs:
+    external: true
     name: hadha_nginx_logs
   prometheus_data:
+    external: true
     name: hadha_prometheus_data
   grafana_data:
+    external: true
     name: hadha_grafana_data
   loki_data:
+    external: true
     name: hadha_loki_data
   promtail_positions:
+    external: true
     name: hadha_promtail_positions
   uptime_kuma_data:
+    external: true
     name: hadha_uptime_kuma_data
   glitchtip_db_data:
+    external: true
     name: hadha_glitchtip_db_data
 
 # ─────────────────────────────────────────────────────────────────────────────

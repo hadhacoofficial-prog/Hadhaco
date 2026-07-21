@@ -671,9 +671,11 @@ step_end
 step_start "Database migrations (Supabase)"
 DEPLOYMENT_STATE="MIGRATING"
 
+# Remove any stale migration container from previous runs
 if docker inspect "${MIGRATION_CONTAINER}" >/dev/null 2>&1; then
   log "Removing stale migration container"
   docker rm -f "${MIGRATION_CONTAINER}" >/dev/null 2>&1 || true
+  sleep 1
 fi
 
 # Use --sysctl to force IPv4 inside the migration container if IPv6 is non-functional
@@ -690,23 +692,36 @@ MIGRATION_OK=false
 
 while (( MIGRATION_ATTEMPT < MIGRATION_MAX_ATTEMPTS )); do
   (( MIGRATION_ATTEMPT++ ))
+  log "  Migration attempt ${MIGRATION_ATTEMPT}/${MIGRATION_MAX_ATTEMPTS}"
 
-  if docker run \
+  # Capture both stdout and stderr for debugging
+  MIGRATION_OUTPUT=$(docker run \
       --rm \
-      --name "${MIGRATION_CONTAINER}" \
+      --name "${MIGRATION_CONTAINER}-${MIGRATION_ATTEMPT}" \
       --env-file "${ENV_FILE}" \
       --network "${NETWORK_NAME}" \
       "${MIGRATION_SYSCTL_ARGS[@]}" \
       "${BACKEND_IMAGE}" \
-      alembic -c alembic/alembic.ini upgrade head 2>&1 | tee -a "${LOG_FILE}"; then
+      alembic -c alembic/alembic.ini upgrade head 2>&1) && MIGRATION_EXIT=0 || MIGRATION_EXIT=$?
+
+  echo "${MIGRATION_OUTPUT}" | tee -a "${LOG_FILE}"
+
+  if [[ ${MIGRATION_EXIT} -eq 0 ]]; then
     MIGRATION_OK=true
     break
   fi
 
+  log "  ✗ Migration attempt ${MIGRATION_ATTEMPT} failed (exit code: ${MIGRATION_EXIT})"
+
+  # Show last 20 lines of output for debugging
+  log "  Last output:"
+  echo "${MIGRATION_OUTPUT}" | tail -20 | while IFS= read -r line; do
+    log "    ${line}"
+  done
+
   if (( MIGRATION_ATTEMPT < MIGRATION_MAX_ATTEMPTS )); then
-    log "  Migration attempt ${MIGRATION_ATTEMPT}/${MIGRATION_MAX_ATTEMPTS} failed"
-    log "  Waiting 10s before retry..."
-    sleep 10
+    log "  Waiting 15s before retry..."
+    sleep 15
   fi
 done
 
@@ -762,19 +777,21 @@ step_end
 # =============================================================================
 step_start "Idempotent infrastructure startup"
 
-# Ensure infrastructure stack is running — use --wait for idempotent behavior.
-# Only containers with changed configs will be recreated; healthy ones stay.
-log "Ensuring infrastructure stack is running (idempotent)..."
-dc_infra up -d --remove-orphans --pull never --wait 2>&1 | tee -a "${LOG_FILE}" || true
+# Remove any orphaned containers from previous project names that conflict
+for orphan in $(docker ps -a --filter "name=hadha-" --format '{{.Names}}' 2>/dev/null | grep -v '^hadha-' || true); do
+  # This shouldn't match anything since we filter by hadha- prefix
+  :
+done
 
-# Force-recreate only the monitoring containers that were stale (config-only changes)
-for c in hadha-loki hadha-promtail hadha-prometheus hadha-grafana; do
-  if docker ps -a --format '{{.Names}}' 2>/dev/null | grep -qFx "${c}"; then
-    local_status=$(docker inspect --format='{{.State.Status}}' "${c}" 2>/dev/null || echo "unknown")
-    if [[ "${local_status}" != "running" ]]; then
-      log "  Container ${c} is ${local_status} — will be started by compose up"
-    fi
-  fi
+# Ensure infrastructure stack is running — use -d for background.
+# Docker Compose is idempotent: only recreate containers with changed configs.
+log "Ensuring infrastructure stack is running (idempotent)..."
+dc_infra up -d --remove-orphans --pull never 2>&1 | tee -a "${LOG_FILE}" || true
+
+# Log container statuses for debugging
+for c in hadha-loki hadha-promtail hadha-prometheus hadha-grafana hadha-nginx hadha-redis; do
+  local_status=$(docker inspect --format='{{.State.Status}}' "${c}" 2>/dev/null || echo "not_found")
+  log "  ${c}: ${local_status}"
 done
 step_end
 
