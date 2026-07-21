@@ -12,6 +12,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     gcc \
     && rm -rf /var/lib/apt/lists/*
 
+# Force IPv4 preference for DNS resolution (prevents IPv6 connection failures
+# to external databases like Supabase when IPv6 is configured but non-functional)
+RUN echo 'precedence ::ffff:0:0/96  100' >> /etc/gai.conf
+
 # ── Builder stage ──────────────────────────────────────────────────────────────
 FROM base AS builder
 COPY requirements.txt .

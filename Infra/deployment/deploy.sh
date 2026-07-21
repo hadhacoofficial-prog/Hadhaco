@@ -678,10 +678,30 @@ if docker inspect "${MIGRATION_CONTAINER}" >/dev/null 2>&1; then
   sleep 1
 fi
 
-# Use --sysctl to force IPv4 inside the migration container if IPv6 is non-functional
+# Sanitize env file — remove Windows \r, empty lines, and ensure no trailing whitespace
+SANITIZED_ENV="/tmp/hadha-migration.env"
+sed 's/\r$//' "${ENV_FILE}" | sed '/^$/d' | sed 's/[[:space:]]*$//' > "${SANITIZED_ENV}" 2>/dev/null || cp "${ENV_FILE}" "${SANITIZED_ENV}"
+
+# Diagnostic: verify the image can start and run a simple command
+log "  Diagnostic: testing image startup..."
+set +e
+DIAG_OUTPUT=$(docker run --rm --env-file "${SANITIZED_ENV}" --network "${NETWORK_NAME}" \
+    "${BACKEND_IMAGE}" python -c "import sys; print(f'Python {sys.version} OK'); print('Module import test...'); import alembic; print(f'Alembic {alembic.__version__} OK')" 2>&1)
+DIAG_EXIT=$?
+set -e
+log "  Diagnostic exit code: ${DIAG_EXIT}"
+if [[ ${DIAG_EXIT} -ne 0 ]]; then
+  log "  Diagnostic output: ${DIAG_OUTPUT}"
+  log "  ⚠ Image cannot start properly — check env file and image build"
+  # Continue anyway — the migration might reveal the actual error
+else
+  log "  Diagnostic output: ${DIAG_OUTPUT}"
+fi
+
+# Build sysctl args conditionally
 MIGRATION_SYSCTL_ARGS=()
 if [[ "${IPV6_FUNCTIONAL}" != "true" ]] && [[ "${IPV4_FUNCTIONAL}" == "true" ]]; then
-  MIGRATION_SYSCTL_ARGS=(--sysctl "net.ipv6.conf.all.disable_ipv6=1")
+  MIGRATION_SYSCTL_ARGS+=(--sysctl "net.ipv6.conf.all.disable_ipv6=1")
   log "  Forcing IPv4-only for migration container (IPv6 non-functional)"
 fi
 
@@ -689,35 +709,49 @@ fi
 MIGRATION_MAX_ATTEMPTS=3
 MIGRATION_ATTEMPT=0
 MIGRATION_OK=false
+MIGRATION_EXIT=0
 
 while (( MIGRATION_ATTEMPT < MIGRATION_MAX_ATTEMPTS )); do
   (( MIGRATION_ATTEMPT++ ))
   log "  Migration attempt ${MIGRATION_ATTEMPT}/${MIGRATION_MAX_ATTEMPTS}"
 
-  # Capture both stdout and stderr for debugging
-  MIGRATION_OUTPUT=$(docker run \
-      --rm \
-      --name "${MIGRATION_CONTAINER}-${MIGRATION_ATTEMPT}" \
-      --env-file "${ENV_FILE}" \
-      --network "${NETWORK_NAME}" \
-      "${MIGRATION_SYSCTL_ARGS[@]}" \
-      "${BACKEND_IMAGE}" \
-      alembic -c alembic/alembic.ini upgrade head 2>&1) && MIGRATION_EXIT=0 || MIGRATION_EXIT=$?
+  CONTAINER_NAME="${MIGRATION_CONTAINER}-${MIGRATION_ATTEMPT}"
+  MIGRATION_LOG="${APP_DIR}/migration-attempt-${MIGRATION_ATTEMPT}.log"
 
-  echo "${MIGRATION_OUTPUT}" | tee -a "${LOG_FILE}"
+  # Build docker run command as an array to avoid quoting issues
+  DOCKER_ARGS=(docker run --rm --name "${CONTAINER_NAME}" --env-file "${SANITIZED_ENV}" --network "${NETWORK_NAME}")
+  if [[ ${#MIGRATION_SYSCTL_ARGS[@]} -gt 0 ]]; then
+    DOCKER_ARGS+=("${MIGRATION_SYSCTL_ARGS[@]}")
+  fi
+  DOCKER_ARGS+=("${BACKEND_IMAGE}" alembic -c alembic/alembic.ini upgrade head)
+
+  # Run migration — capture exit code separately
+  set +e
+  "${DOCKER_ARGS[@]}" > "${MIGRATION_LOG}" 2>&1
+  MIGRATION_EXIT=$?
+  set -e
+
+  # Append to deploy log
+  if [[ -f "${MIGRATION_LOG}" ]] && [[ -s "${MIGRATION_LOG}" ]]; then
+    log "  Migration output:"
+    cat "${MIGRATION_LOG}" | tee -a "${LOG_FILE}"
+  fi
 
   if [[ ${MIGRATION_EXIT} -eq 0 ]]; then
     MIGRATION_OK=true
+    log "  ✓ Migration succeeded"
     break
   fi
 
   log "  ✗ Migration attempt ${MIGRATION_ATTEMPT} failed (exit code: ${MIGRATION_EXIT})"
 
-  # Show last 20 lines of output for debugging
-  log "  Last output:"
-  echo "${MIGRATION_OUTPUT}" | tail -20 | while IFS= read -r line; do
-    log "    ${line}"
-  done
+  if [[ -z "${MIGRATION_LOG}" ]] || [[ ! -s "${MIGRATION_LOG}" ]]; then
+    log "  ⚠ No output captured from migration container"
+    log "  Possible causes:"
+    log "    - Container failed to start (image or env issue)"
+    log "    - Docker daemon rejected the request"
+    log "    - Non-root user (hadha) cannot execute entrypoint"
+  fi
 
   if (( MIGRATION_ATTEMPT < MIGRATION_MAX_ATTEMPTS )); then
     log "  Waiting 15s before retry..."
@@ -725,8 +759,11 @@ while (( MIGRATION_ATTEMPT < MIGRATION_MAX_ATTEMPTS )); do
   fi
 done
 
+# Cleanup
+rm -f "${SANITIZED_ENV}"
+
 if [[ "${MIGRATION_OK}" != "true" ]]; then
-  rollback_and_exit "Database migration failed after ${MIGRATION_MAX_ATTEMPTS} attempts"
+  rollback_and_exit "Database migration failed after ${MIGRATION_MAX_ATTEMPTS} attempts (exit code: ${MIGRATION_EXIT})"
 fi
 MIGRATIONS_COMPLETED=true
 step_end
