@@ -1,7 +1,0 @@
-users:
-  admin:
-    email: admin@hadha.co
-    name: Admin Dozzle
-    password: $2a$11$LH7o.EUborMHLC8IxcZLPO17WnkZ/ow5FHbibVdqgJJamtronpg42
-    filter: ""
-    roles: ""

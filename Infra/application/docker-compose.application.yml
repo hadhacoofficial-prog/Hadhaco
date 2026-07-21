@@ -1,0 +1,147 @@
+name: hadha-application
+
+# =============================================================================
+# Application Stack — restarted on each deploy.
+# Infrastructure services are in docker-compose.infrastructure.yml.
+#
+# All image tags are injected at deploy time via environment variables:
+#   BACKEND_IMAGE    — ghcr.io/hadhacoofficial-prog/hadha-backend:<tag>
+#   STOREFRONT_IMAGE — ghcr.io/hadhacoofficial-prog/hadha-storefront:<tag>
+#   ADMIN_IMAGE      — ghcr.io/hadhacoofficial-prog/hadha-admin:<tag>
+# =============================================================================
+
+services:
+
+  # ── FastAPI backend ──────────────────────────────────────────────────────────
+  backend:
+    image: ${BACKEND_IMAGE:?BACKEND_IMAGE is required — pass via --env-file}
+    container_name: hadha-backend
+    restart: unless-stopped
+    env_file: /opt/hadha/.env.production
+    environment:
+      APP_ENV: production
+      REDIS_URL: "redis://:${REDIS_PASSWORD}@hadha-redis:6379/0"
+      ALLOWED_ORIGINS: "https://hadha.co,https://www.hadha.co,https://admin.hadha.co"
+      ALLOWED_HOSTS: "api.hadha.co,hadha-backend"
+      SENTRY_DSN: "${GLITCHTIP_DSN:-}"
+      SENTRY_TRACES_SAMPLE_RATE: "0.1"
+    expose:
+      - "8000"
+    networks:
+      - hadha
+    sysctls:
+      net.ipv6.conf.all.disable_ipv6: "1"
+    healthcheck:
+      test:
+        [
+          "CMD", "python", "-c",
+          "import httpx,sys; r=httpx.get('http://localhost:8000/health/live',headers={'Host':'api.hadha.co'},timeout=5); sys.exit(0 if r.status_code<400 else 1)"
+        ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    deploy:
+      resources:
+        limits:
+          memory: 768M
+          cpus: "1.0"
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "50m"
+        max-file: "5"
+    security_opt:
+      - no-new-privileges:true
+
+  # ── Storefront — customer-facing (hadha.co) ─────────────────────────────────
+  storefront:
+    image: ${STOREFRONT_IMAGE:?STOREFRONT_IMAGE is required — pass via --env-file}
+    container_name: hadha-storefront
+    restart: unless-stopped
+    env_file: /opt/hadha/.env.storefront.production
+    environment:
+      NODE_ENV: production
+      PORT: "3000"
+      SERVER_API_BASE_URL: "http://hadha-backend:8000/api/v1"
+      SENTRY_DSN: "${GLITCHTIP_FRONTEND_DSN:-}"
+    expose:
+      - "3000"
+    depends_on:
+      backend:
+        condition: service_healthy
+    networks:
+      - hadha
+    healthcheck:
+      test:
+        [
+          "CMD", "curl", "-sf",
+          "--max-time", "5",
+          "http://localhost:3000"
+        ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    deploy:
+      resources:
+        limits:
+          memory: 384M
+          cpus: "0.75"
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "50m"
+        max-file: "5"
+    security_opt:
+      - no-new-privileges:true
+
+  # ── Admin portal (admin.hadha.co) ────────────────────────────────────────────
+  admin:
+    image: ${ADMIN_IMAGE:?ADMIN_IMAGE is required — pass via --env-file}
+    container_name: hadha-admin
+    restart: unless-stopped
+    env_file: /opt/hadha/.env.admin.production
+    environment:
+      NODE_ENV: production
+      PORT: "3000"
+      SERVER_API_BASE_URL: "http://hadha-backend:8000/api/v1"
+      SENTRY_DSN: "${GLITCHTIP_FRONTEND_DSN:-}"
+    expose:
+      - "3000"
+    depends_on:
+      backend:
+        condition: service_healthy
+    networks:
+      - hadha
+    healthcheck:
+      test:
+        [
+          "CMD", "curl", "-sf",
+          "--max-time", "5",
+          "http://localhost:3000"
+        ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+          cpus: "0.5"
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "50m"
+        max-file: "5"
+    security_opt:
+      - no-new-privileges:true
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Networks
+# ─────────────────────────────────────────────────────────────────────────────
+networks:
+  hadha:
+    external: true
+    name: hadha

@@ -1,0 +1,129 @@
+groups:
+  - name: infrastructure
+    rules:
+      - alert: HighCPU
+        expr: node_load15 > count by (instance) (node_cpu_seconds_total{mode="idle"}) * 2
+        for: 15m
+        labels:
+          severity: critical
+        annotations:
+          summary: "High CPU load on {{ $labels.instance }}"
+          description: "15-minute load average ({{ $value | humanize }}) exceeds 2x CPU count for over 15 minutes."
+
+      - alert: HighMemory
+        expr: (node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes) < 0.1
+        for: 10m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Low memory on {{ $labels.instance }}"
+          description: "Available memory is {{ $value | humanizePercentage }} of total for over 10 minutes."
+
+      - alert: DiskSpace
+        expr: (node_filesystem_avail_bytes{fstype!~"tmpfs|overlay"} / node_filesystem_size_bytes{fstype!~"tmpfs|overlay"}) < 0.1
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Low disk space on {{ $labels.instance }}"
+          description: "Disk {{ $labels.mountpoint }} is {{ $value | humanizePercentage }} full for over 10 minutes."
+
+  - name: application
+    rules:
+      - alert: HighErrorRate
+        expr: >-
+          (
+            rate(http_requests_total{status=~"5.."}[5m])
+            /
+            rate(http_requests_total[5m])
+          ) > 0.05
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "High 5xx error rate"
+          description: "Error rate is {{ $value | humanizePercentage }} of total requests over the last 5 minutes."
+
+      - alert: HighLatency
+        expr: >-
+          histogram_quantile(0.95,
+            rate(http_request_duration_seconds_bucket[5m])
+          ) > 2
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High request latency"
+          description: "p95 latency is {{ $value | humanizeDuration }} for over 5 minutes."
+
+  - name: redis
+    rules:
+      - alert: RedisDown
+        expr: redis_up == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Redis is down"
+          description: "Redis instance has been unreachable for over 1 minute."
+
+      - alert: RedisHighMemory
+        expr: (redis_memory_used_bytes / redis_memory_max_bytes) > 0.9
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Redis memory usage high"
+          description: "Redis is using {{ $value | humanizePercentage }} of allocated memory for over 5 minutes."
+
+  - name: container
+    rules:
+      - alert: ContainerRestartLoop
+        expr: increase(container_restart_count[1h]) > 5
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Container {{ $labels.name }} restarting frequently"
+          description: "Container has restarted {{ $value }} times in the last hour."
+
+      - alert: ContainerOOMKilled
+        expr: increase(container_oom_events_total[1h]) > 0
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Container {{ $labels.name }} OOM killed"
+          description: "Container was killed due to out-of-memory in the last hour."
+
+      - alert: ContainerUnhealthy
+        expr: container_health_status{status="unhealthy"} == 1
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Container {{ $labels.name }} is unhealthy"
+          description: "Container health check has been failing for over 2 minutes."
+
+  - name: logs
+    rules:
+      - alert: LokiHighErrorRate
+        expr: >-
+          sum(rate(loki_ingester_chunk_entries_total{chunk="fail"}[5m]))
+          /
+          sum(rate(loki_ingester_chunk_entries_total[5m])) > 0.1
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Loki high chunk failure rate"
+          description: "Loki chunk write failure ratio is elevated for over 10 minutes."
+
+      - alert: PromtailNotShipping
+        expr: time() - promtail_positions_last_updated_timestamp_seconds > 300
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Promtail not shipping logs"
+          description: "Promtail position file has not been updated for over 5 minutes."

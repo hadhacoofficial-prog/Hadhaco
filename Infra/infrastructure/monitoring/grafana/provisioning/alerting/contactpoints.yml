@@ -1,0 +1,12 @@
+apiVersion: 1
+
+contactPoints:
+  - name: admin-email
+    orgId: 1
+    receivers:
+      - uid: admin-email-01
+        type: email
+        settings:
+          addresses: admin@hadha.co
+          singleEmail: false
+        disableResolveMessage: false

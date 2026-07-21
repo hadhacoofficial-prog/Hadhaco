@@ -3,11 +3,18 @@ name: Production Deploy
 # Triggers on pushes to main.
 # Builds multi-arch images, pushes to GHCR with SHA + semver tags,
 # then deploys to the production VPS with full rollback support.
+#
+# Repository layout:
+#   infrastructure/  — bootstrap, docker compose (infra), monitoring, nginx, ssl
+#   application/     — docker compose (app)
+#   deployment/      — deploy, rollback, verify, backup, restore, smoke-tests
+#   monitoring/      — grafana dashboards, prometheus configs
+#   Backend/         — Python FastAPI source
+#   Frontend_whole/  — React monorepo (storefront + admin)
 
 on:
   push:
     branches: [main]
-  # Allow manual trigger with optional tag override
   workflow_dispatch:
     inputs:
       image_tag:
@@ -17,13 +24,12 @@ on:
 
 concurrency:
   group: production-deploy
-  cancel-in-progress: false  # Never cancel in-flight production deployments
+  cancel-in-progress: false
 
 env:
   PYTHON_VERSION: "3.12"
   NODE_VERSION: "20"
   REGISTRY: ghcr.io
-  # Hardcoded org — never use github.repository_owner which can shift if the repo is forked
   BACKEND_IMAGE_NAME: hadhacoofficial-prog/hadha-backend
   STOREFRONT_IMAGE_NAME: hadhacoofficial-prog/hadha-storefront
   ADMIN_IMAGE_NAME: hadhacoofficial-prog/hadha-admin
@@ -59,7 +65,6 @@ jobs:
             TAG="sha-${SHORT_SHA}"
           fi
 
-          # Detect semver tag if current commit is tagged
           SEMVER=$(git tag --points-at HEAD | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+' | head -1 || echo "")
 
           echo "image_tag=${TAG}"    >> "$GITHUB_OUTPUT"
@@ -121,9 +126,6 @@ jobs:
           echo "backend_image=${BACKEND_BASE}:${TAG}"        >> "$GITHUB_OUTPUT"
           echo "storefront_image=${STOREFRONT_BASE}:${TAG}"  >> "$GITHUB_OUTPUT"
           echo "admin_image=${ADMIN_BASE}:${TAG}"            >> "$GITHUB_OUTPUT"
-          echo "Primary backend image:    ${BACKEND_BASE}:${TAG}"
-          echo "Primary storefront image: ${STOREFRONT_BASE}:${TAG}"
-          echo "Primary admin image:      ${ADMIN_BASE}:${TAG}"
 
       - name: Build and push backend
         uses: docker/build-push-action@v6
@@ -186,16 +188,6 @@ jobs:
             org.opencontainers.image.version=${{ needs.version.outputs.semver || needs.version.outputs.image_tag }}
 
   # ── Verify GHCR image propagation ────────────────────────────────────────
-  # WHY THIS JOB EXISTS:
-  #   docker build-push-action returns success when GHCR's origin server
-  #   accepts the manifest. GHCR's CDN is eventually consistent — edge nodes
-  #   serving the VPS region may not have replicated the manifest yet.
-  #   Without this gate, deploy-production starts immediately and the VPS
-  #   hits "manifest unknown" or EOF on docker pull.
-  #
-  #   This job logs in to GHCR fresh (simulating the VPS registry view) and
-  #   calls docker buildx imagetools inspect with exponential backoff until
-  #   ALL manifests are confirmed readable. Deployment is blocked until then.
   verify-images:
     name: Verify GHCR Image Propagation
     runs-on: ubuntu-24.04
@@ -219,20 +211,15 @@ jobs:
           ADMIN_IMAGE: ${{ needs.build-push.outputs.admin_image }}
         run: |
           MAX_RETRIES=10
-          # Backoff delays in seconds: 5 10 20 30 60 60 60 60 60 (9 delays for 10 attempts)
           BACKOFFS=(5 10 20 30 60 60 60 60 60)
 
           verify_manifest() {
-            local image="$1"
-            local label="$2"
-            local attempt=0
-
-            echo "━━ Verifying ${label} manifest: ${image}"
+            local image="$1" label="$2" attempt=0
+            echo "Verifying ${label} manifest: ${image}"
 
             while (( attempt < MAX_RETRIES )); do
               (( attempt++ ))
-              echo "  Attempt ${attempt}/${MAX_RETRIES} [$(date +'%H:%M:%S')]"
-
+              echo "  Attempt ${attempt}/${MAX_RETRIES}"
               local output exit_code
               set +e
               output=$(docker buildx imagetools inspect "${image}" 2>&1)
@@ -240,49 +227,33 @@ jobs:
               set -e
 
               if [[ ${exit_code} -eq 0 ]]; then
-                echo "  ✓ ${label} manifest confirmed"
-                # Print digest line for traceability in the Actions log
-                echo "${output}" | grep -E "^Name:|^Digest:|MediaType:" | head -5 || true
+                echo "  ${label} manifest confirmed"
                 return 0
               fi
 
-              echo "  Not yet available — response: $(echo "${output}" | head -2 | tr '\n' '|')"
-
               if (( attempt >= MAX_RETRIES )); then
-                echo "  ✗ ${label} manifest unavailable after ${MAX_RETRIES} attempts"
-                echo "  The push succeeded but GHCR propagation is stalled."
-                echo "  Action: re-run this workflow. The images ARE in GHCR."
+                echo "  ${label} manifest unavailable after ${MAX_RETRIES} attempts"
                 return 1
               fi
 
               local delay="${BACKOFFS[$((attempt - 1))]}"
-              echo "  Waiting ${delay}s before attempt $((attempt + 1))/${MAX_RETRIES}..."
+              echo "  Waiting ${delay}s..."
               sleep "${delay}"
             done
             return 1
           }
 
-          # Verify ALL manifests before allowing deployment.
-          # Partial deployment (e.g. new backend + old storefront) is worse than no-op.
-          BACKEND_OK=true
-          STOREFRONT_OK=true
-          ADMIN_OK=true
-
+          BACKEND_OK=true; STOREFRONT_OK=true; ADMIN_OK=true
           verify_manifest "${BACKEND_IMAGE}"    "backend"    || BACKEND_OK=false
           verify_manifest "${STOREFRONT_IMAGE}" "storefront" || STOREFRONT_OK=false
           verify_manifest "${ADMIN_IMAGE}"      "admin"      || ADMIN_OK=false
 
-          echo ""
-          echo "  Backend    manifest : ${BACKEND_OK}"
-          echo "  Storefront manifest : ${STOREFRONT_OK}"
-          echo "  Admin      manifest : ${ADMIN_OK}"
-
           if [[ "${BACKEND_OK}" != "true" ]] || [[ "${STOREFRONT_OK}" != "true" ]] || [[ "${ADMIN_OK}" != "true" ]]; then
-            echo "✗ One or more manifests unavailable — deployment blocked."
+            echo "One or more manifests unavailable — deployment blocked."
             exit 1
           fi
 
-          echo "✓ All manifests confirmed. Deployment may now begin."
+          echo "All manifests confirmed. Deployment may now begin."
 
   # ── Deploy to production VPS ──────────────────────────────────────────────
   deploy-production:
@@ -305,8 +276,7 @@ jobs:
           port: ${{ secrets.SSH_PORT || 22 }}
           username: ${{ secrets.SSH_USER }}
           key: ${{ secrets.SSH_PRIVATE_KEY }}
-          # Copy entire deploy/ directory so conf.d/ is included recursively
-          source: "deploy/"
+          source: "Infra/"
           target: "/tmp/hadha-deploy"
           strip_components: 0
 
@@ -319,8 +289,6 @@ jobs:
           ADMIN_IMAGE: ${{ needs.build-push.outputs.admin_image }}
           IMAGE_TAG: ${{ needs.version.outputs.image_tag }}
           GHCR_USERNAME: hadhacoofficial-prog
-          # GHCR_TOKEN must be a GitHub PAT with read:packages scope.
-          # GITHUB_TOKEN is NOT valid for docker login on an external VPS.
           GHCR_TOKEN: ${{ secrets.GHCR_TOKEN }}
           GIT_COMMIT_SHA: ${{ github.sha }}
           GIT_COMMIT_AUTHOR: ${{ github.event.head_commit.author.name || 'workflow_dispatch' }}
@@ -349,39 +317,64 @@ jobs:
           script: |
             set -euo pipefail
 
-            # Install updated scripts and configs
-            chmod +x /tmp/hadha-deploy/deploy/scripts/*.sh
-            cp -f /tmp/hadha-deploy/deploy/scripts/*.sh                           /opt/hadha/scripts/
-            cp -f /tmp/hadha-deploy/deploy/docker/docker-compose.production.yml   /opt/hadha/
+            DEPLOY_SRC="/tmp/hadha-deploy"
+            APP_DIR="/opt/hadha"
 
-            # Remove stale directories that should be files (from failed deploys)
-            for f in /opt/hadha/dozzle/users.yml \
-                     /opt/hadha/nginx/nginx.conf \
-                     /opt/hadha/monitoring/prometheus/prometheus.yml \
-                     /opt/hadha/monitoring/loki/loki-config.yml \
-                     /opt/hadha/monitoring/promtail/promtail-config.yml; do
-              if [ -d "$f" ]; then rmdir "$f" 2>/dev/null || rm -rf "$f" 2>/dev/null || echo "WARN: cannot remove $f (may need root)"; fi
+            echo "[$(date +'%H:%M:%S')] Syncing infrastructure configs..."
+
+            # ── Deploy scripts ──────────────────────────────────────────────
+            chmod +x "${DEPLOY_SRC}/Infra/deployment/"*.sh 2>/dev/null || true
+            mkdir -p "${APP_DIR}/scripts"
+            cp -f "${DEPLOY_SRC}/Infra/deployment/"*.sh "${APP_DIR}/scripts/" 2>/dev/null || true
+
+            # ── Deploy infrastructure compose ───────────────────────────────
+            cp -f "${DEPLOY_SRC}/Infra/infrastructure/docker/docker-compose.infrastructure.yml" "${APP_DIR}/"
+
+            # ── Deploy application compose ──────────────────────────────────
+            cp -f "${DEPLOY_SRC}/Infra/application/docker-compose.application.yml" "${APP_DIR}/"
+
+            # ── Deploy nginx configs ────────────────────────────────────────
+            mkdir -p "${APP_DIR}/nginx/conf.d"
+            cp -f "${DEPLOY_SRC}/Infra/infrastructure/nginx/nginx.conf" "${APP_DIR}/nginx/nginx.conf"
+            for f in "${DEPLOY_SRC}/Infra/infrastructure/nginx/conf.d/"*.conf; do
+              [ -f "$f" ] && cp -f "$f" "${APP_DIR}/nginx/conf.d/$(basename "$f")"
             done
 
-            # Install nginx configs — nginx.conf to root, conf.d/ for all server blocks
-            cat /tmp/hadha-deploy/deploy/nginx/nginx.conf > /opt/hadha/nginx/nginx.conf
-            mkdir -p /opt/hadha/nginx/conf.d
-            for f in /tmp/hadha-deploy/deploy/nginx/conf.d/*.conf; do
-              cat "$f" > "/opt/hadha/nginx/conf.d/$(basename "$f")"
+            # ── Deploy monitoring configs ───────────────────────────────────
+            for subdir in prometheus loki promtail grafana; do
+              if [ -d "${DEPLOY_SRC}/Infra/infrastructure/monitoring/${subdir}" ]; then
+                mkdir -p "${APP_DIR}/monitoring/${subdir}"
+                cp -rf "${DEPLOY_SRC}/Infra/infrastructure/monitoring/${subdir}/"* "${APP_DIR}/monitoring/${subdir}/" 2>/dev/null || true
+              fi
             done
 
-            # Install monitoring configs (prometheus, loki, promtail)
-            mkdir -p /opt/hadha/monitoring/prometheus/rules
-            cat /tmp/hadha-deploy/deploy/monitoring/prometheus/prometheus.yml > /opt/hadha/monitoring/prometheus/prometheus.yml
-            for f in /tmp/hadha-deploy/deploy/monitoring/prometheus/rules/*.yml; do
-              cat "$f" > "/opt/hadha/monitoring/prometheus/rules/$(basename "$f")"
-            done
-            mkdir -p /opt/hadha/monitoring/loki
-            cat /tmp/hadha-deploy/deploy/monitoring/loki/loki-config.yml > /opt/hadha/monitoring/loki/loki-config.yml
-            mkdir -p /opt/hadha/monitoring/promtail
-            cat /tmp/hadha-deploy/deploy/monitoring/promtail/promtail-config.yml > /opt/hadha/monitoring/promtail/promtail-config.yml
+            # ── Deploy monitoring dashboards ────────────────────────────────
+            mkdir -p "${APP_DIR}/monitoring/grafana/dashboards"
+            if [ -d "${DEPLOY_SRC}/Infra/infrastructure/monitoring/grafana/dashboards" ]; then
+              cp -f "${DEPLOY_SRC}/Infra/infrastructure/monitoring/grafana/dashboards/"*.json "${APP_DIR}/monitoring/grafana/dashboards/" 2>/dev/null || true
+            fi
 
-            # Execute deployment — temp dir kept for deploy.sh fallback copies
+            # ── Remove stale directory mounts ───────────────────────────────
+            for f in "${APP_DIR}/dozzle/users.yml" \
+                     "${APP_DIR}/nginx/nginx.conf" \
+                     "${APP_DIR}/monitoring/prometheus/prometheus.yml" \
+                     "${APP_DIR}/monitoring/loki/loki-config.yml" \
+                     "${APP_DIR}/monitoring/promtail/promtail-config.yml"; do
+              if [ -d "$f" ]; then rm -rf "$f" 2>/dev/null || true; fi
+            done
+
+            # ── Ensure Docker network ───────────────────────────────────────
+            docker network inspect hadha >/dev/null 2>&1 || \
+              docker network create --driver bridge hadha 2>/dev/null || true
+
+            # ── Ensure infrastructure is running ────────────────────────────
+            echo "[$(date +'%H:%M:%S')] Ensuring infrastructure stack..."
+            docker compose --env-file "${APP_DIR}/.env.production" \
+              -f "${APP_DIR}/docker-compose.infrastructure.yml" \
+              up -d --remove-orphans --pull never 2>&1 || true
+
+            # ── Execute deployment ──────────────────────────────────────────
+            echo "[$(date +'%H:%M:%S')] Executing deploy.sh..."
             export BACKEND_IMAGE STOREFRONT_IMAGE ADMIN_IMAGE IMAGE_TAG
             export GHCR_USERNAME GHCR_TOKEN GIT_COMMIT_SHA GIT_COMMIT_AUTHOR
             export REDIS_PASSWORD RESEND_API_KEY RESEND_FROM_EMAIL RESEND_TO_EMAIL
@@ -389,7 +382,7 @@ jobs:
             export GRAFANA_USERNAME GRAFANA_PASSWORD GLITCHTIP_DB_PASSWORD GLITCHTIP_SECRET_KEY
             export MONITORING_USERNAME MONITORING_PASSWORD
 
-            /opt/hadha/scripts/deploy.sh "${IMAGE_TAG}"
+            "${APP_DIR}/scripts/deploy.sh" "${IMAGE_TAG}"
 
             rm -rf /tmp/hadha-deploy
 
