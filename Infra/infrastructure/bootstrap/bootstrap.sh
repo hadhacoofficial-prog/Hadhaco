@@ -73,6 +73,52 @@ mark_done() {
   mv "${tmp}" "${STATE_FILE}"
 }
 
+ensure_hadha_network() {
+  # Create or recreate the 'hadha' Docker network with IPv6 support.
+  # If the network exists but IPv6 is disabled and no containers are attached,
+  # recreate it. If containers are attached, warn but continue.
+
+  if docker network inspect hadha >/dev/null 2>&1; then
+    local has_ipv6
+    has_ipv6=$(docker network inspect hadha -f '{{.EnableIPv6}}' 2>/dev/null)
+    if [[ "${has_ipv6}" == "true" ]]; then
+      success "Docker network 'hadha' exists with IPv6 — reusing"
+      return 0
+    fi
+
+    # Network exists without IPv6 — check if containers are attached
+    local container_count
+    container_count=$(docker network inspect hadha -f '{{len .Containers}}' 2>/dev/null || echo "0")
+
+    if [[ "${container_count}" -eq 0 ]]; then
+      log "Network 'hadha' has no IPv6 and no containers — recreating..."
+      docker network rm hadha 2>&1 || true
+    else
+      warn "Network 'hadha' has ${container_count} container(s) and no IPv6"
+      warn "Stopping attached containers to recreate network..."
+      for cid in $(docker network inspect hadha -f '{{range .Containers}}{{.Name}} {{end}}' 2>/dev/null); do
+        docker stop "${cid}" 2>/dev/null || true
+      done
+      docker network rm hadha 2>&1 || true
+    fi
+  fi
+
+  log "Creating Docker network: hadha (with IPv6)"
+  docker network create \
+    --driver bridge \
+    --ipv6 \
+    --subnet=fd00:hadha::/64 \
+    hadha 2>&1 \
+    || die "Failed to create Docker network 'hadha'"
+
+  # Verify
+  if docker network inspect hadha -f '{{.EnableIPv6}}' 2>/dev/null | grep -q "true"; then
+    success "Docker network 'hadha' created with IPv6 enabled"
+  else
+    die "Docker network 'hadha' created but IPv6 is NOT enabled — check daemon.json"
+  fi
+}
+
 # Initialize state file if missing
 if [[ ! -f "${STATE_FILE}" ]]; then
   echo "{\"version\": \"${INFRA_VERSION}\", \"steps\": {}}" > "${STATE_FILE}"
@@ -181,6 +227,47 @@ else
 fi
 
 # =============================================================================
+section "4b. Docker daemon IPv6 configuration"
+# =============================================================================
+if step_done "docker_ipv6"; then
+  success "Docker daemon IPv6 already configured — skipping"
+else
+  DAEMON_JSON="/etc/docker/daemon.json"
+  REQUIRED_JSON='{"ipv6":true,"ip6tables":true,"fixed-cidr-v6":"fd00::/80"}'
+
+  if [[ ! -f "${DAEMON_JSON}" ]]; then
+    log "Creating ${DAEMON_JSON} with IPv6 support..."
+    echo "${REQUIRED_JSON}" | jq '.' > "${DAEMON_JSON}"
+    systemctl restart docker
+    sleep 3
+    success "Docker daemon.json created and Docker restarted"
+  else
+    # Merge required settings into existing daemon.json
+    EXISTING=$(cat "${DAEMON_JSON}")
+    MERGED=$(echo "${EXISTING}" "${REQUIRED_JSON}" | jq -s '.[0] * .[1]')
+    if [[ "${MERGED}" != "$(echo "${EXISTING}" | jq -S '.')" ]]; then
+      log "Updating ${DAEMON_JSON} with IPv6 settings..."
+      cp "${DAEMON_JSON}" "${DAEMON_JSON}.bak.$(date +%s)"
+      echo "${MERGED}" | jq '.' > "${DAEMON_JSON}"
+      systemctl restart docker
+      sleep 3
+      success "Docker daemon.json updated and Docker restarted"
+    else
+      success "Docker daemon.json already has IPv6 settings"
+    fi
+  fi
+
+  # Verify IPv6 is active
+  if docker info 2>/dev/null | grep -q "IPv6:.*Yes\|IPv6 Enabled"; then
+    success "Docker daemon reports IPv6 enabled"
+  else
+    warn "Docker daemon IPv6 status unclear — will verify on network creation"
+  fi
+
+  mark_done "docker_ipv6"
+fi
+
+# =============================================================================
 section "5. Directory structure"
 # =============================================================================
 if step_done "directories"; then
@@ -209,18 +296,12 @@ else
 fi
 
 # =============================================================================
-section "6. Docker network"
+section "6. Docker network (IPv6-enabled)"
 # =============================================================================
 if step_done "network"; then
-  success "Docker network 'hadha' already exists — skipping"
+  success "Docker network 'hadha' already exists — verifying IPv6..."
 else
-  if docker network inspect hadha >/dev/null 2>&1; then
-    success "Docker network 'hadha' already exists"
-  else
-    log "Creating Docker network: hadha"
-    docker network create --driver bridge hadha 2>&1 || warn "Network creation failed — may already exist"
-    success "Docker network 'hadha' created"
-  fi
+  ensure_hadha_network
   mark_done "network"
 fi
 

@@ -29,8 +29,6 @@ services:
       - "8000"
     networks:
       - hadha
-    sysctls:
-      net.ipv6.conf.all.disable_ipv6: "1"
     healthcheck:
       test:
         [

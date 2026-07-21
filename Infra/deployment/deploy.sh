@@ -579,16 +579,45 @@ log "All images present and digests verified"
 step_end
 
 # =============================================================================
-# STEP 7: Ensure Docker network exists
+# STEP 7: Ensure Docker network exists with IPv6
 # =============================================================================
-step_start "Ensure Docker network: ${NETWORK_NAME}"
+step_start "Ensure Docker network: ${NETWORK_NAME} (IPv6)"
+
 if docker network inspect "${NETWORK_NAME}" >/dev/null 2>&1; then
-  log "Network ${NETWORK_NAME} already exists — reusing"
+  NET_IPV6=$(docker network inspect "${NETWORK_NAME}" -f '{{.EnableIPv6}}' 2>/dev/null || echo "false")
+  NET_CONTAINERS=$(docker network inspect "${NETWORK_NAME}" -f '{{len .Containers}}' 2>/dev/null || echo "0")
+
+  if [[ "${NET_IPV6}" == "true" ]]; then
+    log "Network ${NETWORK_NAME} exists with IPv6 — reusing"
+  elif [[ "${NET_CONTAINERS}" -eq 0 ]]; then
+    log "Network ${NETWORK_NAME} has no IPv6 and 0 containers — recreating..."
+    docker network rm "${NETWORK_NAME}" 2>&1 | tee -a "${LOG_FILE}" || true
+    docker network create --driver bridge --ipv6 --subnet=fd00:hadha::/64 "${NETWORK_NAME}" 2>&1 | tee -a "${LOG_FILE}" \
+      || die "Failed to recreate Docker network '${NETWORK_NAME}'"
+    log "  Network recreated with IPv6 enabled"
+  else
+    warn "Network ${NETWORK_NAME} has no IPv6 but ${NET_CONTAINERS} container(s) attached"
+    warn "Stopping containers to recreate network with IPv6..."
+    for cid_name in $(docker network inspect "${NETWORK_NAME}" -f '{{range .Containers}}{{.Name}} {{end}}' 2>/dev/null); do
+      docker stop "${cid_name}" 2>/dev/null || true
+    done
+    docker network rm "${NETWORK_NAME}" 2>&1 | tee -a "${LOG_FILE}" || true
+    docker network create --driver bridge --ipv6 --subnet=fd00:hadha::/64 "${NETWORK_NAME}" 2>&1 | tee -a "${LOG_FILE}" \
+      || die "Failed to recreate Docker network '${NETWORK_NAME}'"
+    log "  Network recreated with IPv6 — containers will be restarted later"
+  fi
 else
-  log "Creating Docker network: ${NETWORK_NAME}"
-  docker network create --driver bridge "${NETWORK_NAME}" 2>&1 | tee -a "${LOG_FILE}" \
-    || log "[WARN] Network creation failed — compose will handle it"
+  log "Creating Docker network: ${NETWORK_NAME} (with IPv6)"
+  docker network create --driver bridge --ipv6 --subnet=fd00:hadha::/64 "${NETWORK_NAME}" 2>&1 | tee -a "${LOG_FILE}" \
+    || die "Failed to create Docker network '${NETWORK_NAME}'"
 fi
+
+# Final verification
+NET_IPV6=$(docker network inspect "${NETWORK_NAME}" -f '{{.EnableIPv6}}' 2>/dev/null || echo "false")
+if [[ "${NET_IPV6}" != "true" ]]; then
+  die "Docker network '${NETWORK_NAME}' does not have IPv6 enabled — deployment cannot proceed"
+fi
+log "  ✓ Network ${NETWORK_NAME}: IPv6=enabled"
 step_end
 
 # =============================================================================
@@ -678,29 +707,13 @@ fi
 SANITIZED_ENV="/tmp/hadha-migration.env"
 sed 's/\r$//' "${ENV_FILE}" | sed '/^$/d' | sed 's/[[:space:]]*$//' > "${SANITIZED_ENV}" 2>/dev/null || cp "${ENV_FILE}" "${SANITIZED_ENV}"
 
-# Diagnostic: verify the image can start and run a simple command
-log "  Diagnostic: testing image startup..."
-DIAG_OUTPUT=$(docker run --rm --env-file "${SANITIZED_ENV}" --network "${NETWORK_NAME}" \
-    "${BACKEND_IMAGE}" python -c "import sys; print(f'Python {sys.version} OK'); print('Module import test...'); import alembic; print(f'Alembic {alembic.__version__} OK')" 2>&1) || DIAG_EXIT=$?
-DIAG_EXIT=${DIAG_EXIT:-0}
-log "  Diagnostic exit code: ${DIAG_EXIT}"
-if [[ ${DIAG_EXIT} -ne 0 ]]; then
-  log "  Diagnostic output: ${DIAG_OUTPUT}"
-  log "  ⚠ Image cannot start properly — check env file and image build"
-  # Continue anyway — the migration might reveal the actual error
-else
-  log "  Diagnostic output: ${DIAG_OUTPUT}"
-fi
-
-# Always disable IPv6 for the migration container — the DB pre-flight confirmed
-# IPv4 works, and Supabase's AAAA records are unreachable from this VPS even when
-# the host-level IPv6 check passes (the kernel advertises it but can't route it).
+# ── Build container network args (used by diagnostic AND migration) ────────────
+# Always disable IPv6 inside containers — host IPv6 works but Docker bridge
+# network doesn't expose it to containers, so AAAA records resolve but fail.
 MIGRATION_SYSCTL_ARGS=(--sysctl "net.ipv6.conf.all.disable_ipv6=1")
-log "  IPv6 disabled for migration container (using IPv4 to reach Supabase)"
 
-# Force /etc/hosts IPv4 mapping for ALL database hostnames — this bypasses DNS
-# entirely so psycopg cannot possibly try AAAA records.
-# Read URLs directly from the env file (they aren't exported to this shell).
+# Force /etc/hosts IPv4 mapping for ALL database hostnames — bypasses DNS entirely
+# so psycopg cannot possibly try AAAA records.
 MIGRATION_HOST_ARGS=()
 for _url_key in ALEMBIC_DATABASE_URL DATABASE_URL; do
   _url_val=$(grep "^${_url_key}=" "${SANITIZED_ENV}" 2>/dev/null | head -1 | cut -d= -f2- || true)
@@ -718,6 +731,52 @@ done
 unset _url_key _url_val _host _ipv4
 if [[ ${#MIGRATION_HOST_ARGS[@]} -eq 0 ]]; then
   log "  Warning: could not resolve any DB hostnames to IPv4, relying on gai.conf"
+fi
+
+# ── Diagnostic: test image startup AND DB connectivity from inside container ───
+log "  Diagnostic: testing image startup and DB connectivity..."
+DIAG_HOST_ARGS=("${MIGRATION_HOST_ARGS[@]+"${MIGRATION_HOST_ARGS[@]}"}")
+DIAG_SYSCTL_ARGS=("${MIGRATION_SYSCTL_ARGS[@]+"${MIGRATION_SYSCTL_ARGS[@]}"}")
+
+DIAG_OUTPUT=$(docker run --rm \
+    --env-file "${SANITIZED_ENV}" \
+    --network "${NETWORK_NAME}" \
+    "${DIAG_SYSCTL_ARGS[@]}" \
+    "${DIAG_HOST_ARGS[@]}" \
+    "${BACKEND_IMAGE}" python -c "
+import sys, os, urllib.parse
+print(f'Python {sys.version}')
+try:
+    import alembic; print(f'Alembic {alembic.__version__}')
+except Exception as e:
+    print(f'Alembic import failed: {e}'); sys.exit(1)
+db_url = os.environ.get('ALEMBIC_DATABASE_URL') or os.environ.get('DATABASE_URL', '')
+if not db_url:
+    print('No DATABASE_URL set — skipping DB test'); sys.exit(0)
+parsed = urllib.parse.urlparse(db_url)
+host = parsed.hostname or 'unknown'
+port = parsed.port or 5432
+print(f'DB target: {host}:{port}')
+import socket
+try:
+    infos = socket.getaddrinfo(host, port, socket.AF_UNSPEC, socket.SOCK_STREAM)
+    for family, stype, proto, canonname, sockaddr in infos:
+        print(f'  DNS: {sockaddr[0]} ({\"IPv4\" if family == socket.AF_INET else \"IPv6\"})')
+except Exception as e:
+    print(f'DNS resolution failed: {e}'); sys.exit(1)
+try:
+    s = socket.create_connection((host, port), timeout=10)
+    print(f'  TCP: connected to {host}:{port} OK')
+    s.close()
+except Exception as e:
+    print(f'  TCP: FAILED to connect to {host}:{port}: {e}'); sys.exit(1)
+print('All connectivity checks passed')
+" 2>&1) || DIAG_EXIT=$?
+DIAG_EXIT=${DIAG_EXIT:-0}
+log "  Diagnostic exit code: ${DIAG_EXIT}"
+log "  Diagnostic output: ${DIAG_OUTPUT}"
+if [[ ${DIAG_EXIT} -ne 0 ]]; then
+  die "Container cannot reach the database — check daemon.json IPv6, network, and --add-host args"
 fi
 
 # Retry migration up to 3 times with backoff

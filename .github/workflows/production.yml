@@ -365,10 +365,6 @@ jobs:
               if [ -d "$f" ]; then rm -rf "$f" 2>/dev/null || true; fi
             done
 
-            # ── Ensure Docker network ───────────────────────────────────────
-            docker network inspect hadha >/dev/null 2>&1 || \
-              docker network create --driver bridge hadha 2>/dev/null || true
-
             # ── Execute deployment ──────────────────────────────────────────
             echo "[$(date +'%H:%M:%S')] Executing deploy.sh..."
             export BACKEND_IMAGE STOREFRONT_IMAGE ADMIN_IMAGE IMAGE_TAG
