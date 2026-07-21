@@ -698,6 +698,18 @@ fi
 MIGRATION_SYSCTL_ARGS=(--sysctl "net.ipv6.conf.all.disable_ipv6=1")
 log "  IPv6 disabled for migration container (using IPv4 to reach Supabase)"
 
+# Force /etc/hosts IPv4 mapping for the database hostname — this bypasses DNS
+# entirely so psycopg cannot possibly try AAAA records.
+DB_HOST=$(echo "${ALEMBIC_DATABASE_URL:-${DATABASE_URL}}" | sed -E 's|.*@([^:]+):.*|\1|' 2>/dev/null || true)
+DB_IPV4=$(getent ahostsv4 "${DB_HOST}" 2>/dev/null | head -1 | awk '{print $1}' 2>/dev/null || true)
+if [[ -n "${DB_IPV4}" ]] && [[ -n "${DB_HOST}" ]]; then
+  log "  Resolved ${DB_HOST} → ${DB_IPV4} (forced via /etc/hosts)"
+  MIGRATION_HOST_ARGS=(--add-host "${DB_HOST}:${DB_IPV4}")
+else
+  log "  Warning: could not resolve ${DB_HOST} to IPv4, relying on gai.conf"
+  MIGRATION_HOST_ARGS=()
+fi
+
 # Retry migration up to 3 times with backoff
 MIGRATION_MAX_ATTEMPTS=3
 MIGRATION_ATTEMPT=0
@@ -715,6 +727,9 @@ while (( MIGRATION_ATTEMPT < MIGRATION_MAX_ATTEMPTS )); do
   DOCKER_ARGS=(docker run --rm --name "${CONTAINER_NAME}" --env-file "${SANITIZED_ENV}" --network "${NETWORK_NAME}")
   if [[ ${#MIGRATION_SYSCTL_ARGS[@]} -gt 0 ]]; then
     DOCKER_ARGS+=("${MIGRATION_SYSCTL_ARGS[@]}")
+  fi
+  if [[ ${#MIGRATION_HOST_ARGS[@]} -gt 0 ]]; then
+    DOCKER_ARGS+=("${MIGRATION_HOST_ARGS[@]}")
   fi
   DOCKER_ARGS+=("${BACKEND_IMAGE}" alembic -c alembic/alembic.ini upgrade head)
 
