@@ -233,10 +233,8 @@ pull_image_with_retry() {
     log "  Pull attempt ${attempt}/${_MAX_RETRIES}: ${image}"
 
     local output exit_code
-    set +e
-    output=$(docker pull "${image}" 2>&1)
-    exit_code=$?
-    set -e
+    output=$(docker pull "${image}" 2>&1) || exit_code=$?
+    exit_code=${exit_code:-0}
 
     if [[ ${exit_code} -eq 0 ]]; then
       log "  ✓ Pulled successfully: ${image}"
@@ -274,10 +272,8 @@ check_image_manifest() {
     log "  Manifest check attempt ${attempt}/${_MAX_RETRIES}"
 
     local output exit_code
-    set +e
-    output=$(docker manifest inspect "${image}" 2>&1)
-    exit_code=$?
-    set -e
+    output=$(docker manifest inspect "${image}" 2>&1) || exit_code=$?
+    exit_code=${exit_code:-0}
 
     if [[ ${exit_code} -eq 0 ]]; then
       log "  ✓ Manifest confirmed: ${image}"
@@ -684,11 +680,9 @@ sed 's/\r$//' "${ENV_FILE}" | sed '/^$/d' | sed 's/[[:space:]]*$//' > "${SANITIZ
 
 # Diagnostic: verify the image can start and run a simple command
 log "  Diagnostic: testing image startup..."
-set +e
 DIAG_OUTPUT=$(docker run --rm --env-file "${SANITIZED_ENV}" --network "${NETWORK_NAME}" \
-    "${BACKEND_IMAGE}" python -c "import sys; print(f'Python {sys.version} OK'); print('Module import test...'); import alembic; print(f'Alembic {alembic.__version__} OK')" 2>&1)
-DIAG_EXIT=$?
-set -e
+    "${BACKEND_IMAGE}" python -c "import sys; print(f'Python {sys.version} OK'); print('Module import test...'); import alembic; print(f'Alembic {alembic.__version__} OK')" 2>&1) || DIAG_EXIT=$?
+DIAG_EXIT=${DIAG_EXIT:-0}
 log "  Diagnostic exit code: ${DIAG_EXIT}"
 if [[ ${DIAG_EXIT} -ne 0 ]]; then
   log "  Diagnostic output: ${DIAG_OUTPUT}"
@@ -712,7 +706,7 @@ MIGRATION_OK=false
 MIGRATION_EXIT=0
 
 while (( MIGRATION_ATTEMPT < MIGRATION_MAX_ATTEMPTS )); do
-  (( MIGRATION_ATTEMPT++ ))
+  MIGRATION_ATTEMPT=$(( MIGRATION_ATTEMPT + 1 ))
   log "  Migration attempt ${MIGRATION_ATTEMPT}/${MIGRATION_MAX_ATTEMPTS}"
 
   CONTAINER_NAME="${MIGRATION_CONTAINER}-${MIGRATION_ATTEMPT}"
@@ -725,11 +719,9 @@ while (( MIGRATION_ATTEMPT < MIGRATION_MAX_ATTEMPTS )); do
   fi
   DOCKER_ARGS+=("${BACKEND_IMAGE}" alembic -c alembic/alembic.ini upgrade head)
 
-  # Run migration — capture exit code separately
-  set +e
-  "${DOCKER_ARGS[@]}" > "${MIGRATION_LOG}" 2>&1
-  MIGRATION_EXIT=$?
-  set -e
+  # Run migration — capture exit code without set -e (script uses set -uo pipefail only)
+  MIGRATION_EXIT=0
+  "${DOCKER_ARGS[@]}" > "${MIGRATION_LOG}" 2>&1 || MIGRATION_EXIT=$?
 
   # Append to deploy log
   if [[ -f "${MIGRATION_LOG}" ]] && [[ -s "${MIGRATION_LOG}" ]]; then
