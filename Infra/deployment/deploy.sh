@@ -189,6 +189,103 @@ warn() {
   log "[WARN] $*"
 }
 
+# ── IPv4 resolution with fallbacks ─────────────────────────────────────────────
+# Some hostnames (e.g. Supabase direct connection) may not resolve via
+# getent ahostsv4 on certain VPS configs. Fall back to dig/nslookup.
+resolve_ipv4() {
+  local host="$1"
+  local ipv4=""
+
+  # Method 1: getent ahostsv4 (fast, system resolver)
+  ipv4=$(getent ahostsv4 "${host}" 2>/dev/null | head -1 | awk '{print $1}' || true)
+  if [[ -n "${ipv4}" && "${ipv4}" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+    echo "${ipv4}"
+    return 0
+  fi
+
+  # Method 2: dig for A records (if available)
+  if command -v dig >/dev/null 2>&1; then
+    ipv4=$(dig +short +timeout=5 A "${host}" 2>/dev/null | grep -E '^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$' | head -1 || true)
+    if [[ -n "${ipv4}" ]]; then
+      echo "${ipv4}"
+      return 0
+    fi
+  fi
+
+  # Method 3: nslookup (if available)
+  if command -v nslookup >/dev/null 2>&1; then
+    ipv4=$(nslookup "${host}" 2>/dev/null | awk '/^Address:/{print $2}' | grep -E '^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$' | head -1 || true)
+    if [[ -n "${ipv4}" ]]; then
+      echo "${ipv4}"
+      return 0
+    fi
+  fi
+
+  # Method 4: python3 resolver (last resort)
+  if command -v python3 >/dev/null 2>&1; then
+    ipv4=$(python3 -c "
+import socket
+for res in socket.getaddrinfo('${host}', None, socket.AF_INET):
+    print(res[4][0]); break
+" 2>/dev/null || true)
+    if [[ -n "${ipv4}" ]]; then
+      echo "${ipv4}"
+      return 0
+    fi
+  fi
+
+  return 1
+}
+
+# Ensure Docker daemon has IPv6 enabled — required for --ipv6 network flag.
+ensure_daemon_ipv6() {
+  local DAEMON_JSON="/etc/docker/daemon.json"
+  local REQUIRED='{"ipv6":true,"ip6tables":true,"fixed-cidr-v6":"fd00::/80"}'
+
+  if [[ ! -f "${DAEMON_JSON}" ]]; then
+    log "  Creating ${DAEMON_JSON} with IPv6 support..."
+    echo "${REQUIRED}" | python3 -m json.tool > "${DAEMON_JSON}" 2>/dev/null \
+      || echo "${REQUIRED}" > "${DAEMON_JSON}"
+    log "  Restarting Docker daemon..."
+    systemctl restart docker
+    sleep 5
+    log "  Docker restarted"
+    return 0
+  fi
+
+  # Check if required settings are present
+  local needs_update=false
+  for key in ipv6 ip6tables; do
+    if ! grep -q "\"${key}\"" "${DAEMON_JSON}" 2>/dev/null; then
+      needs_update=true
+      break
+    fi
+  done
+
+  if [[ "${needs_update}" == "true" ]]; then
+    log "  Updating ${DAEMON_JSON} with IPv6 settings..."
+    cp "${DAEMON_JSON}" "${DAEMON_JSON}.bak.$(date +%s)"
+    # Merge: overlay required into existing
+    local merged
+    merged=$(python3 -c "
+import json, sys
+with open('${DAEMON_JSON}') as f: existing = json.load(f)
+required = json.loads('${REQUIRED}')
+existing.update(required)
+print(json.dumps(existing, indent=2))
+" 2>/dev/null) || merged="${REQUIRED}"
+    echo "${merged}" > "${DAEMON_JSON}"
+    log "  Restarting Docker daemon..."
+    systemctl restart docker
+    sleep 5
+    log "  Docker restarted"
+    return 0
+  fi
+
+  log "  daemon.json already has IPv6 settings"
+  return 1  # no restart needed
+}
+
 # ── Deployment state machine ──────────────────────────────────────────────────
 DEPLOYMENT_STATE="PREFLIGHT"
 PULLED_IMAGES=false
@@ -579,10 +676,18 @@ log "All images present and digests verified"
 step_end
 
 # =============================================================================
-# STEP 7: Ensure Docker network exists with IPv6
+# STEP 7: Ensure Docker daemon + network have IPv6
 # =============================================================================
 step_start "Ensure Docker network: ${NETWORK_NAME} (IPv6)"
 
+# 7a: Ensure daemon.json has IPv6 settings (--ipv6 flag requires this)
+DOCKER_RESTARTED=false
+if ensure_daemon_ipv6; then
+  DOCKER_RESTARTED=true
+  log "  Docker daemon updated and restarted"
+fi
+
+# 7b: Create or recreate network with IPv6
 if docker network inspect "${NETWORK_NAME}" >/dev/null 2>&1; then
   NET_IPV6=$(docker network inspect "${NETWORK_NAME}" -f '{{.EnableIPv6}}' 2>/dev/null || echo "false")
   NET_CONTAINERS=$(docker network inspect "${NETWORK_NAME}" -f '{{len .Containers}}' 2>/dev/null || echo "0")
@@ -718,12 +823,14 @@ MIGRATION_HOST_ARGS=()
 for _url_key in ALEMBIC_DATABASE_URL DATABASE_URL; do
   _url_val=$(grep "^${_url_key}=" "${SANITIZED_ENV}" 2>/dev/null | head -1 | cut -d= -f2- || true)
   if [[ -n "${_url_val}" ]]; then
-    _host=$(echo "${_url_val}" | sed -E 's|.*@([^:]+):.*|\1|' 2>/dev/null || true)
+    _host=$(echo "${_url_val}" | sed -E 's|.*@([^:/]+).*|\1|' 2>/dev/null || true)
     if [[ -n "${_host}" ]]; then
-      _ipv4=$(getent ahostsv4 "${_host}" 2>/dev/null | head -1 | awk '{print $1}' 2>/dev/null || true)
+      _ipv4=$(resolve_ipv4 "${_host}" 2>/dev/null || true)
       if [[ -n "${_ipv4}" ]]; then
         log "  Resolved ${_host} → ${_ipv4} (forced via /etc/hosts)"
         MIGRATION_HOST_ARGS+=(--add-host "${_host}:${_ipv4}")
+      else
+        warn "  Could not resolve ${_host} to IPv4 — migration may fail if AAAA unreachable"
       fi
     fi
   fi
