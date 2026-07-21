@@ -929,14 +929,40 @@ fi
 CONTAINERS_RESTARTED=true
 log "Application containers started"
 
-# Restart nginx to re-resolve upstream hostnames after app container recreation.
-# When app containers are recreated, their Docker IPs change. Nginx caches
-# upstream DNS at startup, so a simple `nginx -s reload` is insufficient —
-# we need a full container restart to clear the DNS cache.
-log "Restarting nginx to re-resolve upstream hostnames..."
-docker restart hadha-nginx >/dev/null 2>&1 || true
-sleep 3
-log "  ✓ nginx restarted"
+# Re-resolve upstream hostnames in nginx.
+# Nginx resolves static proxy_pass hostnames at startup. Since infra
+# starts before app containers exist, upstreams like hadha-backend are
+# unresolvable at nginx startup. After app containers join the hadha
+# network, we must reload nginx so it re-resolves them.
+#
+# Approach: send HUP directly to nginx PID 1 via docker kill.
+# `docker exec nginx -s reload` fails intermittently because the exec
+# shell can't find the nginx binary or PID file in the alpine image.
+# `docker kill -s HUP` bypasses this by sending the signal directly.
+log "Reloading nginx (HUP signal)..."
+if docker kill -s HUP hadha-nginx >/dev/null 2>&1; then
+  log "  ✓ nginx reloaded via HUP"
+  # Give nginx ~5s to re-resolve upstreams and re-attach worker processes
+  sleep 5
+else
+  log "  [WARN] nginx HUP reload failed — restarting container as fallback"
+  docker restart hadha-nginx >/dev/null 2>&1 || true
+  sleep 10
+fi
+
+# Wait for nginx to be healthy after reload/restart
+log "Waiting for nginx health after reload..."
+for attempt in $(seq 1 12); do
+  nginx_health=$(docker inspect --format='{{if .State.Health}}{{.State.Health.Status}}{{else}}no_healthcheck{{end}}' "hadha-nginx" 2>/dev/null || echo "unknown")
+  if [[ "${nginx_health}" == "healthy" ]]; then
+    log "  ✓ nginx healthy after reload"
+    break
+  fi
+  if [[ ${attempt} -eq 12 ]]; then
+    log "  [WARN] nginx not healthy after 60s (status: ${nginx_health}) — proceeding anyway"
+  fi
+  sleep 5
+done
 
 log "Waiting for health checks..."
 step_end
