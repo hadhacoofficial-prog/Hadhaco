@@ -929,13 +929,14 @@ fi
 CONTAINERS_RESTARTED=true
 log "Application containers started"
 
-# Reload nginx to re-resolve upstream hostnames
-log "Reloading nginx..."
-if docker exec hadha-nginx nginx -s reload 2>/dev/null; then
-  log "  ✓ nginx reloaded"
-else
-  log "  [WARN] nginx reload failed"
-fi
+# Restart nginx to re-resolve upstream hostnames after app container recreation.
+# When app containers are recreated, their Docker IPs change. Nginx caches
+# upstream DNS at startup, so a simple `nginx -s reload` is insufficient —
+# we need a full container restart to clear the DNS cache.
+log "Restarting nginx to re-resolve upstream hostnames..."
+docker restart hadha-nginx >/dev/null 2>&1 || true
+sleep 3
+log "  ✓ nginx restarted"
 
 log "Waiting for health checks..."
 step_end
