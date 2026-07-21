@@ -880,10 +880,34 @@ for cname in "${INFRA_CONTAINER_NAMES[@]}"; do
   fi
 done
 
+# Wait for port bindings to fully release (especially 80/443 for nginx).
+# docker rm -f releases ports immediately at the Docker level, but the OS
+# may hold TCP sockets in TIME_WAIT for a few seconds, causing nginx to
+# crash-loop if started too quickly.
+log "Waiting for port bindings to release..."
+sleep 5
+
 # Now start fresh
 log "Ensuring infrastructure stack is running..."
 dc_infra up -d --pull never 2>&1 | tee -a "${LOG_FILE}" \
   || rollback_and_exit "docker compose up (infrastructure) failed"
+
+# Wait for nginx to become healthy before proceeding to app startup.
+# Nginx is the gateway for all services — if it's not up, nothing works.
+log "Waiting for nginx to become healthy..."
+for attempt in $(seq 1 12); do
+  nginx_health=$(docker inspect --format='{{if .State.Health}}{{.State.Health.Status}}{{else}}no_healthcheck{{end}}' "hadha-nginx" 2>/dev/null || echo "unknown")
+  if [[ "${nginx_health}" == "healthy" ]]; then
+    log "  ✓ nginx is healthy"
+    break
+  fi
+  if [[ ${attempt} -eq 12 ]]; then
+    # Last attempt — log error but don't abort. Nginx might still be starting.
+    log "  [WARN] nginx not healthy after 60s (status: ${nginx_health}) — proceeding anyway"
+  fi
+  log "  Waiting for nginx... (attempt ${attempt}/12, status: ${nginx_health})"
+  sleep 5
+done
 
 # Log container statuses for debugging
 for c in hadha-loki hadha-promtail hadha-prometheus hadha-grafana hadha-nginx hadha-redis; do
