@@ -862,12 +862,14 @@ step_start "Idempotent infrastructure startup"
 log "Cleaning stale infrastructure containers..."
 dc_infra down --remove-orphans 2>&1 | tee -a "${LOG_FILE}" || true
 
-# Safety net: remove any stray hadha-* containers not managed by compose
-for stray in $(docker ps -a --filter "status=exited" --filter "status=created" \
-    --filter "status=dead" --format '{{.Names}}' 2>/dev/null \
-    | grep -E '^hadha-(redis|nginx|prometheus|grafana|loki|promtail|node-exporter|cadvisor|uptime-kuma|glitchtip|dozzle|redis-commander|redis-exporter)' || true); do
-  log "  Removing stray container: ${stray}"
-  docker rm -f "${stray}" >/dev/null 2>&1 || true
+# Safety net: force-remove ALL hadha-* containers in any non-running state
+# that compose down didn't catch (e.g., created outside compose project).
+for stray in $(docker ps -a --format '{{.Names}}' 2>/dev/null | grep '^hadha-' || true); do
+  stray_state=$(docker inspect --format='{{.State.Status}}' "${stray}" 2>/dev/null || echo "unknown")
+  if [[ "${stray_state}" != "running" ]]; then
+    log "  Removing stray container: ${stray} (${stray_state})"
+    docker rm -f "${stray}" >/dev/null 2>&1 || true
+  fi
 done
 
 # Now start fresh
