@@ -862,13 +862,21 @@ step_start "Idempotent infrastructure startup"
 log "Cleaning stale infrastructure containers..."
 dc_infra down --remove-orphans 2>&1 | tee -a "${LOG_FILE}" || true
 
-# Safety net: force-remove ALL hadha-* containers in any non-running state
-# that compose down didn't catch (e.g., created outside compose project).
-for stray in $(docker ps -a --format '{{.Names}}' 2>/dev/null | grep '^hadha-' || true); do
-  stray_state=$(docker inspect --format='{{.State.Status}}' "${stray}" 2>/dev/null || echo "unknown")
-  if [[ "${stray_state}" != "running" ]]; then
-    log "  Removing stray container: ${stray} (${stray_state})"
-    docker rm -f "${stray}" >/dev/null 2>&1 || true
+# Safety net: force-remove ALL non-application hadha-* containers.
+# dc_infra down only removes containers it manages (by compose labels).
+# Containers created outside compose (e.g., manual docker run, or from a
+# different project name) survive and block name reuse.
+INFRA_CONTAINER_NAMES=(
+  hadha-redis hadha-redis-commander hadha-redis-exporter
+  hadha-nginx hadha-prometheus hadha-grafana
+  hadha-loki hadha-promtail hadha-node-exporter
+  hadha-cadvisor hadha-uptime-kuma hadha-dozzle
+  hadha-glitchtip hadha-glitchtip-db hadha-glitchtip-worker
+)
+for cname in "${INFRA_CONTAINER_NAMES[@]}"; do
+  if docker inspect "${cname}" >/dev/null 2>&1; then
+    log "  Removing stray container: ${cname}"
+    docker rm -f "${cname}" >/dev/null 2>&1 || true
   fi
 done
 
