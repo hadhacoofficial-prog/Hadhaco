@@ -698,16 +698,26 @@ fi
 MIGRATION_SYSCTL_ARGS=(--sysctl "net.ipv6.conf.all.disable_ipv6=1")
 log "  IPv6 disabled for migration container (using IPv4 to reach Supabase)"
 
-# Force /etc/hosts IPv4 mapping for the database hostname — this bypasses DNS
+# Force /etc/hosts IPv4 mapping for ALL database hostnames — this bypasses DNS
 # entirely so psycopg cannot possibly try AAAA records.
-DB_HOST=$(echo "${ALEMBIC_DATABASE_URL:-${DATABASE_URL}}" | sed -E 's|.*@([^:]+):.*|\1|' 2>/dev/null || true)
-DB_IPV4=$(getent ahostsv4 "${DB_HOST}" 2>/dev/null | head -1 | awk '{print $1}' 2>/dev/null || true)
-if [[ -n "${DB_IPV4}" ]] && [[ -n "${DB_HOST}" ]]; then
-  log "  Resolved ${DB_HOST} → ${DB_IPV4} (forced via /etc/hosts)"
-  MIGRATION_HOST_ARGS=(--add-host "${DB_HOST}:${DB_IPV4}")
-else
-  log "  Warning: could not resolve ${DB_HOST} to IPv4, relying on gai.conf"
-  MIGRATION_HOST_ARGS=()
+# Read URLs directly from the env file (they aren't exported to this shell).
+MIGRATION_HOST_ARGS=()
+for _url_key in ALEMBIC_DATABASE_URL DATABASE_URL; do
+  _url_val=$(grep "^${_url_key}=" "${SANITIZED_ENV}" 2>/dev/null | head -1 | cut -d= -f2- || true)
+  if [[ -n "${_url_val}" ]]; then
+    _host=$(echo "${_url_val}" | sed -E 's|.*@([^:]+):.*|\1|' 2>/dev/null || true)
+    if [[ -n "${_host}" ]]; then
+      _ipv4=$(getent ahostsv4 "${_host}" 2>/dev/null | head -1 | awk '{print $1}' 2>/dev/null || true)
+      if [[ -n "${_ipv4}" ]]; then
+        log "  Resolved ${_host} → ${_ipv4} (forced via /etc/hosts)"
+        MIGRATION_HOST_ARGS+=(--add-host "${_host}:${_ipv4}")
+      fi
+    fi
+  fi
+done
+unset _url_key _url_val _host _ipv4
+if [[ ${#MIGRATION_HOST_ARGS[@]} -eq 0 ]]; then
+  log "  Warning: could not resolve any DB hostnames to IPv4, relying on gai.conf"
 fi
 
 # Retry migration up to 3 times with backoff
