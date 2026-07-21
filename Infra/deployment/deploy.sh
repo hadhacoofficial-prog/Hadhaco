@@ -856,16 +856,24 @@ step_end
 # =============================================================================
 step_start "Idempotent infrastructure startup"
 
-# Remove any orphaned containers from previous project names that conflict
-for orphan in $(docker ps -a --filter "name=hadha-" --format '{{.Names}}' 2>/dev/null | grep -v '^hadha-' || true); do
-  # This shouldn't match anything since we filter by hadha- prefix
-  :
+# Clean up stale containers that block compose up (name conflicts from
+# previous deploys where the network was recreated, leaving stopped
+# containers behind).
+log "Cleaning stale infrastructure containers..."
+dc_infra down --remove-orphans 2>&1 | tee -a "${LOG_FILE}" || true
+
+# Safety net: remove any stray hadha-* containers not managed by compose
+for stray in $(docker ps -a --filter "status=exited" --filter "status=created" \
+    --filter "status=dead" --format '{{.Names}}' 2>/dev/null \
+    | grep -E '^hadha-(redis|nginx|prometheus|grafana|loki|promtail|node-exporter|cadvisor|uptime-kuma|glitchtip|dozzle|redis-commander|redis-exporter)' || true); do
+  log "  Removing stray container: ${stray}"
+  docker rm -f "${stray}" >/dev/null 2>&1 || true
 done
 
-# Ensure infrastructure stack is running — use -d for background.
-# Docker Compose is idempotent: only recreate containers with changed configs.
-log "Ensuring infrastructure stack is running (idempotent)..."
-dc_infra up -d --remove-orphans --pull never 2>&1 | tee -a "${LOG_FILE}" || true
+# Now start fresh
+log "Ensuring infrastructure stack is running..."
+dc_infra up -d --pull never 2>&1 | tee -a "${LOG_FILE}" \
+  || rollback_and_exit "docker compose up (infrastructure) failed"
 
 # Log container statuses for debugging
 for c in hadha-loki hadha-promtail hadha-prometheus hadha-grafana hadha-nginx hadha-redis; do
