@@ -31,6 +31,85 @@ APP_URL="https://hadha.co"
 NETWORK_NAME="hadha"
 MIGRATION_CONTAINER="hadha-migration"
 
+# ── IPv4/IPv6 detection ──────────────────────────────────────────────────────
+IPV4_FUNCTIONAL=false
+IPV6_FUNCTIONAL=false
+
+detect_ip_support() {
+  # Check IPv4 — if we can ping a known-working IPv4 address, IPv4 works
+  if ping -4 -c 1 -W 3 8.8.8.8 >/dev/null 2>&1; then
+    IPV4_FUNCTIONAL=true
+    log "  IPv4: functional"
+  elif ip -4 addr show scope global 2>/dev/null | grep -q 'inet '; then
+    IPV4_FUNCTIONAL=true
+    log "  IPv4: configured (ping test unavailable)"
+  else
+    log "  IPv4: NOT functional"
+  fi
+
+  # Check IPv6 — must have both config AND working connectivity
+  if ip -6 route show default 2>/dev/null | grep -q 'default'; then
+    if ping6 -c 1 -W 3 2001:4860:4860::8888 >/dev/null 2>&1 || \
+       ping6 -c 1 -W 3 2606:4700:4700::1111 >/dev/null 2>&1; then
+      IPV6_FUNCTIONAL=true
+      log "  IPv6: functional"
+    else
+      log "  IPv6: configured but no internet connectivity (will fail for DB)"
+    fi
+  else
+    log "  IPv6: not configured"
+  fi
+}
+
+# ── Database pre-flight ───────────────────────────────────────────────────────
+preflight_database() {
+  local db_url="${DATABASE_URL:-}"
+  [[ -z "${db_url}" ]] && { log "  DATABASE_URL not set — skipping pre-flight"; return 0; }
+
+  # Extract host and port from DATABASE_URL
+  local db_host db_port
+  db_host=$(echo "${db_url}" | sed -n 's|.*@\([^:/]*\).*|\1|p')
+  db_port=$(echo "${db_url}" | sed -n 's|.*:\([0-9]*\)/.*|\1|p')
+  [[ -z "${db_port}" ]] && db_port=5432
+
+  log "  Database host: ${db_host}:${db_port}"
+
+  # Try TCP connectivity — prefer IPv4 if available, fallback through methods
+  local tcp_ok=false
+
+  if [[ "${IPV4_FUNCTIONAL}" == "true" ]]; then
+    # Force IPv4 TCP check using nc
+    if nc -4 -zw5 "${db_host}" "${db_port}" 2>/dev/null; then
+      tcp_ok=true
+      log "  TCP: reachable via IPv4"
+    fi
+  fi
+
+  if [[ "${tcp_ok}" != "true" ]] && nc -zw5 "${db_host}" "${db_port}" 2>/dev/null; then
+    tcp_ok=true
+    log "  TCP: reachable"
+  fi
+
+  if [[ "${tcp_ok}" != "true" ]]; then
+    # Bash fallback
+    if (echo >/dev/tcp/"${db_host}"/"${db_port}") 2>/dev/null; then
+      tcp_ok=true
+      log "  TCP: reachable via bash /dev/tcp"
+    fi
+  fi
+
+  if [[ "${tcp_ok}" != "true" ]]; then
+    local msg="Cannot reach database at ${db_host}:${db_port}"
+    log "  ✗ ${msg}"
+    log "  This is usually caused by IPv6 AAAA record resolution on a VPS without working IPv6."
+    log "  Fix: Set DATABASE_URL to use the IPv4 address directly, or run:"
+    log "    echo 'precedence ::ffff:0:0/96 100' >> /etc/gai.conf"
+    return 1
+  fi
+
+  return 0
+}
+
 GHCR_ORG="hadhacoofficial-prog"
 BACKEND_IMAGE="ghcr.io/${GHCR_ORG}/hadha-backend:${IMAGE_TAG}"
 STOREFRONT_IMAGE="ghcr.io/${GHCR_ORG}/hadha-storefront:${IMAGE_TAG}"
@@ -104,6 +183,10 @@ die() {
   [[ -n "${STEP_NAME}" ]] && step_fail "$*"
   log "[FATAL] $*"
   exit 1
+}
+
+warn() {
+  log "[WARN] $*"
 }
 
 # ── Deployment state machine ──────────────────────────────────────────────────
@@ -332,10 +415,25 @@ if [[ -z "${RESEND_API_KEY:-}" ]]; then
   warn "RESEND_API_KEY not set — Grafana email alerts will not work"
 fi
 
+# Load GLITCHTIP_DSN from env file if not already set
+if [[ -z "${GLITCHTIP_DSN:-}" ]]; then
+  GLITCHTIP_DSN=$(grep -E '^GLITCHTIP_DSN=' "${ENV_FILE}" 2>/dev/null | head -1 | cut -d= -f2-)
+  export GLITCHTIP_DSN
+fi
+if [[ -z "${GLITCHTIP_FRONTEND_DSN:-}" ]]; then
+  GLITCHTIP_FRONTEND_DSN=$(grep -E '^GLITCHTIP_FRONTEND_DSN=' "${ENV_FILE}" 2>/dev/null | head -1 | cut -d= -f2-)
+  export GLITCHTIP_FRONTEND_DSN
+fi
+
 log "Image tag    : ${IMAGE_TAG}"
 log "Backend      : ${BACKEND_IMAGE}"
 log "Storefront   : ${STOREFRONT_IMAGE}"
 log "Admin        : ${ADMIN_IMAGE}"
+
+# ── Detect IPv4/IPv6 support ──────────────────────────────────────────────────
+log ""
+log "Network detection:"
+detect_ip_support
 
 # =============================================================================
 # STEP 0: Validate compose configuration
@@ -347,6 +445,7 @@ export BACKEND_IMAGE STOREFRONT_IMAGE ADMIN_IMAGE REDIS_PASSWORD \
        DOZZLE_USERNAME DOZZLE_PASSWORD \
        GRAFANA_USERNAME GRAFANA_PASSWORD \
        GLITCHTIP_DB_PASSWORD GLITCHTIP_SECRET_KEY \
+       GLITCHTIP_DSN GLITCHTIP_FRONTEND_DSN \
        RESEND_API_KEY RESEND_FROM_EMAIL RESEND_TO_EMAIL
 
 COMPOSE_VALIDATE_OUTPUT=$(dc_app config 2>&1) || {
@@ -553,6 +652,20 @@ log "Basic-auth file written"
 step_end
 
 # =============================================================================
+# STEP 7.7: Database pre-flight connectivity
+# =============================================================================
+step_start "Database pre-flight check"
+
+# Source DATABASE_URL from env file for the pre-flight check
+DATABASE_URL=$(grep -E '^DATABASE_URL=' "${ENV_FILE}" 2>/dev/null | head -1 | cut -d= -f2-)
+if ! preflight_database; then
+  rollback_and_exit "Database pre-flight failed — cannot reach Supabase PostgreSQL"
+fi
+
+log "  ✓ Database reachable"
+step_end
+
+# =============================================================================
 # STEP 8: Database migrations
 # =============================================================================
 step_start "Database migrations (Supabase)"
@@ -563,14 +676,42 @@ if docker inspect "${MIGRATION_CONTAINER}" >/dev/null 2>&1; then
   docker rm -f "${MIGRATION_CONTAINER}" >/dev/null 2>&1 || true
 fi
 
-if ! docker run \
-    --rm \
-    --name "${MIGRATION_CONTAINER}" \
-    --env-file "${ENV_FILE}" \
-    --network "${NETWORK_NAME}" \
-    "${BACKEND_IMAGE}" \
-    alembic -c alembic/alembic.ini upgrade head 2>&1 | tee -a "${LOG_FILE}"; then
-  rollback_and_exit "Database migration failed"
+# Use --sysctl to force IPv4 inside the migration container if IPv6 is non-functional
+MIGRATION_SYSCTL_ARGS=()
+if [[ "${IPV6_FUNCTIONAL}" != "true" ]] && [[ "${IPV4_FUNCTIONAL}" == "true" ]]; then
+  MIGRATION_SYSCTL_ARGS=(--sysctl "net.ipv6.conf.all.disable_ipv6=1")
+  log "  Forcing IPv4-only for migration container (IPv6 non-functional)"
+fi
+
+# Retry migration up to 3 times with backoff
+MIGRATION_MAX_ATTEMPTS=3
+MIGRATION_ATTEMPT=0
+MIGRATION_OK=false
+
+while (( MIGRATION_ATTEMPT < MIGRATION_MAX_ATTEMPTS )); do
+  (( MIGRATION_ATTEMPT++ ))
+
+  if docker run \
+      --rm \
+      --name "${MIGRATION_CONTAINER}" \
+      --env-file "${ENV_FILE}" \
+      --network "${NETWORK_NAME}" \
+      "${MIGRATION_SYSCTL_ARGS[@]}" \
+      "${BACKEND_IMAGE}" \
+      alembic -c alembic/alembic.ini upgrade head 2>&1 | tee -a "${LOG_FILE}"; then
+    MIGRATION_OK=true
+    break
+  fi
+
+  if (( MIGRATION_ATTEMPT < MIGRATION_MAX_ATTEMPTS )); then
+    log "  Migration attempt ${MIGRATION_ATTEMPT}/${MIGRATION_MAX_ATTEMPTS} failed"
+    log "  Waiting 10s before retry..."
+    sleep 10
+  fi
+done
+
+if [[ "${MIGRATION_OK}" != "true" ]]; then
+  rollback_and_exit "Database migration failed after ${MIGRATION_MAX_ATTEMPTS} attempts"
 fi
 MIGRATIONS_COMPLETED=true
 step_end
@@ -617,20 +758,24 @@ fi
 step_end
 
 # =============================================================================
-# STEP 8.6: Force-recreate monitoring containers if configs changed
+# STEP 8.6: Idempotent infrastructure startup
 # =============================================================================
-step_start "Force-recreate monitoring containers"
+step_start "Idempotent infrastructure startup"
 
+# Ensure infrastructure stack is running — use --wait for idempotent behavior.
+# Only containers with changed configs will be recreated; healthy ones stay.
+log "Ensuring infrastructure stack is running (idempotent)..."
+dc_infra up -d --remove-orphans --pull never --wait 2>&1 | tee -a "${LOG_FILE}" || true
+
+# Force-recreate only the monitoring containers that were stale (config-only changes)
 for c in hadha-loki hadha-promtail hadha-prometheus hadha-grafana; do
   if docker ps -a --format '{{.Names}}' 2>/dev/null | grep -qFx "${c}"; then
-    docker rm -f "${c}" 2>/dev/null || true
-    log "  Removed stale container: ${c}"
+    local_status=$(docker inspect --format='{{.State.Status}}' "${c}" 2>/dev/null || echo "unknown")
+    if [[ "${local_status}" != "running" ]]; then
+      log "  Container ${c} is ${local_status} — will be started by compose up"
+    fi
   fi
 done
-
-# Ensure infrastructure services are running
-log "Ensuring infrastructure stack is running..."
-dc_infra up -d --remove-orphans --pull never 2>&1 | tee -a "${LOG_FILE}" || true
 step_end
 
 # =============================================================================
