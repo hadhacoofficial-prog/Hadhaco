@@ -592,7 +592,7 @@ if docker network inspect "${NETWORK_NAME}" >/dev/null 2>&1; then
   elif [[ "${NET_CONTAINERS}" -eq 0 ]]; then
     log "Network ${NETWORK_NAME} has no IPv6 and 0 containers — recreating..."
     docker network rm "${NETWORK_NAME}" 2>&1 | tee -a "${LOG_FILE}" || true
-    docker network create --driver bridge --ipv6 --subnet=fd00:hadha::/64 "${NETWORK_NAME}" 2>&1 | tee -a "${LOG_FILE}" \
+    docker network create --driver bridge --ipv6 --subnet=fd00:1::/64 "${NETWORK_NAME}" 2>&1 | tee -a "${LOG_FILE}" \
       || die "Failed to recreate Docker network '${NETWORK_NAME}'"
     log "  Network recreated with IPv6 enabled"
   else
@@ -602,13 +602,13 @@ if docker network inspect "${NETWORK_NAME}" >/dev/null 2>&1; then
       docker stop "${cid_name}" 2>/dev/null || true
     done
     docker network rm "${NETWORK_NAME}" 2>&1 | tee -a "${LOG_FILE}" || true
-    docker network create --driver bridge --ipv6 --subnet=fd00:hadha::/64 "${NETWORK_NAME}" 2>&1 | tee -a "${LOG_FILE}" \
+    docker network create --driver bridge --ipv6 --subnet=fd00:1::/64 "${NETWORK_NAME}" 2>&1 | tee -a "${LOG_FILE}" \
       || die "Failed to recreate Docker network '${NETWORK_NAME}'"
     log "  Network recreated with IPv6 — containers will be restarted later"
   fi
 else
   log "Creating Docker network: ${NETWORK_NAME} (with IPv6)"
-  docker network create --driver bridge --ipv6 --subnet=fd00:hadha::/64 "${NETWORK_NAME}" 2>&1 | tee -a "${LOG_FILE}" \
+  docker network create --driver bridge --ipv6 --subnet=fd00:1::/64 "${NETWORK_NAME}" 2>&1 | tee -a "${LOG_FILE}" \
     || die "Failed to create Docker network '${NETWORK_NAME}'"
 fi
 

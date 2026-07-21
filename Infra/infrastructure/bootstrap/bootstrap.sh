@@ -107,7 +107,7 @@ ensure_hadha_network() {
   docker network create \
     --driver bridge \
     --ipv6 \
-    --subnet=fd00:hadha::/64 \
+    --subnet=fd00:1::/64 \
     hadha 2>&1 \
     || die "Failed to create Docker network 'hadha'"
 
