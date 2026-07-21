@@ -175,7 +175,7 @@ step_end() {
 
 step_fail() {
   local reason="${1:-}"
-  local elapsed=$(( $(date + '%s') - STEP_START ))
+  local elapsed=$(( $(date +%s) - STEP_START ))
   log "└─ ✗ FAILED: ${STEP_NAME} — ${elapsed}s — ${reason}"
 }
 
@@ -692,12 +692,11 @@ else
   log "  Diagnostic output: ${DIAG_OUTPUT}"
 fi
 
-# Build sysctl args conditionally
-MIGRATION_SYSCTL_ARGS=()
-if [[ "${IPV6_FUNCTIONAL}" != "true" ]] && [[ "${IPV4_FUNCTIONAL}" == "true" ]]; then
-  MIGRATION_SYSCTL_ARGS+=(--sysctl "net.ipv6.conf.all.disable_ipv6=1")
-  log "  Forcing IPv4-only for migration container (IPv6 non-functional)"
-fi
+# Always disable IPv6 for the migration container — the DB pre-flight confirmed
+# IPv4 works, and Supabase's AAAA records are unreachable from this VPS even when
+# the host-level IPv6 check passes (the kernel advertises it but can't route it).
+MIGRATION_SYSCTL_ARGS=(--sysctl "net.ipv6.conf.all.disable_ipv6=1")
+log "  IPv6 disabled for migration container (using IPv4 to reach Supabase)"
 
 # Retry migration up to 3 times with backoff
 MIGRATION_MAX_ATTEMPTS=3

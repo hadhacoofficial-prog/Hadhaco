@@ -13,8 +13,12 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 # Force IPv4 preference for DNS resolution (prevents IPv6 connection failures
-# to external databases like Supabase when IPv6 is configured but non-functional)
-RUN echo 'precedence ::ffff:0:0/96  100' >> /etc/gai.conf
+# to external databases like Supabase when IPv6 is configured but non-functional).
+# The default glibc policy table gives native IPv6 (::/0) label 3, while
+# IPv4-mapped (::ffff:0:0/96) gets label 1. We also lower native IPv6 precedence
+# so glibc sorts A records before AAAA records even when labels tie.
+RUN echo 'precedence ::ffff:0:0/96  100' >> /etc/gai.conf && \
+    echo 'precedence ::/0            10' >> /etc/gai.conf
 
 # ── Builder stage ──────────────────────────────────────────────────────────────
 FROM base AS builder
