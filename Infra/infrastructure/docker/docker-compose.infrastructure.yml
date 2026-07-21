@@ -102,7 +102,7 @@ services:
       - "8081"
     depends_on:
       hadha-redis:
-        condition: service_healthy
+        condition: service_started
     networks:
       - hadha
     healthcheck:
@@ -140,7 +140,7 @@ services:
       - "9121"
     depends_on:
       hadha-redis:
-        condition: service_healthy
+        condition: service_started
     networks:
       - hadha
     deploy:
@@ -260,7 +260,7 @@ services:
       - "3000"
     depends_on:
       prometheus:
-        condition: service_healthy
+        condition: service_started
       loki:
         condition: service_started
     networks:
@@ -473,7 +473,7 @@ services:
       - "8000"
     depends_on:
       hadha-glitchtip-db:
-        condition: service_healthy
+        condition: service_started
     networks:
       - hadha
     healthcheck:
@@ -509,7 +509,7 @@ services:
       VALKEY_URL: "redis://:${REDIS_PASSWORD}@hadha-redis:6379/1"
     depends_on:
       hadha-glitchtip-db:
-        condition: service_healthy
+        condition: service_started
     networks:
       - hadha
     healthcheck:
