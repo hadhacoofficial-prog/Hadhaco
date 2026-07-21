@@ -262,7 +262,7 @@ services:
       prometheus:
         condition: service_healthy
       loki:
-        condition: service_healthy
+        condition: service_started
     networks:
       - hadha
     healthcheck:
@@ -331,7 +331,7 @@ services:
       - "9080"
     depends_on:
       loki:
-        condition: service_healthy
+        condition: service_started
     networks:
       - hadha
     healthcheck:
