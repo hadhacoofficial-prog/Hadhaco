@@ -38,6 +38,16 @@ export async function signUpWithPassword(
       options: { data: { full_name: name } },
     }),
   );
+
+  // Supabase returns user: null (without an error) when the email already
+  // exists and is confirmed — this prevents email enumeration but leaves the
+  // caller with no signal that registration didn't actually happen.
+  if (!data.user) {
+    throw new Error(
+      "An account with this email already exists. Please sign in instead.",
+    );
+  }
+
   return { user: data.user, session: data.session };
 }
 

@@ -3194,6 +3194,7 @@ export function ProductForm({ mode, initialProduct, initialCollectionIds }: Prod
         const cropped = await applyPendingCrop(raw.id, img.crop);
         const final = cropped ?? mapImageOutToProductImage(raw);
         setSavedImages((prev) => [...prev, i === 0 ? { ...final, is_primary: true } : final]);
+        if (raw.status !== "ready") awaitGeneration(raw.id);
       }
       setPendingImages([]);
 
@@ -3249,6 +3250,7 @@ export function ProductForm({ mode, initialProduct, initialCollectionIds }: Prod
         // form's local `savedImages` (see the initialProduct?.id-keyed sync
         // effect above, which intentionally doesn't re-run on every refetch).
         setSavedImages((prev) => [...prev, isPrimary ? { ...final, is_primary: true } : final]);
+        if (raw.status !== "ready") awaitGeneration(raw.id);
       }
       setPendingImages([]);
 
