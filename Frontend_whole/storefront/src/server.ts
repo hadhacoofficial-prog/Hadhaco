@@ -5,10 +5,35 @@ import { consumeLastCapturedError } from "./lib/error-capture";
 import { renderErrorPage } from "./lib/error-page";
 
 // Initialize Sentry on the server side (SSR)
+type DsnObj = {
+  protocol: string;
+  publicKey: string;
+  host: string;
+  port: string;
+  path: string;
+  projectId: string;
+};
+
+function parseDsn(dsn: string): DsnObj | string {
+  try {
+    const url = new URL(dsn);
+    return {
+      protocol: url.protocol.replace(":", ""),
+      publicKey: url.username,
+      host: url.hostname,
+      port: url.port,
+      path: url.pathname.replace(/^\/|\/\d+$/, ""),
+      projectId: url.pathname.split("/").pop() || "",
+    };
+  } catch {
+    return dsn;
+  }
+}
+
 const sentryDsn = process.env.SENTRY_DSN;
 if (sentryDsn) {
   Sentry.init({
-    dsn: sentryDsn,
+    dsn: parseDsn(sentryDsn) as unknown as string,
     environment: process.env.NODE_ENV || "production",
     release: process.env.APP_VERSION || "unknown",
     tracesSampleRate: 0.1,
