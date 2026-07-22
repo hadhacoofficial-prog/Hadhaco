@@ -935,6 +935,10 @@ for mc in hadha-prometheus hadha-loki; do
     # Recreate just this service
     dc_infra up -d --pull never "${mc#hadha-}" 2>&1 | tee -a "${LOG_FILE}" || true
     sleep 10
+
+    # Capture crash logs so CI output shows the actual error
+    log "  Last 30 lines of ${mc} logs:"
+    docker logs --tail 30 "${mc}" 2>&1 | sed 's/^/    /' | tee -a "${LOG_FILE}" || true
   fi
 done
 step_end
@@ -951,6 +955,25 @@ if ! dc_app up -d --remove-orphans --pull never 2>&1 | tee -a "${LOG_FILE}"; the
 fi
 CONTAINERS_RESTARTED=true
 log "Application containers started"
+
+# Wait for app containers to be running before HUP-reloading nginx.
+# Nginx resolves upstream hostnames at reload time and caches the result.
+# If the upstream container isn't running yet, nginx caches the failed
+# resolution and serves 502 until the next reload.
+log "Waiting for app containers to be running..."
+for app_container in "${ADMIN_CONTAINER}" "${STOREFRONT_CONTAINER}" "${BACKEND_CONTAINER}"; do
+  for attempt in $(seq 1 20); do
+    state=$(docker inspect --format='{{.State.Status}}' "${app_container}" 2>/dev/null || echo "missing")
+    if [[ "${state}" == "running" ]]; then
+      log "  ✓ ${app_container} is running"
+      break
+    fi
+    if [[ ${attempt} -eq 20 ]]; then
+      log "  [WARN] ${app_container} not running after 40s (state: ${state}) — proceeding anyway"
+    fi
+    sleep 2
+  done
+done
 
 # Re-resolve upstream hostnames in nginx.
 # Nginx resolves static proxy_pass hostnames at startup. Since infra

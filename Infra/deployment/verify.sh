@@ -141,6 +141,13 @@ for container in "${ALL_CONTAINERS[@]}"; do
       check_warn "${container}" "Monitoring: OOMKilled"
     fi
   fi
+
+  # Capture last 20 lines of logs for any container with elevated restarts
+  if [[ "${RESTARTS}" -gt 2 ]]; then
+    log ""
+    log "  Last 20 lines of ${container} logs:"
+    docker logs --tail 20 "${container}" 2>&1 | sed 's/^/    /' || true
+  fi
 done
 
 # ── Redis connectivity ────────────────────────────────────────────────────────
