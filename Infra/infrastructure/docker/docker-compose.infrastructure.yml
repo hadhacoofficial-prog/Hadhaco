@@ -577,13 +577,11 @@ volumes:
     external: true
     name: hadha_nginx_logs
   prometheus_data:
-    external: true
     name: hadha_prometheus_data
   grafana_data:
     external: true
     name: hadha_grafana_data
   loki_data:
-    external: true
     name: hadha_loki_data
   promtail_positions:
     external: true
