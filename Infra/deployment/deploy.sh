@@ -132,7 +132,7 @@ INFRA_IMAGES=(
   "grafana/loki:3.1.0"
   "grafana/promtail:3.1.0"
   "prom/node-exporter:v1.8.1"
-  "gcr.io/cadvisor/cadvisor:v0.49.1"
+  "ghcr.io/google/cadvisor:latest"
   "louislam/uptime-kuma:2.0.2"
   "glitchtip/glitchtip:6.2.2"
   "postgres:16-alpine"
