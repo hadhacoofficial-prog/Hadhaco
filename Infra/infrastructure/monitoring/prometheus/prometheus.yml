@@ -63,7 +63,7 @@ scrape_configs:
         port: 8080
     scrape_interval: 30s
     metric_relabel_configs:
-      - source_labels: [container_name]
+      - source_labels: [name]
         regex: "hadha-.*"
         action: keep
 
