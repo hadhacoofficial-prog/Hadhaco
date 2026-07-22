@@ -29,11 +29,9 @@ scrape_configs:
         regex: "/api/v([0-9]+)/.*"
         target_label: path
         replacement: "/api/v${1}/*"
-      - source_labels: [user_id]
-        regex: ".+"
+      - regex: "user_id"
         action: labeldrop
-      - source_labels: [request_id]
-        regex: ".+"
+      - regex: "request_id"
         action: labeldrop
 
   - job_name: redis

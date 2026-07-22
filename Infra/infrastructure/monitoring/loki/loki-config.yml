@@ -28,7 +28,6 @@ schema_config:
 storage_config:
   filesystem:
     directory: /loki/chunks
-  cache: embedded_cache
 
 limits_config:
   retention_period: 168h
