@@ -5,7 +5,7 @@ datasources:
     type: prometheus
     uid: prometheus
     access: proxy
-    url: http://hadha-prometheus:9090
+    url: http://prometheus:9090
     isDefault: true
     editable: false
     jsonData:
@@ -16,7 +16,7 @@ datasources:
     type: loki
     uid: loki
     access: proxy
-    url: http://hadha-loki:3100
+    url: http://loki:3100
     editable: false
     jsonData:
       maxLines: 1000

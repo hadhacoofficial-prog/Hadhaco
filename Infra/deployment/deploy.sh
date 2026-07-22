@@ -871,7 +871,7 @@ INFRA_CONTAINER_NAMES=(
   hadha-nginx hadha-prometheus hadha-grafana
   hadha-loki hadha-promtail hadha-node-exporter
   hadha-cadvisor hadha-uptime-kuma hadha-dozzle
-  hadha-glitchtip hadha-glitchtip-db hadha-glitchtip-worker
+  hadha-glitchtip hadha-glitchtip-db hadha-glitchtip-worker hadha-glitchtip-init
 )
 for cname in "${INFRA_CONTAINER_NAMES[@]}"; do
   if docker inspect "${cname}" >/dev/null 2>&1; then
@@ -965,6 +965,33 @@ for attempt in $(seq 1 12); do
 done
 
 log "Waiting for health checks..."
+step_end
+
+# =============================================================================
+# STEP 9.5: Ensure GlitchTip superuser exists
+# =============================================================================
+step_start "Ensure GlitchTip superuser"
+GT_ADMIN_EMAIL="${GLITCHTIP_ADMIN_EMAIL:-admin@hadha.co}"
+GT_ADMIN_PASS="${GLITCHTIP_ADMIN_PASSWORD:-HadhaAdmin2026!}"
+
+GT_USER_COUNT=$(docker exec hadha-glitchtip python manage.py shell -c "
+from django.contrib.auth import get_user_model
+User = get_user_model()
+print(User.objects.filter(is_superuser=True).count())
+" 2>/dev/null || echo "error")
+
+if [[ "${GT_USER_COUNT}" == "0" ]]; then
+  log "  No superuser found — creating: ${GT_ADMIN_EMAIL}"
+  docker exec -e DJANGO_SUPERUSER_PASSWORD="${GT_ADMIN_PASS}" \
+    hadha-glitchtip python manage.py createsuperuser \
+    --no-input --email "${GT_ADMIN_EMAIL}" 2>&1 | tee -a "${LOG_FILE}" \
+    && log "  ✓ GlitchTip superuser created: ${GT_ADMIN_EMAIL}" \
+    || log "  [WARN] Failed to create GlitchTip superuser"
+elif [[ "${GT_USER_COUNT}" == "error" ]]; then
+  log "  [WARN] Could not check GlitchTip users — skipping"
+else
+  log "  ✓ GlitchTip superuser already exists (${GT_USER_COUNT} superuser(s))"
+fi
 step_end
 
 # =============================================================================

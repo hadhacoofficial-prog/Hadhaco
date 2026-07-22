@@ -403,6 +403,7 @@ services:
       - /:/rootfs:ro
       - /var/run:/var/run:ro
       - /sys:/sys:ro
+      - /sys/fs/cgroup:/sys/fs/cgroup:ro
       - /var/lib/docker/:/var/lib/docker:ro
       - /dev/disk/:/dev/disk:ro
     expose:
@@ -418,8 +419,8 @@ services:
     deploy:
       resources:
         limits:
-          memory: 128M
-          cpus: "0.25"
+          memory: 256M
+          cpus: "0.5"
     logging:
       driver: "json-file"
       options:
@@ -473,7 +474,7 @@ services:
       - "8000"
     depends_on:
       hadha-glitchtip-db:
-        condition: service_started
+        condition: service_healthy
     networks:
       - hadha
     healthcheck:
@@ -509,7 +510,7 @@ services:
       VALKEY_URL: "redis://:${REDIS_PASSWORD}@hadha-redis:6379/1"
     depends_on:
       hadha-glitchtip-db:
-        condition: service_started
+        condition: service_healthy
     networks:
       - hadha
     healthcheck:
@@ -528,6 +529,46 @@ services:
       options:
         max-size: "10m"
         max-file: "2"
+    security_opt:
+      - no-new-privileges:true
+
+  # ── GlitchTip Init — creates superuser on first run ─────────────────────────
+  glitchtip-init:
+    image: glitchtip/glitchtip:6.2.2
+    container_name: hadha-glitchtip-init
+    restart: "no"
+    entrypoint: /bin/sh
+    command:
+      - -c
+      - |
+        echo "Waiting for GlitchTip to be ready..."
+        for i in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15; do
+          if python3 -c "import urllib.request; urllib.request.urlopen('http://hadha-glitchtip:8000/_health/')" 2>/dev/null; then
+            echo "GlitchTip is ready!"
+            break
+          fi
+          echo "Attempt $$i/15 - waiting 10s..."
+          sleep 10
+        done
+        echo "Creating superuser..."
+        python manage.py createsuperuser --no-input --email "$$GLITCHTIP_SUPERUSER_EMAIL" || echo "Superuser already exists or creation skipped"
+    environment:
+      DATABASE_URL: "postgres://glitchtip:${GLITCHTIP_DB_PASSWORD}@hadha-glitchtip-db:5432/glitchtip"
+      SECRET_KEY: "${GLITCHTIP_SECRET_KEY}"
+      GLITCHTIP_DOMAIN: "https://errors.hadha.co"
+      VALKEY_URL: "redis://:${REDIS_PASSWORD}@hadha-redis:6379/1"
+      DJANGO_SUPERUSER_PASSWORD: "${GLITCHTIP_ADMIN_PASSWORD}"
+      GLITCHTIP_SUPERUSER_EMAIL: "${GLITCHTIP_ADMIN_EMAIL:-admin@hadha.co}"
+    depends_on:
+      glitchtip:
+        condition: service_healthy
+    networks:
+      - hadha
+    deploy:
+      resources:
+        limits:
+          memory: 128M
+          cpus: "0.25"
     security_opt:
       - no-new-privileges:true
 
