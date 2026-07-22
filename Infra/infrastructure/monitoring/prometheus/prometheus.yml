@@ -8,11 +8,9 @@ rule_files:
 
 scrape_configs:
   - job_name: backend
-    dns_sd_configs:
-      - names:
-          - hadha-backend
-        type: A
-        port: 8000
+    static_configs:
+      - targets:
+          - hadha-backend:8000
     metrics_path: /metrics
     scrape_interval: 30s
     metric_relabel_configs:
