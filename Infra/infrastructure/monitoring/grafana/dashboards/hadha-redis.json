@@ -476,7 +476,7 @@
       },
       "targets": [
         {
-          "expr": "redis_uptime_in_seconds_total / 3600",
+          "expr": "redis_uptime_in_seconds / 3600",
           "interval": "",
           "legendFormat": "Uptime",
           "refId": "A"

@@ -1,0 +1,5 @@
+# Prevent .env files from leaking into Docker builds.
+# VITE_* vars must be passed explicitly via build-args in CI.
+.env
+.env.*
+!.env.example

@@ -440,11 +440,12 @@ jobs:
           push: false
           cache-from: type=gha,scope=storefront-ci
           cache-to: type=gha,mode=max,scope=storefront-ci
-          build-args: |
+           build-args: |
             NITRO_PRESET=node
             VITE_API_BASE_URL=https://api.hadha.co/api/v1
             VITE_SUPABASE_URL=https://placeholder.supabase.co
             VITE_SUPABASE_PUBLISHABLE_KEY=placeholder_anon_key
+            VITE_SENTRY_DSN=https://placeholder@errors.hadha.co/0
           tags: hadha-storefront:ci-test
 
       - name: Build admin image (no push)
@@ -456,11 +457,12 @@ jobs:
           push: false
           cache-from: type=gha,scope=admin-ci
           cache-to: type=gha,mode=max,scope=admin-ci
-          build-args: |
+           build-args: |
             NITRO_PRESET=node
             VITE_API_BASE_URL=https://api.hadha.co/api/v1
             VITE_SUPABASE_URL=https://placeholder.supabase.co
             VITE_SUPABASE_PUBLISHABLE_KEY=placeholder_anon_key
+            VITE_SENTRY_DSN=https://placeholder@errors.hadha.co/0
           tags: hadha-admin:ci-test
 
   # ── E2E Playwright tests ──────────────────────────────────────────────────

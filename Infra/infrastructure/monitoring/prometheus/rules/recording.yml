@@ -2,17 +2,16 @@ groups:
   - name: http_recording
     interval: 30s
     rules:
-      - record: http_requests_total_rate5m
-        expr: rate(http_requests_total[5m])
-
+      # Backend only exports http_request_duration_highr_seconds_* (no http_requests_total counter).
+      # These recording rules use the available histogram.
       - record: http_request_duration_seconds_p95
-        expr: histogram_quantile(0.95, rate(http_request_duration_seconds_bucket[5m]))
+        expr: histogram_quantile(0.95, rate(http_request_duration_highr_seconds_bucket[5m]))
 
       - record: http_request_duration_seconds_p99
-        expr: histogram_quantile(0.99, rate(http_request_duration_seconds_bucket[5m]))
+        expr: histogram_quantile(0.99, rate(http_request_duration_highr_seconds_bucket[5m]))
 
-      - record: http_requests_by_status_rate5m
-        expr: sum by (status) (rate(http_requests_total[5m]))
+      - record: http_request_rate_5m
+        expr: sum(rate(http_request_duration_highr_seconds_count[5m]))
 
   - name: redis_recording
     interval: 30s

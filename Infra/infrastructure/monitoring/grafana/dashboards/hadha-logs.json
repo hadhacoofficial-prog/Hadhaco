@@ -1,21 +1,15 @@
 {
-  "annotations": {
-    "list": []
-  },
+  "annotations": { "list": [] },
   "editable": true,
   "folderUid": "ffsot02uah0qoc",
   "graphTooltip": 1,
+  "id": 9,
   "panels": [
     {
-      "datasource": {
-        "type": "loki",
-        "uid": "loki"
-      },
+      "datasource": { "type": "loki", "uid": "loki" },
       "fieldConfig": {
         "defaults": {
-          "color": {
-            "mode": "palette-classic"
-          },
+          "color": { "mode": "palette-classic" },
           "custom": {
             "drawStyle": "bars",
             "fillOpacity": 50,
@@ -24,44 +18,24 @@
             "lineWidth": 0,
             "showPoints": "never",
             "spanNulls": false,
-            "stacking": {
-              "group": "A",
-              "mode": "normal"
-            }
+            "stacking": { "group": "A", "mode": "normal" }
           },
-          "thresholds": {
-            "mode": "off",
-            "steps": []
-          },
+          "thresholds": { "mode": "off", "steps": [] },
           "unit": "short"
         },
         "overrides": []
       },
-      "gridPos": {
-        "h": 8,
-        "w": 24,
-        "x": 0,
-        "y": 0
-      },
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 0 },
+      "id": 1,
       "options": {
-        "legend": {
-          "calcs": [
-            "mean",
-            "max"
-          ],
-          "displayMode": "table",
-          "placement": "bottom"
-        },
-        "tooltip": {
-          "mode": "multi",
-          "sort": "desc"
-        }
+        "legend": { "calcs": ["mean", "max"], "displayMode": "table", "placement": "bottom" },
+        "tooltip": { "mode": "multi", "sort": "desc" }
       },
       "targets": [
         {
           "expr": "sum(count_over_time({container=~\"$container\"}[5m])) by (container)",
           "interval": "1m",
-          "legendFormat": "{{job}}",
+          "legendFormat": "{{container}}",
           "refId": "A"
         }
       ],
@@ -69,16 +43,10 @@
       "type": "timeseries"
     },
     {
-      "datasource": {
-        "type": "loki",
-        "uid": "loki"
-      },
+      "datasource": { "type": "loki", "uid": "loki" },
       "fieldConfig": {
         "defaults": {
-          "color": {
-            "fixedColor": "red",
-            "mode": "fixed"
-          },
+          "color": { "fixedColor": "red", "mode": "fixed" },
           "custom": {
             "drawStyle": "bars",
             "fillOpacity": 50,
@@ -87,44 +55,24 @@
             "lineWidth": 0,
             "showPoints": "never",
             "spanNulls": false,
-            "stacking": {
-              "group": "A",
-              "mode": "normal"
-            }
+            "stacking": { "group": "A", "mode": "normal" }
           },
-          "thresholds": {
-            "mode": "off",
-            "steps": []
-          },
+          "thresholds": { "mode": "off", "steps": [] },
           "unit": "short"
         },
         "overrides": []
       },
-      "gridPos": {
-        "h": 8,
-        "w": 24,
-        "x": 0,
-        "y": 8
-      },
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 8 },
+      "id": 2,
       "options": {
-        "legend": {
-          "calcs": [
-            "mean",
-            "max"
-          ],
-          "displayMode": "table",
-          "placement": "bottom"
-        },
-        "tooltip": {
-          "mode": "multi",
-          "sort": "desc"
-        }
+        "legend": { "calcs": ["mean", "max"], "displayMode": "table", "placement": "bottom" },
+        "tooltip": { "mode": "multi", "sort": "desc" }
       },
       "targets": [
         {
           "expr": "sum(count_over_time({container=~\"$container\"} |~ \"(?i)(error|exception|traceback)\"[5m])) by (container)",
           "interval": "1m",
-          "legendFormat": "{{job}}",
+          "legendFormat": "{{container}}",
           "refId": "A"
         }
       ],
@@ -132,20 +80,10 @@
       "type": "timeseries"
     },
     {
-      "datasource": {
-        "type": "loki",
-        "uid": "loki"
-      },
-      "fieldConfig": {
-        "defaults": {},
-        "overrides": []
-      },
-      "gridPos": {
-        "h": 12,
-        "w": 24,
-        "x": 0,
-        "y": 16
-      },
+      "datasource": { "type": "loki", "uid": "loki" },
+      "fieldConfig": { "defaults": {}, "overrides": [] },
+      "gridPos": { "h": 12, "w": 24, "x": 0, "y": 16 },
+      "id": 3,
       "options": {
         "dedupStrategy": "none",
         "enableLogDetails": true,
@@ -173,38 +111,28 @@
   ],
   "refresh": "30s",
   "schemaVersion": 39,
-  "tags": [
-    "hadha",
-    "logs",
-    "loki"
-  ],
+  "tags": ["hadha", "logs"],
   "templating": {
     "list": [
       {
-        "current": {
-          "selected": true,
-          "text": "All",
-          "value": "$__all"
-        },
-        "datasource": {
-          "type": "loki",
-          "uid": "loki"
-        },
+        "current": { "selected": true, "text": "All", "value": "$__all" },
+        "datasource": { "type": "loki", "uid": "loki" },
+        "definition": "label_values({job=\"docker\"}, container)",
         "includeAll": true,
+        "allValue": ".+",
         "label": "Container",
         "multi": true,
         "name": "container",
-        "query": "label_values(container)",
+        "query": "label_values({job=\"docker\"}, container)",
         "refresh": 2,
         "sort": 1,
         "type": "query"
       }
     ]
   },
-  "time": {
-    "from": "now-6h",
-    "to": "now"
-  },
+  "time": { "from": "now-6h", "to": "now" },
   "timezone": "browser",
-  "title": "Hadha - Logs (Loki)"
+  "title": "Hadha - Logs (Loki)",
+  "uid": "hadha-logs",
+  "version": 1
 }

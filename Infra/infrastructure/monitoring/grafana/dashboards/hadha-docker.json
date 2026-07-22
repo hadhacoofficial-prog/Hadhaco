@@ -187,7 +187,7 @@
       },
       "targets": [
         {
-          "expr": "container_memory_working_set_bytes{name=~\"$container\"} / container_memory_limit_bytes{name=~\"$container\"} * 100",
+          "expr": "container_memory_working_set_bytes{name=~\"$container\"} / container_spec_memory_limit_bytes{name=~\"$container\"} * 100",
           "interval": "",
           "legendFormat": "{{name}}",
           "refId": "A"
@@ -372,13 +372,13 @@
       },
       "targets": [
         {
-          "expr": "container_processes{name=~\"$container\"}",
+          "expr": "container_last_seen{name=~\"$container\"}",
           "interval": "",
           "legendFormat": "{{name}}",
           "refId": "A"
         }
       ],
-      "title": "Container Processes",
+          "title": "Container Last Seen",
       "type": "stat"
     },
     {
@@ -640,6 +640,7 @@
           "uid": "prometheus"
         },
         "includeAll": true,
+        "allValue": ".*",
         "label": "Container",
         "multi": true,
         "name": "container",

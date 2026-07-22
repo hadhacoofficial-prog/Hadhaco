@@ -59,9 +59,9 @@
       },
       "targets": [
         {
-          "expr": "sum(rate(http_requests_total{job=\"hadha-backend\"}[5m])) by (method)",
+          "expr": "sum(rate(http_request_duration_highr_seconds_count{job=\"backend\"}[5m]))",
           "interval": "",
-          "legendFormat": "{{method}}",
+          "legendFormat": "Total Requests",
           "refId": "A"
         }
       ],
@@ -121,19 +121,19 @@
       },
       "targets": [
         {
-          "expr": "histogram_quantile(0.50, rate(http_request_duration_seconds_bucket{job=\"hadha-backend\"}[5m]))",
+          "expr": "histogram_quantile(0.50, rate(http_request_duration_highr_seconds_bucket{job=\"backend\"}[5m]))",
           "interval": "",
           "legendFormat": "P50",
           "refId": "P50"
         },
         {
-          "expr": "histogram_quantile(0.95, rate(http_request_duration_seconds_bucket{job=\"hadha-backend\"}[5m]))",
+          "expr": "histogram_quantile(0.95, rate(http_request_duration_highr_seconds_bucket{job=\"backend\"}[5m]))",
           "interval": "",
           "legendFormat": "P95",
           "refId": "P95"
         },
         {
-          "expr": "histogram_quantile(0.99, rate(http_request_duration_seconds_bucket{job=\"hadha-backend\"}[5m]))",
+          "expr": "histogram_quantile(0.99, rate(http_request_duration_highr_seconds_bucket{job=\"backend\"}[5m]))",
           "interval": "",
           "legendFormat": "P99",
           "refId": "P99"
@@ -198,7 +198,7 @@
       },
       "targets": [
         {
-          "expr": "inflight_requests{job=\"hadha-backend\"}",
+          "expr": "http_requests_in_progress{job=\"backend\"}",
           "interval": "",
           "legendFormat": "In Progress",
           "refId": "A"
@@ -261,13 +261,13 @@
       },
       "targets": [
         {
-          "expr": "sum(rate(http_requests_total{status=~\"5..\", job=\"hadha-backend\"}[5m])) / sum(rate(http_requests_total{job=\"hadha-backend\"}[5m])) * 100",
+          "expr": "sum(rate(http_request_duration_highr_seconds_count{job=\"backend\"}[5m])) > 0",
           "interval": "",
-          "legendFormat": "Error Rate %",
+          "legendFormat": "Request Rate",
           "refId": "A"
         }
       ],
-      "title": "Error Rate",
+      "title": "Error Rate (needs http_requests_total counter — showing request rate instead)",
       "type": "timeseries"
     },
     {
@@ -369,13 +369,13 @@
       },
       "targets": [
         {
-          "expr": "sum(rate(http_requests_total{job=\"hadha-backend\"}[5m])) by (status)",
+          "expr": "sum(rate(http_request_duration_highr_seconds_count{job=\"backend\"}[5m])) by (job)",
           "interval": "",
-          "legendFormat": "{{status}}",
+          "legendFormat": "{{job}}",
           "refId": "A"
         }
       ],
-      "title": "Requests by Status",
+      "title": "Requests by Job",
       "type": "timeseries"
     },
     {
@@ -431,13 +431,13 @@
       },
       "targets": [
         {
-          "expr": "topk(10, sum(rate(http_requests_total{job=\"hadha-backend\"}[5m])) by (handler))",
+          "expr": "rate(http_request_duration_highr_seconds_sum{job=\"backend\"}[5m]) / rate(http_request_duration_highr_seconds_count{job=\"backend\"}[5m])",
           "interval": "",
-          "legendFormat": "{{handler}}",
+          "legendFormat": "Avg Duration",
           "refId": "A"
         }
       ],
-      "title": "Requests by Endpoint (Top 10)",
+      "title": "Avg Request Duration",
       "type": "timeseries"
     },
     {
@@ -493,7 +493,7 @@
       },
       "targets": [
         {
-          "expr": "process_resident_memory_bytes{job=\"hadha-backend\"}",
+          "expr": "process_resident_memory_bytes{job=\"backend\"}",
           "interval": "",
           "legendFormat": "RSS Memory",
           "refId": "A"
@@ -555,7 +555,7 @@
       },
       "targets": [
         {
-          "expr": "rate(process_cpu_seconds_total{job=\"hadha-backend\"}[5m])",
+          "expr": "rate(process_cpu_seconds_total{job=\"backend\"}[5m])",
           "interval": "",
           "legendFormat": "CPU Usage",
           "refId": "A"
