@@ -28,6 +28,7 @@ schema_config:
 storage_config:
   filesystem:
     directory: /loki/chunks
+  cache: embedded_cache
 
 limits_config:
   retention_period: 168h
@@ -43,12 +44,6 @@ compactor:
   retention_enabled: true
   retention_delete_delay: 2h
   retention_delete_worker_count: 150
-
-chunk_store_config:
-  chunk_cache_config:
-    embedded_cache:
-      enabled: true
-      max_size_mb: 50
 
 analytics:
   reporting_enabled: false

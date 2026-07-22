@@ -914,6 +914,29 @@ for c in hadha-loki hadha-promtail hadha-prometheus hadha-grafana hadha-nginx ha
   local_status=$(docker inspect --format='{{.State.Status}}' "${c}" 2>/dev/null || echo "not_found")
   log "  ${c}: ${local_status}"
 done
+
+# ── Crash-loop recovery for monitoring containers ────────────────────────────
+# If prometheus or loki have high restart counts (>3), their TSDB/WAL data
+# may be corrupted from a previous force-kill. Wipe the data and restart.
+log "Checking for crash-looping monitoring containers..."
+for mc in hadha-prometheus hadha-loki; do
+  mc_restarts=$(docker inspect --format='{{.RestartCount}}' "${mc}" 2>/dev/null || echo "0")
+  if [[ "${mc_restarts}" -gt 3 ]]; then
+    log "  ⚠ ${mc} has ${mc_restarts} restarts — clearing data and restarting"
+    docker stop "${mc}" >/dev/null 2>&1 || true
+    docker rm -f "${mc}" >/dev/null 2>&1 || true
+
+    if [[ "${mc}" == "hadha-prometheus" ]]; then
+      docker volume rm hadha_prometheus_data >/dev/null 2>&1 || true
+    elif [[ "${mc}" == "hadha-loki" ]]; then
+      docker volume rm hadha_loki_data >/dev/null 2>&1 || true
+    fi
+
+    # Recreate just this service
+    dc_infra up -d --pull never "${mc#hadha-}" 2>&1 | tee -a "${LOG_FILE}" || true
+    sleep 10
+  fi
+done
 step_end
 
 # =============================================================================
