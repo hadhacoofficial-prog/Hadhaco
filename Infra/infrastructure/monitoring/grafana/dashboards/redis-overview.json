@@ -14,29 +14,80 @@
       },
       "fieldConfig": {
         "defaults": {
-          "custom": {
-            "fillOpacity": 15,
-            "lineWidth": 2,
-            "spanNulls": true
-          },
-          "min": 0,
-          "unit": "percent"
+          "mappings": [
+            {
+              "options": {
+                "0": {
+                  "color": "red",
+                  "text": "DOWN"
+                },
+                "1": {
+                  "color": "green",
+                  "text": "UP"
+                }
+              },
+              "type": "value"
+            }
+          ],
+          "thresholds": {
+            "steps": [
+              {
+                "color": "red",
+                "value": 0
+              },
+              {
+                "color": "green",
+                "value": 1
+              }
+            ]
+          }
         },
         "overrides": []
       },
       "gridPos": {
-        "h": 8,
-        "w": 12,
+        "h": 4,
+        "w": 4,
         "x": 0,
         "y": 0
       },
       "targets": [
         {
-          "expr": "rate(container_cpu_usage_seconds_total{name!~\"\"}[5m]) * 100",
-          "legendFormat": "{{name}}"
+          "expr": "redis_up",
+          "legendFormat": "Up"
         }
       ],
-      "title": "Container CPU Usage %",
+      "title": "Redis Up",
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "fillOpacity": 15,
+            "lineWidth": 2,
+            "spanNulls": true
+          },
+          "min": 0
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 4,
+        "y": 0
+      },
+      "targets": [
+        {
+          "expr": "redis_connected_clients",
+          "legendFormat": "Clients"
+        }
+      ],
+      "title": "Connected Clients",
       "type": "timeseries"
     },
     {
@@ -57,17 +108,21 @@
       },
       "gridPos": {
         "h": 8,
-        "w": 12,
+        "w": 8,
         "x": 12,
         "y": 0
       },
       "targets": [
         {
-          "expr": "container_memory_usage_bytes{name!~\"\"}",
-          "legendFormat": "{{name}}"
+          "expr": "redis_memory_used_bytes",
+          "legendFormat": "Used"
+        },
+        {
+          "expr": "redis_memory_max_bytes > 0",
+          "legendFormat": "Max"
         }
       ],
-      "title": "Container Memory Usage",
+      "title": "Used Memory",
       "type": "timeseries"
     },
     {
@@ -77,12 +132,56 @@
       },
       "fieldConfig": {
         "defaults": {
+          "max": 100,
+          "min": 0,
+          "thresholds": {
+            "steps": [
+              {
+                "color": "red",
+                "value": 0
+              },
+              {
+                "color": "yellow",
+                "value": 80
+              },
+              {
+                "color": "green",
+                "value": 95
+              }
+            ]
+          },
+          "unit": "percent"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 4,
+        "x": 20,
+        "y": 0
+      },
+      "targets": [
+        {
+          "expr": "100 * redis_keyspace_hits_total / (redis_keyspace_hits_total + redis_keyspace_misses_total)",
+          "legendFormat": "Hit Rate %"
+        }
+      ],
+      "title": "Hit Rate %",
+      "type": "gauge"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "fieldConfig": {
+        "defaults": {
           "custom": {
-            "fillOpacity": 10,
+            "fillOpacity": 15,
             "lineWidth": 2,
             "spanNulls": true
           },
-          "unit": "Bps"
+          "unit": "ops"
         },
         "overrides": []
       },
@@ -94,11 +193,11 @@
       },
       "targets": [
         {
-          "expr": "rate(container_network_receive_bytes_total{name!~\"\"}[5m])",
-          "legendFormat": "{{name}} RX"
+          "expr": "rate(redis_commands_processed_total[5m])",
+          "legendFormat": "Commands/sec"
         }
       ],
-      "title": "Container Network Received",
+      "title": "Commands/sec",
       "type": "timeseries"
     },
     {
@@ -113,7 +212,7 @@
             "lineWidth": 2,
             "spanNulls": true
           },
-          "unit": "Bps"
+          "min": 0
         },
         "overrides": []
       },
@@ -125,11 +224,11 @@
       },
       "targets": [
         {
-          "expr": "rate(container_network_transmit_bytes_total{name!~\"\"}[5m])",
-          "legendFormat": "{{name}} TX"
+          "expr": "redis_db_keys",
+          "legendFormat": "db{{db}}"
         }
       ],
-      "title": "Container Network Transmitted",
+      "title": "Keys per DB",
       "type": "timeseries"
     },
     {
@@ -156,11 +255,15 @@
       },
       "targets": [
         {
-          "expr": "rate(container_fs_reads_bytes_total{name!~\"\"}[5m])",
-          "legendFormat": "{{name}}"
+          "expr": "rate(redis_net_input_bytes_total[5m])",
+          "legendFormat": "Input"
+        },
+        {
+          "expr": "rate(redis_net_output_bytes_total[5m])",
+          "legendFormat": "Output"
         }
       ],
-      "title": "Container Disk Read",
+      "title": "Network Input/Output",
       "type": "timeseries"
     },
     {
@@ -171,11 +274,11 @@
       "fieldConfig": {
         "defaults": {
           "custom": {
-            "fillOpacity": 10,
+            "fillOpacity": 15,
             "lineWidth": 2,
             "spanNulls": true
           },
-          "unit": "Bps"
+          "min": 0
         },
         "overrides": []
       },
@@ -187,49 +290,17 @@
       },
       "targets": [
         {
-          "expr": "rate(container_fs_writes_bytes_total{name!~\"\"}[5m])",
-          "legendFormat": "{{name}}"
+          "expr": "redis_connected_clients",
+          "legendFormat": "Connected"
         }
       ],
-      "title": "Container Disk Write",
+      "title": "Connected Clients (by IP)",
       "type": "timeseries"
-    },
-    {
-      "datasource": {
-        "type": "prometheus",
-        "uid": "prometheus"
-      },
-      "fieldConfig": {
-        "defaults": {
-          "custom": {
-            "fillOpacity": 0,
-            "lineWidth": 2
-          },
-          "unit": "s"
-        },
-        "overrides": []
-      },
-      "gridPos": {
-        "h": 4,
-        "w": 24,
-        "x": 0,
-        "y": 24
-      },
-      "targets": [
-        {
-          "expr": "time() - container_start_time_seconds{name!~\"\"}",
-          "legendFormat": "{{name}}"
-        }
-      ],
-      "title": "Container Restarts",
-      "type": "stat"
     }
   ],
   "schemaVersion": 39,
   "tags": [
-    "docker",
-    "cadvisor",
-    "containers"
+    "redis"
   ],
   "templating": {
     "list": [
@@ -248,5 +319,5 @@
     "from": "now-1h",
     "to": "now"
   },
-  "title": "Docker Containers"
+  "title": "Redis"
 }

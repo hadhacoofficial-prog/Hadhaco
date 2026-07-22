@@ -19,6 +19,7 @@
             "lineWidth": 2,
             "spanNulls": true
           },
+          "max": 100,
           "min": 0,
           "unit": "percent"
         },
@@ -32,11 +33,11 @@
       },
       "targets": [
         {
-          "expr": "rate(container_cpu_usage_seconds_total{name!~\"\"}[5m]) * 100",
-          "legendFormat": "{{name}}"
+          "expr": "100 - (avg(rate(node_cpu_seconds_total{mode=\"idle\"}[5m])) * 100)",
+          "legendFormat": "CPU Usage %"
         }
       ],
-      "title": "Container CPU Usage %",
+      "title": "CPU Usage %",
       "type": "timeseries"
     },
     {
@@ -51,7 +52,9 @@
             "lineWidth": 2,
             "spanNulls": true
           },
-          "unit": "bytes"
+          "max": 100,
+          "min": 0,
+          "unit": "percent"
         },
         "overrides": []
       },
@@ -63,11 +66,11 @@
       },
       "targets": [
         {
-          "expr": "container_memory_usage_bytes{name!~\"\"}",
-          "legendFormat": "{{name}}"
+          "expr": "(1 - (node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes)) * 100",
+          "legendFormat": "Memory Usage %"
         }
       ],
-      "title": "Container Memory Usage",
+      "title": "Memory Usage %",
       "type": "timeseries"
     },
     {
@@ -77,28 +80,76 @@
       },
       "fieldConfig": {
         "defaults": {
-          "custom": {
-            "fillOpacity": 10,
-            "lineWidth": 2,
-            "spanNulls": true
+          "max": 100,
+          "min": 0,
+          "thresholds": {
+            "steps": [
+              {
+                "color": "green",
+                "value": 0
+              },
+              {
+                "color": "yellow",
+                "value": 80
+              },
+              {
+                "color": "red",
+                "value": 90
+              }
+            ]
           },
-          "unit": "Bps"
+          "unit": "percent"
         },
         "overrides": []
       },
       "gridPos": {
         "h": 8,
-        "w": 12,
+        "w": 8,
         "x": 0,
         "y": 8
       },
       "targets": [
         {
-          "expr": "rate(container_network_receive_bytes_total{name!~\"\"}[5m])",
-          "legendFormat": "{{name}} RX"
+          "expr": "(1 - (node_filesystem_avail_bytes{fstype!~\"tmpfs|overlay|squashfs\"} / node_filesystem_size_bytes{fstype!~\"tmpfs|overlay|squashfs\"})) * 100",
+          "legendFormat": "{{mountpoint}}"
         }
       ],
-      "title": "Container Network Received",
+      "title": "Disk Usage %",
+      "type": "gauge"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "fillOpacity": 10,
+            "lineWidth": 2,
+            "spanNulls": true
+          },
+          "unit": "Bps"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 8,
+        "y": 8
+      },
+      "targets": [
+        {
+          "expr": "rate(node_disk_read_bytes_total{device!~\"loop.*|sr.*\"}[5m])",
+          "legendFormat": "Read {{device}}"
+        },
+        {
+          "expr": "rate(node_disk_written_bytes_total{device!~\"loop.*|sr.*\"}[5m])",
+          "legendFormat": "Write {{device}}"
+        }
+      ],
+      "title": "Disk I/O",
       "type": "timeseries"
     },
     {
@@ -119,17 +170,21 @@
       },
       "gridPos": {
         "h": 8,
-        "w": 12,
-        "x": 12,
+        "w": 8,
+        "x": 16,
         "y": 8
       },
       "targets": [
         {
-          "expr": "rate(container_network_transmit_bytes_total{name!~\"\"}[5m])",
-          "legendFormat": "{{name}} TX"
+          "expr": "rate(node_network_receive_bytes_total{device!~\"lo|veth.*|docker.*|br-.*\"}[5m])",
+          "legendFormat": "RX {{device}}"
+        },
+        {
+          "expr": "rate(node_network_transmit_bytes_total{device!~\"lo|veth.*|docker.*|br-.*\"}[5m])",
+          "legendFormat": "TX {{device}}"
         }
       ],
-      "title": "Container Network Transmitted",
+      "title": "Network Traffic",
       "type": "timeseries"
     },
     {
@@ -140,11 +195,10 @@
       "fieldConfig": {
         "defaults": {
           "custom": {
-            "fillOpacity": 10,
+            "fillOpacity": 5,
             "lineWidth": 2,
             "spanNulls": true
-          },
-          "unit": "Bps"
+          }
         },
         "overrides": []
       },
@@ -156,11 +210,23 @@
       },
       "targets": [
         {
-          "expr": "rate(container_fs_reads_bytes_total{name!~\"\"}[5m])",
-          "legendFormat": "{{name}}"
+          "expr": "node_load1",
+          "legendFormat": "Load 1m"
+        },
+        {
+          "expr": "node_load5",
+          "legendFormat": "Load 5m"
+        },
+        {
+          "expr": "node_load15",
+          "legendFormat": "Load 15m"
+        },
+        {
+          "expr": "count(node_cpu_seconds_total{mode=\"idle\"})",
+          "legendFormat": "CPU Cores"
         }
       ],
-      "title": "Container Disk Read",
+      "title": "System Load Average",
       "type": "timeseries"
     },
     {
@@ -175,7 +241,7 @@
             "lineWidth": 2,
             "spanNulls": true
           },
-          "unit": "Bps"
+          "unit": "bytes"
         },
         "overrides": []
       },
@@ -187,49 +253,30 @@
       },
       "targets": [
         {
-          "expr": "rate(container_fs_writes_bytes_total{name!~\"\"}[5m])",
-          "legendFormat": "{{name}}"
-        }
-      ],
-      "title": "Container Disk Write",
-      "type": "timeseries"
-    },
-    {
-      "datasource": {
-        "type": "prometheus",
-        "uid": "prometheus"
-      },
-      "fieldConfig": {
-        "defaults": {
-          "custom": {
-            "fillOpacity": 0,
-            "lineWidth": 2
-          },
-          "unit": "s"
+          "expr": "node_memory_MemTotal_bytes",
+          "legendFormat": "Total"
         },
-        "overrides": []
-      },
-      "gridPos": {
-        "h": 4,
-        "w": 24,
-        "x": 0,
-        "y": 24
-      },
-      "targets": [
         {
-          "expr": "time() - container_start_time_seconds{name!~\"\"}",
-          "legendFormat": "{{name}}"
+          "expr": "node_memory_MemTotal_bytes - node_memory_MemAvailable_bytes",
+          "legendFormat": "Used"
+        },
+        {
+          "expr": "node_memory_Buffers_bytes",
+          "legendFormat": "Buffers"
+        },
+        {
+          "expr": "node_memory_Cached_bytes",
+          "legendFormat": "Cached"
         }
       ],
-      "title": "Container Restarts",
-      "type": "stat"
+      "title": "Memory Details",
+      "type": "timeseries"
     }
   ],
   "schemaVersion": 39,
   "tags": [
-    "docker",
-    "cadvisor",
-    "containers"
+    "node-exporter",
+    "host"
   ],
   "templating": {
     "list": [
@@ -248,5 +295,5 @@
     "from": "now-1h",
     "to": "now"
   },
-  "title": "Docker Containers"
+  "title": "Host Metrics"
 }
