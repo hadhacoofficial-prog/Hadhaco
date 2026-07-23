@@ -47,7 +47,10 @@ export const Route = createFileRoute("/products/$slug")({
   }),
   loader: async ({ params }) => {
     const productDetail = await api
-      .get<ProductDetail>(`/products/${params.slug}`)
+      // `no-cache`: revalidate against origin so a client-side navigation
+      // never renders the stale `max-age` copy from the browser cache (the
+      // live poll below also uses no-cache). On SSR this is a harmless no-op.
+      .get<ProductDetail>(`/products/${params.slug}`, { cache: "no-cache" })
       .catch((e: unknown) => {
         if ((e as { status?: number }).status === 404) throw notFound();
         throw e;
@@ -117,10 +120,15 @@ function ProductPage() {
   const wishToggle = useWishlist((s) => s.toggle);
   const pushRV = useRecentlyViewed((s) => s.push);
 
-  // Poll live stock every 60 s so the page stays accurate without a reload
+  // Poll live stock/variant data every 60 s so the page stays accurate without
+  // a reload. `cache: "no-cache"` forces the fetch to revalidate against the
+  // origin every time (cheap 304 when unchanged) instead of being served the
+  // stale `Cache-Control: max-age` copy from the browser cache — otherwise the
+  // poll silently reuses the cached response and admin edits to variant data
+  // only surface once that max-age window expires.
   const { data: liveDetail, dataUpdatedAt } = useQuery({
     queryKey: queryKeys.products.stock(slug),
-    queryFn: () => api.get<ProductDetail>(`/products/${slug}`),
+    queryFn: () => api.get<ProductDetail>(`/products/${slug}`, { cache: "no-cache" }),
     refetchInterval: 60_000,
     staleTime: 30_000,
     refetchOnWindowFocus: true,

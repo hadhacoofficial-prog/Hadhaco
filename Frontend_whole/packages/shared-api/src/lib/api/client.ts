@@ -32,6 +32,13 @@ export interface RequestOptions {
   retries?: number;
   /** Skip the Authorization header (for strictly public endpoints). */
   skipAuth?: boolean;
+  /**
+   * HTTP cache mode for the underlying `fetch`. Defaults to the browser's
+   * standard behaviour (honours `Cache-Control`). Use `"no-cache"` for live
+   * polls that must always revalidate against the origin (cheap 304 when
+   * unchanged) instead of being served a stale `max-age` response.
+   */
+  cache?: RequestCache;
 }
 
 type HttpMethod = "GET" | "POST" | "PATCH" | "PUT" | "DELETE";
@@ -184,6 +191,7 @@ async function request<T>(
         headers: { ...baseHeaders, ...auth },
         body,
         signal,
+        cache: options.cache,
       });
       logResponse(method, url, res.status, tag);
 
