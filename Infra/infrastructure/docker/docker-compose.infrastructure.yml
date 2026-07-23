@@ -397,6 +397,10 @@ services:
     container_name: hadha-cadvisor
     restart: unless-stopped
     privileged: true
+    # Host PID namespace is required for the /api/v2.0/ps/ endpoint to
+    # enumerate container processes; without it that endpoint returns 500
+    # while /containers/ and /subcontainers/ keep working.
+    pid: "host"
     devices:
       - /dev/kmsg:/dev/kmsg
     volumes:

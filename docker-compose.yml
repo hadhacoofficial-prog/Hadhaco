@@ -378,6 +378,9 @@ services:
     container_name: hadha-cadvisor
     restart: unless-stopped
     privileged: true
+    # Required for the /api/v2.0/ps/ endpoint to enumerate container
+    # processes; without it that endpoint returns 500.
+    pid: "host"
     volumes:
       - /:/rootfs:ro
       - /var/run:/var/run:ro
