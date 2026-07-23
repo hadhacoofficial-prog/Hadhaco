@@ -16,7 +16,7 @@ class TestRunWithSession:
         mock_db.__aenter__ = AsyncMock(return_value=mock_db)
         mock_db.__aexit__ = AsyncMock(return_value=False)
 
-        with patch("app.workers.base.AsyncWorkerSessionLocal", return_value=mock_db):
+        with patch("app.workers.base.AsyncSessionLocal", return_value=mock_db):
             await run_with_session(fn)
 
         assert len(received_db) == 1
@@ -31,7 +31,7 @@ class TestRunWithSession:
         async def failing_fn(db):
             raise RuntimeError("worker failure")
 
-        with patch("app.workers.base.AsyncWorkerSessionLocal", return_value=mock_db):
+        with patch("app.workers.base.AsyncSessionLocal", return_value=mock_db):
             # Should not raise — exceptions are caught and logged
             await run_with_session(failing_fn)
 
@@ -47,6 +47,6 @@ class TestRunWithSession:
         async def always_raises(db):
             raise ValueError("something went wrong")
 
-        with patch("app.workers.base.AsyncWorkerSessionLocal", return_value=mock_db):
+        with patch("app.workers.base.AsyncSessionLocal", return_value=mock_db):
             # Must not raise
             await run_with_session(always_raises)

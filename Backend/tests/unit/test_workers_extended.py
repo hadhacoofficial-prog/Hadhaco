@@ -26,7 +26,7 @@ class TestPartitionManagerWorker:
         mock_db.commit = AsyncMock()
 
         with patch(
-            "app.workers.partition_manager.AsyncWorkerSessionLocal",
+            "app.workers.partition_manager.AsyncSessionLocal",
             return_value=mock_db,
         ):
             await worker.run()

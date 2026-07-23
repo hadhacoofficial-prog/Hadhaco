@@ -36,7 +36,7 @@ import asyncpg
 import structlog
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.database import AsyncWorkerSessionLocal
+from app.core.database import AsyncSessionLocal, get_worker_semaphore
 from app.modules.media import background, storage
 from app.modules.media.preset_registry import Breakpoint, get_preset
 from app.modules.media.repository import ImageRepository
@@ -69,15 +69,25 @@ def enqueue(image_id: uuid.UUID) -> None:
     """Fire-and-forget fast path: process this one image now, off the
     request. Safe to call unconditionally — if the periodic worker (or
     another `enqueue()` call, e.g. a rapid double-save) gets to it first,
-    `try_claim_pending` makes this a no-op."""
-    task = asyncio.create_task(process_one(image_id))
+    `try_claim_pending` makes this a no-op.
+
+    Bounded by the worker semaphore so bursts of image mutations cannot
+    exhaust the shared connection pool."""
+    task = asyncio.create_task(_bounded_process(image_id))
     _inflight_tasks.add(task)
     task.add_done_callback(_inflight_tasks.discard)
 
 
+async def _bounded_process(image_id: uuid.UUID) -> None:
+    """Wrap process_one with the worker semaphore for bounded concurrency."""
+    sem = get_worker_semaphore()
+    async with sem:
+        await process_one(image_id)
+
+
 async def run() -> None:
     """Periodic entry point — registered in app/workers/queue.py."""
-    async with AsyncWorkerSessionLocal() as db:
+    async with AsyncSessionLocal() as db:
         try:
             reclaimed = await _repo.reclaim_stale_processing(
                 db, stale_after_seconds=STALE_AFTER_SECONDS
@@ -95,7 +105,7 @@ async def run() -> None:
             return
 
     try:
-        async with AsyncWorkerSessionLocal() as db:
+        async with AsyncSessionLocal() as db:
             pending = await _repo.list_pending_images(db, limit=POLL_BATCH_LIMIT)
             pending_ids = [image.id for image in pending]
     except _TRANSIENT_DB_ERRORS as exc:
@@ -114,7 +124,7 @@ async def process_one(image_id: uuid.UUID) -> None:
     failure, either retries (resets to 'pending' for the next poll) or
     gives up after MAX_ATTEMPTS, recording the error.
     """
-    async with AsyncWorkerSessionLocal() as db:
+    async with AsyncSessionLocal() as db:
         try:
             image = await _repo.try_claim_pending(db, image_id)
             if image is None:

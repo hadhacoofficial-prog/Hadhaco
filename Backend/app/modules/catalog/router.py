@@ -8,7 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.common.response_codes import ResponseCode
 from app.common.responses import BaseSuccessResponse, deleted, ok
-from app.core.database import AsyncWorkerSessionLocal, get_db
+from app.core.database import AsyncSessionLocal, get_db
 from app.core.dependencies import require_admin
 from app.core.redis import (
     get_redis,
@@ -113,7 +113,7 @@ async def list_products(
     # Fresh worker session — cache_swr may re-run this from a detached
     # background SWR-refresh task after the request session is gone.
     async def _fetch_products() -> dict:
-        async with AsyncWorkerSessionLocal() as s:
+        async with AsyncSessionLocal() as s:
             result = await _service.list_products(
                 s,
                 page=page,

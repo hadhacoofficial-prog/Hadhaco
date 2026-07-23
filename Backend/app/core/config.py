@@ -121,11 +121,12 @@ class Settings(BaseSettings):
         return v
 
     # Supabase Session Pooler has a per-plan client cap (15 on the default plan).
+    # Single shared engine for ALL components (API, workers, event listeners).
     # Budget: (pool_size + max_overflow) × uvicorn_workers ≤ supabase_limit − overhead
-    # With 2 workers: (3 + 1) × 2 = 8 API connections, leaving 7 for Alembic,
-    # health checks, admin tools, and the NullPool worker engine (see database.py).
-    # Background workers use a separate NullPool engine and are NOT counted here.
-    DATABASE_POOL_SIZE: int = 3
+    # With 2 workers: (2 + 1) × 2 = 6 persistent connections, leaving 9 for
+    # Alembic migrations, health checks, and transient session spikes.
+    # Workers and event listeners reuse the same pool — no separate engine.
+    DATABASE_POOL_SIZE: int = 2
     DATABASE_MAX_OVERFLOW: int = 1
     DATABASE_POOL_TIMEOUT: int = 30
     # Recycle idle connections after 30 minutes. Prevents stale TCP connections

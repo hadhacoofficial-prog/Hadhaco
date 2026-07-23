@@ -206,7 +206,7 @@ def _fake_order() -> SimpleNamespace:
 
 
 class _FakeSessionCtx:
-    """Stands in for AsyncWorkerSessionLocal(): yields a mock session whose
+    """Stands in for AsyncSessionLocal(): yields a mock session whose
     only direct use inside the pipeline is the product-slug SELECT."""
 
     def __init__(self, db: MagicMock) -> None:
@@ -251,7 +251,7 @@ def pipeline(monkeypatch):
 
     db = _mock_db()
     monkeypatch.setattr(
-        "app.core.database.AsyncWorkerSessionLocal", lambda: _FakeSessionCtx(db)
+        "app.core.database.AsyncSessionLocal", lambda: _FakeSessionCtx(db)
     )
 
     # Repositories → realistic fakes
@@ -317,8 +317,10 @@ def pipeline(monkeypatch):
     # Provider boundary: capture the final rendered payload
     sent: list[dict] = []
 
-    async def _send_email(_db, *, to, subject, html):
-        sent.append({"to": to, "subject": subject, "html": html})
+    async def _send_email(payload):
+        sent.append(
+            {"to": payload.to, "subject": payload.subject, "html": payload.html}
+        )
         return "msg_test_1"
 
     # Patch the class, not the singleton instance: monkeypatch teardown on an
@@ -328,6 +330,14 @@ def pipeline(monkeypatch):
         type(service_module.dispatcher),
         "send_email",
         AsyncMock(side_effect=_send_email),
+    )
+
+    # Patch _update_log_status to noop — the session it opens is not needed
+    # in integration tests since we verify the rendered content, not the log state.
+    monkeypatch.setattr(
+        service_module.NotificationService,
+        "_update_log_status",
+        AsyncMock(),
     )
 
     service_module.NotificationService.register_listeners()

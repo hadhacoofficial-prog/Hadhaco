@@ -28,8 +28,12 @@ from app.modules.notifications.context import (
     load_order_context,
 )
 from app.modules.notifications.dispatcher import dispatcher
+from app.modules.notifications.dto import (
+    EmailPayload,
+    ProviderConfig,
+    WhatsAppPayload,
+)
 from app.modules.notifications.models import NotificationLog, NotificationTemplate
-from app.modules.notifications.providers.registry import registry
 from app.modules.notifications.providers.resend import (
     ResendAuthError,
     ResendDomainError,
@@ -63,6 +67,33 @@ class NotificationService:
             return True
         return value.lower() == "true"
 
+    async def _resolve_provider_config(
+        self, db: AsyncSession, provider: str
+    ) -> ProviderConfig:
+        """Read provider settings from DB (with env-fallback defaults) once.
+
+        Returns an immutable ProviderConfig so the subsequent HTTP call never
+        needs to touch the database again.
+        """
+        cfg = await self._settings_repo.get_provider_config(db, provider=provider)
+        if provider == "email":
+            return ProviderConfig(
+                email_api_key=cfg.get("api_key") or settings.RESEND_API_KEY,
+                email_from_name=cfg.get("from_name") or settings.EMAIL_FROM_NAME,
+                email_from_email=cfg.get("from_email") or settings.EMAIL_FROM,
+                email_reply_to=cfg.get("reply_to") or settings.EMAIL_REPLY_TO,
+            )
+        if provider == "whatsapp":
+            return ProviderConfig(
+                whatsapp_access_token=cfg.get("access_token")
+                or settings.WHATSAPP_ACCESS_TOKEN,
+                whatsapp_phone_number_id=cfg.get("phone_number_id")
+                or settings.WHATSAPP_PHONE_NUMBER_ID,
+                whatsapp_api_version=cfg.get("api_version")
+                or settings.WHATSAPP_API_VERSION,
+            )
+        return ProviderConfig()
+
     # ── Core send methods ─────────────────────────────────────────────────────
 
     async def send_email(
@@ -74,6 +105,15 @@ class NotificationService:
         recipient: str,
         context: dict[str, Any],
     ) -> None:
+        """Send an email notification.
+
+        All DB reads (template, brand context, provider config) and the log
+        creation happen while the session is open.  The transaction is committed
+        **before** the HTTP call so the connection is returned to the pool — the
+        Resend API call runs without holding any database connection.  Delivery
+        status is persisted via ``_update_log_status`` which opens its own
+        fresh session.
+        """
         if not await self._provider_enabled(db, "email"):
             logger.info("email_skipped_disabled", event_type=event_type)
             return
@@ -85,14 +125,15 @@ class NotificationService:
             logger.warning("no_email_template", event_type=event_type)
             return
 
-        # Brand variables (env defaults + CMS footer overlay) are available to
-        # every template; the event context is merged on top so events can
-        # override any of them.
-        context = {**await get_brand_context_db(db), **context}
-        rendered_subject = _jinja_text.from_string(template.subject or "").render(
-            **context
-        )
-        rendered_body = _jinja.from_string(template.template_body).render(**context)
+        ctx = {**await get_brand_context_db(db), **context}
+        rendered_subject = _jinja_text.from_string(template.subject or "").render(**ctx)
+        rendered_body = _jinja.from_string(template.template_body).render(**ctx)
+
+        # Resolve provider config while the session is still open — this is
+        # the LAST DB read before commit.  After commit the connection is
+        # returned to the pool and the HTTP call below runs without holding
+        # any database connection.
+        provider_config = await self._resolve_provider_config(db, "email")
 
         log = await self._repo.create_log(
             db,
@@ -106,14 +147,25 @@ class NotificationService:
             template_id=template.id,
             template_version=template.version,
         )
+        log_id = log.id
         await db.commit()
 
+        # ── Connection returned to pool — HTTP below (no DB held) ──────────
+        payload = EmailPayload(
+            to=recipient,
+            subject=rendered_subject,
+            html=rendered_body,
+            api_key=provider_config.email_api_key,
+            from_name=provider_config.email_from_name,
+            from_email=provider_config.email_from_email,
+            reply_to=provider_config.email_reply_to,
+        )
+
         try:
-            msg_id = await self._dispatcher.send_email(
-                db, to=recipient, subject=rendered_subject, html=rendered_body
+            msg_id = await self._dispatcher.send_email(payload)
+            await self._update_log_status(
+                log_id, "sent", msg_id=msg_id, provider="resend"
             )
-            await self._repo.mark_sent(db, log, msg_id, "resend")
-            await db.commit()
         except (ResendAuthError, ResendDomainError) as err:
             logger.error(
                 "email_provider_config_error",
@@ -121,8 +173,7 @@ class NotificationService:
                 recipient=recipient,
                 error=str(err),
             )
-            await self._repo.mark_permanently_failed(db, log, str(err))
-            await db.commit()
+            await self._update_log_status(log_id, "permanently_failed", error=str(err))
         except Exception as err:
             logger.error(
                 "email_send_failed",
@@ -130,7 +181,30 @@ class NotificationService:
                 recipient=recipient,
                 error=str(err),
             )
-            await self._repo.mark_failed(db, log, str(err))
+            await self._update_log_status(log_id, "failed", error=str(err))
+
+    async def _update_log_status(
+        self,
+        log_id: uuid.UUID,
+        status: str,
+        *,
+        msg_id: str | None = None,
+        provider: str | None = None,
+        error: str | None = None,
+    ) -> None:
+        """Open a fresh session to update a single notification log entry."""
+        from app.core.database import AsyncSessionLocal
+
+        async with AsyncSessionLocal() as db:
+            log_entry = await self._repo.get_log_by_id(db, log_id)
+            if not log_entry:
+                return
+            if status == "sent" and msg_id and provider:
+                await self._repo.mark_sent(db, log_entry, msg_id, provider)
+            elif status == "permanently_failed" and error:
+                await self._repo.mark_permanently_failed(db, log_entry, error)
+            elif status == "failed" and error:
+                await self._repo.mark_failed(db, log_entry, error)
             await db.commit()
 
     async def send_whatsapp(
@@ -142,6 +216,15 @@ class NotificationService:
         recipient: str,
         context: dict[str, Any],
     ) -> None:
+        """Send a WhatsApp template notification.
+
+        All DB reads (template, brand context, provider config) and the log
+        creation happen while the session is open.  The transaction is committed
+        **before** the HTTP call so the connection is returned to the pool — the
+        Meta WhatsApp API call runs without holding any database connection.
+        Delivery status is persisted via ``_update_log_status`` which opens its
+        own fresh session.
+        """
         if not settings.WHATSAPP_ENABLED or not await self._provider_enabled(
             db, "whatsapp"
         ):
@@ -155,17 +238,15 @@ class NotificationService:
             logger.warning("no_whatsapp_template", event_type=event_type)
             return
 
-        context = {**await get_brand_context_db(db), **context}
-        rendered_body = _jinja_text.from_string(template.template_body).render(
-            **context
-        )
+        ctx = {**await get_brand_context_db(db), **context}
+        rendered_body = _jinja_text.from_string(template.template_body).render(**ctx)
 
         variables = template.variables or {}
         wa_params: list[str] = variables.get("params", [])
         whatsapp_params: dict[str, Any] = {
             "template_name": variables.get("whatsapp_template", template.name),
             "language": variables.get("whatsapp_lang", "en_US"),
-            "params": [str(context.get(p, "")) for p in wa_params],
+            "params": [str(ctx.get(p, "")) for p in wa_params],
         }
 
         log = await self._repo.create_log(
@@ -180,20 +261,46 @@ class NotificationService:
             template_id=template.id,
             template_version=template.version,
         )
+        log_id = log.id
+
+        # Resolve provider config while the session is still open — last DB
+        # read before commit.  After commit the connection returns to the pool.
+        provider_config = await self._resolve_provider_config(db, "whatsapp")
         await db.commit()
 
-        try:
-            msg_id = await self._dispatcher.send_whatsapp_template(
-                db, to=recipient, template=template, context=context
+        # ── Connection returned to pool — HTTP below (no DB held) ──────────
+        components: list[dict] = []
+        if wa_params:
+            components.append(
+                {
+                    "type": "body",
+                    "parameters": [
+                        {"type": "text", "text": str(ctx.get(p, ""))} for p in wa_params
+                    ],
+                }
             )
-            await self._repo.mark_sent(db, log, msg_id, "whatsapp")
+
+        payload = WhatsAppPayload(
+            to=recipient,
+            template_name=whatsapp_params["template_name"],
+            language=whatsapp_params["language"],
+            components=components,
+            access_token=provider_config.whatsapp_access_token,
+            phone_number_id=provider_config.whatsapp_phone_number_id,
+            api_version=provider_config.whatsapp_api_version,
+        )
+
+        try:
+            msg_id = await self._dispatcher.send_whatsapp(payload)
+            await self._update_log_status(
+                log_id, "sent", msg_id=msg_id, provider="whatsapp"
+            )
             logger.info(
                 "whatsapp_sent",
                 event_type=event_type,
                 recipient=recipient,
                 message_id=msg_id,
             )
-            await db.commit()
         except WhatsAppAuthError as err:
             logger.error(
                 "whatsapp_provider_config_error",
@@ -201,8 +308,7 @@ class NotificationService:
                 recipient=recipient,
                 error=str(err),
             )
-            await self._repo.mark_permanently_failed(db, log, str(err))
-            await db.commit()
+            await self._update_log_status(log_id, "permanently_failed", error=str(err))
         except Exception as err:
             logger.error(
                 "whatsapp_send_failed",
@@ -210,8 +316,7 @@ class NotificationService:
                 recipient=recipient,
                 error=str(err),
             )
-            await self._repo.mark_failed(db, log, str(err))
-            await db.commit()
+            await self._update_log_status(log_id, "failed", error=str(err))
 
     # ── Unified dispatch ──────────────────────────────────────────────────────
 
@@ -228,7 +333,9 @@ class NotificationService:
         """Send notification to all enabled channels for this event type.
 
         Checks the notification matrix (NotificationRule) and user preferences
-        before sending on each channel.
+        before sending on each channel.  Each ``send_*`` method commits the
+        session before its HTTP call so no database connection is held during
+        external API requests.
         """
         # Email channel
         if await self._repo.should_send(db, event_type=event_type, channel="email"):
@@ -329,6 +436,13 @@ class NotificationService:
         log_entry: NotificationLog,
         template: NotificationTemplate | None,
     ) -> None:
+        """Retry a single notification log entry.
+
+        All DB reads (brand context, provider config) happen here while the
+        session is open, then the transaction is committed to return the
+        connection to the pool **before** any HTTP call.  The status update
+        opens its own fresh session via ``_update_log_status``.
+        """
         if not template:
             return
         try:
@@ -343,13 +457,22 @@ class NotificationService:
                 rendered_body = log_entry.rendered_body or _jinja.from_string(
                     template.template_body
                 ).render(**brand)
-                msg_id = await self._dispatcher.send_email(
-                    db,
+                provider_config = await self._resolve_provider_config(db, "email")
+                # ── Commit: return connection to pool before HTTP ───────────
+                await db.commit()
+                payload = EmailPayload(
                     to=log_entry.recipient,
                     subject=rendered_subject,
                     html=rendered_body,
+                    api_key=provider_config.email_api_key,
+                    from_name=provider_config.email_from_name,
+                    from_email=provider_config.email_from_email,
+                    reply_to=provider_config.email_reply_to,
                 )
-                await self._repo.mark_sent(db, log_entry, msg_id, "resend")
+                msg_id = await self._dispatcher.send_email(payload)
+                await self._update_log_status(
+                    log_entry.id, "sent", msg_id=msg_id, provider="resend"
+                )
             elif log_entry.channel == "whatsapp":
                 if not settings.WHATSAPP_ENABLED:
                     logger.info(
@@ -358,6 +481,14 @@ class NotificationService:
                     return
                 if not template.template_body:
                     return
+                provider_config = await self._resolve_provider_config(db, "whatsapp")
+                # Pre-load brand context if we'll need to re-render from scratch
+                brand_ctx: dict[str, Any] = {}
+                if not log_entry.whatsapp_params:
+                    brand_ctx = await get_brand_context_db(db)
+                # ── Commit: return connection to pool before HTTP ───────────
+                await db.commit()
+
                 if log_entry.whatsapp_params:
                     wa = log_entry.whatsapp_params
                     components: list[dict] = []
@@ -371,31 +502,57 @@ class NotificationService:
                                 ],
                             }
                         )
-                    provider = registry.get_whatsapp_provider()
-                    msg_id = await provider.send_whatsapp(
-                        db,
+                    wa_payload = WhatsAppPayload(
                         to=log_entry.recipient,
                         template_name=wa["template_name"],
                         language=wa["language"],
                         components=components,
+                        access_token=provider_config.whatsapp_access_token,
+                        phone_number_id=provider_config.whatsapp_phone_number_id,
+                        api_version=provider_config.whatsapp_api_version,
                     )
+                    msg_id = await self._dispatcher.send_whatsapp(wa_payload)
                 else:
-                    msg_id = await self._dispatcher.send_whatsapp_template(
-                        db,
+                    # Re-render WhatsApp template from scratch
+                    ctx: dict[str, Any] = {**brand_ctx}
+                    rendered_body = _jinja_text.from_string(
+                        template.template_body
+                    ).render(**ctx)
+                    variables = template.variables or {}
+                    wa_params_list: list[str] = variables.get("params", [])
+                    components = []
+                    if wa_params_list:
+                        components.append(
+                            {
+                                "type": "body",
+                                "parameters": [
+                                    {"type": "text", "text": str(ctx.get(p, ""))}
+                                    for p in wa_params_list
+                                ],
+                            }
+                        )
+                    wa_payload = WhatsAppPayload(
                         to=log_entry.recipient,
-                        template=template,
-                        context={},
+                        template_name=variables.get("whatsapp_template", template.name),
+                        language=variables.get("whatsapp_lang", "en_US"),
+                        components=components,
+                        access_token=provider_config.whatsapp_access_token,
+                        phone_number_id=provider_config.whatsapp_phone_number_id,
+                        api_version=provider_config.whatsapp_api_version,
                     )
-                await self._repo.mark_sent(db, log_entry, msg_id, "whatsapp")
-            await db.commit()
+                    msg_id = await self._dispatcher.send_whatsapp(wa_payload)
+                await self._update_log_status(
+                    log_entry.id, "sent", msg_id=msg_id, provider="whatsapp"
+                )
         except (ResendAuthError, ResendDomainError, WhatsAppAuthError) as err:
             logger.error(
                 "retry_provider_config_error",
                 log_id=str(log_entry.id),
                 error=str(err),
             )
-            await self._repo.mark_permanently_failed(db, log_entry, str(err))
-            await db.commit()
+            await self._update_log_status(
+                log_entry.id, "permanently_failed", error=str(err)
+            )
         except Exception as err:
             logger.error(
                 "retry_failed",
@@ -403,8 +560,7 @@ class NotificationService:
                 channel=log_entry.channel,
                 error=str(err),
             )
-            await self._repo.mark_failed(db, log_entry, str(err))
-            await db.commit()
+            await self._update_log_status(log_entry.id, "failed", error=str(err))
 
     # ── Event listener registration ───────────────────────────────────────────
 
@@ -425,9 +581,9 @@ class NotificationService:
             return getattr(profile, "phone", None)
 
         async def _handle_user_registered(event: UserRegisteredEvent) -> None:
-            from app.core.database import AsyncWorkerSessionLocal
+            from app.core.database import AsyncSessionLocal
 
-            async with AsyncWorkerSessionLocal() as db:
+            async with AsyncSessionLocal() as db:
                 await svc.dispatch(
                     db,
                     user_id=event.user_id,
@@ -440,9 +596,9 @@ class NotificationService:
                 )
 
         async def _handle_order_created(event: OrderCreatedEvent) -> None:
-            from app.core.database import AsyncWorkerSessionLocal
+            from app.core.database import AsyncSessionLocal
 
-            async with AsyncWorkerSessionLocal() as db:
+            async with AsyncSessionLocal() as db:
                 _, order_ctx = await load_order_context(db, event.order_id)
                 ctx = {
                     **order_ctx,
@@ -463,9 +619,9 @@ class NotificationService:
         async def _handle_payment_captured(event: PaymentCapturedEvent) -> None:
             if not event.customer_email:
                 return
-            from app.core.database import AsyncWorkerSessionLocal
+            from app.core.database import AsyncSessionLocal
 
-            async with AsyncWorkerSessionLocal() as db:
+            async with AsyncSessionLocal() as db:
                 _, order_ctx = await load_order_context(db, event.order_id)
                 await svc.dispatch(
                     db,
@@ -482,10 +638,10 @@ class NotificationService:
                 )
 
         async def _handle_payment_failed(event: PaymentFailedEvent) -> None:
-            from app.core.database import AsyncWorkerSessionLocal
+            from app.core.database import AsyncSessionLocal
             from app.modules.profiles.repository import ProfileRepository
 
-            async with AsyncWorkerSessionLocal() as db:
+            async with AsyncSessionLocal() as db:
                 order, order_ctx = await load_order_context(db, event.order_id)
                 if not order:
                     return
@@ -510,10 +666,10 @@ class NotificationService:
         async def _handle_order_status_changed(
             event: OrderStatusChangedEvent,
         ) -> None:
-            from app.core.database import AsyncWorkerSessionLocal
+            from app.core.database import AsyncSessionLocal
             from app.modules.profiles.repository import ProfileRepository
 
-            async with AsyncWorkerSessionLocal() as db:
+            async with AsyncSessionLocal() as db:
                 order, order_ctx = await load_order_context(db, event.order_id)
                 if not order:
                     return
@@ -538,10 +694,10 @@ class NotificationService:
                 )
 
         async def _handle_order_shipped(event: OrderShippedEvent) -> None:
-            from app.core.database import AsyncWorkerSessionLocal
+            from app.core.database import AsyncSessionLocal
             from app.modules.profiles.repository import ProfileRepository
 
-            async with AsyncWorkerSessionLocal() as db:
+            async with AsyncSessionLocal() as db:
                 order, order_ctx = await load_order_context(db, event.order_id)
                 if not order:
                     return
@@ -568,10 +724,10 @@ class NotificationService:
                 )
 
         async def _handle_order_delivered(event: OrderDeliveredEvent) -> None:
-            from app.core.database import AsyncWorkerSessionLocal
+            from app.core.database import AsyncSessionLocal
             from app.modules.profiles.repository import ProfileRepository
 
-            async with AsyncWorkerSessionLocal() as db:
+            async with AsyncSessionLocal() as db:
                 order, order_ctx = await load_order_context(db, event.order_id)
                 if not order:
                     return
@@ -596,9 +752,9 @@ class NotificationService:
         async def _handle_refund_created(event: RefundCreatedEvent) -> None:
             if not event.customer_email:
                 return
-            from app.core.database import AsyncWorkerSessionLocal
+            from app.core.database import AsyncSessionLocal
 
-            async with AsyncWorkerSessionLocal() as db:
+            async with AsyncSessionLocal() as db:
                 _, order_ctx = await load_order_context(db, event.order_id)
                 await svc.dispatch(
                     db,
@@ -617,9 +773,9 @@ class NotificationService:
         async def _handle_refund_processed(event: RefundProcessedEvent) -> None:
             if not event.customer_email:
                 return
-            from app.core.database import AsyncWorkerSessionLocal
+            from app.core.database import AsyncSessionLocal
 
-            async with AsyncWorkerSessionLocal() as db:
+            async with AsyncSessionLocal() as db:
                 _, order_ctx = await load_order_context(db, event.order_id)
                 await svc.dispatch(
                     db,
@@ -636,9 +792,9 @@ class NotificationService:
                 )
 
         async def _handle_refund_failed(event: RefundFailedEvent) -> None:
-            from app.core.database import AsyncWorkerSessionLocal
+            from app.core.database import AsyncSessionLocal
 
-            async with AsyncWorkerSessionLocal() as db:
+            async with AsyncSessionLocal() as db:
                 await svc.dispatch(
                     db,
                     user_id=None,
@@ -658,13 +814,13 @@ class NotificationService:
                 )
 
         async def _handle_review_request(event: ReviewRequestEvent) -> None:
-            from app.core.database import AsyncWorkerSessionLocal
+            from app.core.database import AsyncSessionLocal
             from app.modules.profiles.repository import ProfileRepository
 
             email = event.customer_email or event.user_email
             if not email:
                 return
-            async with AsyncWorkerSessionLocal() as db:
+            async with AsyncSessionLocal() as db:
                 phone = None
                 if event.user_id:
                     profile = await ProfileRepository().get_by_id(

@@ -78,6 +78,7 @@ async def _notify_security_event(
     that triggered it.
     """
     from app.modules.notifications.dispatcher import dispatcher
+    from app.modules.notifications.dto import EmailPayload
     from app.modules.settings.service import SettingsService
 
     try:
@@ -85,12 +86,18 @@ async def _notify_security_event(
             db, ADMIN_LOGIN_NOTIFICATIONS_FLAG
         ):
             return
-        await dispatcher.send_email(
-            db,
+        from app.core.config import settings as _settings
+
+        payload = EmailPayload(
             to=current_user.email,
             subject=subject,
             html=f"<p>{message}</p><p>If this wasn't you, revoke your sessions immediately from Settings &rarr; Security and re-enable 2FA.</p>",
+            api_key=_settings.RESEND_API_KEY,
+            from_name=_settings.EMAIL_FROM_NAME,
+            from_email=_settings.EMAIL_FROM,
+            reply_to=_settings.EMAIL_REPLY_TO,
         )
+        await dispatcher.send_email(payload)
     except Exception:
         # Best-effort: a delivery failure must never block the request that
         # triggered it, but silently swallowing it entirely would let every

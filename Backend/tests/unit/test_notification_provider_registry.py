@@ -9,6 +9,7 @@ import pytest
 
 from app.core.security import verify_whatsapp_webhook_signature
 from app.modules.notifications.dispatcher import NotificationDispatcher
+from app.modules.notifications.dto import EmailPayload, WhatsAppPayload
 from app.modules.notifications.providers.registry import ProviderRegistry
 from app.modules.notifications.providers.resend import ResendProvider
 from app.modules.notifications.providers.whatsapp import WhatsAppProvider
@@ -37,72 +38,64 @@ class TestProviderRegistry:
 class TestNotificationDispatcher:
     async def test_send_email_delegates_to_registry_provider(self):
         dispatcher = NotificationDispatcher()
-        db = AsyncMock()
+        payload = EmailPayload(
+            to="a@b.com",
+            subject="Hi",
+            html="<p>hi</p>",
+            api_key="test_key",
+            from_name="Test",
+            from_email="test@example.com",
+            reply_to="reply@example.com",
+        )
         with patch("app.modules.notifications.dispatcher.registry") as mock_registry:
             mock_provider = AsyncMock()
             mock_provider.send_email = AsyncMock(return_value="msg-1")
             mock_registry.get_email_provider.return_value = mock_provider
-            result = await dispatcher.send_email(
-                db, to="a@b.com", subject="Hi", html="<p>hi</p>"
-            )
+            result = await dispatcher.send_email(payload)
         assert result == "msg-1"
-        mock_provider.send_email.assert_awaited_once_with(
-            db, to="a@b.com", subject="Hi", html="<p>hi</p>"
-        )
+        mock_provider.send_email.assert_awaited_once_with(payload)
 
-    async def test_send_whatsapp_template_builds_components_from_variables(self):
+    async def test_send_whatsapp_delegates_to_registry_provider(self):
         dispatcher = NotificationDispatcher()
-        db = AsyncMock()
-        template = type(
-            "T",
-            (),
-            {
-                "name": "order_created_whatsapp",
-                "variables": {
-                    "whatsapp_template": "order_created",
-                    "whatsapp_lang": "en_US",
-                    "params": ["order_number", "total"],
-                },
-            },
-        )()
+        payload = WhatsAppPayload(
+            to="+919999999999",
+            template_name="order_created",
+            language="en_US",
+            components=[
+                {
+                    "type": "body",
+                    "parameters": [
+                        {"type": "text", "text": "ORD-1"},
+                        {"type": "text", "text": "500"},
+                    ],
+                }
+            ],
+            access_token="test_token",
+            phone_number_id="123",
+            api_version="v18.0",
+        )
         with patch("app.modules.notifications.dispatcher.registry") as mock_registry:
             mock_provider = AsyncMock()
             mock_provider.send_whatsapp = AsyncMock(return_value="wa-1")
             mock_registry.get_whatsapp_provider.return_value = mock_provider
-            result = await dispatcher.send_whatsapp_template(
-                db,
-                to="+919999999999",
-                template=template,
-                context={"order_number": "ORD-1", "total": "500"},
-            )
+            result = await dispatcher.send_whatsapp(payload)
         assert result == "wa-1"
-        _, kwargs = mock_provider.send_whatsapp.call_args
-        assert kwargs["template_name"] == "order_created"
-        assert kwargs["language"] == "en_US"
-        assert kwargs["components"] == [
-            {
-                "type": "body",
-                "parameters": [
-                    {"type": "text", "text": "ORD-1"},
-                    {"type": "text", "text": "500"},
-                ],
-            }
-        ]
+        mock_provider.send_whatsapp.assert_awaited_once_with(payload)
 
-    async def test_send_whatsapp_template_with_no_params_sends_no_components(self):
+    async def test_send_whatsapp_with_no_components(self):
         dispatcher = NotificationDispatcher()
-        db = AsyncMock()
-        template = type("T", (), {"name": "low_stock", "variables": None})()
+        payload = WhatsAppPayload(
+            to="+919999999999",
+            template_name="low_stock",
+            language="en_US",
+            components=[],
+        )
         with patch("app.modules.notifications.dispatcher.registry") as mock_registry:
             mock_provider = AsyncMock()
             mock_provider.send_whatsapp = AsyncMock(return_value="wa-2")
             mock_registry.get_whatsapp_provider.return_value = mock_provider
-            await dispatcher.send_whatsapp_template(
-                db, to="+919999999999", template=template, context={}
-            )
-        _, kwargs = mock_provider.send_whatsapp.call_args
-        assert kwargs["components"] == []
-        assert kwargs["template_name"] == "low_stock"
+            await dispatcher.send_whatsapp(payload)
+        mock_provider.send_whatsapp.assert_awaited_once_with(payload)
 
 
 class TestWhatsAppWebhookSignature:

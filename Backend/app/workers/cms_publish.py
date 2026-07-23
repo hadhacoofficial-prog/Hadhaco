@@ -11,7 +11,7 @@ from datetime import UTC, datetime
 import structlog
 from sqlalchemy import select
 
-from app.core.database import AsyncWorkerSessionLocal
+from app.core.database import AsyncSessionLocal
 from app.core.redis import get_redis_pool
 from app.modules.cms.models import LandingSection
 
@@ -25,7 +25,7 @@ async def run() -> None:
     try:
         now = datetime.now(UTC)
 
-        async with AsyncWorkerSessionLocal() as db:
+        async with AsyncSessionLocal() as db:
             result = await db.execute(
                 select(LandingSection).where(
                     LandingSection.status == "scheduled",

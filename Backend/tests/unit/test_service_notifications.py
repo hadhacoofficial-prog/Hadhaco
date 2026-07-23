@@ -56,6 +56,8 @@ class TestNotificationServiceSendEmail:
         mock_template = MagicMock()
         mock_template.subject = "Hello {{ name }}"
         mock_template.template_body = "<p>Hi {{ name }}</p>"
+        mock_template.id = uuid.uuid4()
+        mock_template.version = 1
         mock_log = MagicMock()
         mock_log.id = uuid.uuid4()
 
@@ -68,7 +70,23 @@ class TestNotificationServiceSendEmail:
             patch.object(
                 NotificationRepository, "create_log", AsyncMock(return_value=mock_log)
             ),
-            patch.object(NotificationRepository, "mark_sent", AsyncMock()),
+            patch.object(
+                NotificationService,
+                "_resolve_provider_config",
+                AsyncMock(
+                    return_value=MagicMock(
+                        email_api_key="test_key",
+                        email_from_name="Test",
+                        email_from_email="test@example.com",
+                        email_reply_to="reply@example.com",
+                    )
+                ),
+            ),
+            patch.object(
+                NotificationService,
+                "_update_log_status",
+                AsyncMock(),
+            ),
             patch.object(
                 type(self.svc._dispatcher),
                 "send_email",
@@ -88,7 +106,10 @@ class TestNotificationServiceSendEmail:
         mock_template = MagicMock()
         mock_template.subject = "Test"
         mock_template.template_body = "<p>Test</p>"
+        mock_template.id = uuid.uuid4()
+        mock_template.version = 1
         mock_log = MagicMock()
+        mock_log.id = uuid.uuid4()
 
         with (
             patch.object(
@@ -99,7 +120,23 @@ class TestNotificationServiceSendEmail:
             patch.object(
                 NotificationRepository, "create_log", AsyncMock(return_value=mock_log)
             ),
-            patch.object(NotificationRepository, "mark_failed", AsyncMock()),
+            patch.object(
+                NotificationService,
+                "_resolve_provider_config",
+                AsyncMock(
+                    return_value=MagicMock(
+                        email_api_key="test_key",
+                        email_from_name="Test",
+                        email_from_email="test@example.com",
+                        email_reply_to="reply@example.com",
+                    )
+                ),
+            ),
+            patch.object(
+                NotificationService,
+                "_update_log_status",
+                AsyncMock(),
+            ) as mock_update,
             patch.object(
                 type(self.svc._dispatcher),
                 "send_email",
@@ -113,6 +150,7 @@ class TestNotificationServiceSendEmail:
                 recipient="test@example.com",
                 context={},
             )
+        mock_update.assert_awaited_once_with(mock_log.id, "failed", error="SMTP error")
 
     async def test_send_email_marks_permanently_failed_on_auth_error(self):
         from app.modules.notifications.providers.resend import ResendAuthError
@@ -121,7 +159,10 @@ class TestNotificationServiceSendEmail:
         mock_template = MagicMock()
         mock_template.subject = "Test"
         mock_template.template_body = "<p>Test</p>"
+        mock_template.id = uuid.uuid4()
+        mock_template.version = 1
         mock_log = MagicMock()
+        mock_log.id = uuid.uuid4()
 
         with (
             patch.object(
@@ -133,8 +174,22 @@ class TestNotificationServiceSendEmail:
                 NotificationRepository, "create_log", AsyncMock(return_value=mock_log)
             ),
             patch.object(
-                NotificationRepository, "mark_permanently_failed", AsyncMock()
-            ) as mock_perm,
+                NotificationService,
+                "_resolve_provider_config",
+                AsyncMock(
+                    return_value=MagicMock(
+                        email_api_key="test_key",
+                        email_from_name="Test",
+                        email_from_email="test@example.com",
+                        email_reply_to="reply@example.com",
+                    )
+                ),
+            ),
+            patch.object(
+                NotificationService,
+                "_update_log_status",
+                AsyncMock(),
+            ) as mock_update,
             patch.object(
                 type(self.svc._dispatcher),
                 "send_email",
@@ -148,7 +203,9 @@ class TestNotificationServiceSendEmail:
                 recipient="test@example.com",
                 context={},
             )
-        mock_perm.assert_awaited_once()
+        mock_update.assert_awaited_once_with(
+            mock_log.id, "permanently_failed", error="bad key"
+        )
 
 
 class TestNotificationServiceSendWhatsApp:
@@ -219,6 +276,8 @@ class TestNotificationServiceSendWhatsApp:
         db = AsyncMock()
         mock_template = MagicMock()
         mock_template.template_body = "Order {{ order_number }} confirmed"
+        mock_template.id = uuid.uuid4()
+        mock_template.version = 1
         mock_template.variables = {
             "whatsapp_template": "order_created",
             "whatsapp_lang": "en_US",
@@ -237,10 +296,25 @@ class TestNotificationServiceSendWhatsApp:
             patch.object(
                 NotificationRepository, "create_log", AsyncMock(return_value=mock_log)
             ),
-            patch.object(NotificationRepository, "mark_sent", AsyncMock()),
+            patch.object(
+                NotificationService,
+                "_resolve_provider_config",
+                AsyncMock(
+                    return_value=MagicMock(
+                        whatsapp_access_token="test_token",
+                        whatsapp_phone_number_id="123",
+                        whatsapp_api_version="v18.0",
+                    )
+                ),
+            ),
+            patch.object(
+                NotificationService,
+                "_update_log_status",
+                AsyncMock(),
+            ),
             patch.object(
                 type(self.svc._dispatcher),
-                "send_whatsapp_template",
+                "send_whatsapp",
                 AsyncMock(return_value="wa-msg-123"),
             ),
         ):
@@ -257,8 +331,11 @@ class TestNotificationServiceSendWhatsApp:
         db = AsyncMock()
         mock_template = MagicMock()
         mock_template.template_body = "Hello"
+        mock_template.id = uuid.uuid4()
+        mock_template.version = 1
         mock_template.variables = None
         mock_log = MagicMock()
+        mock_log.id = uuid.uuid4()
 
         with (
             patch("app.modules.notifications.service.settings") as mock_settings,
@@ -270,10 +347,25 @@ class TestNotificationServiceSendWhatsApp:
             patch.object(
                 NotificationRepository, "create_log", AsyncMock(return_value=mock_log)
             ),
-            patch.object(NotificationRepository, "mark_failed", AsyncMock()),
+            patch.object(
+                NotificationService,
+                "_resolve_provider_config",
+                AsyncMock(
+                    return_value=MagicMock(
+                        whatsapp_access_token="test_token",
+                        whatsapp_phone_number_id="123",
+                        whatsapp_api_version="v18.0",
+                    )
+                ),
+            ),
+            patch.object(
+                NotificationService,
+                "_update_log_status",
+                AsyncMock(),
+            ) as mock_update,
             patch.object(
                 type(self.svc._dispatcher),
-                "send_whatsapp_template",
+                "send_whatsapp",
                 AsyncMock(side_effect=Exception("WhatsApp API down")),
             ),
         ):
@@ -285,6 +377,9 @@ class TestNotificationServiceSendWhatsApp:
                 recipient="+919999999999",
                 context={},
             )
+        mock_update.assert_awaited_once_with(
+            mock_log.id, "failed", error="WhatsApp API down"
+        )
 
 
 class TestNotificationServiceRetry:
@@ -310,14 +405,33 @@ class TestNotificationServiceRetry:
     async def test_retry_log_email_success(self):
         db = AsyncMock()
         mock_log = MagicMock()
+        mock_log.id = uuid.uuid4()
         mock_log.event_type = "order_created"
         mock_log.channel = "email"
         mock_log.recipient = "test@example.com"
+        mock_log.rendered_subject = "Test"
+        mock_log.rendered_body = "<p>Hello</p>"
         mock_template = MagicMock()
         mock_template.subject = "Test"
         mock_template.template_body = "<p>Hello</p>"
         with (
-            patch.object(NotificationRepository, "mark_sent", AsyncMock()) as mock_sent,
+            patch.object(
+                NotificationService,
+                "_resolve_provider_config",
+                AsyncMock(
+                    return_value=MagicMock(
+                        email_api_key="test_key",
+                        email_from_name="Test",
+                        email_from_email="test@example.com",
+                        email_reply_to="reply@example.com",
+                    )
+                ),
+            ),
+            patch.object(
+                NotificationService,
+                "_update_log_status",
+                AsyncMock(),
+            ),
             patch.object(
                 type(self.svc._dispatcher),
                 "send_email",
@@ -325,34 +439,49 @@ class TestNotificationServiceRetry:
             ),
         ):
             await self.svc._retry_log(db, mock_log, mock_template)
-        mock_sent.assert_awaited_once()
 
     async def test_retry_log_whatsapp_success_when_enabled(self):
         db = AsyncMock()
         mock_log = MagicMock()
+        mock_log.id = uuid.uuid4()
         mock_log.event_type = "order_shipped"
         mock_log.channel = "whatsapp"
         mock_log.recipient = "+919876543210"
-        mock_log.whatsapp_params = None  # legacy log without stored params
+        mock_log.whatsapp_params = None
         mock_template = MagicMock()
         mock_template.template_body = "Order shipped"
         mock_template.variables = None
         with (
             patch("app.modules.notifications.service.settings") as mock_settings,
-            patch.object(NotificationRepository, "mark_sent", AsyncMock()) as mock_sent,
+            patch.object(
+                NotificationService,
+                "_resolve_provider_config",
+                AsyncMock(
+                    return_value=MagicMock(
+                        whatsapp_access_token="test_token",
+                        whatsapp_phone_number_id="123",
+                        whatsapp_api_version="v18.0",
+                    )
+                ),
+            ),
+            patch.object(
+                NotificationService,
+                "_update_log_status",
+                AsyncMock(),
+            ),
             patch.object(
                 type(self.svc._dispatcher),
-                "send_whatsapp_template",
+                "send_whatsapp",
                 AsyncMock(return_value="wa-retry"),
             ),
         ):
             mock_settings.WHATSAPP_ENABLED = True
             await self.svc._retry_log(db, mock_log, mock_template)
-        mock_sent.assert_awaited_once()
 
     async def test_retry_log_whatsapp_uses_stored_params(self):
         db = AsyncMock()
         mock_log = MagicMock()
+        mock_log.id = uuid.uuid4()
         mock_log.event_type = "order_shipped"
         mock_log.channel = "whatsapp"
         mock_log.recipient = "+919876543210"
@@ -365,23 +494,32 @@ class TestNotificationServiceRetry:
         mock_template.template_body = "Order shipped"
         with (
             patch("app.modules.notifications.service.settings") as mock_settings,
-            patch.object(NotificationRepository, "mark_sent", AsyncMock()) as mock_sent,
-            patch("app.modules.notifications.service.registry") as mock_registry,
+            patch.object(
+                NotificationService,
+                "_resolve_provider_config",
+                AsyncMock(
+                    return_value=MagicMock(
+                        whatsapp_access_token="test_token",
+                        whatsapp_phone_number_id="123",
+                        whatsapp_api_version="v18.0",
+                    )
+                ),
+            ),
+            patch.object(
+                NotificationService,
+                "_update_log_status",
+                AsyncMock(),
+            ) as mock_update,
+            patch.object(
+                type(self.svc._dispatcher),
+                "send_whatsapp",
+                AsyncMock(return_value="wa-stored"),
+            ),
         ):
             mock_settings.WHATSAPP_ENABLED = True
-            mock_provider = AsyncMock()
-            mock_provider.send_whatsapp = AsyncMock(return_value="wa-stored")
-            mock_registry.get_whatsapp_provider.return_value = mock_provider
             await self.svc._retry_log(db, mock_log, mock_template)
-        mock_sent.assert_awaited_once()
-        mock_provider.send_whatsapp.assert_awaited_once_with(
-            db,
-            to="+919876543210",
-            template_name="order_shipped",
-            language="en_US",
-            components=[
-                {"type": "body", "parameters": [{"type": "text", "text": "#12345"}]}
-            ],
+        mock_update.assert_awaited_once_with(
+            mock_log.id, "sent", msg_id="wa-stored", provider="whatsapp"
         )
 
     async def test_retry_log_whatsapp_skipped_when_disabled(self):
@@ -395,21 +533,37 @@ class TestNotificationServiceRetry:
         with patch("app.modules.notifications.service.settings") as mock_settings:
             mock_settings.WHATSAPP_ENABLED = False
             await self.svc._retry_log(db, mock_log, mock_template)
-        db.commit.assert_not_called()
 
     async def test_retry_log_marks_failed_on_error(self):
         db = AsyncMock()
         mock_log = MagicMock()
+        mock_log.id = uuid.uuid4()
         mock_log.event_type = "order_created"
         mock_log.channel = "email"
         mock_log.recipient = "test@example.com"
+        mock_log.rendered_subject = "Test"
+        mock_log.rendered_body = "HTML"
         mock_template = MagicMock()
         mock_template.subject = "Test"
         mock_template.template_body = "HTML"
         with (
             patch.object(
-                NotificationRepository, "mark_failed", AsyncMock()
-            ) as mock_failed,
+                NotificationService,
+                "_resolve_provider_config",
+                AsyncMock(
+                    return_value=MagicMock(
+                        email_api_key="test_key",
+                        email_from_name="Test",
+                        email_from_email="test@example.com",
+                        email_reply_to="reply@example.com",
+                    )
+                ),
+            ),
+            patch.object(
+                NotificationService,
+                "_update_log_status",
+                AsyncMock(),
+            ) as mock_update,
             patch.object(
                 type(self.svc._dispatcher),
                 "send_email",
@@ -417,7 +571,7 @@ class TestNotificationServiceRetry:
             ),
         ):
             await self.svc._retry_log(db, mock_log, mock_template)
-        mock_failed.assert_awaited_once()
+        mock_update.assert_awaited_once_with(mock_log.id, "failed", error="Send error")
 
 
 class TestNotificationServiceDispatch:

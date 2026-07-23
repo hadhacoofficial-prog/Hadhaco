@@ -148,14 +148,21 @@ async def test_email_provider(
     _=Depends(require_admin),
 ):
     from app.modules.notifications.dispatcher import dispatcher
+    from app.modules.notifications.dto import EmailPayload
 
     try:
-        msg_id = await dispatcher.send_email(
-            db,
+        from app.core.config import settings as _settings
+
+        payload = EmailPayload(
             to=to,
             subject="Test notification from Hadha.co",
             html="<p>This is a test email from the Hadha.co notification system.</p>",
+            api_key=_settings.RESEND_API_KEY,
+            from_name=_settings.EMAIL_FROM_NAME,
+            from_email=_settings.EMAIL_FROM,
+            reply_to=_settings.EMAIL_REPLY_TO,
         )
+        msg_id = await dispatcher.send_email(payload)
         result = ProviderTestResult(
             success=True, message="Test email sent", message_id=msg_id
         )
@@ -177,13 +184,22 @@ async def test_whatsapp_provider(
     db: AsyncSession = Depends(get_db),
     _=Depends(require_admin),
 ):
-    from app.modules.notifications.providers.registry import registry
+    from app.modules.notifications.dispatcher import dispatcher
+    from app.modules.notifications.dto import WhatsAppPayload
 
     try:
-        provider = registry.get_whatsapp_provider()
-        msg_id = await provider.send_whatsapp(
-            db, to=to, template_name=template_name, language=language, components=[]
+        from app.core.config import settings as _settings
+
+        payload = WhatsAppPayload(
+            to=to,
+            template_name=template_name,
+            language=language,
+            components=[],
+            access_token=_settings.WHATSAPP_ACCESS_TOKEN,
+            phone_number_id=_settings.WHATSAPP_PHONE_NUMBER_ID,
+            api_version=_settings.WHATSAPP_API_VERSION,
         )
+        msg_id = await dispatcher.send_whatsapp(payload)
         result = ProviderTestResult(
             success=True, message="Test WhatsApp message sent", message_id=msg_id
         )

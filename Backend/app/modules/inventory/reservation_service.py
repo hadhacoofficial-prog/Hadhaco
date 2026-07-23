@@ -42,6 +42,59 @@ def _generate_reservation_number() -> str:
     return f"RES-{suffix}"
 
 
+async def invalidate_inventory_cache(
+    targets: list[tuple[uuid.UUID, uuid.UUID | None]],
+) -> None:
+    """Best-effort Redis cache invalidation for inventory-derived views.
+
+    Extracted as a standalone async function so callers that don't own a
+    ``ReservationService`` instance (e.g. ``InventoryService.record_movement``)
+    can still invalidate the same set of cache keys after publishing an
+    ``InventoryChangedEvent``.
+
+    For the full SSE + cache pipeline, prefer ``ReservationService._invalidate_inventory_cache``
+    which calls this function internally after publishing the event.
+    """
+    if not targets:
+        return
+    if not redis_available():
+        return
+    redis = get_redis_pool()
+    direct_keys: set[str] = {"featured_products", "cms:homepage"}
+    for product_id, variant_id in targets:
+        direct_keys.add(f"product:{product_id}")
+        direct_keys.add(f"product_details:{product_id}")
+        if variant_id:
+            direct_keys.add(f"variant:{variant_id}")
+
+    patterns = [
+        "products:list:v1:*",
+        "product:list:*",
+        "product_details:*",
+        "category:*",
+        "collection:*",
+        "homepage:*",
+        "search:*",
+        "recommendation:*",
+        "recommendations:*",
+    ]
+
+    async def _collect_pattern_keys() -> list[str]:
+        collected: list[str] = []
+        for pattern in patterns:
+            async for key in redis.scan_iter(match=pattern, count=500):
+                collected.append(str(key))
+        return collected
+
+    try:
+        await safe_redis_delete(redis, *direct_keys)
+        pattern_keys = await asyncio.wait_for(_collect_pattern_keys(), timeout=1.0)
+        if pattern_keys:
+            await safe_redis_delete(redis, *set(pattern_keys))
+    except Exception:
+        mark_redis_error()
+
+
 class ReservationService:
     # ── Internal helpers ──────────────────────────────────────────────────────
 
@@ -118,43 +171,27 @@ class ReservationService:
         of being repeated per item. Uses SCAN (via scan_iter), not the
         blocking KEYS command, so it never stalls the Redis server even on a
         large keyspace.
+
+        Additionally publishes InventoryChangedEvent via the event bus so that
+        SSE subscribers (frontend SyncBus) receive real-time notifications.
+        This is the **single canonical pipeline** for all inventory mutations:
+        every method that modifies stock state calls this method, which
+        guarantees both cache invalidation AND SSE broadcasting.
         """
-        if not redis_available() or not targets:
+        if not targets:
             return
-        redis = get_redis_pool()
-        direct_keys = {"featured_products", "cms:homepage"}
-        for product_id, variant_id in targets:
-            direct_keys.add(f"product:{product_id}")
-            direct_keys.add(f"product_details:{product_id}")
-            if variant_id:
-                direct_keys.add(f"variant:{variant_id}")
 
-        patterns = [
-            "products:list:v1:*",
-            "product:list:*",
-            "product_details:*",
-            "category:*",
-            "collection:*",
-            "homepage:*",
-            "search:*",
-            "recommendation:*",
-            "recommendations:*",
-        ]
-
-        async def _collect_pattern_keys() -> list[str]:
-            collected: list[str] = []
-            for pattern in patterns:
-                async for key in redis.scan_iter(match=pattern, count=500):
-                    collected.append(str(key))
-            return collected
-
+        # ── Publish SSE event (always, even if Redis cache is down) ──────────
+        product_ids = list({str(pid) for pid, _ in targets})
         try:
-            await safe_redis_delete(redis, *direct_keys)
-            pattern_keys = await asyncio.wait_for(_collect_pattern_keys(), timeout=1.0)
-            if pattern_keys:
-                await safe_redis_delete(redis, *set(pattern_keys))
-        except Exception:
-            mark_redis_error()
+            from app.core.events import InventoryChangedEvent, event_bus
+
+            await event_bus.publish(InventoryChangedEvent(product_ids=product_ids))
+        except Exception as exc:
+            log.error("inventory_event_publish_failed", error=str(exc))
+
+        # ── Invalidate Redis cache (best-effort) ────────────────────────────
+        await invalidate_inventory_cache(targets)
 
     async def _update_stock_target(
         self,
@@ -375,6 +412,23 @@ class ReservationService:
             )
 
         await self._invalidate_inventory_cache(cache_targets)
+
+        # Publish ReservationCreatedEvent so frontend shows reservation badges
+        # and countdown timers. Only for genuinely new reservations (not reuses).
+        new_reservations = [r for r in reservations if r.order_id is None]
+        if new_reservations:
+            try:
+                from app.core.events import ReservationCreatedEvent, event_bus
+
+                await event_bus.publish(
+                    ReservationCreatedEvent(
+                        reservation_id=str(new_reservations[0].id),
+                        user_id=str(user_id),
+                    )
+                )
+            except Exception as exc:
+                log.error("reservation_created_event_publish_failed", error=str(exc))
+
         return reservations
 
     async def link_reservations_to_order(

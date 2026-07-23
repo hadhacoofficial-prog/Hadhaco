@@ -13,7 +13,7 @@ pytestmark = pytest.mark.asyncio
 
 
 def _session_cm(db):
-    """Mock for `AsyncWorkerSessionLocal()` used as `async with ... as db`."""
+    """Mock for `AsyncSessionLocal()` used as `async with ... as db`."""
     cm = MagicMock()
     cm.__aenter__ = AsyncMock(return_value=db)
     cm.__aexit__ = AsyncMock(return_value=False)
@@ -37,7 +37,7 @@ class TestProcessOneClaim:
 
         with (
             patch(
-                "app.workers.media_generation.AsyncWorkerSessionLocal",
+                "app.workers.media_generation.AsyncSessionLocal",
                 return_value=_session_cm(db),
             ),
             patch.object(
@@ -77,7 +77,7 @@ class TestProcessOneSuccess:
 
         with (
             patch(
-                "app.workers.media_generation.AsyncWorkerSessionLocal",
+                "app.workers.media_generation.AsyncSessionLocal",
                 return_value=_session_cm(db),
             ),
             patch.object(
@@ -122,7 +122,7 @@ class TestProcessOneFailure:
 
         with (
             patch(
-                "app.workers.media_generation.AsyncWorkerSessionLocal",
+                "app.workers.media_generation.AsyncSessionLocal",
                 return_value=_session_cm(db),
             ),
             patch.object(
@@ -168,7 +168,7 @@ class TestProcessOneFailure:
 
         with (
             patch(
-                "app.workers.media_generation.AsyncWorkerSessionLocal",
+                "app.workers.media_generation.AsyncSessionLocal",
                 return_value=_session_cm(db),
             ),
             patch.object(
@@ -206,9 +206,15 @@ class TestEnqueue:
         from app.workers import media_generation
 
         image_id = uuid.uuid4()
-        with patch(
-            "app.workers.media_generation.process_one", new=AsyncMock()
-        ) as process_one:
+        with (
+            patch(
+                "app.workers.media_generation.get_worker_semaphore",
+                return_value=asyncio.Semaphore(5),
+            ),
+            patch(
+                "app.workers.media_generation.process_one", new=AsyncMock()
+            ) as process_one,
+        ):
             media_generation.enqueue(image_id)
             assert len(media_generation._inflight_tasks) == 1
             await asyncio.sleep(0)  # let the task run to completion
@@ -229,7 +235,7 @@ class TestRun:
 
         with (
             patch(
-                "app.workers.media_generation.AsyncWorkerSessionLocal",
+                "app.workers.media_generation.AsyncSessionLocal",
                 return_value=_session_cm(db),
             ),
             patch.object(

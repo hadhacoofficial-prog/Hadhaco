@@ -76,6 +76,23 @@ class InventoryService:
             },
         )
 
+        # Publish inventory change event for SSE → frontend synchronization
+        # AND invalidate Redis cache so React Query refetches get fresh data.
+        # This ensures the legacy path uses the same pipeline as the
+        # ReservationService-based modern path.
+        try:
+            from app.core.events import InventoryChangedEvent, event_bus
+            from app.modules.inventory.reservation_service import (
+                invalidate_inventory_cache,
+            )
+
+            await event_bus.publish(
+                InventoryChangedEvent(product_ids=[str(product_id)])
+            )
+            await invalidate_inventory_cache([(product_id, None)])
+        except Exception:
+            pass  # Event publishing / cache invalidation is best-effort.
+
         return InventoryMovementResponse.model_validate(movement)
 
     async def manual_adjustment(

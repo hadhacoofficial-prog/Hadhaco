@@ -19,7 +19,7 @@ from app.core.cache import (
     make_etag,
     not_modified_response,
 )
-from app.core.database import AsyncWorkerSessionLocal, get_db
+from app.core.database import AsyncSessionLocal, get_db
 from app.core.dependencies import require_admin
 from app.core.redis import (
     get_redis,
@@ -63,7 +63,7 @@ async def list_collections(
     # cache_swr may invoke this from a detached background SWR-refresh task
     # after the request has already committed/closed its session.
     async def _fetch():
-        async with AsyncWorkerSessionLocal() as s:
+        async with AsyncSessionLocal() as s:
             result = await _service.list_active(s)
             return [c.model_dump(mode="json") for c in result]
 
@@ -110,7 +110,7 @@ async def get_collection(
     cache_key = f"{PREFIX_COLLECTION_DETAIL}:{slug}"
 
     async def _fetch():
-        async with AsyncWorkerSessionLocal() as s:
+        async with AsyncSessionLocal() as s:
             result = await _service.get_by_slug(s, slug)
             return result.model_dump(mode="json")
 

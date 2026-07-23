@@ -33,7 +33,7 @@ from PIL import Image
 from sqlalchemy import text
 
 from app.core.config import settings
-from app.core.database import AsyncWorkerSessionLocal
+from app.core.database import AsyncSessionLocal
 
 logging.basicConfig(
     level=logging.INFO,
@@ -72,7 +72,7 @@ def _key_from_url(url: str) -> str:
 
 
 async def _get_all_images() -> list[dict]:
-    async with AsyncWorkerSessionLocal() as db:
+    async with AsyncSessionLocal() as db:
         result = await db.execute(
             text(
                 "SELECT id::text, url, product_id::text "

@@ -172,9 +172,9 @@ async def _warm_all_targets(redis: aioredis.Redis, force: bool) -> tuple[int, in
         from app.modules.catalog.service import CatalogService
 
         async def _warm_products() -> dict:
-            from app.core.database import AsyncWorkerSessionLocal
+            from app.core.database import AsyncSessionLocal
 
-            async with AsyncWorkerSessionLocal() as db:
+            async with AsyncSessionLocal() as db:
                 result = await CatalogService().list_products(
                     db, page=1, page_size=20, status="active"
                 )
@@ -207,9 +207,9 @@ async def _warm_all_targets(redis: aioredis.Redis, force: bool) -> tuple[int, in
         from app.modules.categories.service import CategoryService
 
         async def _warm_category_tree() -> list[dict]:
-            from app.core.database import AsyncWorkerSessionLocal
+            from app.core.database import AsyncSessionLocal
 
-            async with AsyncWorkerSessionLocal() as db:
+            async with AsyncSessionLocal() as db:
                 result = await CategoryService().get_tree(db)
                 return [n.model_dump(mode="json") for n in result]
 
@@ -231,9 +231,9 @@ async def _warm_all_targets(redis: aioredis.Redis, force: bool) -> tuple[int, in
         from app.modules.categories.service import CategoryService
 
         async def _warm_navbar() -> dict:
-            from app.core.database import AsyncWorkerSessionLocal
+            from app.core.database import AsyncSessionLocal
 
-            async with AsyncWorkerSessionLocal() as db:
+            async with AsyncSessionLocal() as db:
                 result = await CategoryService().get_navbar(db)
                 return result.model_dump(mode="json")
 
@@ -255,9 +255,9 @@ async def _warm_all_targets(redis: aioredis.Redis, force: bool) -> tuple[int, in
         from app.modules.categories.service import CategoryService
 
         async def _warm_navigation() -> dict:
-            from app.core.database import AsyncWorkerSessionLocal
+            from app.core.database import AsyncSessionLocal
 
-            async with AsyncWorkerSessionLocal() as db:
+            async with AsyncSessionLocal() as db:
                 result = await CategoryService().get_navigation(db)
                 return result.model_dump(mode="json")
 
@@ -279,9 +279,9 @@ async def _warm_all_targets(redis: aioredis.Redis, force: bool) -> tuple[int, in
         from app.modules.collections.service import CollectionService
 
         async def _warm_collections() -> list[dict]:
-            from app.core.database import AsyncWorkerSessionLocal
+            from app.core.database import AsyncSessionLocal
 
-            async with AsyncWorkerSessionLocal() as db:
+            async with AsyncSessionLocal() as db:
                 result = await CollectionService().list_active(db)
                 return [c.model_dump(mode="json") for c in result]
 
@@ -303,9 +303,9 @@ async def _warm_all_targets(redis: aioredis.Redis, force: bool) -> tuple[int, in
         from app.modules.cms.service import CMSService
 
         async def _warm_cms_home() -> dict:
-            from app.core.database import AsyncWorkerSessionLocal
+            from app.core.database import AsyncSessionLocal
 
-            async with AsyncWorkerSessionLocal() as db:
+            async with AsyncSessionLocal() as db:
                 data = await CMSService().get_home_data(db)
                 return {
                     "success": True,
@@ -327,9 +327,9 @@ async def _warm_all_targets(redis: aioredis.Redis, force: bool) -> tuple[int, in
         from app.modules.cms.service import CMSService
 
         async def _warm_cms_homepage() -> dict:
-            from app.core.database import AsyncWorkerSessionLocal
+            from app.core.database import AsyncSessionLocal
 
-            async with AsyncWorkerSessionLocal() as db:
+            async with AsyncSessionLocal() as db:
                 data = await CMSService()._build_homepage(db)
                 from app.common.response_codes import ResponseCode
                 from app.common.responses import ok
@@ -355,9 +355,9 @@ async def _warm_all_targets(redis: aioredis.Redis, force: bool) -> tuple[int, in
         from app.modules.search.service import SearchService
 
         async def _warm_trending() -> str:
-            from app.core.database import AsyncWorkerSessionLocal
+            from app.core.database import AsyncSessionLocal
 
-            async with AsyncWorkerSessionLocal() as db:
+            async with AsyncSessionLocal() as db:
                 result = await SearchService().trending_searches(db, limit=10)
                 return _safe_json_dumps(result)
 
@@ -380,9 +380,9 @@ async def _warm_all_targets(redis: aioredis.Redis, force: bool) -> tuple[int, in
         from app.modules.seo.service import SeoService
 
         async def _warm_sitemap() -> str:
-            from app.core.database import AsyncWorkerSessionLocal
+            from app.core.database import AsyncSessionLocal
 
-            async with AsyncWorkerSessionLocal() as db:
+            async with AsyncSessionLocal() as db:
                 return await SeoService().generate_sitemap(db)
 
         await _track(
@@ -459,11 +459,11 @@ async def rewarm_after_invalidation(
 async def _warm_target(redis: aioredis.Redis, target: str) -> bool:
     """Warm a specific named target. Returns True on success."""
     if target == "products":
-        from app.core.database import AsyncWorkerSessionLocal
+        from app.core.database import AsyncSessionLocal
         from app.modules.catalog.service import CatalogService
 
         async def _fetch_products() -> dict:
-            async with AsyncWorkerSessionLocal() as db:
+            async with AsyncSessionLocal() as db:
                 result = await CatalogService().list_products(
                     db, page=1, page_size=20, status="active"
                 )
@@ -489,11 +489,11 @@ async def _warm_target(redis: aioredis.Redis, target: str) -> bool:
         return await _warm_one("products", cache_key, _fetch_products, 600, redis)
 
     if target == "collections":
-        from app.core.database import AsyncWorkerSessionLocal
+        from app.core.database import AsyncSessionLocal
         from app.modules.collections.service import CollectionService
 
         async def _fetch_collections() -> list[dict]:
-            async with AsyncWorkerSessionLocal() as db:
+            async with AsyncSessionLocal() as db:
                 result = await CollectionService().list_active(db)
                 return [c.model_dump(mode="json") for c in result]
 
@@ -502,11 +502,11 @@ async def _warm_target(redis: aioredis.Redis, target: str) -> bool:
         )
 
     if target == "categories":
-        from app.core.database import AsyncWorkerSessionLocal
+        from app.core.database import AsyncSessionLocal
         from app.modules.categories.service import CategoryService
 
         async def _fetch_categories() -> list[dict]:
-            async with AsyncWorkerSessionLocal() as db:
+            async with AsyncSessionLocal() as db:
                 result = await CategoryService().get_tree(db)
                 return [n.model_dump(mode="json") for n in result]
 

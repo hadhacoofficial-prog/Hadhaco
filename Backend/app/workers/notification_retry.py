@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import structlog
 
-from app.core.database import AsyncWorkerSessionLocal
+from app.core.database import AsyncSessionLocal
 
 log = structlog.get_logger(__name__)
 
@@ -18,7 +18,7 @@ async def run() -> None:
     from app.modules.notifications.repository import NotificationRepository
     from app.modules.notifications.service import NotificationService
 
-    async with AsyncWorkerSessionLocal() as db:
+    async with AsyncSessionLocal() as db:
         repo = NotificationRepository()
         pending = await repo.get_pending_retries(db)
 

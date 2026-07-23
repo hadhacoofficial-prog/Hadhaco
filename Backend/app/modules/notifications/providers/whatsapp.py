@@ -2,17 +2,13 @@ from __future__ import annotations
 
 import httpx
 import structlog
-from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.config import settings
+from app.modules.notifications.dto import WhatsAppPayload
 from app.modules.notifications.providers.base import (
     WhatsAppProvider as _WhatsAppProviderABC,
 )
-from app.modules.settings.repository import SettingsRepository
 
 log = structlog.get_logger(__name__)
-
-_settings_repo = SettingsRepository()
 
 
 class WhatsAppAuthError(RuntimeError):
@@ -33,28 +29,8 @@ class WhatsAppProvider(_WhatsAppProviderABC):
     business-initiated notifications.
     """
 
-    async def _config(self, db: AsyncSession) -> dict[str, str]:
-        db_config = await _settings_repo.get_provider_config(db, provider="whatsapp")
-        return {
-            "access_token": db_config.get("access_token")
-            or settings.WHATSAPP_ACCESS_TOKEN,
-            "phone_number_id": db_config.get("phone_number_id")
-            or settings.WHATSAPP_PHONE_NUMBER_ID,
-            "api_version": db_config.get("api_version")
-            or settings.WHATSAPP_API_VERSION,
-        }
-
-    async def send_whatsapp(
-        self,
-        db: AsyncSession,
-        *,
-        to: str,
-        template_name: str,
-        language: str,
-        components: list[dict],
-    ) -> str:
-        cfg = await self._config(db)
-        phone_id = cfg["phone_number_id"]
+    async def send_whatsapp(self, payload: WhatsAppPayload) -> str:
+        phone_id = payload.phone_number_id
         if not phone_id:
             raise WhatsAppAuthError(
                 "WhatsApp phone_number_id is not configured. "
@@ -62,30 +38,30 @@ class WhatsAppProvider(_WhatsAppProviderABC):
                 "WHATSAPP_PHONE_NUMBER_ID."
             )
 
-        recipient = to.strip().replace(" ", "").replace("-", "").lstrip("+")
+        recipient = payload.to.strip().replace(" ", "").replace("-", "").lstrip("+")
 
-        payload: dict = {
+        body: dict = {
             "messaging_product": "whatsapp",
             "to": recipient,
             "type": "template",
             "template": {
-                "name": template_name,
-                "language": {"code": language},
-                "components": components,
+                "name": payload.template_name,
+                "language": {"code": payload.language},
+                "components": payload.components,
             },
         }
 
-        log.info("whatsapp_send_attempt", to=recipient, template=template_name)
+        log.info("whatsapp_send_attempt", to=recipient, template=payload.template_name)
 
-        base_url = f"https://graph.facebook.com/{cfg['api_version']}"
+        base_url = f"https://graph.facebook.com/{payload.api_version}"
         async with httpx.AsyncClient(timeout=httpx.Timeout(30.0)) as client:
             resp = await client.post(
                 f"{base_url}/{phone_id}/messages",
                 headers={
-                    "Authorization": f"Bearer {cfg['access_token']}",
+                    "Authorization": f"Bearer {payload.access_token}",
                     "Content-Type": "application/json",
                 },
-                json=payload,
+                json=body,
             )
 
         if resp.status_code in (401, 403):
@@ -112,32 +88,35 @@ class WhatsAppProvider(_WhatsAppProviderABC):
         log.info("whatsapp_sent", to=recipient, message_id=message_id)
         return message_id
 
-    async def send_whatsapp_text(self, db: AsyncSession, *, to: str, body: str) -> str:
+    async def send_whatsapp_text(self, payload: WhatsAppPayload) -> str:
         """Free-form message — only valid within Meta's 24h customer-service
         window (e.g. a live support reply). Not used for business-initiated
         notifications; callers must ensure the window applies."""
-        cfg = await self._config(db)
-        phone_id = cfg["phone_number_id"]
+        phone_id = payload.phone_number_id
         if not phone_id:
             raise WhatsAppAuthError("WhatsApp phone_number_id is not configured.")
 
-        recipient = to.strip().replace(" ", "").replace("-", "").lstrip("+")
-        payload = {
+        recipient = payload.to.strip().replace(" ", "").replace("-", "").lstrip("+")
+        body: dict = {
             "messaging_product": "whatsapp",
             "to": recipient,
             "type": "text",
-            "text": {"body": body},
+            "text": (
+                {"body": payload.components[0].get("text", "")}
+                if payload.components
+                else {"body": ""}
+            ),
         }
 
-        base_url = f"https://graph.facebook.com/{cfg['api_version']}"
+        base_url = f"https://graph.facebook.com/{payload.api_version}"
         async with httpx.AsyncClient(timeout=httpx.Timeout(30.0)) as client:
             resp = await client.post(
                 f"{base_url}/{phone_id}/messages",
                 headers={
-                    "Authorization": f"Bearer {cfg['access_token']}",
+                    "Authorization": f"Bearer {payload.access_token}",
                     "Content-Type": "application/json",
                 },
-                json=payload,
+                json=body,
             )
 
         if resp.status_code in (401, 403):

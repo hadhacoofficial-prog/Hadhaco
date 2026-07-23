@@ -73,10 +73,10 @@ async def lifespan(app: FastAPI):
 
     # Sync the code-defined Notification Event Registry into notification_rules
     # (insert-missing-only — never overwrites an admin's existing rule row).
-    from app.core.database import AsyncWorkerSessionLocal
+    from app.core.database import AsyncSessionLocal
     from app.modules.notifications.event_registry import sync_notification_rules
 
-    async with AsyncWorkerSessionLocal() as _sync_db:
+    async with AsyncSessionLocal() as _sync_db:
         await sync_notification_rules(_sync_db)
 
     # Start background job scheduler
@@ -292,11 +292,11 @@ def _mount_routers(app: FastAPI) -> None:
         from fastapi import Response
         from sqlalchemy import text
 
-        from app.core.database import AsyncWorkerSessionLocal, get_pool_status
+        from app.core.database import AsyncSessionLocal, get_pool_status
 
         checks: dict = {}
         try:
-            async with AsyncWorkerSessionLocal() as db:
+            async with AsyncSessionLocal() as db:
                 await db.execute(text("SELECT 1"))
             checks["db"] = "ok"
         except Exception as exc:

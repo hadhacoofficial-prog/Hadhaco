@@ -21,7 +21,7 @@ from app.core.cache import (
     bust_cms_page_cache,
     cache_swr,
 )
-from app.core.database import AsyncWorkerSessionLocal, get_db
+from app.core.database import AsyncSessionLocal, get_db
 from app.core.dependencies import require_admin
 from app.core.redis import get_redis
 from app.modules.cms.media_service import CmsMediaService
@@ -72,7 +72,7 @@ async def get_home(
     # Fresh worker session — cache_swr may re-run this from a detached
     # background SWR-refresh task after the request session is gone.
     async def _fetch_home() -> dict:
-        async with AsyncWorkerSessionLocal() as s:
+        async with AsyncSessionLocal() as s:
             data = await _svc.get_home_data(s)
         payload = {
             "success": True,
@@ -107,7 +107,7 @@ async def get_homepage(
     cache_key = "cms:homepage"
 
     async def _fetch_homepage() -> dict:
-        async with AsyncWorkerSessionLocal() as s:
+        async with AsyncSessionLocal() as s:
             data = await _svc._build_homepage(s)
         payload = ok(
             HomepageDataOut(**data),
@@ -145,7 +145,7 @@ async def get_page(
     cache_key = f"{PREFIX_CMS_PAGE}:{slug}"
 
     async def _fetch_page(slug: str) -> dict:
-        async with AsyncWorkerSessionLocal() as s:
+        async with AsyncSessionLocal() as s:
             result = await _svc.get_page(s, slug)
         response_data = ok(result, ResponseCode.CMS_PAGE_FETCHED, "Page fetched")
         return json.loads(response_data.model_dump_json())

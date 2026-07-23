@@ -1,3 +1,4 @@
+import asyncio
 import threading
 import time as _time
 from collections.abc import AsyncGenerator
@@ -10,20 +11,19 @@ from sqlalchemy.ext.asyncio import (
     create_async_engine,
 )
 from sqlalchemy.orm import DeclarativeBase
-from sqlalchemy.pool import NullPool
 
 from app.core.config import settings
 
 _pool_log = structlog.get_logger("db.pool")
 
-# ── Request-scoped engine (persistent pool) ───────────────────────────────────
-# Each uvicorn worker process holds pool_size idle connections.
-# pool_size × worker_count must stay well under the Supabase session-mode
-# client cap (15 on the default Supabase plan).
-# With 2 workers: (3 + 1) × 2 = 8 connections for the API, leaving 7 free for
-# Alembic migrations, health checks, admin tools, and the worker engine below.
-# Event listeners (notifications, shipping) use AsyncWorkerSessionLocal (NullPool)
-# so they never draw from this budget.
+# ── Single shared engine (all components) ─────────────────────────────────────
+# One engine serves API requests, background workers, event listeners, cache
+# warming, and health checks.  With pool_size=2 and max_overflow=1 the engine
+# holds at most 3 persistent TCP connections per uvicorn worker process.
+#
+# Budget (2 workers): (2 + 1) × 2 = 6 persistent connections.
+# Remaining: 15 − 6 = 9 headroom for Alembic, transient spikes, and
+# occasional direct connections (psql, admin tools).
 #
 # pool_pre_ping is deliberately OFF.  Supabase's session-mode PgBouncer can
 # leave connections in an intermediate transaction state after reassigning them.
@@ -52,29 +52,12 @@ AsyncSessionLocal = async_sessionmaker(
     autoflush=False,
 )
 
-# ── Worker engine (NullPool — no persistent connections) ──────────────────────
-# Background workers and async event listeners use this engine so they never hold
-# idle Supabase session-mode slots between invocations.
-# NullPool creates a fresh TCP connection on each session open and disposes it
-# immediately on close.  A worker that runs once per minute therefore occupies
-# a session-mode slot for ~0.1–0.5 s rather than holding it indefinitely.
-_worker_engine = create_async_engine(
-    settings.DATABASE_URL,
-    poolclass=NullPool,
-    pool_pre_ping=True,
-    echo=False,
-)
-
-AsyncWorkerSessionLocal = async_sessionmaker(
-    bind=_worker_engine,
-    class_=AsyncSession,
-    expire_on_commit=False,
-    autocommit=False,
-    autoflush=False,
-)
+# Backwards-compatible alias — workers and event listeners that previously
+# used the NullPool worker engine now share the single pool above.
+AsyncWorkerSessionLocal = AsyncSessionLocal
 
 # ── Pool monitoring ───────────────────────────────────────────────────────────
-# Log a warning whenever the request pool is one slot from exhaustion so that
+# Log a warning whenever the pool is one slot from exhaustion so that
 # operators can detect pressure before EMAXCONNSESSION errors appear in prod.
 _POOL_CAPACITY = settings.DATABASE_POOL_SIZE + settings.DATABASE_MAX_OVERFLOW
 
@@ -138,6 +121,22 @@ def _on_connection_reset(dbapi_conn, connection_record) -> None:  # type: ignore
 
 class Base(DeclarativeBase):
     """Shared declarative base for all SQLAlchemy models."""
+
+
+# ── Worker concurrency limiter ────────────────────────────────────────────────
+# Bounded concurrency for background tasks that open database sessions.
+# Prevents bursts of asyncio.create_task() (e.g. media generation fast-path)
+# from exhausting the pool.  Allows up to 2 concurrent worker sessions across
+# the entire process — enough for parallelism without starving the API pool.
+_worker_semaphore: asyncio.Semaphore | None = None
+
+
+def get_worker_semaphore() -> asyncio.Semaphore:
+    """Return (and lazily create) the shared worker concurrency semaphore."""
+    global _worker_semaphore
+    if _worker_semaphore is None:
+        _worker_semaphore = asyncio.Semaphore(2)
+    return _worker_semaphore
 
 
 async def get_db() -> AsyncGenerator[AsyncSession, None]:
