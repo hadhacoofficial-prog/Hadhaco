@@ -60,14 +60,17 @@ export function InventoryBadge({
 export function StockPill({
   availableStock,
   isReserved = false,
+  countdown,
 }: {
   availableStock: number;
   isReserved?: boolean;
+  countdown?: string;
 }) {
   if (isReserved) {
     return (
-      <span className="absolute bottom-3 left-3 bg-blue-600/90 text-white text-[10px] tracking-[0.18em] uppercase px-2.5 py-1 pointer-events-none">
+      <span className="absolute bottom-3 left-3 bg-blue-600/90 text-white text-[10px] tracking-[0.18em] uppercase px-2.5 py-1 pointer-events-none flex items-center gap-1.5">
         Reserved for You
+        {countdown && <span className="font-mono font-bold tabular-nums">{countdown}</span>}
       </span>
     );
   }

@@ -1,16 +1,17 @@
 import { Link } from "@tanstack/react-router";
-import { X, ShoppingBag, Trash2 } from "lucide-react";
+import { X, ShoppingBag, Trash2, Lock } from "lucide-react";
 import { useCart } from "@/stores/cart";
 import { useBuyNowStore } from "@/stores/buyNow";
+import { useActiveReservations } from "@/hooks/useActiveReservations";
+import { useReservationCountdown } from "@/hooks/reservation/useReservationCountdown";
 import { formatINR } from "@/lib/format";
 import { QuantityStepper } from "@/components/site/QuantityStepper";
 import { NavJewelleryBgMobile } from "@/components/site/NavJewelleryBgMobile";
 
 export function CartDrawer() {
   const { isOpen, close, lines, setQty, remove, subtotal } = useCart();
-  // Checking out from the cart clears any stale Buy-Now state so it can't
-  // hijack the checkout page (which shows Buy-Now items when active).
   const clearBuyNow = useBuyNowStore((s) => s.clear);
+  const { isReserved, getReservation } = useActiveReservations();
   if (!isOpen) return null;
 
   return (
@@ -78,6 +79,12 @@ export function CartDrawer() {
                         {line.snapshot.variantName}
                       </p>
                     )}
+                    {isReserved(line.productId, line.variantId) && (
+                      <ReservationInlineBadge
+                        productId={line.productId}
+                        variantId={line.variantId}
+                      />
+                    )}
                     <div className="mt-1 font-sans font-bold">
                       {line.snapshot ? formatINR(line.snapshot.price) : "—"}
                     </div>
@@ -130,5 +137,32 @@ export function CartDrawer() {
         )}
       </aside>
     </div>
+  );
+}
+
+function ReservationInlineBadge({
+  productId,
+  variantId,
+}: {
+  productId: string;
+  variantId?: string | null;
+}) {
+  const { getReservation } = useActiveReservations();
+  const reservation = getReservation(productId, variantId);
+  const countdown = useReservationCountdown(reservation?.expires_at ?? null);
+
+  if (!reservation || countdown.isExpired) return null;
+
+  return (
+    <span
+      role="timer"
+      aria-live="polite"
+      aria-atomic="true"
+      aria-label={`Reserved for you — ${countdown.formatted} remaining`}
+      className={`inline-flex items-center gap-1 mt-1 px-1.5 py-0.5 text-[9px] uppercase tracking-[0.14em] font-medium rounded-sm ${countdown.isUrgent ? "bg-amber-100 text-amber-700" : "bg-blue-100 text-blue-700"}`}
+    >
+      <Lock className="size-2.5" aria-hidden />
+      Reserved · {countdown.formatted}
+    </span>
   );
 }

@@ -8,6 +8,8 @@ import { Breadcrumbs } from "@/components/site/Breadcrumbs";
 import { EmptyState } from "@/components/site/EmptyState";
 import { QuantityStepper } from "@/components/site/QuantityStepper";
 import { InventoryBadge } from "@/components/site/InventoryBadge";
+import { ReservationCard } from "@/components/reservation/ReservationCard";
+import { useActiveReservations } from "@/hooks/useActiveReservations";
 import { useCart, cartLineKey } from "@/stores/cart";
 import { computeQuantityBounds } from "@/lib/cartQuantity";
 import { api } from "@/lib/api/client";
@@ -24,6 +26,7 @@ export const Route = createFileRoute("/cart")({
 
 function CartPage() {
   const { lines, setQty, remove, subtotal } = useCart();
+  const { isReserved } = useActiveReservations();
   const [coupon, setCoupon] = useState("");
   const [discount, setDiscount] = useState(0);
   const [appliedCode, setAppliedCode] = useState<string | null>(null);
@@ -167,76 +170,98 @@ function CartPage() {
                   const stepperMax = bounds ? bounds.effectiveCap : 99;
 
                   return (
-                    <div
-                      key={`${line.productId}::${line.variantId ?? ""}`}
-                      className={`grid grid-cols-[80px_1fr] md:grid-cols-[100px_1fr_140px_140px_40px] gap-4 py-5 items-start ${isSoldOut ? "opacity-60" : ""}`}
-                    >
-                      {line.snapshot ? (
-                        <Link
-                          to="/products/$slug"
-                          params={{ slug: line.snapshot.slug }}
-                          className="block w-20 md:w-24 aspect-square bg-secondary overflow-hidden"
-                        >
-                          <img
-                            src={line.snapshot.image}
-                            alt={line.snapshot.name}
-                            loading="lazy"
-                            decoding="async"
-                            width={96}
-                            height={96}
-                            className="w-full h-full object-cover"
-                          />
-                        </Link>
-                      ) : (
-                        <div className="w-20 md:w-24 aspect-square bg-secondary" />
-                      )}
-
-                      <div className="min-w-0">
+                    <div key={`${line.productId}::${line.variantId ?? ""}`}>
+                      <div
+                        className={`grid grid-cols-[80px_1fr] md:grid-cols-[100px_1fr_140px_140px_40px] gap-4 py-5 items-start ${isSoldOut ? "opacity-60" : ""}`}
+                      >
                         {line.snapshot ? (
                           <Link
                             to="/products/$slug"
                             params={{ slug: line.snapshot.slug }}
-                            className="font-display text-base hover:text-accent line-clamp-2"
+                            className="block w-20 md:w-24 aspect-square bg-secondary overflow-hidden"
                           >
-                            {line.snapshot.name}
+                            <img
+                              src={line.snapshot.image}
+                              alt={line.snapshot.name}
+                              loading="lazy"
+                              decoding="async"
+                              width={96}
+                              height={96}
+                              className="w-full h-full object-cover"
+                            />
                           </Link>
                         ) : (
-                          <span className="font-display text-base text-muted-foreground">
-                            Product
-                          </span>
-                        )}
-                        {line.snapshot?.variantName && (
-                          <p className="text-xs text-muted-foreground mt-0.5">
-                            {line.snapshot.variantName}
-                          </p>
-                        )}
-                        {line.snapshot && (
-                          <p className="text-xs text-muted-foreground mt-1">
-                            SKU · {line.snapshot.sku}
-                          </p>
+                          <div className="w-20 md:w-24 aspect-square bg-secondary" />
                         )}
 
-                        {/* Available stock badge */}
-                        {si !== undefined && (
-                          <div className="mt-2">
-                            <InventoryBadge availableStock={si.availableStock} />
+                        <div className="min-w-0">
+                          {line.snapshot ? (
+                            <Link
+                              to="/products/$slug"
+                              params={{ slug: line.snapshot.slug }}
+                              className="font-display text-base hover:text-accent line-clamp-2"
+                            >
+                              {line.snapshot.name}
+                            </Link>
+                          ) : (
+                            <span className="font-display text-base text-muted-foreground">
+                              Product
+                            </span>
+                          )}
+                          {line.snapshot?.variantName && (
+                            <p className="text-xs text-muted-foreground mt-0.5">
+                              {line.snapshot.variantName}
+                            </p>
+                          )}
+                          {line.snapshot && (
+                            <p className="text-xs text-muted-foreground mt-1">
+                              SKU · {line.snapshot.sku}
+                            </p>
+                          )}
+
+                          {/* Available stock badge */}
+                          {si !== undefined && (
+                            <div className="mt-2">
+                              <InventoryBadge availableStock={si.availableStock} />
+                            </div>
+                          )}
+
+                          {/* Over-qty warning */}
+                          {isOverQty && (
+                            <p className="mt-1.5 text-[11px] text-amber-700 flex items-center gap-1">
+                              <AlertTriangle className="size-3 shrink-0" aria-hidden />
+                              {bounds && si && si.maxOrderQty > 0 && line.qty > si.maxOrderQty
+                                ? `Max ${si.maxOrderQty} per order — reduce quantity`
+                                : `Only ${si?.availableStock} available — reduce quantity`}
+                            </p>
+                          )}
+
+                          <p className="font-sans font-bold mt-1 md:hidden">
+                            {line.snapshot ? formatINR(line.snapshot.price) : "—"}
+                          </p>
+                          <div className="mt-3 md:hidden flex items-center justify-between">
+                            {isSoldOut ? (
+                              <span className="text-xs text-destructive uppercase tracking-[0.18em]">
+                                Sold Out
+                              </span>
+                            ) : (
+                              <QuantityStepper
+                                value={line.qty}
+                                onChange={(n) => setQty(line.productId, n, line.variantId)}
+                                max={stepperMax}
+                              />
+                            )}
+                            <button
+                              onClick={() => remove(line.productId, line.variantId)}
+                              aria-label={`Remove ${line.snapshot?.name ?? "item"}`}
+                              className="text-muted-foreground hover:text-destructive transition"
+                            >
+                              <Trash2 className="size-4" />
+                            </button>
                           </div>
-                        )}
+                        </div>
 
-                        {/* Over-qty warning */}
-                        {isOverQty && (
-                          <p className="mt-1.5 text-[11px] text-amber-700 flex items-center gap-1">
-                            <AlertTriangle className="size-3 shrink-0" aria-hidden />
-                            {bounds && si && si.maxOrderQty > 0 && line.qty > si.maxOrderQty
-                              ? `Max ${si.maxOrderQty} per order — reduce quantity`
-                              : `Only ${si?.availableStock} available — reduce quantity`}
-                          </p>
-                        )}
-
-                        <p className="font-sans font-bold mt-1 md:hidden">
-                          {line.snapshot ? formatINR(line.snapshot.price) : "—"}
-                        </p>
-                        <div className="mt-3 md:hidden flex items-center justify-between">
+                        <div className="hidden md:block">
                           {isSoldOut ? (
                             <span className="text-xs text-destructive uppercase tracking-[0.18em]">
                               Sold Out
@@ -248,41 +273,29 @@ function CartPage() {
                               max={stepperMax}
                             />
                           )}
-                          <button
-                            onClick={() => remove(line.productId, line.variantId)}
-                            aria-label={`Remove ${line.snapshot?.name ?? "item"}`}
-                            className="text-muted-foreground hover:text-destructive transition"
-                          >
-                            <Trash2 className="size-4" />
-                          </button>
                         </div>
-                      </div>
 
-                      <div className="hidden md:block">
-                        {isSoldOut ? (
-                          <span className="text-xs text-destructive uppercase tracking-[0.18em]">
-                            Sold Out
-                          </span>
-                        ) : (
-                          <QuantityStepper
-                            value={line.qty}
-                            onChange={(n) => setQty(line.productId, n, line.variantId)}
-                            max={stepperMax}
+                        <div className="hidden md:block text-right font-sans font-bold">
+                          {line.snapshot ? formatINR(line.snapshot.price * line.qty) : "—"}
+                        </div>
+
+                        <button
+                          onClick={() => remove(line.productId, line.variantId)}
+                          aria-label={`Remove ${line.snapshot?.name ?? "item"}`}
+                          className="hidden md:flex justify-end text-muted-foreground hover:text-destructive transition"
+                        >
+                          <Trash2 className="size-4" />
+                        </button>
+                      </div>
+                      {isReserved(line.productId, line.variantId) && (
+                        <div className="px-1 pb-2">
+                          <ReservationCard
+                            productId={line.productId}
+                            variantId={line.variantId}
+                            quantity={line.qty}
                           />
-                        )}
-                      </div>
-
-                      <div className="hidden md:block text-right font-sans font-bold">
-                        {line.snapshot ? formatINR(line.snapshot.price * line.qty) : "—"}
-                      </div>
-
-                      <button
-                        onClick={() => remove(line.productId, line.variantId)}
-                        aria-label={`Remove ${line.snapshot?.name ?? "item"}`}
-                        className="hidden md:flex justify-end text-muted-foreground hover:text-destructive transition"
-                      >
-                        <Trash2 className="size-4" />
-                      </button>
+                        </div>
+                      )}
                     </div>
                   );
                 })}

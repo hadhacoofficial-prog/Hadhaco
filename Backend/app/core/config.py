@@ -196,7 +196,7 @@ class Settings(BaseSettings):
     ADMIN_URL: str
 
     # ── Auth callbacks ────────────────────────────────────────────────────────
-    SUPABASE_AUTH_REDIRECT_URL: str = "http://localhost:3000/auth/callback"
+    SUPABASE_AUTH_REDIRECT_URL: str = "https://hadha.co/auth/callback"
     GOOGLE_CLIENT_ID: str = ""
     GOOGLE_CLIENT_SECRET: str = ""
 

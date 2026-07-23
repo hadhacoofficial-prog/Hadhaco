@@ -51,21 +51,32 @@ export function registerInventorySync(bus: SyncBus): void {
 
   bus.subscribe(SyncEventType.ORDER_CREATED, () => {
     invalidateServerLists(bus);
+    bus.queryClient.invalidateQueries({
+      queryKey: queryKeys.orders.activeReservations,
+    });
   });
 
   bus.subscribe(SyncEventType.RESERVATION_CREATED, () => {
     invalidateServerLists(bus);
+    bus.queryClient.invalidateQueries({
+      queryKey: queryKeys.orders.activeReservations,
+    });
   });
 
   bus.subscribe(SyncEventType.RESERVATION_EXPIRED, () => {
     invalidateServerLists(bus);
+    bus.queryClient.invalidateQueries({
+      queryKey: queryKeys.orders.activeReservations,
+    });
   });
 
   bus.subscribe(SyncEventType.PRODUCT_UPDATED, (event) => {
     invalidateServerLists(bus);
     const id = event.payload?.productId;
     if (id) {
-      bus.queryClient.invalidateQueries({ queryKey: queryKeys.products.related(id) });
+      bus.queryClient.invalidateQueries({
+        queryKey: queryKeys.products.related(id),
+      });
     }
   });
 
@@ -73,7 +84,9 @@ export function registerInventorySync(bus: SyncBus): void {
     invalidateServerLists(bus);
     const id = event.payload?.productId;
     if (id) {
-      bus.queryClient.invalidateQueries({ queryKey: queryKeys.products.related(id) });
+      bus.queryClient.invalidateQueries({
+        queryKey: queryKeys.products.related(id),
+      });
     }
   });
 

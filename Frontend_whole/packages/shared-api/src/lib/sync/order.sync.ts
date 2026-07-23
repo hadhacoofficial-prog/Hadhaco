@@ -13,16 +13,20 @@ export function registerOrderSync(bus: SyncBus): void {
 
   bus.subscribe(SyncEventType.ORDER_CREATED, () => {
     qc.invalidateQueries({ queryKey: queryKeys.orders.all });
+    qc.invalidateQueries({ queryKey: queryKeys.orders.activeReservations });
   });
 
   bus.subscribe(SyncEventType.ORDER_CANCELLED, () => {
     qc.invalidateQueries({ queryKey: queryKeys.orders.all });
+    qc.invalidateQueries({ queryKey: queryKeys.orders.activeReservations });
   });
 
   bus.subscribe(SyncEventType.ORDER_STATUS_CHANGED, (event) => {
     qc.invalidateQueries({ queryKey: queryKeys.orders.all });
     if (event.payload?.orderId) {
-      qc.invalidateQueries({ queryKey: queryKeys.orders.detail(event.payload.orderId) });
+      qc.invalidateQueries({
+        queryKey: queryKeys.orders.detail(event.payload.orderId),
+      });
     }
   });
 }

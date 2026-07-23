@@ -12,6 +12,11 @@ import {
   ReservationCountdown,
   ReservationExpiredModal,
 } from "@/components/site/ReservationCountdown";
+import {
+  ReservationCheckoutBanner,
+  PurchaseProtectedIndicator,
+  ReservationPaymentFailedBanner,
+} from "@/components/reservation/ReservationCheckoutBanner";
 import { Field, PhoneField, isValidIndianMobile } from "@/components/common/FormField";
 import { ProtectedRoute } from "@/components/common/ProtectedRoute";
 import { useCart } from "@/stores/cart";
@@ -572,6 +577,9 @@ function CheckoutPage() {
       )}
 
       <SiteLayout>
+        {/* Sticky reservation banner — shows server-derived reservation timer */}
+        <ReservationCheckoutBanner />
+
         {/* Push content down when countdown bar is visible */}
         <div className={isReservationActive ? "pt-10" : ""}>
           <div className="px-4 md:px-8 py-10 max-w-6xl mx-auto">
@@ -586,24 +594,8 @@ function CheckoutPage() {
 
             {/* Payment failed state */}
             {checkoutState === "payment_failed" && (
-              <div
-                className="mb-8 flex items-start gap-4 p-5 bg-destructive/5 border border-destructive/20"
-                role="alert"
-              >
-                <AlertTriangle className="size-5 shrink-0 text-destructive mt-0.5" aria-hidden />
-                <div className="flex-1">
-                  <p className="font-medium text-destructive">Payment failed</p>
-                  <p className="text-sm text-muted-foreground mt-1">
-                    No money was deducted. Your items are still reserved — retry before the timer
-                    expires.
-                  </p>
-                </div>
-                <button
-                  onClick={retryPayment}
-                  className="shrink-0 bg-primary text-primary-foreground text-[11px] uppercase tracking-[0.22em] px-5 py-2.5 hover:bg-accent hover:text-accent-foreground transition"
-                >
-                  Retry Payment
-                </button>
+              <div className="mb-8">
+                <ReservationPaymentFailedBanner onRetry={retryPayment} />
               </div>
             )}
 
@@ -879,6 +871,7 @@ function CheckoutPage() {
                 <p className="mt-3 text-[11px] text-center text-muted-foreground">
                   Secured by Razorpay · Cards, UPI, Net Banking & more
                 </p>
+                <PurchaseProtectedIndicator className="justify-center mt-2" />
               </aside>
             </form>
           </div>

@@ -16,6 +16,7 @@ export function registerCheckoutSync(bus: SyncBus): void {
   bus.subscribe(SyncEventType.ORDER_CREATED, () => {
     // Order placed — cart cleared, orders refreshed
     qc.invalidateQueries({ queryKey: queryKeys.orders.all });
+    qc.invalidateQueries({ queryKey: queryKeys.orders.activeReservations });
     qc.invalidateQueries({ queryKey: queryKeys.cart.all });
   });
 
@@ -24,6 +25,7 @@ export function registerCheckoutSync(bus: SyncBus): void {
     // The checkout store handles its own reset via Zustand;
     // we just ensure queries are fresh.
     qc.invalidateQueries({ queryKey: queryKeys.orders.all });
+    qc.invalidateQueries({ queryKey: queryKeys.orders.activeReservations });
     qc.invalidateQueries({ queryKey: queryKeys.cart.all });
   });
 

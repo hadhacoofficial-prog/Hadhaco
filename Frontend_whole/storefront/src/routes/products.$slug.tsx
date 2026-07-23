@@ -28,6 +28,10 @@ import { computeQuantityBounds } from "@/lib/cartQuantity";
 import { useWishlist } from "@/stores/wishlist";
 import { useRecentlyViewed } from "@/stores/recentlyViewed";
 import { useInventorySync } from "@/hooks/useInventorySync";
+import { useActiveReservations } from "@/hooks/useActiveReservations";
+import { useReservationCountdown } from "@/hooks/reservation/useReservationCountdown";
+import { ReservationBanner } from "@/components/reservation/ReservationBanner";
+import { PurchaseProtectedIndicator } from "@/components/reservation/ReservationCheckoutBanner";
 import { formatINR } from "@/lib/format";
 import { api } from "@/lib/api/client";
 import { queryKeys } from "@/lib/api/queryKeys";
@@ -147,6 +151,12 @@ function ProductPage() {
   const currentVariant = selectedVariant
     ? (liveProduct.variants?.find((v) => v.id === selectedVariant.id) ?? selectedVariant)
     : null;
+
+  // Reservation state — single source of truth from useActiveReservations
+  const { isReserved: hasReservation, getReservation } = useActiveReservations();
+  const isReserved = hasReservation(product.id, currentVariant?.id ?? null);
+  const reservation = getReservation(product.id, currentVariant?.id ?? null);
+  const reservationCountdown = useReservationCountdown(reservation?.expires_at ?? null);
 
   const wished = wishlistItems.some(
     (i) => i.id === product.id && i.variantId === (currentVariant?.id ?? undefined),
@@ -423,12 +433,22 @@ function ProductPage() {
 
           {/* Live stock badge */}
           <div className="flex items-center gap-3 mt-3">
-            {displayInStock !== null && (
+            {isReserved ? (
+              <span className="inline-flex items-center gap-1.5 text-[11px] uppercase tracking-[0.18em] text-blue-600 font-medium">
+                <span className="size-1.5 rounded-full bg-blue-500" aria-hidden />
+                Reserved for You
+                {!reservationCountdown.isExpired && (
+                  <span className="font-mono font-bold tabular-nums ml-1">
+                    {reservationCountdown.formatted}
+                  </span>
+                )}
+              </span>
+            ) : displayInStock !== null ? (
               <InventoryBadge
                 availableStock={hasVariants && currentVariant ? variantStock : liveAvailableStock}
               />
-            )}
-            {hasVariants && displayInStock === null && (
+            ) : null}
+            {hasVariants && displayInStock === null && !isReserved && (
               <span className="text-xs text-muted-foreground tracking-wide">
                 Select a variant to check availability
               </span>
@@ -516,8 +536,29 @@ function ProductPage() {
             </div>
           )}
 
-          {/* ── Add to cart / Sold-out actions ── */}
-          {globalSoldOut ? (
+          {/* ── Reservation banner (when reserved) ── */}
+          {isReserved && (
+            <div className="mt-8">
+              <ReservationBanner
+                productId={product.id}
+                variantId={currentVariant?.id}
+                quantity={reservation?.quantity}
+              />
+            </div>
+          )}
+
+          {/* ── Add to cart / Sold-out / Reserved actions ── */}
+          {isReserved ? (
+            <div className="mt-6 space-y-3">
+              <Link
+                to="/checkout"
+                className="flex items-center justify-center gap-2 w-full bg-blue-600 text-white text-[11px] uppercase tracking-[0.22em] py-3.5 hover:bg-blue-700 transition"
+              >
+                Continue Checkout
+              </Link>
+              <PurchaseProtectedIndicator className="justify-center" />
+            </div>
+          ) : globalSoldOut ? (
             <div className="mt-8 space-y-3">
               <div className="flex items-center gap-2 p-4 bg-muted/50 border border-border">
                 <InventoryBadge availableStock={0} />

@@ -29,9 +29,11 @@ export function registerCartSync(bus: SyncBus): void {
   bus.subscribe(SyncEventType.LOGIN, () => {
     // On login, server cart may differ from local — refresh
     qc.invalidateQueries({ queryKey: queryKeys.cart.all });
+    qc.invalidateQueries({ queryKey: queryKeys.orders.activeReservations });
   });
 
   bus.subscribe(SyncEventType.LOGOUT, () => {
     qc.invalidateQueries({ queryKey: queryKeys.cart.all });
+    qc.invalidateQueries({ queryKey: queryKeys.orders.activeReservations });
   });
 }

@@ -21,6 +21,7 @@ export function registerReservationSync(bus: SyncBus): void {
     qc.invalidateQueries({ queryKey: queryKeys.collections.all });
     qc.invalidateQueries({ queryKey: queryKeys.search.all });
     qc.invalidateQueries({ queryKey: queryKeys.cms.homepage });
+    qc.invalidateQueries({ queryKey: queryKeys.orders.activeReservations });
   });
 
   bus.subscribe(SyncEventType.RESERVATION_EXPIRED, () => {
@@ -31,5 +32,6 @@ export function registerReservationSync(bus: SyncBus): void {
     qc.invalidateQueries({ queryKey: queryKeys.search.all });
     qc.invalidateQueries({ queryKey: queryKeys.cms.homepage });
     qc.invalidateQueries({ queryKey: queryKeys.orders.all });
+    qc.invalidateQueries({ queryKey: queryKeys.orders.activeReservations });
   });
 }

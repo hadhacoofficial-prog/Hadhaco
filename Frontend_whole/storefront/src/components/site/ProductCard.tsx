@@ -6,6 +6,7 @@ import type { Product } from "@/types/shop";
 import { useCart } from "@/stores/cart";
 import { useWishlist } from "@/stores/wishlist";
 import { useActiveReservations } from "@/hooks/useActiveReservations";
+import { useReservationCountdown } from "@/hooks/reservation/useReservationCountdown";
 import { formatINR } from "@/lib/format";
 import { StockPill } from "@/components/site/InventoryBadge";
 
@@ -15,10 +16,12 @@ export const ProductCard = memo(function ProductCard({ p }: { p: Product }) {
   const add = useCart((s) => s.add);
   const toggleWishlist = useWishlist((s) => s.toggle);
   const wished = useWishlist((s) => s.items.some((i) => i.id === p.id));
-  const { isReserved: hasReservation } = useActiveReservations();
+  const { isReserved: hasReservation, getReservation } = useActiveReservations();
 
   const isSoldOut = p.availableStock === 0;
-  const reserved = isSoldOut && hasReservation(p.id);
+  const reserved = hasReservation(p.id);
+  const reservation = getReservation(p.id);
+  const countdown = useReservationCountdown(reservation?.expires_at ?? null);
 
   function handleAddToCart(e: React.MouseEvent) {
     e.preventDefault();
@@ -77,6 +80,9 @@ export const ProductCard = memo(function ProductCard({ p }: { p: Product }) {
             <span className="bg-blue-600/90 text-white text-[10px] tracking-[0.28em] uppercase px-4 py-1.5 flex items-center gap-1.5">
               <Clock className="size-3" />
               Reserved for You
+              {!countdown.isExpired && (
+                <span className="font-mono font-bold tabular-nums ml-1">{countdown.formatted}</span>
+              )}
             </span>
           </div>
         )}
@@ -91,7 +97,13 @@ export const ProductCard = memo(function ProductCard({ p }: { p: Product }) {
 
         {/* Stock pill (only when not sold out — sold-out overlay covers it) */}
         {!isSoldOut && <StockPill availableStock={p.availableStock} />}
-        {reserved && <StockPill availableStock={0} isReserved />}
+        {reserved && (
+          <StockPill
+            availableStock={0}
+            isReserved
+            countdown={countdown.isExpired ? undefined : countdown.formatted}
+          />
+        )}
 
         <div className="absolute top-3 right-3 flex flex-col gap-2">
           <button
@@ -131,13 +143,13 @@ export const ProductCard = memo(function ProductCard({ p }: { p: Product }) {
           <Bell className="size-3.5" /> Notify Me
         </Link>
       ) : reserved ? (
-        <button
-          onClick={handleAddToCart}
+        <Link
+          to="/checkout"
           className="flex items-center justify-center gap-2 w-full bg-blue-600 text-white text-[11px] tracking-[0.24em] uppercase py-3.5 font-cinzel hover:bg-blue-700 transition-colors"
-          aria-label={`Add reserved ${p.name} to cart`}
+          aria-label={`Continue checkout for reserved ${p.name}`}
         >
-          <ShoppingBag className="size-3.5" /> Add Reserved to Cart
-        </button>
+          <ShoppingBag className="size-3.5" /> Continue Checkout
+        </Link>
       ) : (
         <button
           onClick={handleAddToCart}
