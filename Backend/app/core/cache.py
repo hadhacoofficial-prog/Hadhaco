@@ -250,10 +250,13 @@ async def bust_category_tree_cache(redis: aioredis.Redis) -> None:
 
 
 async def bust_all_product_caches(redis: aioredis.Redis) -> None:
-    """Bust all product-related caches (list + detail + search + sitemap)."""
+    """Bust all product-related caches (list + detail + search + sitemap).
+
+    Each sub-bust handles its own Redis-availability and error guards
+    independently so that a failure in one (e.g. list cache timeout
+    opening the circuit breaker) does not prevent the others from running.
+    """
     await bust_product_list_cache(redis)
-    if not redis_available():
-        return
     try:
         detail_keys = [
             str(key)

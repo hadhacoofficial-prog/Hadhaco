@@ -289,6 +289,11 @@ class ProductRepository:
         self, db: AsyncSession, product_id: uuid.UUID, data: dict[str, Any]
     ) -> Product | None:
         await db.execute(update(Product).where(Product.id == product_id).values(**data))
+        # The raw UPDATE bypasses the ORM identity map so the cached
+        # instance is stale.  Expire it so the re-fetch hits the DB.
+        instance = db.get(Product, product_id)
+        if instance is not None:
+            db.expire(instance)
         return await self.get_by_id(db, product_id)
 
     async def soft_delete(self, db: AsyncSession, product_id: uuid.UUID) -> None:
@@ -332,6 +337,11 @@ class ProductRepository:
         await db.execute(
             update(ProductVariant).where(ProductVariant.id == variant_id).values(**data)
         )
+        # The raw UPDATE bypasses the ORM identity map so the cached
+        # instance is stale.  Expire it so the re-fetch hits the DB.
+        instance = db.get(ProductVariant, variant_id)
+        if instance is not None:
+            db.expire(instance)
         return await self.get_variant(db, variant_id)
 
     async def delete_variant(self, db: AsyncSession, variant_id: uuid.UUID) -> bool:

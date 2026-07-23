@@ -24,6 +24,14 @@ _pool_log = structlog.get_logger("db.pool")
 # Alembic migrations, health checks, admin tools, and the worker engine below.
 # Event listeners (notifications, shipping) use AsyncWorkerSessionLocal (NullPool)
 # so they never draw from this budget.
+#
+# pool_pre_ping is deliberately OFF.  Supabase's session-mode PgBouncer can
+# leave connections in an intermediate transaction state after reassigning them.
+# asyncpg's pool_pre_ping tries to start a new transaction (BEGIN) to verify
+# liveness, which fails with "cannot use Connection.transaction() in a manually
+# started transaction".  Without pre_ping, a stale connection simply fails on
+# the first real query and gets discarded — which is both safer and faster
+# (no extra round-trip per checkout).
 engine = create_async_engine(
     settings.DATABASE_URL,
     pool_size=settings.DATABASE_POOL_SIZE,
@@ -32,8 +40,7 @@ engine = create_async_engine(
     # Recycle connections idle longer than 30 minutes so the Supabase session
     # pooler doesn't silently drop them on its side first.
     pool_recycle=settings.DATABASE_POOL_RECYCLE,
-    # Pre-ping catches dead connections before they reach a request handler.
-    pool_pre_ping=True,
+    pool_pre_ping=False,
     echo=False,
 )
 
@@ -111,6 +118,24 @@ def get_pool_status() -> dict[str, int]:
     }
 
 
+# ── Connection reset on return to pool ────────────────────────────────────────
+# When a connection is returned to the pool, discard any leftover server-side
+# state (prepared statements, temp tables, SET variables).  This prevents
+# cross-request contamination through Supabase's session-mode PgBouncer, which
+# may reassign the underlying TCP connection to a different client session.
+@event.listens_for(engine.sync_engine, "reset")
+def _on_connection_reset(dbapi_conn, connection_record) -> None:  # type: ignore[misc]
+    """Issue DISCARD ALL when a connection is returned to the pool."""
+    try:
+        cursor = dbapi_conn.cursor()
+        cursor.execute("DISCARD ALL")
+        cursor.close()
+    except Exception:
+        # If DISCARD ALL fails (connection already dead), invalidate it
+        # so the pool doesn't hand it to the next request.
+        connection_record.invalidate()
+
+
 class Base(DeclarativeBase):
     """Shared declarative base for all SQLAlchemy models."""
 
@@ -118,26 +143,35 @@ class Base(DeclarativeBase):
 async def get_db() -> AsyncGenerator[AsyncSession, None]:
     """FastAPI dependency — yields a database session per request.
 
-    The `async with AsyncSessionLocal()` context manager guarantees that
-    session.close() is called on exit, returning the connection to the pool.
-    The explicit commit/rollback inside the try/except controls the transaction;
-    the finally clause is intentionally omitted — it would call close() twice.
+    Session lifecycle is managed manually (not via ``async with``) so that
+    a corrupted session state cannot prevent cleanup.  The ``finally`` block
+    always calls ``session.close()`` wrapped in a safety catch — if the
+    session's internal state machine is broken (e.g. ``IllegalStateChangeError``
+    from a concurrent ``_connection_for_bind``), the error is swallowed and
+    the connection is invalidated rather than leaking back into the pool.
     """
     _checkout_start_tls._checkout_start = _time.monotonic()  # type: ignore[attr-defined]
-    async with AsyncSessionLocal() as session:
+    session = AsyncSessionLocal()
+    try:
+        yield session
+        await session.commit()
+    except Exception:
         try:
-            yield session
-            await session.commit()
+            await session.rollback()
         except Exception:
-            try:
-                await session.rollback()
-            except Exception:
-                # Rollback can fail when the session is still provisioning its
-                # first connection (no queries were executed yet).  Silently
-                # ignore so the context manager can still close() cleanly and
-                # return the connection to the pool.
-                pass
-            raise
+            pass
+        raise
+    finally:
+        try:
+            await session.close()
+        except Exception:
+            # Session close can fail when the session is in a corrupted state
+            # (e.g. ``IllegalStateChangeError``).  Log and move on — the
+            # connection will be garbage-collected by the pool.
+            _pool_log.warning(
+                "session_close_failed",
+                exc_info=True,
+            )
 
 
 # ── SQL query profiling ───────────────────────────────────────────────────────
