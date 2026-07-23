@@ -291,7 +291,7 @@ class ProductRepository:
         await db.execute(update(Product).where(Product.id == product_id).values(**data))
         # The raw UPDATE bypasses the ORM identity map so the cached
         # instance is stale.  Expire it so the re-fetch hits the DB.
-        instance = db.get(Product, product_id)
+        instance = await db.get(Product, product_id)
         if instance is not None:
             db.expire(instance)
         return await self.get_by_id(db, product_id)
@@ -339,7 +339,7 @@ class ProductRepository:
         )
         # The raw UPDATE bypasses the ORM identity map so the cached
         # instance is stale.  Expire it so the re-fetch hits the DB.
-        instance = db.get(ProductVariant, variant_id)
+        instance = await db.get(ProductVariant, variant_id)
         if instance is not None:
             db.expire(instance)
         return await self.get_variant(db, variant_id)
