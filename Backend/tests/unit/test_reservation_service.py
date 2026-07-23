@@ -146,6 +146,48 @@ class TestReserveItems:
         # add called twice: InventoryReservation + InventoryTransaction
         assert db.add.call_count == 2
 
+    async def test_reserve_reuses_existing_reservation_binds_datetime(self):
+        """When the customer already holds an ACTIVE reservation, reserve_items
+        reuses it via a raw UPDATE. The expires_at bind MUST be a datetime, not
+        an isoformat string, or asyncpg raises DataError against the timestamptz
+        column (regression: the reuse path 500'd on every checkout retry)."""
+        product_id = uuid.uuid4()
+        user_id = uuid.uuid4()
+
+        existing_row = MagicMock()
+        existing_row._mapping = {
+            "id": uuid.uuid4(),
+            "reservation_number": "RES-DEADBEEF",
+            "product_id": product_id,
+            "variant_id": None,
+            "quantity": 2,
+            "expires_at": datetime.now(UTC),
+            "order_id": None,
+        }
+
+        db = AsyncMock()
+        db.execute = AsyncMock(
+            side_effect=[
+                _fetchall_result([existing_row]),  # get_user_active_reservations
+                _noop_result(),  # reuse UPDATE inventory_reservations
+            ]
+        )
+        db.add = MagicMock()
+        db.flush = AsyncMock()
+
+        items = [{"product_id": product_id, "variant_id": None, "quantity": 2}]
+        reservations = await self.svc.reserve_items(db, user_id=user_id, items=items)
+
+        # Reused, not newly created: no ORM add, no stock re-lock/increment.
+        assert len(reservations) == 1
+        assert reservations[0].quantity == 2
+        db.add.assert_not_called()
+
+        # The UPDATE (2nd execute) must bind a datetime for expires_at.
+        update_call = db.execute.call_args_list[1]
+        bound_params = update_call.args[1]
+        assert isinstance(bound_params["expires"], datetime)
+
     async def test_reserve_multiple_items_success(self):
         # Fixed, lexicographically-ordered UUIDs: reserve_items sorts by
         # (product_id, variant_id) before locking (deadlock prevention), so

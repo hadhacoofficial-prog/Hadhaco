@@ -277,14 +277,16 @@ class ReservationService:
 
             if existing:
                 # Reuse: extend expiry, don't double-count reserved_quantity.
-                new_expires = expires_at.isoformat()
+                # Bind the datetime directly — this is raw asyncpg SQL, which
+                # encodes a datetime as timestamptz. Passing expires_at.isoformat()
+                # (a str) raises DataError: "expected a datetime, got 'str'".
                 await db.execute(
                     text(
                         "UPDATE inventory_reservations "
                         "SET expires_at = :expires, updated_at = now() "
                         "WHERE id = :rid AND status = 'ACTIVE'"
                     ),
-                    {"expires": new_expires, "rid": str(existing["id"])},
+                    {"expires": expires_at, "rid": str(existing["id"])},
                 )
                 await db.flush()
 
