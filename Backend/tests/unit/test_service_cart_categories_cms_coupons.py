@@ -852,6 +852,9 @@ class TestCartServiceSuccessPaths:
         from app.modules.cart.service import CartService
 
         self.svc = CartService()
+        # Customer holds no reservation of their own by default, so cart
+        # availability is unchanged (stub the new DB-backed lookup).
+        self.svc._own_active_reserved_qty = AsyncMock(return_value=0)
 
     def _mock_cart(self, items=None, discount=0, coupon_code=None):
         cart = MagicMock()
