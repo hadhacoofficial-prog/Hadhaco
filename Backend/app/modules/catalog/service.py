@@ -3,6 +3,7 @@ import uuid
 from datetime import UTC, datetime
 from typing import Literal
 
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import (
@@ -225,7 +226,8 @@ class CatalogService:
         product = await _repo.create(db, data)
 
         for v in variants_data:
-            if await _repo.get_by_sku(db, v.sku):
+            # Variant SKU uniqueness lives on product_variants, not products.
+            if await _repo.get_variant_by_sku(db, v.sku):
                 raise ConflictError(f"Variant SKU '{v.sku}' already exists")
             vdata = v.model_dump()
             vdata["product_id"] = product.id
@@ -310,11 +312,19 @@ class CatalogService:
         product = await _repo.get_by_id(db, product_id)
         if not product:
             raise NotFoundError("Product not found")
-        if await _repo.get_by_sku(db, payload.sku):
-            raise ConflictError(f"SKU '{payload.sku}' already exists")
+        # Variant SKUs are unique on the product_variants table, NOT products —
+        # check the right table, or a duplicate variant SKU slips past this
+        # guard and blows up as an unhandled IntegrityError (500) at flush time.
+        if await _repo.get_variant_by_sku(db, payload.sku):
+            raise ConflictError(f"Variant SKU '{payload.sku}' already exists")
         data = payload.model_dump()
         data["product_id"] = product_id
-        return await _repo.add_variant(db, data)
+        try:
+            return await _repo.add_variant(db, data)
+        except IntegrityError as exc:
+            # Safety net for the check-then-insert race (two concurrent adds of
+            # the same SKU both pass the guard above).
+            raise ConflictError(f"Variant SKU '{payload.sku}' already exists") from exc
 
     async def update_variant(
         self,

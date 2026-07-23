@@ -331,6 +331,20 @@ class ProductRepository:
         )
         return result.scalar_one_or_none()
 
+    async def get_variant_by_sku(
+        self, db: AsyncSession, sku: str
+    ) -> ProductVariant | None:
+        """Look up a variant by its (globally unique) SKU.
+
+        Variant SKUs are enforced unique by ``product_variants_sku_key`` on the
+        ``product_variants`` table — distinct from ``Product.sku`` — so callers
+        checking a *variant* SKU must use this, not ``get_by_sku``.
+        """
+        result = await db.execute(
+            select(ProductVariant).where(ProductVariant.sku == sku)
+        )
+        return result.scalar_one_or_none()
+
     async def update_variant(
         self, db: AsyncSession, variant_id: uuid.UUID, data: dict[str, Any]
     ) -> ProductVariant | None:

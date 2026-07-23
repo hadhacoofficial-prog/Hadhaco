@@ -736,7 +736,7 @@ class TestCatalogServiceVariantsAndAttributes:
                 AsyncMock(return_value=MagicMock()),
             ),
             patch(
-                "app.modules.catalog.service._repo.get_by_sku",
+                "app.modules.catalog.service._repo.get_variant_by_sku",
                 AsyncMock(return_value=MagicMock()),
             ),
         ):
@@ -758,7 +758,7 @@ class TestCatalogServiceVariantsAndAttributes:
                 AsyncMock(return_value=MagicMock()),
             ),
             patch(
-                "app.modules.catalog.service._repo.get_by_sku",
+                "app.modules.catalog.service._repo.get_variant_by_sku",
                 AsyncMock(return_value=None),
             ),
             patch(
@@ -770,6 +770,37 @@ class TestCatalogServiceVariantsAndAttributes:
                 db, uuid.uuid4(), ProductVariantCreateRequest(sku="V-001", name="Small")
             )
         assert result is mock_variant
+
+    async def test_add_variant_translates_integrity_error_to_conflict(self):
+        """The pre-check can lose a check-then-insert race; a raw
+        product_variants_sku_key violation must surface as a 409 ConflictError,
+        never an unhandled 500."""
+        from sqlalchemy.exc import IntegrityError
+
+        from app.core.exceptions import ConflictError
+        from app.modules.catalog.schemas import ProductVariantCreateRequest
+
+        db = AsyncMock()
+        with (
+            patch(
+                "app.modules.catalog.service._repo.get_by_id",
+                AsyncMock(return_value=MagicMock()),
+            ),
+            patch(
+                "app.modules.catalog.service._repo.get_variant_by_sku",
+                AsyncMock(return_value=None),
+            ),
+            patch(
+                "app.modules.catalog.service._repo.add_variant",
+                AsyncMock(side_effect=IntegrityError("stmt", {}, Exception("dup"))),
+            ),
+        ):
+            with pytest.raises(ConflictError):
+                await self.svc.add_variant(
+                    db,
+                    uuid.uuid4(),
+                    ProductVariantCreateRequest(sku="V-001", name="Small"),
+                )
 
     async def test_update_variant_raises_404(self):
         from app.core.exceptions import NotFoundError
