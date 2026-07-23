@@ -1,36 +1,11 @@
 import * as Sentry from "@sentry/react";
 
-type DsnObj = {
-  protocol: string;
-  publicKey: string;
-  host: string;
-  port: string;
-  path: string;
-  projectId: string;
-};
-
-function parseDsn(dsn: string): DsnObj | string {
-  try {
-    const url = new URL(dsn);
-    return {
-      protocol: url.protocol.replace(":", ""),
-      publicKey: url.username,
-      host: url.hostname,
-      port: url.port,
-      path: url.pathname.replace(/^\/|\/\d+$/, ""),
-      projectId: url.pathname.split("/").pop() || "",
-    };
-  } catch {
-    return dsn;
-  }
-}
-
 export function initSentry() {
   const dsn = import.meta.env.VITE_SENTRY_DSN;
   if (!dsn) return;
 
   Sentry.init({
-    dsn: parseDsn(dsn) as unknown as string,
+    dsn,
     environment: import.meta.env.MODE || "production",
     release: import.meta.env.VITE_APP_VERSION || "unknown",
     tracesSampleRate: 0.1,
