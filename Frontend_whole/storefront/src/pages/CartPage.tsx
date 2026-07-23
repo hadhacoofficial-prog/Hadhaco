@@ -9,6 +9,7 @@ import { EmptyState } from "@/components/site/EmptyState";
 import { QuantityStepper } from "@/components/site/QuantityStepper";
 import { InventoryBadge } from "@/components/site/InventoryBadge";
 import { useCart, cartLineKey } from "@/stores/cart";
+import { useBuyNowStore } from "@/stores/buyNow";
 import { computeQuantityBounds } from "@/lib/cartQuantity";
 import { useActiveReservations } from "@/hooks/useActiveReservations";
 import { api } from "@/lib/api/client";
@@ -21,6 +22,10 @@ import { Route } from "@/routes/cart";
 
 export default function CartPage() {
   const { lines, setQty, remove, subtotal } = useCart();
+  // Checking out from the cart is an explicit "buy my cart" action — clear any
+  // stale/abandoned Buy-Now state so it can't hijack the checkout and show only
+  // its single item instead of the full cart.
+  const clearBuyNow = useBuyNowStore((s) => s.clear);
   const [coupon, setCoupon] = useState("");
   const [discount, setDiscount] = useState(0);
   const [appliedCode, setAppliedCode] = useState<string | null>(null);
@@ -355,6 +360,7 @@ export default function CartPage() {
                 ) : (
                   <Link
                     to="/checkout"
+                    onClick={() => clearBuyNow()}
                     className="mt-5 w-full inline-flex justify-center bg-primary text-primary-foreground text-[11px] uppercase tracking-[0.22em] py-3.5 hover:bg-accent hover:text-accent-foreground transition"
                   >
                     Proceed to Checkout

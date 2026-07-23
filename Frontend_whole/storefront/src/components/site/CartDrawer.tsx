@@ -1,12 +1,16 @@
 import { Link } from "@tanstack/react-router";
 import { X, ShoppingBag, Trash2 } from "lucide-react";
 import { useCart } from "@/stores/cart";
+import { useBuyNowStore } from "@/stores/buyNow";
 import { formatINR } from "@/lib/format";
 import { QuantityStepper } from "@/components/site/QuantityStepper";
 import { NavJewelleryBgMobile } from "@/components/site/NavJewelleryBgMobile";
 
 export function CartDrawer() {
   const { isOpen, close, lines, setQty, remove, subtotal } = useCart();
+  // Checking out from the cart clears any stale Buy-Now state so it can't
+  // hijack the checkout page (which shows Buy-Now items when active).
+  const clearBuyNow = useBuyNowStore((s) => s.clear);
   if (!isOpen) return null;
 
   return (
@@ -112,7 +116,10 @@ export function CartDrawer() {
                 </Link>
                 <Link
                   to="/checkout"
-                  onClick={close}
+                  onClick={() => {
+                    clearBuyNow();
+                    close();
+                  }}
                   className="bg-primary text-primary-foreground text-[11px] uppercase tracking-[0.22em] py-3 text-center hover:bg-accent hover:text-accent-foreground transition"
                 >
                   Checkout
