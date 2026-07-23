@@ -17,7 +17,7 @@ from app.core.cache import (
     make_etag,
     not_modified_response,
 )
-from app.core.database import get_db
+from app.core.database import AsyncWorkerSessionLocal, get_db
 from app.core.dependencies import require_admin
 from app.core.redis import (
     get_redis,
@@ -63,9 +63,12 @@ async def list_categories(
 ):
     cache_key = f"{PREFIX_CATEGORY_TREE}:all"
 
+    # Fresh worker session — cache_swr may re-run this from a detached
+    # background refresh task after the request session is gone.
     async def _fetch_tree():
-        result = await _svc.get_tree(db)
-        return [n.model_dump(mode="json") for n in result]
+        async with AsyncWorkerSessionLocal() as s:
+            result = await _svc.get_tree(s)
+            return [n.model_dump(mode="json") for n in result]
 
     data = await cache_swr(
         redis,
@@ -107,8 +110,9 @@ async def navbar_categories(
     redis: aioredis.Redis = Depends(get_redis),
 ):
     async def _fetch_navbar():
-        result = await _svc.get_navbar(db)
-        return result.model_dump()
+        async with AsyncWorkerSessionLocal() as s:
+            result = await _svc.get_navbar(s)
+            return result.model_dump()
 
     data = await cache_swr(
         redis,
@@ -139,8 +143,9 @@ async def navigation_categories(
     redis: aioredis.Redis = Depends(get_redis),
 ):
     async def _fetch_navigation():
-        result = await _svc.get_navigation(db)
-        return result.model_dump()
+        async with AsyncWorkerSessionLocal() as s:
+            result = await _svc.get_navigation(s)
+            return result.model_dump()
 
     data = await cache_swr(
         redis,

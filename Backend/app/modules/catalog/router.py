@@ -8,7 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.common.response_codes import ResponseCode
 from app.common.responses import BaseSuccessResponse, deleted, ok
-from app.core.database import get_db
+from app.core.database import AsyncWorkerSessionLocal, get_db
 from app.core.dependencies import require_admin
 from app.core.redis import (
     get_redis,
@@ -110,27 +110,30 @@ async def list_products(
 
     from app.core.cache import TTL_PRODUCT_LIST, add_cache_headers, cache_swr
 
+    # Fresh worker session — cache_swr may re-run this from a detached
+    # background SWR-refresh task after the request session is gone.
     async def _fetch_products() -> dict:
-        result = await _service.list_products(
-            db,
-            page=page,
-            page_size=page_size,
-            status="active",
-            category_id=resolved_category_id,
-            collection_id=resolved_collection_id,
-            metal_type=metal_type,
-            gender=gender,
-            is_featured=is_featured,
-            is_new_arrival=is_new_arrival,
-            is_best_seller=is_best_seller,
-            min_price=min_price,
-            max_price=max_price,
-            search=search,
-            sort_by=sort_by,
-            sort_dir=sort_dir,
-            include_collections=include_collections,
-        )
-        return result.model_dump(mode="json")
+        async with AsyncWorkerSessionLocal() as s:
+            result = await _service.list_products(
+                s,
+                page=page,
+                page_size=page_size,
+                status="active",
+                category_id=resolved_category_id,
+                collection_id=resolved_collection_id,
+                metal_type=metal_type,
+                gender=gender,
+                is_featured=is_featured,
+                is_new_arrival=is_new_arrival,
+                is_best_seller=is_best_seller,
+                min_price=min_price,
+                max_price=max_price,
+                search=search,
+                sort_by=sort_by,
+                sort_dir=sort_dir,
+                include_collections=include_collections,
+            )
+            return result.model_dump(mode="json")
 
     # SWR: ttl=300s (5 min fresh), swr_window=300s (serve stale up to 10 min
     # while background-refreshing).  Request coalescing prevents stampedes

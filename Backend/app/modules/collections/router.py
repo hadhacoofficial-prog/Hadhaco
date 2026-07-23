@@ -19,7 +19,7 @@ from app.core.cache import (
     make_etag,
     not_modified_response,
 )
-from app.core.database import get_db
+from app.core.database import AsyncWorkerSessionLocal, get_db
 from app.core.dependencies import require_admin
 from app.core.redis import (
     get_redis,
@@ -59,9 +59,13 @@ async def list_collections(
     db: AsyncSession = Depends(get_db),
     redis: aioredis.Redis = Depends(get_redis),
 ):
+    # Runs on a fresh worker (NullPool) session, never the request session:
+    # cache_swr may invoke this from a detached background SWR-refresh task
+    # after the request has already committed/closed its session.
     async def _fetch():
-        result = await _service.list_active(db)
-        return [c.model_dump(mode="json") for c in result]
+        async with AsyncWorkerSessionLocal() as s:
+            result = await _service.list_active(s)
+            return [c.model_dump(mode="json") for c in result]
 
     data = await cache_swr(
         redis,
@@ -106,8 +110,9 @@ async def get_collection(
     cache_key = f"{PREFIX_COLLECTION_DETAIL}:{slug}"
 
     async def _fetch():
-        result = await _service.get_by_slug(db, slug)
-        return result.model_dump(mode="json")
+        async with AsyncWorkerSessionLocal() as s:
+            result = await _service.get_by_slug(s, slug)
+            return result.model_dump(mode="json")
 
     data = await cache_swr(
         redis,

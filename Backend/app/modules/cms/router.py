@@ -21,7 +21,7 @@ from app.core.cache import (
     bust_cms_page_cache,
     cache_swr,
 )
-from app.core.database import get_db
+from app.core.database import AsyncWorkerSessionLocal, get_db
 from app.core.dependencies import require_admin
 from app.core.redis import get_redis
 from app.modules.cms.media_service import CmsMediaService
@@ -69,8 +69,11 @@ async def get_home(
 ):
     cache_key = PREFIX_CMS_HOME_LEGACY
 
-    async def _fetch_home(db: AsyncSession) -> dict:
-        data = await _svc.get_home_data(db)
+    # Fresh worker session — cache_swr may re-run this from a detached
+    # background SWR-refresh task after the request session is gone.
+    async def _fetch_home() -> dict:
+        async with AsyncWorkerSessionLocal() as s:
+            data = await _svc.get_home_data(s)
         payload = {
             "success": True,
             "code": ResponseCode.CMS_HOME_FETCHED.value,
@@ -85,7 +88,6 @@ async def get_home(
         ttl=TTL_CMS_HOME_LEGACY,
         swr_window=TTL_CMS_HOME_LEGACY,
         fetch_fn=_fetch_home,
-        db=db,
     )
     response = JSONResponse(content=result)
     add_cache_headers(
@@ -104,8 +106,9 @@ async def get_homepage(
 ):
     cache_key = "cms:homepage"
 
-    async def _fetch_homepage(db: AsyncSession) -> dict:
-        data = await _svc._build_homepage(db)
+    async def _fetch_homepage() -> dict:
+        async with AsyncWorkerSessionLocal() as s:
+            data = await _svc._build_homepage(s)
         payload = ok(
             HomepageDataOut(**data),
             ResponseCode.CMS_HOMEPAGE_FETCHED,
@@ -119,7 +122,6 @@ async def get_homepage(
         ttl=TTL_CMS_HOMEPAGE,
         swr_window=TTL_CMS_HOMEPAGE,
         fetch_fn=_fetch_homepage,
-        db=db,
     )
     response = JSONResponse(content=result)
     add_cache_headers(
@@ -142,8 +144,9 @@ async def get_page(
 ):
     cache_key = f"{PREFIX_CMS_PAGE}:{slug}"
 
-    async def _fetch_page(slug: str, db: AsyncSession) -> dict:
-        result = await _svc.get_page(db, slug)
+    async def _fetch_page(slug: str) -> dict:
+        async with AsyncWorkerSessionLocal() as s:
+            result = await _svc.get_page(s, slug)
         response_data = ok(result, ResponseCode.CMS_PAGE_FETCHED, "Page fetched")
         return json.loads(response_data.model_dump_json())
 
@@ -154,7 +157,6 @@ async def get_page(
         swr_window=TTL_CMS_PAGE,
         fetch_fn=_fetch_page,
         slug=slug,
-        db=db,
     )
     response = JSONResponse(content=result)
     add_cache_headers(response, TTL_CMS_PAGE, stale_while_revalidate=TTL_CMS_PAGE)
