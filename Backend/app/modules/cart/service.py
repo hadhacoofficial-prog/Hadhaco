@@ -204,6 +204,40 @@ class CartService:
             float(result[4]),
         )
 
+    async def _own_active_reserved_qty(
+        self,
+        db: AsyncSession,
+        user_id: uuid.UUID,
+        product_id: uuid.UUID,
+        variant_id: uuid.UUID | None,
+    ) -> int:
+        """Quantity this customer already holds in ACTIVE (unexpired) reservations
+        for the target.
+
+        ``reserved_quantity`` in the availability query counts these against the
+        customer, so someone holding a reservation from an abandoned/failed
+        checkout would be blocked from re-adding the very item they hold.
+        Checkout's ``reserve_items`` reuses that same reservation, so crediting
+        it back here cannot oversell.
+        """
+        params: dict[str, str] = {"uid": str(user_id), "pid": str(product_id)}
+        if variant_id:
+            cond = "variant_id = :vid"
+            params["vid"] = str(variant_id)
+        else:
+            cond = "variant_id IS NULL"
+        result = await db.execute(
+            text(
+                "SELECT COALESCE(SUM(quantity), 0) AS qty"
+                " FROM inventory_reservations"
+                " WHERE user_id = :uid AND product_id = :pid"
+                f" AND {cond}"  # nosec B608
+                " AND status = 'ACTIVE' AND expires_at > now()"
+            ),
+            params,
+        )
+        return int(result.scalar_one() or 0)
+
     async def add_item(
         self,
         db: AsyncSession,
@@ -217,6 +251,12 @@ class CartService:
                 db, payload.product_id, payload.variant_id
             )
         )
+        # Don't let a logged-in customer's own ACTIVE reservation (e.g. from an
+        # abandoned checkout) block them from re-adding the item they hold.
+        if user_id and track_inventory and not allow_backorder:
+            available += await self._own_active_reserved_qty(
+                db, user_id, payload.product_id, payload.variant_id
+            )
         if track_inventory and not allow_backorder and payload.quantity > available:
             if available <= 0:
                 raise InventoryError("This product is currently out of stock.")
@@ -266,6 +306,10 @@ class CartService:
                     db, item.product_id, item.variant_id
                 )
             )
+            if user_id and track_inventory and not allow_backorder:
+                available += await self._own_active_reserved_qty(
+                    db, user_id, item.product_id, item.variant_id
+                )
             if track_inventory and not allow_backorder and payload.quantity > available:
                 raise InventoryError(
                     f"Only {available} item(s) available. Please adjust your quantity."

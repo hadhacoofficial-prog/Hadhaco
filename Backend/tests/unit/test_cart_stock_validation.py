@@ -36,6 +36,9 @@ class TestFetchAvailableStock:
         from app.modules.cart.service import CartService
 
         self.svc = CartService()
+        # Default: customer holds no reservation of their own, so availability
+        # is unchanged. Tests exercising the self-block credit override this.
+        self.svc._own_active_reserved_qty = AsyncMock(return_value=0)
 
     async def test_returns_computed_available(self):
         product_id = uuid.uuid4()
@@ -82,6 +85,9 @@ class TestAddItemStockValidation:
         from app.modules.cart.service import CartService
 
         self.svc = CartService()
+        # Default: customer holds no reservation of their own, so availability
+        # is unchanged. Tests exercising the self-block credit override this.
+        self.svc._own_active_reserved_qty = AsyncMock(return_value=0)
 
     def _payload(self, product_id: uuid.UUID | None = None, quantity: int = 1):
         p = MagicMock()
@@ -177,6 +183,39 @@ class TestAddItemStockValidation:
                         # Should not raise
                         await self.svc.add_item(db, payload, user_id=uuid.uuid4())
 
+    async def test_own_active_reservation_credits_back_availability(self):
+        """A customer holding their own ACTIVE reservation (e.g. from an
+        abandoned checkout) that consumed the last unit must not be blocked
+        from re-adding it: their reserved qty is credited back to available."""
+        db = AsyncMock()
+        payload = self._payload(quantity=1)
+
+        mock_cart = MagicMock()
+        mock_cart.id = uuid.uuid4()
+        mock_cart.items = []
+        mock_cart.discount = 0.0
+        mock_cart.coupon_code = None
+        mock_cart.expires_at = datetime.now(UTC) + timedelta(days=30)
+
+        # available=0 (their own reservation holds the last unit), but they
+        # hold 1 → effective available becomes 1, so the add succeeds.
+        self.svc._own_active_reserved_qty = AsyncMock(return_value=1)
+        with patch.object(
+            self.svc,
+            "_fetch_add_item_validations",
+            AsyncMock(return_value=(0, True, False, 0, 100.0)),
+        ):
+            with patch.object(
+                self.svc, "_get_or_create", AsyncMock(return_value=mock_cart)
+            ):
+                with patch("app.modules.cart.service._repo.upsert_item", AsyncMock()):
+                    with patch(
+                        "app.modules.cart.service._repo.get_by_id",
+                        AsyncMock(return_value=mock_cart),
+                    ):
+                        # Must NOT raise "out of stock".
+                        await self.svc.add_item(db, payload, user_id=uuid.uuid4())
+
 
 # ── TestUpdateItemStockValidation ─────────────────────────────────────────────
 
@@ -186,6 +225,9 @@ class TestUpdateItemStockValidation:
         from app.modules.cart.service import CartService
 
         self.svc = CartService()
+        # Default: customer holds no reservation of their own, so availability
+        # is unchanged. Tests exercising the self-block credit override this.
+        self.svc._own_active_reserved_qty = AsyncMock(return_value=0)
 
     def _make_cart_with_item(self, item_id: uuid.UUID, product_id: uuid.UUID, qty: int):
         item = MagicMock()
