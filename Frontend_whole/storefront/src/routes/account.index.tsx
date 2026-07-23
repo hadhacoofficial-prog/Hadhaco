@@ -26,6 +26,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { getAuthRedirectUrl } from "@hadha/shared-utils";
+import { afterAddressChange, afterProfileUpdate } from "@hadha/shared-api";
 
 import { SiteLayout } from "@/components/site/SiteLayout";
 import { PageLoader } from "@/components/common/PageLoader";
@@ -908,7 +909,7 @@ function AddressesTab() {
     mutationFn: (body: AddressCreateRequest) =>
       api.post<AddressResponse>("/me/addresses", { body }),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: queryKeys.addresses.all });
+      afterAddressChange();
       setAdding(false);
       setPhone("");
       setAltPhone("");
@@ -919,13 +920,13 @@ function AddressesTab() {
 
   const removeMutation = useMutation({
     mutationFn: (id: string) => api.delete<void>(`/me/addresses/${id}`),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: queryKeys.addresses.all }),
+    onSuccess: () => afterAddressChange(),
     onError: (e) => toast.error(toUserMessage(e)),
   });
 
   const defaultMutation = useMutation({
     mutationFn: (id: string) => api.post<void>(`/me/addresses/${id}/default`, {}),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: queryKeys.addresses.all }),
+    onSuccess: () => afterAddressChange(),
     onError: (e) => toast.error(toUserMessage(e)),
   });
 
@@ -1182,7 +1183,7 @@ function ProfileTab() {
   const updateMutation = useMutation({
     mutationFn: (data: ProfileUpdateDto) => api.patch<ProfileDto>("/me", { body: data }),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: queryKeys.profile.me });
+      afterProfileUpdate();
       setSaved(true);
       toast.success("Profile updated");
       setTimeout(() => setSaved(false), 2000);
@@ -1197,7 +1198,7 @@ function ProfileTab() {
       return api.patch<ProfileDto>("/me/avatar", { body: form });
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: queryKeys.profile.me });
+      afterProfileUpdate();
       toast.success("Avatar updated");
     },
     onError: (e) => toast.error(toUserMessage(e)),

@@ -35,5 +35,16 @@ async def _expire_reservations(db) -> None:
         log.info("reservations_expired_batch", count=len(expired_order_ids))
         order_svc = OrderService()
         await order_svc.handle_expired_order_side_effects(db, expired_order_ids)
+
+        # Publish frontend sync events so connected clients see the expiry
+        from app.core.events import ReservationExpiredEvent, event_bus
+
+        await event_bus.publish(
+            ReservationExpiredEvent(
+                reservation_id="batch",
+                user_ids=[],
+                product_ids=[],
+            )
+        )
     else:
         log.debug("reservation_expiry_run_no_expired")

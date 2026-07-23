@@ -2,6 +2,7 @@ import { QueryClient } from "@tanstack/react-query";
 import { createRouter } from "@tanstack/react-router";
 import { routeTree } from "./routeTree.gen";
 import { isApiError } from "./lib/api/errors";
+import { initSync } from "@hadha/shared-api";
 
 /**
  * App-wide QueryClient defaults. Per-query overrides (staleTime, etc.) follow
@@ -31,6 +32,10 @@ export function createAppQueryClient(): QueryClient {
 
 export const getRouter = () => {
   const queryClient = createAppQueryClient();
+
+  // Initialize the centralized sync engine with the app's QueryClient.
+  // This must happen once at startup so all sync methods can invalidate queries.
+  initSync(queryClient);
 
   const router = createRouter({
     routeTree,

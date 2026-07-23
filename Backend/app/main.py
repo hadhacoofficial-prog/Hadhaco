@@ -96,6 +96,12 @@ async def lifespan(app: FastAPI):
     _warm_task = _asyncio.create_task(start_warm_loop())
     _log.info("cache_warm_started")
 
+    # ── Start Redis pub/sub listener for SSE synchronization ───────────────────
+    from app.core.pubsub import start_pubsub_listener
+
+    start_pubsub_listener()
+    _log.info("pubsub_listener_started")
+
     yield
 
     _warm_task.cancel()
@@ -103,6 +109,9 @@ async def lifespan(app: FastAPI):
         await _warm_task
     except _asyncio.CancelledError:
         pass
+    from app.core.pubsub import stop_pubsub_listener
+
+    stop_pubsub_listener()
     queue.shutdown()
     await close_redis()
 
@@ -211,6 +220,7 @@ def _mount_routers(app: FastAPI) -> None:
     from app.modules.coupons.router import router as coupons_router
     from app.modules.dev_auth.router import router as dev_auth_router
     from app.modules.enquiries.router import router as enquiries_router
+    from app.modules.events.router import router as events_router
     from app.modules.fraud.router import router as fraud_router
     from app.modules.fulfillment.router import router as fulfillment_router
     from app.modules.inventory.router import router as inventory_router
@@ -269,6 +279,7 @@ def _mount_routers(app: FastAPI) -> None:
     app.include_router(settings_public_router, prefix=prefix, tags=["settings"])
     app.include_router(company_router, prefix=prefix, tags=["company"])
     app.include_router(admin_router, prefix=prefix, tags=["admin"])
+    app.include_router(events_router, prefix=prefix, tags=["events"])
 
     @app.get("/health", tags=["ops"], include_in_schema=False)
     async def health() -> dict:

@@ -6,10 +6,9 @@
  *   session/user/role + auth actions to the whole app.
  *
  * Cross-tab session synchronization:
- *   - BroadcastChannel posts "logout" events so other tabs clear state
- *     immediately when the user logs out in one tab.
- *   - An optional QueryClient reference is accepted so that logout clears
- *     all cached API data (prevents stale auth-gated queries).
+ *   - Uses the centralized sync engine (`afterLogout` / `onSyncEvent`) so
+ *     logout, cart, inventory, and other events propagate across tabs
+ *     through a single BroadcastChannel ("hadha:sync").
  */
 import type { Session, User } from "@supabase/supabase-js";
 import type { QueryClient } from "@tanstack/react-query";
@@ -25,11 +24,10 @@ import {
   updatePassword,
 } from "../lib/supabase/auth";
 import { getSession } from "../lib/supabase/session";
+import { afterLogout, onSyncEvent, SyncEventType } from "../lib/sync";
 import type { AppRole } from "@hadha/shared-types";
 
 import { AuthContext, type AuthContextValue } from "./auth-context";
-
-const SYNC_CHANNEL_NAME = "hadha:auth";
 
 /** Provisional role read from Supabase metadata before the backend profile loads. */
 function metadataRole(user: User | null): AppRole | null {
@@ -56,30 +54,25 @@ export function AuthProvider({ children, queryClient }: AuthProviderProps) {
   const mounted = useRef(true);
   const queryClientRef = useRef(queryClient);
   queryClientRef.current = queryClient;
-  const channelRef = useRef<BroadcastChannel | null>(null);
 
-  // ── Cross-tab synchronization ──────────────────────────────────────────────
+  // ── Cross-tab synchronization via centralized sync engine ──────────────────
   useEffect(() => {
-    try {
-      channelRef.current = new BroadcastChannel(SYNC_CHANNEL_NAME);
-      channelRef.current.onmessage = (event) => {
-        if (event.data === "logout") {
-          setSession(null);
-          setRole(null);
-          setStatus("unauthenticated");
-          queryClientRef.current?.clear();
-        }
-      };
-    } catch {
-      // BroadcastChannel not supported (Safari < 15.4) — graceful degradation.
-      // The user will see stale data until they refresh, but no errors.
-    }
-
-    return () => {
-      channelRef.current?.close();
-      channelRef.current = null;
-    };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    const unsub = onSyncEvent((event) => {
+      if (event === SyncEventType.LOGOUT) {
+        setSession(null);
+        setRole(null);
+        setStatus("unauthenticated");
+      } else if (event === SyncEventType.LOGIN) {
+        // Another tab logged in — refetch session
+        getSession().then((s) => {
+          if (!mounted.current) return;
+          setSession(s);
+          setRole(metadataRole(s?.user ?? null));
+          setStatus(s ? "authenticated" : "unauthenticated");
+        });
+      }
+    });
+    return unsub;
   }, []);
 
   useEffect(() => {
@@ -151,14 +144,8 @@ export function AuthProvider({ children, queryClient }: AuthProviderProps) {
         } catch {
           // sessionStorage unavailable (private mode, SSR) — harmless no-op.
         }
-        // ── Centralized React Query cleanup ──────────────────────────────
-        queryClientRef.current?.clear();
-        // Notify other tabs to clear their auth state too.
-        try {
-          channelRef.current?.postMessage("logout");
-        } catch {
-          // BroadcastChannel unavailable; graceful degradation.
-        }
+        // ── Centralized sync: clears query cache + broadcasts to other tabs ──
+        afterLogout();
       },
       requestPasswordReset: async (email) => {
         await resetPasswordForEmail(email);

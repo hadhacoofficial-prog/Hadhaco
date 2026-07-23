@@ -12,6 +12,7 @@ import {
   AlertCircle,
   RefreshCw,
 } from "lucide-react";
+import { afterOrderCreated } from "@hadha/shared-api";
 import { SiteLayout } from "@/components/site/SiteLayout";
 import { Skeleton } from "@/components/ui/skeleton";
 import { api } from "@/lib/api/client";
@@ -492,9 +493,9 @@ function SuccessPage() {
   useEffect(() => {
     if (didClean.current) return;
     didClean.current = true;
-    queryClient.invalidateQueries({ queryKey: queryKeys.orders.all });
-    queryClient.invalidateQueries({ queryKey: queryKeys.cart.all });
-  }, [queryClient]);
+    // Centralized sync: invalidate orders + cart + inventory for all pages
+    afterOrderCreated();
+  }, []);
 
   const fetchKey = orderId ?? orderNumber ?? "";
 

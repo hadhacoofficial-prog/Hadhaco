@@ -4,6 +4,8 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Truck, Tag, Plus, AlertTriangle, Loader2, Gift, X, Check } from "lucide-react";
 import { toast } from "sonner";
 import { getAuthRedirectUrl } from "@hadha/shared-utils";
+import { afterOrderCreated, afterReservationCreated } from "@hadha/shared-api";
+import { checkoutLog } from "@/lib/sync/syncLog";
 import { SiteLayout } from "@/components/site/SiteLayout";
 import { Breadcrumbs } from "@/components/site/Breadcrumbs";
 import {
@@ -218,6 +220,7 @@ function CheckoutPage() {
 
   const createPaymentMutation = useMutation({
     mutationFn: async (body: CreatePaymentIntentRequest) => {
+      checkoutLog.reserveStart();
       // Sync local cart to server before reserving
       await api.delete<void>("/cart");
       await Promise.all(
@@ -233,10 +236,14 @@ function CheckoutPage() {
       currentIntentRef.current = intent;
       setReservationStartedAt(Date.now());
       setCheckoutState("payment_open");
+      checkoutLog.reserveSuccess(intent.order_id);
+      // ── Centralized sync: inventory changed due to reservation ──
+      afterReservationCreated();
     },
     onError: (err) => {
       setCheckoutState("idle");
       const msg = toUserMessage(err);
+      checkoutLog.reserveFail(msg);
       if (msg.toLowerCase().includes("available")) {
         // Stock error — backend says not enough stock
         toast.error(msg);
@@ -253,10 +260,13 @@ function CheckoutPage() {
   });
 
   const verifyPaymentMutation = useMutation({
-    mutationFn: (body: VerifyPaymentRequest) =>
-      api.post<VerifyPaymentResponse>("/orders/verify-payment", { body }),
+    mutationFn: (body: VerifyPaymentRequest) => {
+      checkoutLog.verifyStart(body.razorpay_payment_id);
+      return api.post<VerifyPaymentResponse>("/orders/verify-payment", { body });
+    },
     onSuccess: (result) => {
       isVerifyingRef.current = false;
+      checkoutLog.verifySuccess(result.order_id, result.order_number);
       // Use store.getState() to read current mode at call time — avoids
       // stale closure over buyNowActive which could change during the mutation.
       const buyNowState = useBuyNowStore.getState();
@@ -266,13 +276,9 @@ function CheckoutPage() {
         clearCart();
       }
       resetCheckout();
-      queryClient.invalidateQueries({ queryKey: queryKeys.orders.all });
-      queryClient.invalidateQueries({ queryKey: queryKeys.cart.all });
-      queryClient.invalidateQueries({ queryKey: queryKeys.products.all });
-      queryClient.invalidateQueries({ queryKey: queryKeys.inventory.cartStock([]) });
-      queryClient.invalidateQueries({ queryKey: queryKeys.collections.all });
-      queryClient.invalidateQueries({ queryKey: queryKeys.cms.homepage });
-      queryClient.invalidateQueries({ queryKey: queryKeys.search.all });
+
+      // ── Centralized sync: orders, cart, inventory, collections, CMS, search ──
+      afterOrderCreated();
 
       const destination = { orderId: result.order_id, orderNumber: result.order_number };
       // Check eligibility using the total captured at render time
@@ -289,6 +295,7 @@ function CheckoutPage() {
     },
     onError: (e) => {
       isVerifyingRef.current = false;
+      checkoutLog.verifyFail(toUserMessage(e));
       setCheckoutState("payment_failed");
       toast.error(`Payment verification failed: ${toUserMessage(e)}`);
     },
@@ -324,12 +331,30 @@ function CheckoutPage() {
         if (isVerifyingRef.current) return;
         isVerifyingRef.current = true;
         setCheckoutState("verifying");
-        verifyPaymentMutation.mutate({
-          order_id: intent.order_id,
-          razorpay_payment_id: response.razorpay_payment_id,
-          razorpay_order_id: response.razorpay_order_id,
-          razorpay_signature: response.razorpay_signature,
-        });
+
+        // Safety timeout: if verification doesn't complete in 30s, allow retry
+        const verificationTimeout = setTimeout(() => {
+          if (isVerifyingRef.current) {
+            isVerifyingRef.current = false;
+            checkoutLog.verifyTimeout();
+            setCheckoutState("payment_open");
+            toast.error(
+              "Payment verification is taking longer than expected. Please try again or check your orders.",
+            );
+          }
+        }, 30_000);
+
+        verifyPaymentMutation.mutate(
+          {
+            order_id: intent.order_id,
+            razorpay_payment_id: response.razorpay_payment_id,
+            razorpay_order_id: response.razorpay_order_id,
+            razorpay_signature: response.razorpay_signature,
+          },
+          {
+            onSettled: () => clearTimeout(verificationTimeout),
+          },
+        );
       },
       modal: {
         ondismiss: () => {

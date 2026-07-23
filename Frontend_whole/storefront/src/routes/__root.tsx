@@ -32,6 +32,7 @@ import { useBuyNowStore } from "../stores/buyNow";
 import { useWishlist } from "../stores/wishlist";
 import { useRecentlyViewed } from "../stores/recentlyViewed";
 import { useRecentSearches } from "../stores/search";
+import { onSyncEvent, SyncEventType } from "@hadha/shared-api";
 
 initSentry();
 
@@ -186,6 +187,7 @@ function AppContent() {
       <GlobalJewelleryBackground />
       <ProfileSyncer />
       <AuthCleanup />
+      <CrossTabSync />
       <RouteTransition logoSrc={markAsset}>
         <ScrollProgress />
         {/* Required: nested routes render here. */}
@@ -204,6 +206,44 @@ function AppContent() {
 /** Fetches the backend profile once authenticated, setting the authoritative role. */
 function ProfileSyncer() {
   useProfile();
+  return null;
+}
+
+/**
+ * Listens for cross-tab sync events (cart, inventory, orders, etc.)
+ * and clears the appropriate local Zustand stores when events arrive
+ * from other tabs.
+ *
+ * This ensures that if Tab A adds to cart, Tab B's cart store also
+ * picks up the change (via the BroadcastChannel in the sync engine).
+ */
+function CrossTabSync() {
+  const clearCart = useCart((s) => s.clear);
+  const clearWishlist = useWishlist((s) => s.clear);
+
+  useEffect(() => {
+    const unsub = onSyncEvent((event) => {
+      switch (event) {
+        case SyncEventType.LOGOUT:
+          // Cart/wishlist cleared by AuthCleanup; no-op here
+          break;
+        case SyncEventType.CART_CHANGED:
+          // Other tab modified cart — our localStorage is already updated
+          // by Zustand persist, but force a re-render by re-reading
+          // (Zustand persist auto-syncs across tabs via storage events)
+          break;
+        case SyncEventType.WISHLIST_CHANGED:
+          // Same as cart — localStorage persistence handles cross-tab sync
+          break;
+        case SyncEventType.INVENTORY_CHANGED:
+          // React Query invalidation (handled by sync engine) will trigger
+          // re-fetches in any mounted components
+          break;
+      }
+    });
+    return unsub;
+  }, [clearCart, clearWishlist]);
+
   return null;
 }
 

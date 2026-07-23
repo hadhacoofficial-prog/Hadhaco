@@ -13,6 +13,7 @@ import {
   AlertTriangle,
   Pencil,
 } from "lucide-react";
+import { afterReviewSubmit, afterWishlistChange } from "@hadha/shared-api";
 import { SiteLayout } from "@/components/site/SiteLayout";
 import { Breadcrumbs } from "@/components/site/Breadcrumbs";
 import { QuantityStepper } from "@/components/site/QuantityStepper";
@@ -22,9 +23,11 @@ import { StarRating, WriteReviewModal } from "@/components/site/WriteReviewModal
 import { useAuthContext } from "@/providers/auth-context";
 import { useCart, cartLineKey } from "@/stores/cart";
 import { useBuyNowStore } from "@/stores/buyNow";
+import { useInventoryStore, inventoryKey } from "@/stores/inventory";
 import { computeQuantityBounds } from "@/lib/cartQuantity";
 import { useWishlist } from "@/stores/wishlist";
 import { useRecentlyViewed } from "@/stores/recentlyViewed";
+import { useInventorySync } from "@/hooks/useInventorySync";
 import { formatINR } from "@/lib/format";
 import { api } from "@/lib/api/client";
 import { queryKeys } from "@/lib/api/queryKeys";
@@ -135,6 +138,11 @@ function ProductPage() {
   });
 
   const liveProduct = liveDetail ? toProductDetail(liveDetail) : product;
+
+  // Sync product inventory into Zustand store (source of truth for stock).
+  // Must receive raw ProductDetail, not the mapped Product type.
+  useInventorySync(slug, liveDetail);
+
   const hasVariants = (liveProduct.variants?.length ?? 0) > 0;
   const currentVariant = selectedVariant
     ? (liveProduct.variants?.find((v) => v.id === selectedVariant.id) ?? selectedVariant)
@@ -144,7 +152,10 @@ function ProductPage() {
     (i) => i.id === product.id && i.variantId === (currentVariant?.id ?? undefined),
   );
 
-  const liveAvailableStock = liveProduct.availableStock;
+  // Read stock from Zustand store (source of truth)
+  const inventoryEntry = useInventoryStore((s) => s.get(product.id, currentVariant?.id ?? null));
+
+  const liveAvailableStock = inventoryEntry?.availableStock ?? liveProduct.availableStock;
 
   // Resolved variant stock (use live data if we have it)
   const variantStock = currentVariant
@@ -248,6 +259,9 @@ function ProductPage() {
       },
       currentVariant?.id,
     );
+    // Optimistic: decrement stock in Zustand store (source of truth)
+    // so badges and quantity steppers update immediately across all pages.
+    useInventoryStore.getState().optimisticDecrement(product.id, currentVariant?.id ?? null, qty);
   };
 
   const handleWishlistToggle = () => {
@@ -265,6 +279,7 @@ function ProductPage() {
       variantId: currentVariant?.id,
       variantName: currentVariant?.name,
     });
+    afterWishlistChange();
   };
 
   const handleBuyNow = () => {
@@ -656,10 +671,7 @@ function ProductPage() {
               onRefresh={() => {
                 refetchReviews();
                 refetchSummary();
-                queryClient.invalidateQueries({
-                  queryKey: queryKeys.reviews.forProduct(product.id),
-                });
-                queryClient.invalidateQueries({ queryKey: queryKeys.reviews.summary(product.id) });
+                afterReviewSubmit(product.id);
               }}
             />
           )}
@@ -685,9 +697,7 @@ function ProductPage() {
           productId={product.id}
           onClose={() => setShowReviewModal(false)}
           onSuccess={() => {
-            queryClient.invalidateQueries({ queryKey: queryKeys.reviews.forProduct(product.id) });
-            queryClient.invalidateQueries({ queryKey: queryKeys.reviews.summary(product.id) });
-            queryClient.invalidateQueries({ queryKey: queryKeys.reviews.myStatus(product.id) });
+            afterReviewSubmit(product.id);
             refetchMyReviewStatus();
           }}
         />

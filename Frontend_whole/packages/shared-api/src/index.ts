@@ -6,6 +6,34 @@ export type { ApiErrorKind } from "./lib/api/errors";
 export { queryKeys } from "./lib/api/queryKeys";
 export { ENV, hasSupabase, hasApi } from "./config/env";
 
+// Centralized synchronization engine
+export {
+  initSync,
+  onSyncEvent,
+  afterCartChange,
+  afterInventoryChange,
+  afterOrderCreated,
+  afterOrderCancelled,
+  afterOrderStatusChanged,
+  afterReservationCreated,
+  afterReservationExpired,
+  afterWishlistChange,
+  afterProfileUpdate,
+  afterAddressChange,
+  afterProductUpdate,
+  afterPriceChanged,
+  afterCollectionUpdate,
+  afterCmsPublish,
+  afterReviewSubmit,
+  afterLogin,
+  afterLogout,
+  invalidateAll,
+  getBus,
+} from "./lib/sync";
+export { SyncEventType } from "./lib/sync";
+export type { SyncEvent, SyncEventPayloads } from "./lib/sync";
+export type { SyncBus } from "./lib/sync";
+
 // Supabase client
 export { supabase } from "./lib/supabase/client";
 
