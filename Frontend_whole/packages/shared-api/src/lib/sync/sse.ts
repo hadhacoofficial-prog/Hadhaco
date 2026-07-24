@@ -10,6 +10,7 @@
  * Falls back to polling if SSE is unavailable or the connection drops.
  */
 
+import { ENV } from "../../config/env";
 import { SyncEventType, type SyncEventType as EventType } from "./events";
 import type { SyncBus } from "./SyncBus";
 
@@ -23,8 +24,14 @@ function _log(level: "info" | "warn" | "error", msg: string, ctx?: Record<string
 }
 
 // ── SSE endpoint URL ──────────────────────────────────────────────────────────
+// EventSource resolves a relative URL against the current page origin, which
+// is wrong for the storefront/admin apps (served from hadha.co /
+// admin.hadha.co) since the API lives on a separate origin (api.hadha.co).
+// Must build an absolute URL from the same apiBaseUrl the REST client uses.
 
-const SSE_ENDPOINT = "/api/v1/events/stream";
+function _sseEndpoint(): string {
+  return `${ENV.apiBaseUrl.replace(/\/+$/, "")}/events/stream`;
+}
 
 // ── Reconnection config ───────────────────────────────────────────────────────
 
@@ -91,11 +98,12 @@ function _connect(): void {
   if (_stopped || !_bus) return;
 
   try {
-    _es = new EventSource(SSE_ENDPOINT, { withCredentials: true });
+    const endpoint = _sseEndpoint();
+    _es = new EventSource(endpoint, { withCredentials: true });
 
     _es.onopen = () => {
       _retryMs = INITIAL_RETRY_MS;
-      _log("info", "Connected to", { endpoint: SSE_ENDPOINT });
+      _log("info", "Connected to", { endpoint });
     };
 
     _es.onmessage = (e) => {

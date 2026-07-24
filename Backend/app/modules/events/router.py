@@ -97,6 +97,5 @@ async def sse_stream(request: Request):
             "Cache-Control": "no-cache",
             "Connection": "keep-alive",
             "X-Accel-Buffering": "no",  # Disable nginx buffering
-            "Access-Control-Allow-Origin": "*",
         },
     )
