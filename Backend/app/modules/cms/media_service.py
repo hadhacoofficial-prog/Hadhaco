@@ -12,6 +12,7 @@ fixed below, since those don't require the larger migration."""
 
 from __future__ import annotations
 
+import asyncio
 import io
 import logging
 import uuid
@@ -24,6 +25,7 @@ from PIL import Image
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
+from app.core.cpu_executor import run_cpu_bound
 from app.core.exceptions import HTTP_422
 from app.modules.cms.models import CmsMedia
 from app.modules.cms.repository import CMSRepository
@@ -75,6 +77,20 @@ def _to_webp(data: bytes, max_size: tuple[int, int]) -> bytes:
     return buf.getvalue()
 
 
+def _probe_and_thumbnail(
+    data: bytes, max_size: tuple[int, int]
+) -> tuple[int, int, bytes]:
+    """Pure CPU: dimensions + thumbnail bytes in one decode. No I/O, no db —
+    safe for run_cpu_bound. Same two operations upload() used to do inline
+    (Image.open for size, then _to_webp doing its own separate Image.open);
+    kept as two decodes rather than sharing one Image object across both,
+    matching the original behavior exactly since _to_webp mutates the image
+    it decodes (thumbnail() is in-place)."""
+    width, height = Image.open(io.BytesIO(data)).size
+    thumb_data = _to_webp(data, max_size)
+    return width, height, thumb_data
+
+
 class CmsMediaService:
     def __init__(self) -> None:
         self._repo = CMSRepository()
@@ -116,7 +132,12 @@ class CmsMediaService:
         client = _r2()
         bucket = settings.R2_BUCKET_NAME
 
-        client.put_object(
+        # Sync boto3 network call — offloaded to the default executor
+        # (asyncio.to_thread), same pool as app.modules.media.storage's R2
+        # calls. Not the dedicated CPU executor: this is I/O wait, not CPU
+        # work, and mixing the two would let one starve the other.
+        await asyncio.to_thread(
+            client.put_object,
             Bucket=bucket,
             Key=key,
             Body=data,
@@ -131,11 +152,12 @@ class CmsMediaService:
 
         if is_image:
             try:
-                img = Image.open(io.BytesIO(data))
-                width, height = img.size
-                thumb_data = _to_webp(data, _THUMBNAIL_SIZE)
+                width, height, thumb_data = await run_cpu_bound(
+                    lambda: _probe_and_thumbnail(data, _THUMBNAIL_SIZE)
+                )
                 thumb_key = f"{safe_folder}/{media_id}_thumb.webp"
-                client.put_object(
+                await asyncio.to_thread(
+                    client.put_object,
                     Bucket=bucket,
                     Key=thumb_key,
                     Body=thumb_data,

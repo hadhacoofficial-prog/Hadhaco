@@ -9,14 +9,38 @@ Started/stopped from the FastAPI lifespan in app/main.py.
 
 from __future__ import annotations
 
+import time
 from collections.abc import Awaitable, Callable
+from functools import wraps
 
 import structlog
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
 from apscheduler.triggers.interval import IntervalTrigger
 
+from app.core.scheduler_metrics import scheduler_job_duration_seconds
+
 log = structlog.get_logger(__name__)
+
+
+def _timed(
+    fn: Callable[[], Awaitable[None]], *, job_id: str
+) -> Callable[[], Awaitable[None]]:
+    """Wraps a job coroutine function with scheduler_job_duration_seconds —
+    applied uniformly to every registered job, not just media_generation, so
+    a future slow job shows up here without needing its own instrumentation."""
+
+    @wraps(fn)
+    async def _wrapped() -> None:
+        start = time.perf_counter()
+        try:
+            await fn()
+        finally:
+            scheduler_job_duration_seconds.labels(job_id=job_id).observe(
+                time.perf_counter() - start
+            )
+
+    return _wrapped
 
 
 class QueueService:
@@ -29,7 +53,7 @@ class QueueService:
         self, fn: Callable[[], Awaitable[None]], *, seconds: int, job_id: str
     ) -> None:
         self._scheduler.add_job(
-            fn,
+            _timed(fn, job_id=job_id),
             IntervalTrigger(seconds=seconds),
             id=job_id,
             max_instances=1,  # never overlap a slow run with the next tick
@@ -41,7 +65,7 @@ class QueueService:
         self, fn: Callable[[], Awaitable[None]], *, cron: str, job_id: str
     ) -> None:
         self._scheduler.add_job(
-            fn,
+            _timed(fn, job_id=job_id),
             CronTrigger.from_crontab(cron, timezone="UTC"),
             id=job_id,
             max_instances=1,

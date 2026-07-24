@@ -18,14 +18,17 @@ from __future__ import annotations
 import asyncio
 import io
 import logging
+import time
 import uuid
 from collections import defaultdict
 
 from PIL import Image as PILImage
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.cpu_executor import run_cpu_bound
 from app.modules.media import storage
-from app.modules.media.crop_engine import CropBox, CropGeometryError, apply_geometry
+from app.modules.media.crop_engine import CropBox, apply_geometry
+from app.modules.media.metrics import image_processing_duration_seconds
 from app.modules.media.models import Image
 from app.modules.media.preset_registry import Breakpoint, CropPreset
 from app.modules.media.repository import ImageRepository
@@ -111,31 +114,25 @@ async def upload_variant_artifact(
     }
 
 
-async def generate_variants_for_breakpoints(
-    db: AsyncSession,
-    image: Image,
-    preset: CropPreset,
+def _generate_breakpoint_artifacts(
     original_bytes: bytes,
     crops: dict[Breakpoint, BreakpointCropIn],
+    preset: CropPreset,
     breakpoints: list[Breakpoint],
-) -> None:
+) -> dict[Breakpoint, list[GeneratedVariant]]:
     """
-    Regenerate every output_variant for each breakpoint in *breakpoints*,
-    always cropping from *original_bytes* (never a previously-derived
-    variant). Per-variant failures are caught individually and recorded as
-    status='failed' rows rather than aborting the whole batch (closes G12 —
-    no bare except/pass, no silently-orphaned partial state).
+    Pure CPU pipeline: decode -> rotate -> crop -> mask -> resize -> encode,
+    for every breakpoint in *breakpoints*. No I/O, no `db`, no `await` — this
+    is exactly what's safe to hand to a worker thread via
+    `app.core.cpu_executor.run_cpu_bound`, and nothing more.
 
-    Cropping (CPU, fast) happens breakpoint-by-breakpoint first — a
-    CropGeometryError aborts the whole call before any R2 upload starts, so
-    a bad geometry payload never leaves a partial batch of variants written.
-    Every resulting artifact across *every* breakpoint is then uploaded
-    concurrently via `asyncio.gather` (bounded by storage._R2_CONCURRENCY),
-    since sequential awaits here — one R2 round trip at a time — were the
-    actual measured cause of 12-27s crop requests (docs audit CB-1), not
-    the CPU-bound resize/encode work. DB writes stay sequential per
-    breakpoint after the uploads land, since a single AsyncSession isn't
-    safe to use concurrently.
+    A CropGeometryError (hard geometry failure on a strict_bounds preset)
+    propagates out uncaught — the caller already validated this before
+    calling us for the strict case (`crop_engine.validate_crop_request`), so
+    reaching it here is a defensive path, not an expected one. Letting it
+    propagate through `run_cpu_bound` unchanged means nothing gets persisted
+    for any breakpoint, same as before this function existed as a separate
+    thread-executor boundary.
     """
     per_breakpoint_artifacts: dict[Breakpoint, list[GeneratedVariant]] = {}
     for breakpoint in breakpoints:
@@ -151,20 +148,53 @@ async def generate_variants_for_breakpoints(
             width=crop_in.box.width,
             height=crop_in.box.height,
         )
-        try:
-            cropped = apply_geometry(
-                raw, box, rotation_degrees=crop_in.rotation, preset=preset
-            )
-        except CropGeometryError:
-            # Hard geometry failure (strict_bounds preset, box doesn't fit) —
-            # nothing to persist for any breakpoint; caller already
-            # validated this before calling us for the strict case, so this
-            # is a defensive re-raise rather than an expected path.
-            raise
+        cropped = apply_geometry(
+            raw, box, rotation_degrees=crop_in.rotation, preset=preset
+        )
 
         per_breakpoint_artifacts[breakpoint] = generate_variants_for_breakpoint(
             cropped, preset.output_variants, breakpoint
         )
+    return per_breakpoint_artifacts
+
+
+async def generate_variants_for_breakpoints(
+    db: AsyncSession,
+    image: Image,
+    preset: CropPreset,
+    original_bytes: bytes,
+    crops: dict[Breakpoint, BreakpointCropIn],
+    breakpoints: list[Breakpoint],
+) -> None:
+    """
+    Regenerate every output_variant for each breakpoint in *breakpoints*,
+    always cropping from *original_bytes* (never a previously-derived
+    variant). Per-variant failures are caught individually and recorded as
+    status='failed' rows rather than aborting the whole batch (closes G12 —
+    no bare except/pass, no silently-orphaned partial state).
+
+    The CPU-bound decode/crop/resize/encode pass (`_generate_breakpoint_artifacts`)
+    runs on the dedicated CPU executor via `run_cpu_bound`, off the event
+    loop — previously this ran inline on the coroutine and blocked every
+    other request on the same uvicorn worker for however long it took
+    (measured 1-20s for multi-breakpoint presets; see storefront
+    slow_request incident). Every resulting artifact across *every*
+    breakpoint is then uploaded concurrently via `asyncio.gather` (bounded
+    by storage._R2_CONCURRENCY), since sequential awaits here — one R2 round
+    trip at a time — were the actual measured cause of 12-27s crop requests
+    (docs audit CB-1), not the CPU-bound resize/encode work itself. DB
+    writes stay sequential per breakpoint after the uploads land, since a
+    single AsyncSession isn't safe to use concurrently.
+    """
+    cpu_start = time.perf_counter()
+    per_breakpoint_artifacts = await run_cpu_bound(
+        lambda: _generate_breakpoint_artifacts(
+            original_bytes, crops, preset, breakpoints
+        )
+    )
+    image_processing_duration_seconds.labels(
+        preset=preset.id, stage="generate"
+    ).observe(time.perf_counter() - cpu_start)
 
     rows = await asyncio.gather(
         *(

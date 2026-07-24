@@ -102,6 +102,11 @@ async def lifespan(app: FastAPI):
     start_pubsub_listener()
     _log.info("pubsub_listener_started")
 
+    # ── Event loop lag monitor ──────────────────────────────────────────────
+    from app.core.event_loop_monitor import start_event_loop_monitor
+
+    start_event_loop_monitor()
+
     yield
 
     _warm_task.cancel()
@@ -113,6 +118,13 @@ async def lifespan(app: FastAPI):
 
     stop_pubsub_listener()
     queue.shutdown()
+
+    from app.core.cpu_executor import shutdown_cpu_executor
+    from app.core.event_loop_monitor import stop_event_loop_monitor
+
+    await stop_event_loop_monitor()
+    shutdown_cpu_executor()
+
     await close_redis()
 
 

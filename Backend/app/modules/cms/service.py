@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import json
 import uuid
 from datetime import UTC, datetime
@@ -496,7 +497,7 @@ class CMSService:
         # raised) so a transient R2 error can't block the admin delete, but
         # previously this step didn't exist at all and every CMS delete
         # orphaned its object(s) permanently. Docs audit MP-3.
-        self._media.delete_r2_objects(m)
+        await asyncio.to_thread(self._media.delete_r2_objects, m)
         await self._repo.delete_media(db, m)
         await db.commit()
 

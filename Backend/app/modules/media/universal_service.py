@@ -14,18 +14,21 @@ from __future__ import annotations
 import io
 import logging
 import math
+import time
 import uuid
 from datetime import UTC, datetime
 
 from PIL import Image as PILImage
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.cpu_executor import run_cpu_bound
 from app.modules.media import background, storage
 from app.modules.media.crop_engine import (
     CropBox,
     default_crop_box,
     validate_crop_request,
 )
+from app.modules.media.metrics import image_processing_duration_seconds
 from app.modules.media.models import Image
 from app.modules.media.preset_registry import (
     PRESET_REGISTRY,
@@ -53,6 +56,42 @@ logger = logging.getLogger(__name__)
 
 class UniversalImageServiceError(Exception):
     pass
+
+
+def _probe_dimensions(file_bytes: bytes) -> tuple[int, int]:
+    """Pure CPU decode (no validation) — dimensions only. Safe for
+    run_cpu_bound: no I/O, no db, no await."""
+    probe = PILImage.open(io.BytesIO(file_bytes))
+    return probe.size
+
+
+async def _validate_upload_off_loop(
+    file_bytes: bytes, filename: str, content_type: str, preset: CropPreset
+) -> None:
+    """validate_upload does Image.open(...).verify() — a real decode, not
+    just a header peek — so it belongs on the CPU executor same as the
+    generation pipeline, not inline on the request coroutine."""
+    cpu_start = time.perf_counter()
+    try:
+        await run_cpu_bound(
+            lambda: validate_upload(file_bytes, filename, content_type, preset)
+        )
+    finally:
+        image_processing_duration_seconds.labels(
+            preset=preset.id, stage="validate"
+        ).observe(time.perf_counter() - cpu_start)
+
+
+async def _probe_dimensions_off_loop(
+    file_bytes: bytes, preset: CropPreset
+) -> tuple[int, int]:
+    cpu_start = time.perf_counter()
+    try:
+        return await run_cpu_bound(lambda: _probe_dimensions(file_bytes))
+    finally:
+        image_processing_duration_seconds.labels(
+            preset=preset.id, stage="probe"
+        ).observe(time.perf_counter() - cpu_start)
 
 
 def _crops_equal(a: BreakpointCropIn, b: BreakpointCropIn | None) -> bool:
@@ -140,7 +179,7 @@ class UniversalImageService:
     ) -> Image:
         preset = get_preset(preset_id)
         try:
-            validate_upload(file_bytes, filename, content_type, preset)
+            await _validate_upload_off_loop(file_bytes, filename, content_type, preset)
         except ImageValidationError as exc:
             raise UniversalImageServiceError(str(exc)) from exc
 
@@ -157,8 +196,7 @@ class UniversalImageService:
         if is_svg:
             width, height = 0, 0
         else:
-            probe = PILImage.open(io.BytesIO(file_bytes))
-            width, height = probe.size
+            width, height = await _probe_dimensions_off_loop(file_bytes, preset)
 
         original_key = storage.build_original_key(
             preset.id, owner_type, owner_id, image_id, ext
@@ -310,7 +348,7 @@ class UniversalImageService:
     ) -> Image:
         preset = get_preset(image.preset_id)
         try:
-            validate_upload(file_bytes, filename, content_type, preset)
+            await _validate_upload_off_loop(file_bytes, filename, content_type, preset)
         except ImageValidationError as exc:
             raise UniversalImageServiceError(str(exc)) from exc
 
@@ -322,8 +360,7 @@ class UniversalImageService:
                 raise UniversalImageServiceError(str(exc)) from exc
             width, height = 0, 0
         else:
-            probe = PILImage.open(io.BytesIO(file_bytes))
-            width, height = probe.size
+            width, height = await _probe_dimensions_off_loop(file_bytes, preset)
 
         await storage.put_original(
             image.original_key, file_bytes, ext=image.original_ext

@@ -133,6 +133,14 @@ class Settings(BaseSettings):
     # from accumulating when traffic drops and the pool stays open but idle.
     DATABASE_POOL_RECYCLE: int = 1800
 
+    # ── CPU-bound work (image decode/crop/resize/encode) ────────────────────────
+    # Dedicated ThreadPoolExecutor (app/core/cpu_executor.py), separate from the
+    # default executor asyncio.to_thread() uses for R2 network I/O. Production
+    # container is capped at 1 CPU core — more threads than that buys no real
+    # parallelism for CPU-bound work, only lets 1-2 jobs overlap their
+    # GIL-released C-level Pillow calls with the event loop and each other.
+    IMAGE_PROCESSING_WORKERS: int = 2
+
     # ── Redis ──────────────────────────────────────────────────────────────────
     REDIS_URL: str
     REDIS_CACHE_TTL: int = 300
