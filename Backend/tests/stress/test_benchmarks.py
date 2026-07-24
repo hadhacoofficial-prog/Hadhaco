@@ -117,7 +117,7 @@ class TestExpiryThroughput:
         product_id = uuid.uuid4()
 
         def _row():
-            return (uuid.uuid4(), product_id, None, None, 1)
+            return (uuid.uuid4(), product_id, None, None, 1, uuid.uuid4())
 
         candidates = [_row() for _ in range(n)]
 

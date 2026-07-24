@@ -609,7 +609,7 @@ function ProductPage() {
                   max={bounds.remainingAllowed > 0 ? bounds.remainingAllowed : 1}
                   disabled={displayInStock !== null && !bounds.canAdd}
                 />
-                {effectiveStock > 0 && effectiveStock <= 10 && bounds.canAdd && (
+                {effectiveStock > 0 && effectiveStock <= 5 && bounds.canAdd && (
                   <span className="text-xs text-amber-600">Only {effectiveStock} left</span>
                 )}
                 <button

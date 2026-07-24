@@ -25,9 +25,10 @@ def _make_candidate_row(
     product_id: uuid.UUID,
     order_id: uuid.UUID | None = None,
     quantity: int = 1,
+    user_id: uuid.UUID | None = None,
 ) -> tuple:
-    """Return a tuple matching: (id, product_id, variant_id, order_id, quantity)."""
-    return (uuid.uuid4(), product_id, None, order_id, quantity)
+    """Return a tuple matching: (id, product_id, variant_id, order_id, quantity, user_id)."""
+    return (uuid.uuid4(), product_id, None, order_id, quantity, user_id or uuid.uuid4())
 
 
 def _candidates_result(rows: list) -> MagicMock:
