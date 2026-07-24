@@ -59,7 +59,8 @@ class HeroSlideMedia(BaseModel):
     desktop_image_url: str = ""
     tablet_image_url: str | None = None
     mobile_image_url: str | None = None
-    image_bundle: Any = None
+    desktop_image_bundle: Any = None
+    mobile_image_bundle: Any = None
     video_url: str | None = None
     video_poster_url: str | None = None
 
@@ -365,7 +366,11 @@ def validate_hero_slide(
             )
         )
 
-    has_image = bool((media.get("desktop_image_url") or "").strip())
+    has_image = bool(
+        (media.get("desktop_image_url") or "").strip()
+        or media.get("desktop_image_bundle")
+        or media.get("mobile_image_bundle")
+    )
     has_video = bool((media.get("video_url") or "").strip())
     if not has_image and not has_video:
         errors.append(
@@ -425,7 +430,11 @@ def validate_hero_slide(
             )
         )
 
-    if media.get("desktop_image_url") and not media.get("mobile_image_url"):
+    has_desktop = bool(
+        media.get("desktop_image_url") or media.get("desktop_image_bundle")
+    )
+    has_mobile = bool(media.get("mobile_image_url") or media.get("mobile_image_bundle"))
+    if has_desktop and not has_mobile:
         warnings.append(
             HeroValidationWarning(
                 field="media.mobile_image_url",

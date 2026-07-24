@@ -1,4 +1,4 @@
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Crop as CropIcon, Loader2, Upload } from "lucide-react";
 import { toast } from "sonner";
 import {
@@ -6,6 +6,7 @@ import {
   uploadImage,
   cropImage,
   getImage,
+  pollImageUntilReady,
   toImageBundle,
   type SaveIntent,
   type UniversalImageEditorSaveResult,
@@ -88,6 +89,14 @@ export function HeroImageField({
     Partial<Record<Breakpoint, BreakpointCropGeometry>> | undefined
   >(undefined);
 
+  const mountedRef = useRef(true);
+  useEffect(
+    () => () => {
+      mountedRef.current = false;
+    },
+    [],
+  );
+
   const thumbUrl = bundle?.variants[0]?.url ?? legacyUrl ?? "";
 
   const openEditor = useCallback(async () => {
@@ -134,6 +143,21 @@ export function HeroImageField({
         onBundleChange(toImageBundle(raw));
         toast.success(`${label} saved.`);
         if (intent === "save") setOpen(false);
+        // Crop/upload return as soon as the geometry is persisted — the
+        // actual variant files are produced by a background worker, so
+        // right after saving, toImageBundle()'s "ready"-only filter yields
+        // zero variants and no thumbnail shows. Poll until the worker
+        // finishes, then swap in the real thumbnail.
+        if (raw.status !== "ready") {
+          pollImageUntilReady(raw.id)
+            .then((fresh) => {
+              if (mountedRef.current) onBundleChange(toImageBundle(fresh));
+            })
+            .catch(() => {
+              // Worker failure/timeout — leave the last-known bundle in
+              // place; the admin can reopen the editor to retry/regenerate.
+            });
+        }
       } catch (e) {
         toast.error(toUserMessage(e as Error));
       } finally {
