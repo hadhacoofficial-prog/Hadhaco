@@ -209,10 +209,12 @@ class TestCouponServiceCRUD:
     async def test_list_all_empty(self):
         db = AsyncMock()
         with patch(
-            "app.modules.coupons.service._repo.list_all", AsyncMock(return_value=[])
+            "app.modules.coupons.service._repo.list_all_paginated",
+            AsyncMock(return_value=([], 0)),
         ):
-            result = await self.svc.list_all(db)
+            result, total = await self.svc.list_all(db)
         assert result == []
+        assert total == 0
 
     async def test_create_raises_conflict_for_existing_code(self):
         from app.core.exceptions import ConflictError

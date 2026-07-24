@@ -224,9 +224,13 @@ class ReviewRepository:
         if status == "approved":
             filters.append(Review.is_approved.is_(True))
         elif status == "rejected":
-            filters.extend([Review.is_rejected.is_(True), Review.is_approved.is_(False)])
+            filters.extend(
+                [Review.is_rejected.is_(True), Review.is_approved.is_(False)]
+            )
         elif status == "pending":
-            filters.extend([Review.is_approved.is_(False), Review.is_rejected.is_(False)])
+            filters.extend(
+                [Review.is_approved.is_(False), Review.is_rejected.is_(False)]
+            )
 
         count_window = func.count().over().label("_total_count")
         q = (
