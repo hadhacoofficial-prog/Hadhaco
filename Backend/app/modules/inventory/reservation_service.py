@@ -23,6 +23,7 @@ from sqlalchemy import text
 from sqlalchemy.engine import CursorResult
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.cache import PREFIX_PRODUCT_DETAIL
 from app.core.exceptions import InventoryError, NotFoundError, ValidationError
 from app.core.redis import (
     get_redis_pool,
@@ -70,7 +71,7 @@ async def invalidate_inventory_cache(
     patterns = [
         "products:list:v1:*",
         "product:list:*",
-        "product_details:*",
+        f"{PREFIX_PRODUCT_DETAIL}:*",
         "category:*",
         "collection:*",
         "homepage:*",
