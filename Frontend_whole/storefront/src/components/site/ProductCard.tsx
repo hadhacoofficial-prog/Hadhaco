@@ -7,7 +7,7 @@ import { useCart } from "@/stores/cart";
 import { useWishlist } from "@/stores/wishlist";
 import { useActiveReservations } from "@/hooks/useActiveReservations";
 import { useReservationCountdown } from "@/hooks/reservation/useReservationCountdown";
-import { useInventoryStore } from "@/stores/inventory";
+import { useInventoryStore, toCustomerStatus } from "@/stores/inventory";
 import { formatINR } from "@/lib/format";
 import { StockPill } from "@/components/site/InventoryBadge";
 
@@ -24,6 +24,13 @@ export const ProductCard = memo(function ProductCard({ p }: { p: Product }) {
   // value baked into `p` — same precedence products.$slug.tsx already uses.
   const inventoryEntry = useInventoryStore((s) => s.get(p.id, null));
   const availableStock = inventoryEntry?.availableStock ?? p.availableStock;
+  // Internal-only cap for isSoldOut logic — never rendered as text. Display
+  // uses `status` below (live store status if hydrated, else the API's own
+  // inventory_status, falling back to a stock-count-derived guess only for
+  // legacy data that predates the field).
+  const status = inventoryEntry
+    ? toCustomerStatus(inventoryEntry.stockStatus)
+    : (p.inventoryStatus ?? (availableStock === 0 ? "OUT_OF_STOCK" : "IN_STOCK"));
 
   const isSoldOut = availableStock === 0;
   const reserved = hasReservation(p.id);
@@ -103,10 +110,10 @@ export const ProductCard = memo(function ProductCard({ p }: { p: Product }) {
         )}
 
         {/* Stock pill (only when not sold out — sold-out overlay covers it) */}
-        {!isSoldOut && <StockPill availableStock={availableStock} />}
+        {!isSoldOut && <StockPill status={status} />}
         {reserved && (
           <StockPill
-            availableStock={0}
+            status="OUT_OF_STOCK"
             isReserved
             countdown={countdown.isExpired ? undefined : countdown.formatted}
           />

@@ -151,6 +151,11 @@ class VerifyOrderPaymentResponse(BaseModel):
     success: bool
     order_id: str
     order_number: str
+    # True when payment was captured but the reservation had already expired
+    # (Late Payment Policy, Option A) — the order is routed to refund_pending
+    # instead of being fulfilled from re-acquired stock. Default False keeps
+    # this additive/backward-compatible for existing frontend consumers.
+    refund_pending: bool = False
 
 
 COMPLIMENTARY_GIFT_VALUES = ("Traditional Sweet", "Traditional Hot Snack")

@@ -877,10 +877,17 @@ class TestCompleteOrderReservations:
 
 # ── TestCompleteReservationsForOrder ──────────────────────────────────────────
 #
-# This orchestration (complete -> detect EXPIRED -> late-payment fallback) used
+# This orchestration (complete -> detect EXPIRED -> late-payment policy) used
 # to be duplicated inline in orders/service.py::verify_and_fulfill and
 # webhooks/service.py::_process_payment_captured. It now lives in exactly one
 # place, so these are the only tests for that sequencing.
+#
+# Late Payment Policy (inventory domain plan §2.2a, "Option A"): a reservation
+# that's already EXPIRED by the time payment is captured is NEVER re-acquired
+# via complete_expired_order_reservations (that would risk overselling
+# already-released stock) — instead "refund_required" is returned so the
+# caller (OrderService.handle_late_payment_refund) routes the order to
+# refund_pending and triggers an automatic refund.
 
 
 class TestCompleteReservationsForOrder:
@@ -889,23 +896,27 @@ class TestCompleteReservationsForOrder:
 
         self.svc = ReservationService()
 
-    async def test_no_expired_reservations_skips_late_payment_fallback(self):
+    async def test_no_expired_reservations_returns_fulfilled(self):
         order_id = uuid.uuid4()
 
         db = AsyncMock()
         # Only the EXPIRED-detection query hits db.execute directly here;
-        # the two sub-methods are patched out to isolate orchestration.
+        # complete_order_reservations is patched out to isolate orchestration.
         db.execute = AsyncMock(return_value=_fetchone_result(None))
 
         self.svc.complete_order_reservations = AsyncMock()
         self.svc.complete_expired_order_reservations = AsyncMock()
 
-        await self.svc.complete_reservations_for_order(db, order_id)
+        outcome = await self.svc.complete_reservations_for_order(db, order_id)
 
         self.svc.complete_order_reservations.assert_awaited_once_with(db, order_id)
+        # Never auto-invoked — Option A never re-acquires stock automatically.
         self.svc.complete_expired_order_reservations.assert_not_awaited()
+        assert outcome == "fulfilled"
 
-    async def test_expired_reservations_trigger_late_payment_fallback(self):
+    async def test_expired_reservations_return_refund_required_without_reacquiring_stock(
+        self,
+    ):
         order_id = uuid.uuid4()
 
         db = AsyncMock()
@@ -914,12 +925,12 @@ class TestCompleteReservationsForOrder:
         self.svc.complete_order_reservations = AsyncMock()
         self.svc.complete_expired_order_reservations = AsyncMock()
 
-        await self.svc.complete_reservations_for_order(db, order_id)
+        outcome = await self.svc.complete_reservations_for_order(db, order_id)
 
         self.svc.complete_order_reservations.assert_awaited_once_with(db, order_id)
-        self.svc.complete_expired_order_reservations.assert_awaited_once_with(
-            db, order_id
-        )
+        # The core Option-A guarantee: never call the stock-reacquiring path.
+        self.svc.complete_expired_order_reservations.assert_not_awaited()
+        assert outcome == "refund_required"
 
     async def test_complete_runs_before_expired_check(self):
         """The EXPIRED check must run after complete_order_reservations, not

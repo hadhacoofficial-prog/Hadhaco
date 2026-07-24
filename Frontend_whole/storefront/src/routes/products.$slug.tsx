@@ -23,7 +23,7 @@ import { StarRating, WriteReviewModal } from "@/components/site/WriteReviewModal
 import { useAuthContext } from "@/providers/auth-context";
 import { useCart, cartLineKey } from "@/stores/cart";
 import { useBuyNowStore } from "@/stores/buyNow";
-import { useInventoryStore, inventoryKey } from "@/stores/inventory";
+import { useInventoryStore, inventoryKey, toCustomerStatus } from "@/stores/inventory";
 import { computeQuantityBounds } from "@/lib/cartQuantity";
 import { useWishlist } from "@/stores/wishlist";
 import { useRecentlyViewed } from "@/stores/recentlyViewed";
@@ -224,6 +224,17 @@ function ProductPage() {
       ? variantStock > 0
       : null
     : liveAvailableStock > 0;
+
+  // Customer-display status — never a number. Live store status wins when
+  // hydrated; otherwise fall back to the API's own inventory_status, and
+  // only derive from a raw count as a last resort for legacy data.
+  const productStatus = inventoryEntry
+    ? toCustomerStatus(inventoryEntry.stockStatus)
+    : (liveProduct.inventoryStatus ?? (liveAvailableStock === 0 ? "OUT_OF_STOCK" : "IN_STOCK"));
+  const variantStatus = currentVariant
+    ? (currentVariant.inventory_status ?? (variantStock === 0 ? "OUT_OF_STOCK" : "IN_STOCK"))
+    : null;
+  const effectiveStatus = hasVariants && currentVariant ? variantStatus! : productStatus;
 
   useEffect(() => {
     pushRV(product.id);
@@ -463,9 +474,7 @@ function ProductPage() {
                 )}
               </span>
             ) : displayInStock !== null ? (
-              <InventoryBadge
-                availableStock={hasVariants && currentVariant ? variantStock : liveAvailableStock}
-              />
+              <InventoryBadge status={effectiveStatus} />
             ) : null}
             {hasVariants && displayInStock === null && !isReserved && (
               <span className="text-xs text-muted-foreground tracking-wide">
@@ -506,6 +515,7 @@ function ProductPage() {
                 {liveProduct.variants!.map((v) => {
                   const vStock = v.available_stock ?? v.stock_quantity;
                   const outOfStock = vStock === 0;
+                  const vStatus = v.inventory_status ?? (outOfStock ? "OUT_OF_STOCK" : "IN_STOCK");
                   const isSelected = currentVariant?.id === v.id;
                   return (
                     <button
@@ -514,7 +524,7 @@ function ProductPage() {
                       onClick={() => !outOfStock && selectVariant(v)}
                       disabled={outOfStock}
                       aria-pressed={isSelected}
-                      aria-label={`${v.name}${outOfStock ? " — sold out" : vStock <= 5 ? ` — only ${vStock} left` : ""}`}
+                      aria-label={`${v.name}${outOfStock ? " — sold out" : vStatus === "LOW_STOCK" ? " — low stock" : ""}`}
                       className={`relative px-3.5 py-2 text-xs border transition-all ${
                         isSelected
                           ? "bg-foreground text-background border-foreground"
@@ -538,9 +548,9 @@ function ProductPage() {
                           sold out
                         </span>
                       )}
-                      {!outOfStock && vStock <= 5 && (
+                      {!outOfStock && vStatus === "LOW_STOCK" && (
                         <span className="absolute -top-2 left-1/2 -translate-x-1/2 text-[9px] uppercase tracking-wide text-amber-600">
-                          {vStock} left
+                          Low Stock
                         </span>
                       )}
                     </button>
@@ -580,7 +590,7 @@ function ProductPage() {
           ) : globalSoldOut ? (
             <div className="mt-8 space-y-3">
               <div className="flex items-center gap-2 p-4 bg-muted/50 border border-border">
-                <InventoryBadge availableStock={0} />
+                <InventoryBadge status="OUT_OF_STOCK" />
                 <p className="text-sm text-muted-foreground">
                   This product is currently unavailable.
                 </p>
@@ -609,8 +619,8 @@ function ProductPage() {
                   max={bounds.remainingAllowed > 0 ? bounds.remainingAllowed : 1}
                   disabled={displayInStock !== null && !bounds.canAdd}
                 />
-                {effectiveStock > 0 && effectiveStock <= 5 && bounds.canAdd && (
-                  <span className="text-xs text-amber-600">Only {effectiveStock} left</span>
+                {effectiveStock > 0 && effectiveStatus === "LOW_STOCK" && bounds.canAdd && (
+                  <span className="text-xs text-amber-600">Low Stock</span>
                 )}
                 <button
                   onClick={handleAddToCart}

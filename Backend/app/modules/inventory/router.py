@@ -107,7 +107,11 @@ async def get_stock_summary(
 )
 async def list_reservations(
     product_id: uuid.UUID | None = Query(None),
-    status: str | None = Query(None, pattern="^(ACTIVE|COMPLETED|RELEASED|EXPIRED)$"),
+    status: str | None = Query(
+        None,
+        pattern="^(ACTIVE|CHECKOUT_IN_PROGRESS|COMPLETED|RELEASED|CANCELLED|"
+        "PAYMENT_FAILED|EXPIRED)$",
+    ),
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=100),
     db: AsyncSession = Depends(get_db),

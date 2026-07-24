@@ -3,6 +3,8 @@ from datetime import datetime
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from app.modules.inventory.status import InventoryStatus
+
 
 class CategoryBase(BaseModel):
     name: str = Field(max_length=200)
@@ -100,6 +102,8 @@ class CategoryProductItem(BaseModel):
     status: str
     is_featured: bool
     primary_image: str | None = None
+    inventory_status: InventoryStatus = InventoryStatus.IN_STOCK
+    can_purchase: bool = True
 
 
 class CategoryProductsResponse(BaseModel):

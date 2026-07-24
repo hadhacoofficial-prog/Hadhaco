@@ -8,7 +8,7 @@ import { EmptyState } from "@/components/site/EmptyState";
 import { StockPill } from "@/components/site/InventoryBadge";
 import { useWishlist } from "@/stores/wishlist";
 import { useCart } from "@/stores/cart";
-import { useInventoryStore, inventoryKey } from "@/stores/inventory";
+import { useInventoryStore, inventoryKey, toCustomerStatus } from "@/stores/inventory";
 import { hydrateInventoryFromProduct } from "@/hooks/inventory/hydrateInventory";
 import { api } from "@/lib/api/client";
 import { queryKeys } from "@/lib/api/queryKeys";
@@ -90,7 +90,9 @@ function WishlistPage() {
                       alt={item.name}
                       className={`w-full h-full object-cover transition-transform duration-700 group-hover:scale-105 ${isSoldOut ? "opacity-60" : ""}`}
                     />
-                    {entry && !isSoldOut && <StockPill availableStock={entry.availableStock} />}
+                    {entry && !isSoldOut && (
+                      <StockPill status={toCustomerStatus(entry.stockStatus)} />
+                    )}
                     {isSoldOut && (
                       <div
                         className="absolute inset-0 bg-background/40 flex items-center justify-center"

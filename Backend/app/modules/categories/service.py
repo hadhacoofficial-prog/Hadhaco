@@ -22,6 +22,7 @@ from app.modules.categories.schemas import (
     NavCategoryItem,
     NavigationCategoriesResponse,
 )
+from app.modules.inventory.status import compute_inventory_status
 from app.modules.media.repository import ImageRepository
 
 _image_repo = ImageRepository()
@@ -185,7 +186,22 @@ class CategoryService:
         rows, total = await self._repo.get_products(
             db, cat_id, page=page, page_size=page_size
         )
-        items = [CategoryProductItem.model_validate(dict(r)) for r in rows]
+        items = []
+        for r in rows:
+            row = dict(r)
+            available = max(
+                row["stock_quantity"] - row["reserved_quantity"] - row["sold_quantity"],
+                0,
+            )
+            inventory_status, can_purchase = compute_inventory_status(
+                available,
+                row["low_stock_threshold"],
+                row["track_inventory"],
+                row["allow_backorder"],
+            )
+            row["inventory_status"] = inventory_status
+            row["can_purchase"] = can_purchase
+            items.append(CategoryProductItem.model_validate(row))
         return CategoryProductsResponse(
             items=items,
             total=total,

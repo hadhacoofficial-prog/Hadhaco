@@ -138,7 +138,8 @@ class InventoryRepository:
                     GREATEST(p.stock_quantity - p.reserved_quantity - p.sold_quantity, 0)
                         AS available_quantity,
                     (SELECT COUNT(*) FROM inventory_reservations ir
-                     WHERE ir.product_id = p.id AND ir.status = 'ACTIVE') AS active_reservations
+                     WHERE ir.product_id = p.id
+                     AND ir.status IN ('ACTIVE', 'CHECKOUT_IN_PROGRESS')) AS active_reservations
                 FROM products p
                 WHERE p.id = :pid AND p.deleted_at IS NULL
                 """),

@@ -216,6 +216,11 @@ class Settings(BaseSettings):
     SELLER_STATE: str = "Maharashtra"
     SELLER_GSTIN: str = ""
     LOW_STOCK_THRESHOLD: int = 5
+    # Grace window a reservation gets once it enters CHECKOUT_IN_PROGRESS
+    # (Razorpay order created) — independent of the 2-minute cart-hold TTL
+    # in ReservationService._RESERVATION_TTL_MINUTES. See inventory domain
+    # plan §2.1a for why these two timers must stay separate.
+    RESERVATION_CHECKOUT_GRACE_MINUTES: int = 10
     ORDER_NUMBER_PREFIX: str = "HD"
     INVOICE_NUMBER_PREFIX: str = "INV"
 

@@ -598,6 +598,10 @@ class TestCatalogServiceExtra:
         mock_product.base_price = 999.0
         mock_product.compare_at_price = None
         mock_product.stock_quantity = 5
+        mock_product.available_stock = 5
+        mock_product.low_stock_threshold = 5
+        mock_product.track_inventory = True
+        mock_product.allow_backorder = False
         mock_product.status = "active"
         mock_product.is_featured = False
         mock_product.is_new_arrival = True

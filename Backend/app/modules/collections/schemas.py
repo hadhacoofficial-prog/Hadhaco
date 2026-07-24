@@ -3,6 +3,8 @@ from datetime import datetime
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from app.modules.inventory.status import InventoryStatus
+
 
 class CollectionCreateRequest(BaseModel):
     name: str = Field(max_length=200)
@@ -100,6 +102,8 @@ class CollectionProductItem(BaseModel):
     is_featured: bool
     primary_image: str | None = None
     sort_order: int = 0
+    inventory_status: InventoryStatus = InventoryStatus.IN_STOCK
+    can_purchase: bool = True
 
 
 class BulkActionRequest(BaseModel):

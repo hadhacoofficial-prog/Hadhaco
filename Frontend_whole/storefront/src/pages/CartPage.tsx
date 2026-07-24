@@ -44,17 +44,29 @@ export default function CartPage() {
         const availableStock = variant
           ? (variant.available_stock ?? variant.stock_quantity)
           : (data.available_stock ?? data.stock_quantity);
+        const status =
+          (variant ? variant.inventory_status : data.inventory_status) ??
+          (availableStock === 0 ? "OUT_OF_STOCK" : "IN_STOCK");
         return {
           lineKey: cartLineKey(line.productId, line.variantId),
           availableStock,
           maxOrderQty: data.max_order_quantity ?? 0,
+          status,
         };
       },
     })),
   });
 
-  // Build lineKey → { availableStock, maxOrderQty } map
-  const stockMap: Record<string, { availableStock: number; maxOrderQty: number }> = {};
+  // Build lineKey → { availableStock, maxOrderQty, status } map. `status` is
+  // customer-display only; availableStock/maxOrderQty stay internal.
+  const stockMap: Record<
+    string,
+    {
+      availableStock: number;
+      maxOrderQty: number;
+      status: "IN_STOCK" | "LOW_STOCK" | "OUT_OF_STOCK";
+    }
+  > = {};
   stockQueries.forEach((q) => {
     if (q.data) stockMap[q.data.lineKey] = q.data;
   });
@@ -232,10 +244,7 @@ export default function CartPage() {
                         {/* Available stock badge */}
                         {si !== undefined && (
                           <div className="mt-2">
-                            <InventoryBadge
-                              availableStock={si.availableStock}
-                              isReserved={reserved}
-                            />
+                            <InventoryBadge status={si.status} isReserved={reserved} />
                           </div>
                         )}
 
@@ -245,7 +254,7 @@ export default function CartPage() {
                             <AlertTriangle className="size-3 shrink-0" aria-hidden />
                             {bounds && si && si.maxOrderQty > 0 && line.qty > si.maxOrderQty
                               ? `Max ${si.maxOrderQty} per order — reduce quantity`
-                              : `Only ${si?.availableStock} available — reduce quantity`}
+                              : "Requested quantity exceeds available stock — reduce quantity"}
                           </p>
                         )}
 

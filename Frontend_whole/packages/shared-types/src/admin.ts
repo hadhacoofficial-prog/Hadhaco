@@ -1,4 +1,9 @@
-import type { ProductImage, ProductVariant, ProductAttribute } from "./public";
+import type {
+  ProductImage,
+  ProductVariant,
+  ProductAttribute,
+  InventoryStatus,
+} from "./public";
 
 // ── Company config ───────────────────────────────────────────────────────────
 export interface CompanyConfig {
@@ -204,6 +209,8 @@ export interface ProductListItem {
   compare_at_price: number | null;
   stock_quantity: number;
   available_stock?: number;
+  inventory_status?: InventoryStatus;
+  can_purchase?: boolean;
   status: string;
   is_featured: boolean;
   is_new_arrival: boolean;
@@ -256,6 +263,8 @@ export interface ProductDetail {
   low_stock_threshold: number;
   stock_quantity: number;
   available_stock?: number;
+  inventory_status?: InventoryStatus;
+  can_purchase?: boolean;
   reserved_quantity?: number;
   sold_quantity?: number;
   max_order_quantity?: number;

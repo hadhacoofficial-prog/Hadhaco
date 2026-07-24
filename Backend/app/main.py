@@ -348,6 +348,11 @@ def _mount_routers(app: FastAPI) -> None:
             }
         data["pool"]["runtime"] = get_pool_status()
 
+        # ── SSE pub/sub listener health ─────────────────────────────────────
+        from app.core.pubsub import get_pubsub_health
+
+        data["pubsub"] = get_pubsub_health()
+
         # ── Live Redis server-side stats ──────────────────────────────────
         try:
             from app.core.cache import (

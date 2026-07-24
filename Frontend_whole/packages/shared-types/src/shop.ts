@@ -1,6 +1,6 @@
-import type { ProductVariant } from "./public";
+import type { ProductVariant, InventoryStatus } from "./public";
 import type { ImageBundle } from "./media";
-export type { ProductVariant };
+export type { ProductVariant, InventoryStatus };
 
 export type Money = number; // INR rupees
 
@@ -41,8 +41,16 @@ export interface Product {
   reviewCount?: number;
   collectionIds: string[];
   gender: Gender;
+  /** Internal only — quantity-stepper caps, SSE sync, cart validation. Never
+   * render as text; use `inventoryStatus` for all customer-facing display. */
   inStock: boolean;
   availableStock: number;
+  /** Customer-facing business state — the only inventory signal storefront
+   * UI may render. Optional so existing mock/test data that predates this
+   * field still type-checks; display components fall back to deriving it
+   * from `availableStock` (never render `availableStock` itself). */
+  inventoryStatus?: InventoryStatus;
+  canPurchase?: boolean;
   maxOrderQty?: number;
   isNew?: boolean;
   isBestseller?: boolean;

@@ -18,6 +18,9 @@ import { inventoryLog } from "@/lib/sync/syncLog";
 // ── Types ─────────────────────────────────────────────────────────────────────
 
 export type StockStatus = "in_stock" | "low_stock" | "sold_out" | "backorder";
+/** Customer-facing business state — the only inventory signal storefront UI
+ * may render as text. See inventory domain plan §9. */
+export type CustomerInventoryStatus = "IN_STOCK" | "LOW_STOCK" | "OUT_OF_STOCK";
 export type InventorySource = "api" | "optimistic" | "sse" | "poll";
 export type InventoryConfidence = "high" | "medium" | "low";
 
@@ -341,4 +344,35 @@ export function selectBadgeStatus(productId: string, variantId?: string | null) 
 /** Get the inventory store version. Used to detect any change. */
 export function selectInventoryVersion() {
   return (state: InventoryState): number => state.version;
+}
+
+/**
+ * Collapse the internal 4-state StockStatus into the 3 states customers are
+ * allowed to see. Used by components reading live store/SSE state rather
+ * than a fresh API payload (which already carries `inventory_status`
+ * directly) — never bypass this to render `availableStock` as text.
+ * `backorder` presents as IN_STOCK (still purchasable); `sold_out` as
+ * OUT_OF_STOCK. See inventory domain plan §9.4 / backend
+ * compute_inventory_status for the server-side equivalent.
+ */
+export function toCustomerStatus(status: StockStatus): CustomerInventoryStatus {
+  switch (status) {
+    case "sold_out":
+      return "OUT_OF_STOCK";
+    case "low_stock":
+      return "LOW_STOCK";
+    case "in_stock":
+    case "backorder":
+    default:
+      return "IN_STOCK";
+  }
+}
+
+/** Get the customer-facing inventory status for the stock badge (never a
+ * number). Falls back to OUT_OF_STOCK when the entry isn't hydrated yet,
+ * matching selectBadgeStatus's existing "sold_out" default. */
+export function selectBadgeCustomerStatus(productId: string, variantId?: string | null) {
+  const key = inventoryKey(productId, variantId);
+  return (state: InventoryState): CustomerInventoryStatus =>
+    toCustomerStatus(state.entries[key]?.stockStatus ?? "sold_out");
 }

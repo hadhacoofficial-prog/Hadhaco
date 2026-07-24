@@ -246,6 +246,15 @@ def get_redis_pool() -> aioredis.Redis:
             encoding="utf-8",
             decode_responses=True,
             max_connections=20,
+            # Defense-in-depth for the long-lived pub/sub subscriber
+            # (app/core/pubsub.py): OS-level TCP keepalive helps the kernel
+            # notice a half-open connection sooner, and health_check_interval
+            # makes get_message()'s periodic health probing (not .listen(),
+            # which has no timeout and can't self-check) more robust. Neither
+            # changes behavior for the short-lived cache calls in this module,
+            # which already bound themselves via asyncio.wait_for.
+            socket_keepalive=True,
+            health_check_interval=30,
         )
     return _redis_pool
 

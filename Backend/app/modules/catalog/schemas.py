@@ -2,8 +2,9 @@ import uuid
 from datetime import datetime
 from typing import Any
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
+from app.modules.inventory.status import InventoryStatus, compute_inventory_status
 from app.modules.media import storage
 from app.modules.media.schemas import ImageVariantOut
 
@@ -149,6 +150,14 @@ class ProductVariantResponse(BaseModel):
     weight_grams: float | None
     is_active: bool
     sort_order: int
+    # Customer-display fields. Populated by ProductResponse's model_validator
+    # (parent product owns track_inventory/allow_backorder/low_stock_threshold
+    # — variants have no threshold of their own) rather than computed here in
+    # isolation. Default to IN_STOCK/True so a bare ProductVariantResponse
+    # constructed outside that flow (e.g. in a future admin-only context)
+    # doesn't silently read as OUT_OF_STOCK.
+    inventory_status: InventoryStatus = InventoryStatus.IN_STOCK
+    can_purchase: bool = True
 
     model_config = {"from_attributes": True}
 
@@ -358,6 +367,14 @@ class ProductResponse(BaseModel):
     variants: list[ProductVariantResponse] = []
     attributes: list[ProductAttributeResponse] = []
     collections: list[ProductCollectionRef] = []
+    # Customer-display fields, computed below from the raw stock fields
+    # already on this model — never re-derived anywhere else (inventory
+    # domain plan §0 principle 1 / §9.1). Raw fields (stock_quantity,
+    # reserved_quantity, available_stock, ...) are kept for admin and for
+    # the storefront's internal quantity-stepper/SSE plumbing — customer UI
+    # must only render inventory_status/can_purchase.
+    inventory_status: InventoryStatus = InventoryStatus.IN_STOCK
+    can_purchase: bool = True
 
     model_config = {"from_attributes": True}
 
@@ -375,6 +392,27 @@ class ProductResponse(BaseModel):
         if v and hasattr(v[0], "variants") and hasattr(v[0], "metadata_"):
             return [ProductImageResponse.from_image(img) for img in v]
         return v
+
+    @model_validator(mode="after")
+    def _compute_inventory_status(self) -> "ProductResponse":
+        status, can_purchase = compute_inventory_status(
+            self.available_stock,
+            self.low_stock_threshold,
+            self.track_inventory,
+            self.allow_backorder,
+        )
+        self.inventory_status = status
+        self.can_purchase = can_purchase
+        for variant in self.variants:
+            v_status, v_can_purchase = compute_inventory_status(
+                variant.available_stock,
+                self.low_stock_threshold,
+                self.track_inventory,
+                self.allow_backorder,
+            )
+            variant.inventory_status = v_status
+            variant.can_purchase = v_can_purchase
+        return self
 
 
 class ProductListItem(BaseModel):
@@ -406,6 +444,11 @@ class ProductListItem(BaseModel):
     average_rating: float | None = None
     review_count: int = 0
     collections: list[ProductCollectionRef] = []
+    # Customer-display fields — computed by CatalogService.list_products from
+    # the ORM Product's track_inventory/allow_backorder/low_stock_threshold
+    # (not exposed as raw fields here; see inventory domain plan §9.1/§9.2).
+    inventory_status: InventoryStatus = InventoryStatus.IN_STOCK
+    can_purchase: bool = True
 
     model_config = {"from_attributes": True}
 

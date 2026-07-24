@@ -135,6 +135,10 @@ class TestOrderServiceCreatePaymentIntent:
                 AsyncMock(),
             ),
             patch(
+                "app.modules.orders.service._reservation_svc.lock_for_checkout",
+                AsyncMock(),
+            ),
+            patch(
                 "app.modules.orders.service._repo.generate_order_number",
                 AsyncMock(return_value="ORD-2026-0001"),
             ),
@@ -271,6 +275,10 @@ class TestOrderServiceCreatePaymentIntent:
                 AsyncMock(),
             ),
             patch(
+                "app.modules.orders.service._reservation_svc.lock_for_checkout",
+                AsyncMock(),
+            ),
+            patch(
                 "app.modules.orders.service._repo.generate_order_number",
                 AsyncMock(return_value="ORD-2026-0002"),
             ),
@@ -335,6 +343,10 @@ class TestOrderServiceCreatePaymentIntent:
             ),
             patch(
                 "app.modules.orders.service._reservation_svc.link_reservations_to_order",
+                AsyncMock(),
+            ),
+            patch(
+                "app.modules.orders.service._reservation_svc.lock_for_checkout",
                 AsyncMock(),
             ),
             patch(
@@ -412,6 +424,10 @@ class TestOrderServiceCreatePaymentIntent:
                 AsyncMock(),
             ),
             patch(
+                "app.modules.orders.service._reservation_svc.lock_for_checkout",
+                AsyncMock(),
+            ),
+            patch(
                 "app.modules.orders.service._repo.generate_order_number",
                 AsyncMock(return_value="ORD-2026-0004"),
             ),
@@ -478,6 +494,10 @@ class TestOrderServiceCreatePaymentIntent:
             ),
             patch(
                 "app.modules.orders.service._reservation_svc.link_reservations_to_order",
+                AsyncMock(),
+            ),
+            patch(
+                "app.modules.orders.service._reservation_svc.lock_for_checkout",
                 AsyncMock(),
             ),
             patch(

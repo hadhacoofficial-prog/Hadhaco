@@ -18,6 +18,7 @@ from app.modules.collections.schemas import (
     CollectionUpdateRequest,
     ReorderProductsRequest,
 )
+from app.modules.inventory.status import compute_inventory_status
 from app.modules.media.repository import ImageRepository
 
 _repo = CollectionRepository()
@@ -215,5 +216,20 @@ class CollectionService:
         rows, total = await _repo.get_products_in_collection(
             db, col_id, page=page, page_size=page_size
         )
-        items = [CollectionProductItem.model_validate(dict(r)) for r in rows]
+        items = []
+        for r in rows:
+            row = dict(r)
+            available = max(
+                row["stock_quantity"] - row["reserved_quantity"] - row["sold_quantity"],
+                0,
+            )
+            inventory_status, can_purchase = compute_inventory_status(
+                available,
+                row["low_stock_threshold"],
+                row["track_inventory"],
+                row["allow_backorder"],
+            )
+            row["inventory_status"] = inventory_status
+            row["can_purchase"] = can_purchase
+            items.append(CollectionProductItem.model_validate(row))
         return items, total

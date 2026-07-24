@@ -11,7 +11,8 @@ import { InventoryBadge } from "@/components/site/InventoryBadge";
 import { ReservationCard } from "@/components/reservation/ReservationCard";
 import { useActiveReservations } from "@/hooks/useActiveReservations";
 import { useCart, cartLineKey } from "@/stores/cart";
-import { useInventoryStore, inventoryKey } from "@/stores/inventory";
+import { useInventoryStore, inventoryKey, toCustomerStatus } from "@/stores/inventory";
+import type { CustomerInventoryStatus } from "@/stores/inventory";
 import { hydrateInventoryFromProduct } from "@/hooks/inventory/hydrateInventory";
 import { computeQuantityBounds } from "@/lib/cartQuantity";
 import { api } from "@/lib/api/client";
@@ -62,9 +63,14 @@ function CartPage() {
 
   const inventoryEntries = useInventoryStore((s) => s.entries);
 
-  // Build lineKey → { availableStock, maxOrderQty } map, preferring the
-  // live store entry (SSE-updated) over the polled REST fallback.
-  const stockMap: Record<string, { availableStock: number; maxOrderQty: number }> = {};
+  // Build lineKey → { availableStock, maxOrderQty, status } map, preferring
+  // the live store entry (SSE-updated) over the polled REST fallback.
+  // `status` is customer-display only — `availableStock`/`maxOrderQty` stay
+  // internal (stepper cap, over-qty detection).
+  const stockMap: Record<
+    string,
+    { availableStock: number; maxOrderQty: number; status: CustomerInventoryStatus }
+  > = {};
   lines.forEach((line, i) => {
     const key = cartLineKey(line.productId, line.variantId);
     const entry = inventoryEntries[inventoryKey(line.productId, line.variantId)];
@@ -72,6 +78,7 @@ function CartPage() {
       stockMap[key] = {
         availableStock: entry.availableStock,
         maxOrderQty: entry.maxOrderQuantity,
+        status: toCustomerStatus(entry.stockStatus),
       };
       return;
     }
@@ -81,7 +88,10 @@ function CartPage() {
     const availableStock = variant
       ? (variant.available_stock ?? variant.stock_quantity)
       : (polled.available_stock ?? polled.stock_quantity);
-    stockMap[key] = { availableStock, maxOrderQty: polled.max_order_quantity ?? 0 };
+    const status =
+      (variant ? variant.inventory_status : polled.inventory_status) ??
+      (availableStock === 0 ? "OUT_OF_STOCK" : "IN_STOCK");
+    stockMap[key] = { availableStock, maxOrderQty: polled.max_order_quantity ?? 0, status };
   });
 
   // Detect items where cart qty exceeds the effective cap (stock or order limit)
@@ -246,7 +256,7 @@ function CartPage() {
                           {/* Available stock badge */}
                           {si !== undefined && (
                             <div className="mt-2">
-                              <InventoryBadge availableStock={si.availableStock} />
+                              <InventoryBadge status={si.status} />
                             </div>
                           )}
 
@@ -256,7 +266,7 @@ function CartPage() {
                               <AlertTriangle className="size-3 shrink-0" aria-hidden />
                               {bounds && si && si.maxOrderQty > 0 && line.qty > si.maxOrderQty
                                 ? `Max ${si.maxOrderQty} per order — reduce quantity`
-                                : `Only ${si?.availableStock} available — reduce quantity`}
+                                : "Requested quantity exceeds available stock — reduce quantity"}
                             </p>
                           )}
 

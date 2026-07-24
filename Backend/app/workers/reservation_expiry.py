@@ -15,6 +15,10 @@ never race on the same row.
 
 import structlog
 
+from app.modules.inventory.metrics import (
+    worker_duration_seconds,
+    worker_failures_total,
+)
 from app.workers.base import run_with_session
 
 log = structlog.get_logger(__name__)
@@ -29,11 +33,16 @@ async def _expire_reservations(db) -> None:
     from app.modules.orders.service import OrderService
 
     svc = ReservationService()
-    # Publishes its own (product-scoped, available-stock-carrying)
-    # ReservationExpiredEvent right after committing the release, so
-    # connected clients see accurate availability with no further round
-    # trip needed for the common case.
-    expired_order_ids = await svc.expire_stale_reservations(db)
+    try:
+        with worker_duration_seconds.time():
+            # Publishes its own (product-scoped, available-stock-carrying)
+            # ReservationExpiredEvent right after committing the release, so
+            # connected clients see accurate availability with no further
+            # round trip needed for the common case.
+            expired_order_ids = await svc.expire_stale_reservations(db)
+    except Exception:
+        worker_failures_total.inc()
+        raise
 
     if expired_order_ids:
         log.info("reservations_expired_batch", count=len(expired_order_ids))

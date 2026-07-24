@@ -28,6 +28,7 @@ from app.modules.catalog.schemas import (
     StockAdjustRequest,
 )
 from app.modules.inventory.reservation_service import ReservationService
+from app.modules.inventory.status import compute_inventory_status
 
 _repo = ProductRepository()
 _reservation_svc = ReservationService()
@@ -168,6 +169,12 @@ class CatalogService:
             cols = [
                 ProductCollectionRef.model_validate(c) for c in col_map.get(p.id, [])
             ]
+            inventory_status, can_purchase = compute_inventory_status(
+                p.available_stock,
+                p.low_stock_threshold,
+                p.track_inventory,
+                p.allow_backorder,
+            )
             list_items.append(
                 ProductListItem(
                     id=p.id,
@@ -181,6 +188,8 @@ class CatalogService:
                     compare_at_price=p.compare_at_price,
                     stock_quantity=p.stock_quantity,
                     available_stock=p.available_stock,
+                    inventory_status=inventory_status,
+                    can_purchase=can_purchase,
                     status=p.status,
                     is_featured=p.is_featured,
                     is_new_arrival=p.is_new_arrival,

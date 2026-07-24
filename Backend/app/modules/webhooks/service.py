@@ -357,9 +357,35 @@ class WebhookService:
                 },
             )
 
-        # Complete stock reservation (reserved -> sold), falling back to the
-        # late-payment path if reservations had already expired. Idempotent.
-        await ReservationService().complete_reservations_for_order(db, order.id)
+        # Complete stock reservation (reserved -> sold). Late Payment Policy
+        # (inventory domain plan §2.2a, Option A): if the reservation had
+        # already expired, route to refund instead of silently re-acquiring
+        # stock. Idempotent either way.
+        reservation_outcome = (
+            await ReservationService().complete_reservations_for_order(db, order.id)
+        )
+
+        if reservation_outcome == "refund_required":
+            from app.modules.orders.service import OrderService
+
+            await OrderService().handle_late_payment_refund(db, order)
+            await AuditService().log(
+                db,
+                actor_id=None,
+                action="payment.captured_refund_required",
+                resource_type="order",
+                resource_id=order.id,
+                metadata={
+                    "razorpay_payment_id": rzp_payment_id,
+                    "razorpay_order_id": rzp_order_id,
+                    "reason": "reservation_expired_before_capture",
+                },
+                source="webhook",
+            )
+            # No order-confirm/coupon/invoice — the order was never fulfilled.
+            # No PaymentCapturedEvent either: nothing downstream should treat
+            # this as a normal successful order.
+            return _HandlerResult(order_id=order.id, event=None)
 
         await order_repo.update(
             db,

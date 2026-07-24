@@ -1,10 +1,21 @@
-/** Stock status badge shown on product cards and product detail pages. */
+import type { CustomerInventoryStatus } from "@/stores/inventory";
+
+/**
+ * Stock status badge shown on product cards and product detail pages.
+ *
+ * Customer inventory presentation rules (inventory domain plan §9): renders
+ * ONLY a business state, never a quantity. IN_STOCK renders nothing,
+ * LOW_STOCK/OUT_OF_STOCK render a labeled badge. Never pass a raw
+ * `availableStock` number into this component — resolve it to a
+ * CustomerInventoryStatus first (via the API's `inventory_status` field or
+ * `toCustomerStatus` from stores/inventory).
+ */
 export function InventoryBadge({
-  availableStock,
+  status,
   isReserved = false,
   className = "",
 }: {
-  availableStock: number;
+  status: CustomerInventoryStatus;
   isReserved?: boolean;
   className?: string;
 }) {
@@ -20,49 +31,42 @@ export function InventoryBadge({
     );
   }
 
-  if (availableStock === 0) {
+  if (status === "OUT_OF_STOCK") {
     return (
       <span
         className={`inline-flex items-center gap-1 text-[11px] uppercase tracking-[0.18em] text-destructive font-medium ${className}`}
-        aria-label="Sold out"
+        aria-label="Out of stock"
       >
         <span className="size-1.5 rounded-full bg-destructive" aria-hidden />
-        Sold Out
+        Out of Stock
       </span>
     );
   }
 
-  if (availableStock <= 5) {
+  if (status === "LOW_STOCK") {
     return (
       <span
         className={`inline-flex items-center gap-1 text-[11px] uppercase tracking-[0.18em] text-amber-600 font-medium ${className}`}
-        aria-label={`Only ${availableStock} left in stock`}
+        aria-label="Low stock"
         aria-live="polite"
       >
         <span className="size-1.5 rounded-full bg-amber-500" aria-hidden />
-        Only {availableStock} left
+        Low Stock
       </span>
     );
   }
 
-  return (
-    <span
-      className={`inline-flex items-center gap-1 text-[11px] uppercase tracking-[0.18em] text-emerald-600 font-medium ${className}`}
-      aria-label="In stock"
-    >
-      <span className="size-1.5 rounded-full bg-emerald-500" aria-hidden />
-      In Stock
-    </span>
-  );
+  // IN_STOCK: show nothing.
+  return null;
 }
 
 /** Compact pill badge for product cards (overlaid on image). */
 export function StockPill({
-  availableStock,
+  status,
   isReserved = false,
   countdown,
 }: {
-  availableStock: number;
+  status: CustomerInventoryStatus;
   isReserved?: boolean;
   countdown?: string;
 }) {
@@ -74,17 +78,17 @@ export function StockPill({
       </span>
     );
   }
-  if (availableStock === 0) {
+  if (status === "OUT_OF_STOCK") {
     return (
       <span className="absolute bottom-3 left-3 bg-destructive/90 text-white text-[10px] tracking-[0.18em] uppercase px-2.5 py-1 pointer-events-none">
         Sold Out
       </span>
     );
   }
-  if (availableStock <= 5) {
+  if (status === "LOW_STOCK") {
     return (
       <span className="absolute bottom-3 left-3 bg-amber-600/90 text-white text-[10px] tracking-[0.18em] uppercase px-2.5 py-1 pointer-events-none">
-        Only {availableStock} Left
+        Low Stock
       </span>
     );
   }

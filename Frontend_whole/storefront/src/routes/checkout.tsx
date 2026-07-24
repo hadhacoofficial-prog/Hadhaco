@@ -885,7 +885,7 @@ function CheckoutPage() {
                           <p key={`${line.productId}::${line.variantId ?? ""}`} className="mt-0.5">
                             {entry?.availableStock === 0
                               ? `${line.snapshot?.name ?? "An item"} is now sold out.`
-                              : `Only ${entry?.availableStock} of ${line.snapshot?.name ?? "an item"} available.`}
+                              : `${line.snapshot?.name ?? "An item"} has limited stock available — reduce the quantity to continue.`}
                           </p>
                         );
                       })}

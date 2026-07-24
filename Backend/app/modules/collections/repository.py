@@ -272,6 +272,8 @@ class CollectionRepository:
                 SELECT
                     p.id, p.sku, p.name, p.slug, p.category_id,
                     p.base_price, p.stock_quantity, p.status, p.is_featured,
+                    p.reserved_quantity, p.sold_quantity, p.low_stock_threshold,
+                    p.track_inventory, p.allow_backorder,
                     pc.sort_order,
                     (SELECT iv.url FROM images i
                      JOIN image_variants iv ON iv.image_id = i.id

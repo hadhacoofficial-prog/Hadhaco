@@ -4,6 +4,8 @@ from typing import Any
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.modules.inventory.status import compute_inventory_status
+
 
 class SearchService:
     async def full_text_search(
@@ -90,14 +92,18 @@ class SearchService:
 
             items_sql = text(
                 f"SELECT p.id, p.name, p.slug, p.base_price, p.compare_at_price, "  # nosec B608
-                f"p.stock_quantity, p.metal_type, p.is_featured "
+                f"p.stock_quantity, p.reserved_quantity, p.sold_quantity, "
+                f"p.low_stock_threshold, p.track_inventory, p.allow_backorder, "
+                f"p.metal_type, p.is_featured "
                 f"FROM products p WHERE {fallback_sql} "
                 f"ORDER BY p.created_at DESC OFFSET :offset LIMIT :limit"
             )
         else:
             items_sql = text(
                 f"SELECT p.id, p.name, p.slug, p.base_price, p.compare_at_price, "  # nosec B608
-                f"p.stock_quantity, p.metal_type, p.is_featured, "
+                f"p.stock_quantity, p.reserved_quantity, p.sold_quantity, "
+                f"p.low_stock_threshold, p.track_inventory, p.allow_backorder, "
+                f"p.metal_type, p.is_featured, "
                 f"ts_rank(p.search_vector, plainto_tsquery('english', :query)) AS rank "
                 f"FROM products p WHERE {where_sql} "
                 f"ORDER BY rank DESC OFFSET :offset LIMIT :limit"
@@ -105,6 +111,21 @@ class SearchService:
 
         rows = await db.execute(items_sql, params)
         items = [dict(r._mapping) for r in rows.fetchall()]
+        for item in items:
+            available = max(
+                item["stock_quantity"]
+                - item["reserved_quantity"]
+                - item["sold_quantity"],
+                0,
+            )
+            inventory_status, can_purchase = compute_inventory_status(
+                available,
+                item["low_stock_threshold"],
+                item["track_inventory"],
+                item["allow_backorder"],
+            )
+            item["inventory_status"] = inventory_status.value
+            item["can_purchase"] = can_purchase
 
         import math
 

@@ -510,8 +510,12 @@ class OrderService:
             # ValidationError raised below would otherwise undo the release,
             # leaving stock locked for the full 2-minute reservation TTL
             # after a failed checkout the customer was told to retry.
+            # reason=PAYMENT_FAILED (not RELEASED): the reservation never
+            # reached CHECKOUT_IN_PROGRESS since Razorpay itself rejected the
+            # order — this is a payment-infrastructure failure, distinct from
+            # a user cancellation or generic system cleanup.
             await _reservation_svc.release_order_reservations(
-                db, order.id, reason="RELEASED"
+                db, order.id, reason="PAYMENT_FAILED"
             )
             await db.commit()
             raise ValidationError(
@@ -526,6 +530,12 @@ class OrderService:
                 "status": "payment_pending",
             },
         )
+
+        # Customer is now genuinely on the Razorpay payment page — protect the
+        # reservation from the short cart-hold TTL for the checkout grace
+        # window (inventory domain plan §2, §2.1a). No-op if, somehow, the
+        # reservation already left ACTIVE by this point.
+        await _reservation_svc.lock_for_checkout(db, order.id)
 
         duration_ms = round((time.perf_counter() - t0) * 1000)
         log.info(
@@ -611,32 +621,23 @@ class OrderService:
 
         log.info("payment_signature_verified", order_id=str(order.id))
 
-        # Complete stock reservation (reserved → sold) with row-level locking,
-        # falling back to the late-payment path if reservations had already
-        # expired before this call. See ReservationService.
-        await _reservation_svc.complete_reservations_for_order(db, order.id)
+        # Complete stock reservation (reserved → sold) with row-level locking.
+        # Late Payment Policy (inventory domain plan §2.2a, Option A): if the
+        # reservation had already expired before this call, "refund_required"
+        # is returned instead of silently re-acquiring stock — never oversell
+        # to honor a late payment. See ReservationService.
+        reservation_outcome = await _reservation_svc.complete_reservations_for_order(
+            db, order.id
+        )
 
-        # Finalize coupon
-        if order.coupon_id:
-            from app.modules.coupons.service import CouponService
-
-            await CouponService().finalize_usage(db, order.coupon_id, user_id, order.id)
-
-        # Clear cart
-        from app.modules.cart.repository import CartRepository
-
-        cart_repo = CartRepository()
-        cart = await cart_repo.get_for_user(db, user_id)
-        if cart:
-            await cart_repo.clear_items(db, cart.id)
-
-        # Record payment. Wrapped in a SAVEPOINT (begin_nested) rather than
-        # a plain try/except: a duplicate razorpay_payment_id (frontend
-        # retry racing the Razorpay webhook, both reaching this method
-        # before either commits) raises IntegrityError against the unique
-        # index on that column — the savepoint rolls back only this insert,
-        # not the reservation-completion/coupon/cart work already done in
-        # this same transaction.
+        # Record payment regardless of outcome — Razorpay already captured
+        # the money; that fact doesn't change based on inventory state.
+        # Wrapped in a SAVEPOINT (begin_nested) rather than a plain
+        # try/except: a duplicate razorpay_payment_id (frontend retry racing
+        # the Razorpay webhook, both reaching this method before either
+        # commits) raises IntegrityError against the unique index on that
+        # column — the savepoint rolls back only this insert, not the
+        # reservation-completion work already done in this same transaction.
         from app.modules.payments.repository import PaymentRepository
 
         now = datetime.now(UTC)
@@ -663,6 +664,30 @@ class OrderService:
                 order_id=str(order.id),
                 razorpay_payment_id=payload.razorpay_payment_id,
             )
+
+        if reservation_outcome == "refund_required":
+            await self.handle_late_payment_refund(db, order)
+            await db.commit()
+            return VerifyOrderPaymentResponse(
+                success=True,
+                order_id=str(order.id),
+                order_number=order.order_number,
+                refund_pending=True,
+            )
+
+        # Finalize coupon
+        if order.coupon_id:
+            from app.modules.coupons.service import CouponService
+
+            await CouponService().finalize_usage(db, order.coupon_id, user_id, order.id)
+
+        # Clear cart
+        from app.modules.cart.repository import CartRepository
+
+        cart_repo = CartRepository()
+        cart = await cart_repo.get_for_user(db, user_id)
+        if cart:
+            await cart_repo.clear_items(db, cart.id)
 
         # Confirm order
         await _repo.update(
@@ -722,6 +747,54 @@ class OrderService:
             order_id=str(order.id),
             order_number=order.order_number,
         )
+
+    async def handle_late_payment_refund(self, db: AsyncSession, order) -> None:
+        """
+        Late Payment Policy (inventory domain plan §2.2a, Option A).
+
+        Called when a payment callback (frontend verify or Razorpay webhook)
+        arrives for an order whose reservation had already expired — the
+        payment is genuine captured money, but the inventory hold is gone,
+        so we never fabricate stock to fulfil it. Instead:
+          1. Route the order to refund_pending (payment_status stays "paid"
+             — the money genuinely was captured, that must stay visible).
+          2. Trigger an automatic full refund via the existing
+             PaymentService.initiate_refund (reuses the already-built
+             Razorpay refund call, row-locking, and double-refund
+             protection — no new refund mechanism).
+          3. On refund failure, leave the order in refund_pending for admin
+             manual follow-up via the existing admin refund endpoint —
+             never silently drop a captured-but-unfulfilled payment.
+
+        Does not commit — the caller (verify_order_payment /
+        _process_payment_captured) commits once after this returns, so the
+        order-status change and refund record land together even if the
+        Razorpay refund call itself raises (caught below, not re-raised).
+        """
+        await _repo.update(db, order.id, {"status": "refund_pending"})
+        log.warning(
+            "late_payment_refund_required",
+            order_id=str(order.id),
+            order_number=order.order_number,
+        )
+
+        from app.modules.payments.schemas import RefundRequest
+        from app.modules.payments.service import PaymentService
+
+        try:
+            await PaymentService().initiate_refund(
+                db, order.id, RefundRequest(amount=None, reason="late_payment_expired")
+            )
+        except Exception as exc:
+            # Refund call itself failed (e.g. Razorpay API error) — order
+            # stays refund_pending; an admin can retry via the manual refund
+            # endpoint. Never re-raise here: the payment WAS recorded and the
+            # order status change must still be committed by the caller.
+            log.error(
+                "late_payment_auto_refund_failed",
+                order_id=str(order.id),
+                error=str(exc),
+            )
 
     # ── Read operations ───────────────────────────────────────────────────────
 
@@ -932,7 +1005,7 @@ class OrderService:
         Already-cancelled orders produce no-ops in both sub-calls.
         """
         await _reservation_svc.release_order_reservations(
-            db, order_id, reason="RELEASED"
+            db, order_id, reason="CANCELLED"
         )
         if order.status == "confirmed":
             for item in order.items:

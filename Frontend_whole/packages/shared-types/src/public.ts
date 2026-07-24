@@ -1,6 +1,13 @@
 // Backend DTO types for PUBLIC (non-admin) API endpoints.
 // Mappers in src/lib/api/mappers.ts convert these to the frontend shop types.
 
+// ── Inventory ────────────────────────────────────────────────────────────────
+/** Customer-facing business state — the ONLY inventory signal storefront UI
+ * may render as text. Raw stock_quantity/available_stock fields below stay
+ * on the DTOs for internal use only (quantity-stepper max, SSE sync) — never
+ * for display. See inventory domain plan §9. */
+export type InventoryStatus = "IN_STOCK" | "LOW_STOCK" | "OUT_OF_STOCK";
+
 // ── Products ─────────────────────────────────────────────────────────────────
 export interface ProductImage {
   id: string;
@@ -30,6 +37,8 @@ export interface ProductVariant {
   price_adjustment: number;
   stock_quantity: number;
   available_stock?: number;
+  inventory_status?: InventoryStatus;
+  can_purchase?: boolean;
   weight_grams: number | null;
   is_active: boolean;
   sort_order: number;
@@ -155,6 +164,8 @@ export interface SearchProduct {
   compare_at_price: number | null;
   stock_quantity: number;
   available_stock?: number;
+  inventory_status?: InventoryStatus;
+  can_purchase?: boolean;
   metal_type: string | null;
   is_featured: boolean;
   rank?: number;

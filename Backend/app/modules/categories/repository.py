@@ -216,6 +216,8 @@ class CategoryRepository:
                 SELECT
                     p.id, p.sku, p.name, p.slug,
                     p.base_price, p.stock_quantity, p.status, p.is_featured,
+                    p.reserved_quantity, p.sold_quantity, p.low_stock_threshold,
+                    p.track_inventory, p.allow_backorder,
                     (SELECT iv.url FROM images i
                      JOIN image_variants iv ON iv.image_id = i.id
                      WHERE i.owner_type = 'product' AND i.owner_id = p.id

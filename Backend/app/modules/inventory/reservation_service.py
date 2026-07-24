@@ -16,7 +16,7 @@ from __future__ import annotations
 import asyncio
 import uuid
 from datetime import UTC, datetime, timedelta
-from typing import Any, cast
+from typing import Any, Literal, cast
 
 import structlog
 from sqlalchemy import text
@@ -24,12 +24,23 @@ from sqlalchemy.engine import CursorResult
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.cache import PREFIX_PRODUCT_DETAIL
+from app.core.config import settings
 from app.core.exceptions import InventoryError, NotFoundError, ValidationError
 from app.core.redis import (
     get_redis_pool,
     mark_redis_error,
     redis_available,
     safe_redis_delete,
+)
+from app.modules.inventory.metrics import (
+    checkout_completed_total,
+    checkout_failed_total,
+    checkout_started_total,
+    inventory_adjustments_total,
+    oversell_prevented_total,
+    reservation_created_total,
+    reservation_expired_total,
+    reservation_released_total,
 )
 from app.modules.inventory.models import InventoryReservation, InventoryTransaction
 
@@ -381,6 +392,7 @@ class ReservationService:
                         - stock["sold_quantity"]
                     )
                     if not stock["allow_backorder"] and available < delta:
+                        oversell_prevented_total.inc()
                         raise InventoryError(
                             f"Only {max(available, 0)} additional item(s) "
                             f"available for '{stock['item_name']}'. "
@@ -463,6 +475,7 @@ class ReservationService:
                 - stock["sold_quantity"]
             )
             if not stock["allow_backorder"] and available < quantity:
+                oversell_prevented_total.inc()
                 raise InventoryError(
                     f"Only {max(available, 0)} item(s) available for "
                     f"'{stock['item_name']}'. Please adjust your quantity."
@@ -526,6 +539,7 @@ class ReservationService:
         # and countdown timers. Only for genuinely new reservations (not reuses).
         new_reservations = [r for r in reservations if r.order_id is None]
         if new_reservations:
+            reservation_created_total.inc(len(new_reservations))
             try:
                 from app.core.events import ReservationCreatedEvent, event_bus
 
@@ -574,19 +588,58 @@ class ReservationService:
             params,
         )
 
+    async def lock_for_checkout(self, db: AsyncSession, order_id: uuid.UUID) -> None:
+        """
+        Move an order's reservations from ACTIVE to CHECKOUT_IN_PROGRESS.
+
+        Called from OrderService.create_payment_intent immediately after the
+        Razorpay order is accepted (i.e. the customer is now actually on the
+        payment gateway, not just browsing checkout). Resets expires_at to a
+        fresh RESERVATION_CHECKOUT_GRACE_MINUTES window — independent of and
+        longer than the 2-minute cart-hold TTL in _RESERVATION_TTL_MINUTES —
+        so the reservation_expiry worker's short-TTL sweep does not release
+        stock out from under a customer who is mid-payment. See the inventory
+        domain plan §2.1a for why these are two separate timers.
+
+        No row lock needed beyond the single-row UPDATE's own atomicity — the
+        WHERE clause only matches ACTIVE rows, so this is a no-op (and safe
+        to call, though it never should be) on a reservation that already
+        moved to any other state.
+
+        Does not publish InventoryChangedEvent: reserved_quantity/
+        available_stock are unchanged by this transition, only status/
+        expires_at — nothing for a listener to react to.
+        """
+        expires_at = datetime.now(UTC) + timedelta(
+            minutes=settings.RESERVATION_CHECKOUT_GRACE_MINUTES
+        )
+        result = await db.execute(
+            text(
+                "UPDATE inventory_reservations "
+                "SET status = 'CHECKOUT_IN_PROGRESS', expires_at = :expires, "
+                "updated_at = now() "
+                "WHERE order_id = :oid AND status = 'ACTIVE'"
+            ),
+            {"oid": str(order_id), "expires": expires_at},
+        )
+        cursor = cast(CursorResult, result)
+        if cursor.rowcount > 0:
+            checkout_started_total.inc(cursor.rowcount)
+        log.info("checkout_locked", order_id=str(order_id))
+
     async def complete_order_reservations(
         self, db: AsyncSession, order_id: uuid.UUID
     ) -> None:
         """
-        Called after payment verification. Converts ACTIVE reservations to COMPLETED.
-        Moves quantity from reserved_quantity → sold_quantity.
+        Called after payment verification. Converts ACTIVE/CHECKOUT_IN_PROGRESS
+        reservations to COMPLETED. Moves quantity from reserved_quantity → sold_quantity.
         Idempotent: already-COMPLETED reservations are silently skipped.
         """
         result = await db.execute(
             text(
                 "SELECT id, product_id, variant_id, quantity "
                 "FROM inventory_reservations "
-                "WHERE order_id = :oid AND status = 'ACTIVE' "
+                "WHERE order_id = :oid AND status IN ('ACTIVE', 'CHECKOUT_IN_PROGRESS') "
                 "FOR UPDATE"
             ),
             {"oid": str(order_id)},
@@ -678,18 +731,25 @@ class ReservationService:
 
     async def complete_reservations_for_order(
         self, db: AsyncSession, order_id: uuid.UUID
-    ) -> None:
-        """Complete an order's reservations, covering the late-payment case.
+    ) -> str:
+        """Complete an order's reservations, applying the late-payment policy.
 
-        Orchestrates the two-step sequence shared by every payment-capture
-        path (frontend verify and the Razorpay webhook):
-          1. Complete any ACTIVE reservations (reserved -> sold).
+        Orchestrates the sequence shared by every payment-capture path
+        (frontend verify and the Razorpay webhook):
+          1. Complete any ACTIVE/CHECKOUT_IN_PROGRESS reservations (reserved -> sold).
           2. If reservations had already expired before payment was captured
-             (stock was released by the expiry worker), fall back to
-             directly incrementing sold_quantity so the sale is still
-             recorded.
+             (stock was released by the expiry worker), do NOT re-acquire
+             stock — inventory domain plan §2.2a, "Option A": a payment
+             arriving after expiry is real captured money but the hold on
+             inventory is gone, so we never fabricate stock to fulfil it.
+             Returns "refund_required" so the caller (OrderService /
+             webhooks.service) can record the payment, route the order to
+             refund_pending, and trigger PaymentService.initiate_refund.
 
         Runs inside the caller's existing transaction — does not commit.
+
+        Returns "fulfilled" if the order's reservations completed normally,
+        "refund_required" if the reservation had already expired.
         """
         await self.complete_order_reservations(db, order_id)
 
@@ -701,7 +761,10 @@ class ReservationService:
             {"oid": str(order_id)},
         )
         if has_expired.fetchone():
-            await self.complete_expired_order_reservations(db, order_id)
+            return "refund_required"
+
+        checkout_completed_total.inc()
+        return "fulfilled"
 
     async def release_orphan_reservations(
         self,
@@ -782,18 +845,25 @@ class ReservationService:
         self,
         db: AsyncSession,
         order_id: uuid.UUID,
-        reason: str = "RELEASED",
+        reason: Literal[
+            "RELEASED", "EXPIRED", "CANCELLED", "PAYMENT_FAILED"
+        ] = "RELEASED",
     ) -> None:
         """
         Called on payment failure / cancellation.
-        Releases ACTIVE reservations → frees stock back to available.
-        reason must be 'RELEASED' or 'EXPIRED'.
+        Releases ACTIVE/CHECKOUT_IN_PROGRESS reservations → frees stock back
+        to available, writing `reason` directly as the reservation's new
+        terminal status. Use CANCELLED for explicit user/admin cancellation,
+        PAYMENT_FAILED for a payment-infrastructure failure (e.g. the
+        Razorpay order-create call itself failing), RELEASED for system
+        cleanup (orphan/duplicate-order recovery) that isn't attributable to
+        either.
         """
         result = await db.execute(
             text(
                 "SELECT id, product_id, variant_id, quantity "
                 "FROM inventory_reservations "
-                "WHERE order_id = :oid AND status = 'ACTIVE' "
+                "WHERE order_id = :oid AND status IN ('ACTIVE', 'CHECKOUT_IN_PROGRESS') "
                 "FOR UPDATE"
             ),
             {"oid": str(order_id)},
@@ -864,6 +934,10 @@ class ReservationService:
                 reason=reason,
             )
 
+        reservation_released_total.labels(reason=reason).inc(len(rows))
+        if reason in ("PAYMENT_FAILED", "CANCELLED"):
+            checkout_failed_total.labels(reason=reason).inc(len(rows))
+
         await self._invalidate_inventory_cache(db, cache_targets, available_by_product)
 
     async def expire_stale_reservations(self, db: AsyncSession) -> list[uuid.UUID]:
@@ -885,7 +959,8 @@ class ReservationService:
             text(
                 "SELECT id, product_id, variant_id, order_id, quantity, user_id "
                 "FROM inventory_reservations "
-                "WHERE status = 'ACTIVE' AND expires_at < now() "
+                "WHERE status IN ('ACTIVE', 'CHECKOUT_IN_PROGRESS') "
+                "AND expires_at < now() "
                 "LIMIT 500"
             )
         )
@@ -915,9 +990,14 @@ class ReservationService:
                 {"rid": str(res_id)},
             )
             locked_row = locked.fetchone()
-            if not locked_row or locked_row[0] != "ACTIVE":
-                # Already processed by another worker instance
+            if not locked_row or locked_row[0] not in (
+                "ACTIVE",
+                "CHECKOUT_IN_PROGRESS",
+            ):
+                # Already processed by another worker instance, or already
+                # moved to a terminal state (COMPLETED/CANCELLED/etc.)
                 continue
+            was_checkout = locked_row[0] == "CHECKOUT_IN_PROGRESS"
 
             # Lock and read product
             try:
@@ -989,7 +1069,11 @@ class ReservationService:
                 product_id=str(product_id),
                 quantity=quantity,
                 order_id=str(order_id) if order_id else None,
+                was_checkout_in_progress=was_checkout,
             )
+            reservation_expired_total.labels(
+                was_checkout=str(was_checkout).lower()
+            ).inc()
 
         # Commit before invalidating the cache / publishing SSE events.
         # A concurrent reader who refetches a product on the SSE signal
@@ -1023,14 +1107,23 @@ class ReservationService:
     async def complete_expired_order_reservations(
         self, db: AsyncSession, order_id: uuid.UUID
     ) -> None:
-        """Handle late payment confirmations for orders whose reservations expired.
+        """Manual/admin reconciliation only — NOT called automatically.
 
-        When a reservation expires the reserved_quantity is released.  If a
-        payment capture arrives later (Razorpay webhook or frontend verify),
-        we still need to move sold_quantity.  This method finds EXPIRED or
-        COMPLETED reservations for the order and, for any that are EXPIRED,
-        directly increments sold_quantity to account for the stock that was
-        already released.
+        Historically this was invoked from complete_reservations_for_order to
+        silently re-acquire stock (directly incrementing sold_quantity) for a
+        late payment on an EXPIRED reservation. That created an oversell
+        vector: the released stock may already have been sold to someone
+        else by the time the late payment arrives.
+
+        Per the inventory domain plan §2.2a (Late Payment Policy, Option A),
+        complete_reservations_for_order now returns "refund_required" instead
+        of calling this method — a late payment against expired stock is
+        refunded, never silently fulfilled from re-acquired capacity. This
+        method is kept only as an explicit, admin-invoked escape hatch for a
+        human who has manually verified enough stock genuinely exists to
+        honor a specific late order (e.g. a restock happened to land at the
+        right time) — it must never be wired back into the automatic
+        payment-verification path.
 
         Idempotent: if all reservations are already COMPLETED, this is a no-op.
         """
@@ -1132,10 +1225,19 @@ class ReservationService:
         """Return ACTIVE reservations for a user, optionally filtered by product/variant.
 
         Used by:
-        - reserve_items() to detect and reuse existing reservations
+        - reserve_items() to detect and reuse existing reservations (only
+          unlinked, order_id IS NULL rows are ever eligible for reuse — see
+          the caller's own filter — and CHECKOUT_IN_PROGRESS rows always have
+          order_id set, so widening this to include them doesn't change reuse
+          behaviour, only fixes the "Reserved for You" badge disappearing the
+          instant checkout starts)
         - The active-reservations endpoint to show customers what they have reserved
         """
-        conditions = ["user_id = :uid", "status = 'ACTIVE'", "expires_at > now()"]
+        conditions = [
+            "user_id = :uid",
+            "status IN ('ACTIVE', 'CHECKOUT_IN_PROGRESS')",
+            "expires_at > now()",
+        ]
         params: dict[str, Any] = {"uid": str(user_id)}
 
         if product_id:
@@ -1219,6 +1321,7 @@ class ReservationService:
         await self._invalidate_inventory_cache(
             db, [(product_id, variant_id)], {str(product_id): available}
         )
+        inventory_adjustments_total.labels(type="RESTOCK").inc()
 
     async def record_return(
         self,
@@ -1261,6 +1364,7 @@ class ReservationService:
         await self._invalidate_inventory_cache(
             db, [(product_id, variant_id)], {str(product_id): available}
         )
+        inventory_adjustments_total.labels(type="RETURN").inc()
 
     async def record_adjustment(
         self,
@@ -1308,4 +1412,5 @@ class ReservationService:
         await self._invalidate_inventory_cache(
             db, [(product_id, variant_id)], {str(product_id): available}
         )
+        inventory_adjustments_total.labels(type="ADJUSTMENT").inc()
         return int(new_stock)
