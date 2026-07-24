@@ -13,15 +13,20 @@ import { useInventoryStore, inventoryKey } from "@/stores/inventory";
 /**
  * Subscribe to inventory-related SyncBus events and update the Zustand store.
  *
- * - INVENTORY_CHANGED: If productIds provided, mark those entries as needing
- *   reconciliation (confidence drops to "medium"). The next API fetch will
- *   reconcile. If no productIds, all entries get marked.
- * - PRODUCT_UPDATED: Same as INVENTORY_CHANGED for the specific product.
- * - RESERVATION_CREATED/EXPIRED: Mark entries as needing reconciliation.
- * - ORDER_CREATED/CANCELLED: Mark all entries as needing reconciliation.
- *
- * The actual stock reconciliation happens when React Query refetches and
- * hydrateInventoryFromProduct is called. This listener just flags staleness.
+ * - INVENTORY_CHANGED / RESERVATION_CREATED / RESERVATION_EXPIRED now carry
+ *   {productIds, availableByProduct} from the backend (see
+ *   Backend/app/core/events.py) — when a product's new number is attached,
+ *   it's written straight into the store at "high" confidence, so a product
+ *   card / PDP / cart line reflects someone else's reservation the instant
+ *   the event arrives, with no refetch round trip. Only entries already
+ *   present in the store are touched (nothing to reconcile for a product no
+ *   component has loaded yet).
+ * - If an event carries productIds but no number for one of them (shouldn't
+ *   happen for the events above, but kept as a safe fallback), that entry is
+ *   just flagged "medium" confidence so the next fetch reconciles it.
+ * - PRODUCT_UPDATED / ORDER_CREATED / ORDER_CANCELLED don't carry stock
+ *   numbers (different concern — content/lifecycle, not quantity) and keep
+ *   the coarser flag-and-refetch behavior.
  */
 export function listenInventoryEvents(): () => void {
   const bus = getBus();
@@ -49,21 +54,44 @@ export function listenInventoryEvents(): () => void {
     }
   }
 
+  /** Apply a pushed available-stock number where we have one; otherwise fall
+   * back to flagging for reconciliation on the next fetch. */
+  function applyAvailable(
+    productIds?: string[],
+    availableByProduct?: Record<string, number>,
+  ): void {
+    if (!productIds?.length) {
+      flagStale();
+      return;
+    }
+    const store = useInventoryStore.getState();
+    for (const id of productIds) {
+      const baseKey = inventoryKey(id);
+      if (!store.entries[baseKey]) continue; // nothing loaded to reconcile
+      const availableStock = availableByProduct?.[id];
+      if (availableStock !== undefined) {
+        store.upsert(id, { availableStock, source: "sse", confidence: "high" });
+      } else {
+        store.upsert(id, { source: "sse", confidence: "medium" });
+      }
+    }
+  }
+
   const unsubs = [
     bus.subscribe(SyncEventType.INVENTORY_CHANGED, (event) => {
-      flagStale(event.payload?.productIds);
+      applyAvailable(event.payload?.productIds, event.payload?.availableByProduct);
     }),
 
     bus.subscribe(SyncEventType.PRODUCT_UPDATED, (event) => {
       flagStale(event.payload?.productId ? [event.payload.productId] : undefined);
     }),
 
-    bus.subscribe(SyncEventType.RESERVATION_CREATED, () => {
-      flagStale();
+    bus.subscribe(SyncEventType.RESERVATION_CREATED, (event) => {
+      applyAvailable(event.payload?.productIds, event.payload?.availableByProduct);
     }),
 
-    bus.subscribe(SyncEventType.RESERVATION_EXPIRED, () => {
-      flagStale();
+    bus.subscribe(SyncEventType.RESERVATION_EXPIRED, (event) => {
+      applyAvailable(event.payload?.productIds, event.payload?.availableByProduct);
     }),
 
     bus.subscribe(SyncEventType.ORDER_CREATED, () => {

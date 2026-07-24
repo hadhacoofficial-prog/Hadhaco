@@ -56,12 +56,28 @@ export type SyncEventType = (typeof SyncEventType)[keyof typeof SyncEventType];
 
 export interface SyncEventPayloads {
   [SyncEventType.CART_CHANGED]: undefined;
-  [SyncEventType.INVENTORY_CHANGED]: { productIds?: string[] };
+  [SyncEventType.INVENTORY_CHANGED]: {
+    productIds?: string[];
+    /** {productId: availableStock} snapshot taken when the event was
+     * published — lets subscribers update their UI directly instead of
+     * refetching to learn the same number. */
+    availableByProduct?: Record<string, number>;
+  };
   [SyncEventType.ORDER_CREATED]: { orderId: string; orderNumber: string };
   [SyncEventType.ORDER_CANCELLED]: { orderId: string };
   [SyncEventType.ORDER_STATUS_CHANGED]: { orderId: string; oldStatus: string; newStatus: string };
-  [SyncEventType.RESERVATION_CREATED]: { reservationId: string };
-  [SyncEventType.RESERVATION_EXPIRED]: { reservationId: string };
+  [SyncEventType.RESERVATION_CREATED]: {
+    reservationId: string;
+    userId?: string;
+    productIds?: string[];
+    availableByProduct?: Record<string, number>;
+  };
+  [SyncEventType.RESERVATION_EXPIRED]: {
+    reservationId: string;
+    userIds?: string[];
+    productIds?: string[];
+    availableByProduct?: Record<string, number>;
+  };
   [SyncEventType.WISHLIST_CHANGED]: undefined;
   [SyncEventType.PROFILE_UPDATED]: undefined;
   [SyncEventType.ADDRESS_CHANGED]: undefined;

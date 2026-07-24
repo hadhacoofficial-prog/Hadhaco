@@ -160,6 +160,10 @@ class InventoryChangedEvent(BaseEvent):
     """Published when stock quantities change (purchase, reservation, admin update, refund)."""
 
     product_ids: list[str] = field(default_factory=list)
+    # {product_id: available_stock} snapshot taken at publish time, so
+    # subscribers can update their UI straight from the event instead of
+    # round-tripping back to a REST endpoint to learn the new number.
+    available_by_product: dict[str, int] = field(default_factory=dict)
 
 
 @dataclass
@@ -168,6 +172,8 @@ class ReservationCreatedEvent(BaseEvent):
 
     reservation_id: str = ""
     user_id: str = ""
+    product_ids: list[str] = field(default_factory=list)
+    available_by_product: dict[str, int] = field(default_factory=dict)
 
 
 @dataclass
@@ -177,6 +183,7 @@ class ReservationExpiredEvent(BaseEvent):
     reservation_id: str = ""
     user_ids: list[str] = field(default_factory=list)
     product_ids: list[str] = field(default_factory=list)
+    available_by_product: dict[str, int] = field(default_factory=dict)
 
 
 @dataclass

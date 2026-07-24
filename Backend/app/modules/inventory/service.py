@@ -86,8 +86,17 @@ class InventoryService:
                 invalidate_inventory_cache,
             )
 
+            available_after = max(
+                quantity_after
+                - snapshot["reserved_quantity"]
+                - snapshot["sold_quantity"],
+                0,
+            )
             await event_bus.publish(
-                InventoryChangedEvent(product_ids=[str(product_id)])
+                InventoryChangedEvent(
+                    product_ids=[str(product_id)],
+                    available_by_product={str(product_id): available_after},
+                )
             )
             await invalidate_inventory_cache([(product_id, None)])
         except Exception:

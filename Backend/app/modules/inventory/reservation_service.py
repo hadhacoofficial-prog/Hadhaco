@@ -43,6 +43,15 @@ def _generate_reservation_number() -> str:
     return f"RES-{suffix}"
 
 
+def _compute_available(
+    stock: dict[str, Any], after_reserved: int, after_sold: int
+) -> int:
+    """available = total - reserved - sold, using the row already read/locked
+    by the caller plus the reserved/sold values it's about to write —
+    avoids a redundant read query just to learn the same number back."""
+    return max(stock["stock_quantity"] - after_reserved - after_sold, 0)
+
+
 async def invalidate_inventory_cache(
     targets: list[tuple[uuid.UUID, uuid.UUID | None]],
 ) -> None:
@@ -162,8 +171,11 @@ class ReservationService:
         return stock
 
     async def _invalidate_inventory_cache(
-        self, targets: list[tuple[uuid.UUID, uuid.UUID | None]]
-    ) -> None:
+        self,
+        db: AsyncSession,
+        targets: list[tuple[uuid.UUID, uuid.UUID | None]],
+        available_by_product: dict[str, int] | None = None,
+    ) -> dict[str, int]:
         """Best-effort cache-aside invalidation for all inventory-derived views.
 
         Call once per checkout/batch operation (with every affected
@@ -178,21 +190,54 @@ class ReservationService:
         This is the **single canonical pipeline** for all inventory mutations:
         every method that modifies stock state calls this method, which
         guarantees both cache invalidation AND SSE broadcasting.
+
+        ``available_by_product`` should be the {product_id: available_stock}
+        the caller already knows from the row it just locked and updated —
+        every call site has this for free from its own before/after
+        arithmetic, so passing it here avoids a redundant read query. Callers
+        that genuinely don't have it (none currently) can omit it and pay for
+        one extra read per product instead.
+
+        Returns the {product_id: available_stock} used for the event, so
+        callers publishing a follow-up event (e.g. ReservationCreatedEvent)
+        can attach the same numbers, and so subscribers can update their UI
+        straight from the event payload instead of round-tripping back to a
+        REST endpoint to learn the new number.
         """
         if not targets:
-            return
+            return {}
+
+        product_ids = list({str(pid) for pid, _ in targets})
+
+        if available_by_product is None:
+            # Fallback for a caller that hasn't computed it — one extra
+            # read per product, no locking (see get_available_stock).
+            available_by_product = {}
+            for pid in product_ids:
+                try:
+                    available_by_product[pid] = await self.get_available_stock(
+                        db, uuid.UUID(pid)
+                    )
+                except NotFoundError:
+                    continue
 
         # ── Publish SSE event (always, even if Redis cache is down) ──────────
-        product_ids = list({str(pid) for pid, _ in targets})
         try:
             from app.core.events import InventoryChangedEvent, event_bus
 
-            await event_bus.publish(InventoryChangedEvent(product_ids=product_ids))
+            await event_bus.publish(
+                InventoryChangedEvent(
+                    product_ids=product_ids,
+                    available_by_product=available_by_product,
+                )
+            )
         except Exception as exc:
             log.error("inventory_event_publish_failed", error=str(exc))
 
         # ── Invalidate Redis cache (best-effort) ────────────────────────────
         await invalidate_inventory_cache(targets)
+
+        return available_by_product
 
     async def _update_stock_target(
         self,
@@ -281,6 +326,7 @@ class ReservationService:
         expires_at = datetime.now(UTC) + timedelta(minutes=_RESERVATION_TTL_MINUTES)
         reservations: list[InventoryReservation] = []
         cache_targets: list[tuple[uuid.UUID, uuid.UUID | None]] = []
+        available_by_product: dict[str, int] = {}
 
         # Fetch existing ACTIVE reservations for this user up-front so we can
         # match them inside the lock without extra queries per item.
@@ -346,6 +392,10 @@ class ReservationService:
                         "reserved_quantity = reserved_quantity + :qty",
                         {"qty": delta},
                     )
+                    after_reserved = stock["reserved_quantity"] + delta
+                    available_by_product[str(product_id)] = _compute_available(
+                        stock, after_reserved, stock["sold_quantity"]
+                    )
                 elif delta < 0:
                     # Releasing stock back — lock row and decrement.
                     stock = await self._lock_stock_target(db, product_id, variant_id)
@@ -354,6 +404,10 @@ class ReservationService:
                         stock,
                         "reserved_quantity = GREATEST(reserved_quantity - :qty, 0)",
                         {"qty": -delta},
+                    )
+                    after_reserved = max(stock["reserved_quantity"] + delta, 0)
+                    available_by_product[str(product_id)] = _compute_available(
+                        stock, after_reserved, stock["sold_quantity"]
                     )
                 # delta == 0: no stock change needed.
 
@@ -450,6 +504,9 @@ class ReservationService:
                 after_sold=stock["sold_quantity"],
                 reference=reservation.reservation_number,
             )
+            available_by_product[str(product_id)] = _compute_available(
+                stock, after_reserved, stock["sold_quantity"]
+            )
             cache_targets.append((product_id, variant_id))
 
             reservations.append(reservation)
@@ -461,7 +518,9 @@ class ReservationService:
                 reservation_number=reservation.reservation_number,
             )
 
-        await self._invalidate_inventory_cache(cache_targets)
+        available_by_product = await self._invalidate_inventory_cache(
+            db, cache_targets, available_by_product
+        )
 
         # Publish ReservationCreatedEvent so frontend shows reservation badges
         # and countdown timers. Only for genuinely new reservations (not reuses).
@@ -474,6 +533,8 @@ class ReservationService:
                     ReservationCreatedEvent(
                         reservation_id=str(new_reservations[0].id),
                         user_id=str(user_id),
+                        product_ids=[str(pid) for pid, _ in cache_targets],
+                        available_by_product=available_by_product,
                     )
                 )
             except Exception as exc:
@@ -549,6 +610,7 @@ class ReservationService:
             return
 
         cache_targets: list[tuple[uuid.UUID, uuid.UUID | None]] = []
+        available_by_product: dict[str, int] = {}
         for row in rows:
             res_id: uuid.UUID = row[0]
             product_id: uuid.UUID = row[1]
@@ -599,6 +661,9 @@ class ReservationService:
                 after_sold=after_sold,
                 reference=str(order_id),
             )
+            available_by_product[str(product_id)] = _compute_available(
+                stock, after_reserved, after_sold
+            )
             cache_targets.append((product_id, variant_id))
 
             log.info(
@@ -609,7 +674,7 @@ class ReservationService:
                 order_id=str(order_id),
             )
 
-        await self._invalidate_inventory_cache(cache_targets)
+        await self._invalidate_inventory_cache(db, cache_targets, available_by_product)
 
     async def complete_reservations_for_order(
         self, db: AsyncSession, order_id: uuid.UUID
@@ -669,6 +734,7 @@ class ReservationService:
             return
 
         cache_targets: list[tuple[uuid.UUID, uuid.UUID | None]] = []
+        available_by_product: dict[str, int] = {}
         for row in rows:
             res_id: uuid.UUID = row[0]
             product_id: uuid.UUID = row[1]
@@ -711,6 +777,9 @@ class ReservationService:
                 reference=reason,
             )
             cache_targets.append((product_id, variant_id))
+            available_by_product[str(product_id)] = _compute_available(
+                stock, after_reserved, stock["sold_quantity"]
+            )
 
             log.info(
                 "reservation_released",
@@ -720,7 +789,7 @@ class ReservationService:
                 reason=reason,
             )
 
-        await self._invalidate_inventory_cache(cache_targets)
+        await self._invalidate_inventory_cache(db, cache_targets, available_by_product)
 
     async def expire_stale_reservations(self, db: AsyncSession) -> list[uuid.UUID]:
         """Expire stale reservations and release reserved stock.
@@ -739,7 +808,7 @@ class ReservationService:
         # Identify expired reservations (no lock yet — just finding candidates)
         result = await db.execute(
             text(
-                "SELECT id, product_id, variant_id, order_id, quantity "
+                "SELECT id, product_id, variant_id, order_id, quantity, user_id "
                 "FROM inventory_reservations "
                 "WHERE status = 'ACTIVE' AND expires_at < now() "
                 "LIMIT 500"
@@ -751,13 +820,16 @@ class ReservationService:
 
         expired_count = 0
         cache_targets: list[tuple[uuid.UUID, uuid.UUID | None]] = []
+        available_by_product: dict[str, int] = {}
         transitioned_order_ids: list[uuid.UUID] = []
+        expired_user_ids: set[uuid.UUID] = set()
         for row in candidates:
             res_id: uuid.UUID = row[0]
             product_id: uuid.UUID = row[1]
             variant_id: uuid.UUID | None = row[2]
             order_id: uuid.UUID | None = row[3]
             quantity: int = row[4]
+            expired_user_ids.add(row[5])
 
             # Re-lock this specific reservation row
             locked = await db.execute(
@@ -831,6 +903,9 @@ class ReservationService:
                 reference="EXPIRED",
             )
             cache_targets.append((product_id, variant_id))
+            available_by_product[str(product_id)] = _compute_available(
+                stock, after_reserved, stock["sold_quantity"]
+            )
 
             expired_count += 1
             log.info(
@@ -850,7 +925,23 @@ class ReservationService:
         # full TTL. Committing first guarantees readers see the release.
         await db.commit()
 
-        await self._invalidate_inventory_cache(cache_targets)
+        available_by_product = await self._invalidate_inventory_cache(
+            db, cache_targets, available_by_product
+        )
+
+        try:
+            from app.core.events import ReservationExpiredEvent, event_bus
+
+            await event_bus.publish(
+                ReservationExpiredEvent(
+                    reservation_id="batch",
+                    user_ids=[str(uid) for uid in expired_user_ids],
+                    product_ids=[str(pid) for pid, _ in cache_targets],
+                    available_by_product=available_by_product,
+                )
+            )
+        except Exception as exc:
+            log.error("reservation_expired_event_publish_failed", error=str(exc))
 
         return transitioned_order_ids
 
@@ -887,6 +978,7 @@ class ReservationService:
             return
 
         cache_targets: list[tuple[uuid.UUID, uuid.UUID | None]] = []
+        available_by_product: dict[str, int] = {}
         for row in rows:
             res_id: uuid.UUID = row[0]
             product_id: uuid.UUID = row[1]
@@ -941,6 +1033,9 @@ class ReservationService:
                 reference=f"late_payment:{order_id}",
             )
             cache_targets.append((product_id, variant_id))
+            available_by_product[str(product_id)] = _compute_available(
+                stock, stock["reserved_quantity"], after_sold
+            )
 
             log.info(
                 "expired_reservation_completed_late_payment",
@@ -950,7 +1045,7 @@ class ReservationService:
                 order_id=str(order_id),
             )
 
-        await self._invalidate_inventory_cache(cache_targets)
+        await self._invalidate_inventory_cache(db, cache_targets, available_by_product)
 
     async def get_user_active_reservations(
         self,
@@ -1043,7 +1138,12 @@ class ReservationService:
             after_stock_quantity=new_stock,
             reference=reference,
         )
-        await self._invalidate_inventory_cache([(product_id, variant_id)])
+        available = max(
+            new_stock - stock["reserved_quantity"] - stock["sold_quantity"], 0
+        )
+        await self._invalidate_inventory_cache(
+            db, [(product_id, variant_id)], {str(product_id): available}
+        )
 
     async def record_return(
         self,
@@ -1082,7 +1182,10 @@ class ReservationService:
             after_sold=new_sold,
             reference=reference,
         )
-        await self._invalidate_inventory_cache([(product_id, variant_id)])
+        available = _compute_available(stock, stock["reserved_quantity"], new_sold)
+        await self._invalidate_inventory_cache(
+            db, [(product_id, variant_id)], {str(product_id): available}
+        )
 
     async def record_adjustment(
         self,
@@ -1124,5 +1227,10 @@ class ReservationService:
             after_stock_quantity=new_stock,
             reference=reference,
         )
-        await self._invalidate_inventory_cache([(product_id, variant_id)])
+        available = max(
+            new_stock - stock["reserved_quantity"] - stock["sold_quantity"], 0
+        )
+        await self._invalidate_inventory_cache(
+            db, [(product_id, variant_id)], {str(product_id): available}
+        )
         return int(new_stock)

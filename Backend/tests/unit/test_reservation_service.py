@@ -613,8 +613,11 @@ class TestReserveItems:
         """When cart has two products: one with a linked reservation (skipped)
         and one with an unlinked reservation (reused), the system must create
         a new reservation for the linked product and reuse the unlinked one."""
-        pid_linked = uuid.uuid4()
-        pid_unlinked = uuid.uuid4()
+        # Fixed (not uuid.uuid4()) so the service's sort-by-product-id order
+        # is deterministic — the mocked db.execute side_effect below assumes
+        # pid_linked is processed first, which random UUIDs can't guarantee.
+        pid_linked = uuid.UUID("00000000-0000-0000-0000-000000000001")
+        pid_unlinked = uuid.UUID("00000000-0000-0000-0000-000000000002")
         user_id = uuid.uuid4()
 
         linked_row = MagicMock()
@@ -1064,7 +1067,7 @@ class TestExpireStaleReservations:
     async def test_expire_single_reservation_without_order(self):
         res_id = uuid.uuid4()
         product_id = uuid.uuid4()
-        candidate_row = (res_id, product_id, None, None, 2)  # no order_id
+        candidate_row = (res_id, product_id, None, None, 2, uuid.uuid4())  # no order_id
 
         locked_row = MagicMock()
         locked_row.__getitem__ = lambda self, i: "ACTIVE" if i == 0 else None
@@ -1098,7 +1101,7 @@ class TestExpireStaleReservations:
         res_id = uuid.uuid4()
         product_id = uuid.uuid4()
         order_id = uuid.uuid4()
-        candidate_row = (res_id, product_id, None, order_id, 1)
+        candidate_row = (res_id, product_id, None, order_id, 1, uuid.uuid4())
 
         locked_row = MagicMock()
         locked_row.__getitem__ = lambda self, i: "ACTIVE" if i == 0 else None
@@ -1134,7 +1137,7 @@ class TestExpireStaleReservations:
         res_id = uuid.uuid4()
         product_id = uuid.uuid4()
         order_id = uuid.uuid4()
-        candidate_row = (res_id, product_id, None, order_id, 1)
+        candidate_row = (res_id, product_id, None, order_id, 1, uuid.uuid4())
 
         locked_row = MagicMock()
         locked_row.__getitem__ = lambda self, i: "ACTIVE" if i == 0 else None
@@ -1170,7 +1173,7 @@ class TestExpireStaleReservations:
         """If SKIP LOCKED returns None (row locked by another worker), skip."""
         res_id = uuid.uuid4()
         product_id = uuid.uuid4()
-        candidate_row = (res_id, product_id, None, None, 1)
+        candidate_row = (res_id, product_id, None, None, 1, uuid.uuid4())
 
         db = AsyncMock()
         db.execute = AsyncMock(
@@ -1190,7 +1193,7 @@ class TestExpireStaleReservations:
         """If SKIP LOCKED returns a row with status != ACTIVE, skip."""
         res_id = uuid.uuid4()
         product_id = uuid.uuid4()
-        candidate_row = (res_id, product_id, None, None, 1)
+        candidate_row = (res_id, product_id, None, None, 1, uuid.uuid4())
 
         locked_row = MagicMock()
         locked_row.__getitem__ = lambda self, i: "COMPLETED" if i == 0 else None
@@ -1213,8 +1216,8 @@ class TestExpireStaleReservations:
         r1_id, r2_id = uuid.uuid4(), uuid.uuid4()
         p1_id, p2_id = uuid.uuid4(), uuid.uuid4()
         rows = [
-            (r1_id, p1_id, None, None, 2),
-            (r2_id, p2_id, None, None, 1),
+            (r1_id, p1_id, None, None, 2, uuid.uuid4()),
+            (r2_id, p2_id, None, None, 1, uuid.uuid4()),
         ]
 
         def _locked():
@@ -1255,7 +1258,7 @@ class TestExpireStaleReservations:
     async def test_expire_skips_missing_product(self):
         res_id = uuid.uuid4()
         product_id = uuid.uuid4()
-        candidate_row = (res_id, product_id, None, None, 1)
+        candidate_row = (res_id, product_id, None, None, 1, uuid.uuid4())
 
         locked_row = MagicMock()
         locked_row.__getitem__ = lambda self, i: "ACTIVE"
@@ -1691,7 +1694,7 @@ class TestVariantLevelInventory:
         res_id = uuid.uuid4()
         product_id = uuid.uuid4()
         variant_id = uuid.uuid4()
-        candidate_row = (res_id, product_id, variant_id, None, 1)
+        candidate_row = (res_id, product_id, variant_id, None, 1, uuid.uuid4())
 
         locked_row = MagicMock()
         locked_row.__getitem__ = lambda self, i: "ACTIVE" if i == 0 else None

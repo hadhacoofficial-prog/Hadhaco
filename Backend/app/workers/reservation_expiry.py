@@ -29,26 +29,16 @@ async def _expire_reservations(db) -> None:
     from app.modules.orders.service import OrderService
 
     svc = ReservationService()
+    # Publishes its own (product-scoped, available-stock-carrying)
+    # ReservationExpiredEvent right after committing the release, so
+    # connected clients see accurate availability with no further round
+    # trip needed for the common case.
     expired_order_ids = await svc.expire_stale_reservations(db)
 
     if expired_order_ids:
         log.info("reservations_expired_batch", count=len(expired_order_ids))
         order_svc = OrderService()
         await order_svc.handle_expired_order_side_effects(db, expired_order_ids)
-
-        # Commit the coupon-restoration writes before publishing -- listeners
-        # that react to the event open a fresh session and must see them.
         await db.commit()
-
-        # Publish frontend sync events so connected clients see the expiry
-        from app.core.events import ReservationExpiredEvent, event_bus
-
-        await event_bus.publish(
-            ReservationExpiredEvent(
-                reservation_id="batch",
-                user_ids=[],
-                product_ids=[],
-            )
-        )
     else:
         log.debug("reservation_expiry_run_no_expired")
