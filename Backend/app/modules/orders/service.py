@@ -146,6 +146,13 @@ class OrderService:
         Checked before creating a new order to prevent duplicate pending
         orders from multi-tab or rapid-retry scenarios.  Returns ``None``
         if no matching order is found.
+
+        Any other pending order found for the user is released here. The
+        partial unique index idx_one_pending_order_per_user allows only one
+        'stock_reserved'/'payment_pending' order per user regardless of its
+        items, so a stale order left over from an abandoned attempt or a
+        cart the user has since changed would otherwise make the insert in
+        create_payment_intent fail with an IntegrityError.
         """
         from sqlalchemy import select
         from sqlalchemy.orm import selectinload
@@ -173,6 +180,7 @@ class OrderService:
             )
             incoming[key] = incoming.get(key, 0) + li["quantity"]
 
+        matched_order = None
         for order in candidates:
             existing: dict[tuple[str, str | None], int] = {}
             for oi in order.items:
@@ -181,10 +189,23 @@ class OrderService:
                     str(oi.variant_id) if oi.variant_id else None,
                 )
                 existing[key] = existing.get(key, 0) + oi.quantity
-            if existing == incoming:
-                return order
+            if existing == incoming and matched_order is None:
+                matched_order = order
+                continue
+            # Stale pending order for this user with a different set of
+            # items — release it so it doesn't collide with the partial
+            # unique index when the new order is inserted below.
+            log.info(
+                "stale_pending_order_released",
+                stale_order_id=str(order.id),
+                user_id=str(user_id),
+            )
+            await _repo.update(db, order.id, {"status": "payment_failed"})
+            await _reservation_svc.release_order_reservations(
+                db, order.id, reason="RELEASED"
+            )
 
-        return None
+        return matched_order
 
     async def _compute_totals(
         self,
