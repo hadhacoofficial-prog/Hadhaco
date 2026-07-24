@@ -1,9 +1,12 @@
 /**
  * useReservationSync — thin orchestrator for reservation state synchronization.
  *
- * Responsibilities (and ONLY these):
+ * Responsibilities (and ONLY this):
  *   1. Call hydrateReservation when data changes.
- *   2. Mount the SyncBus event listener on mount.
+ *
+ * The SyncBus event listener (listenReservationEvents) is mounted once,
+ * globally, in router.tsx — not here — so real-time pushes apply on every
+ * route.
  *
  * Does NOT:
  *   - Import or use queryClient
@@ -12,37 +15,21 @@
  *   - Derive business logic (delegated to selectors)
  */
 
-import { useEffect, useRef } from "react";
+import { useEffect } from "react";
 import { useReservationStore } from "@/stores/reservation";
 import {
   hydrateReservation,
   type ReservationSyncData,
 } from "@/hooks/reservation/hydrateReservation";
-import { listenReservationEvents } from "@/hooks/reservation/listenReservationEvents";
 
 /**
- * Sync reservation data from API/checkout into the Zustand store,
- * and subscribe to SyncBus events for real-time updates.
+ * Sync reservation data from API/checkout into the Zustand store.
  */
 export function useReservationSync(data: ReservationSyncData | null): void {
-  // Hydrate store when data changes
   useEffect(() => {
     if (!data) return;
     hydrateReservation(data);
   }, [data]);
-
-  // Mount the SyncBus event listener once
-  const listenerRef = useRef<(() => void) | null>(null);
-
-  useEffect(() => {
-    if (!listenerRef.current) {
-      listenerRef.current = listenReservationEvents();
-    }
-    return () => {
-      listenerRef.current?.();
-      listenerRef.current = null;
-    };
-  }, []);
 }
 
 // Re-export selectors and hooks for convenience

@@ -7,6 +7,7 @@ import { useCart } from "@/stores/cart";
 import { useWishlist } from "@/stores/wishlist";
 import { useActiveReservations } from "@/hooks/useActiveReservations";
 import { useReservationCountdown } from "@/hooks/reservation/useReservationCountdown";
+import { useInventoryStore } from "@/stores/inventory";
 import { formatINR } from "@/lib/format";
 import { StockPill } from "@/components/site/InventoryBadge";
 
@@ -18,7 +19,13 @@ export const ProductCard = memo(function ProductCard({ p }: { p: Product }) {
   const wished = useWishlist((s) => s.items.some((i) => i.id === p.id));
   const { isReserved: hasReservation, getReservation } = useActiveReservations();
 
-  const isSoldOut = p.availableStock === 0;
+  // Prefer the real-time Zustand entry (SSE-pushed, updates instantly when
+  // another shopper reserves/releases stock) over the one-time list-fetch
+  // value baked into `p` — same precedence products.$slug.tsx already uses.
+  const inventoryEntry = useInventoryStore((s) => s.get(p.id, null));
+  const availableStock = inventoryEntry?.availableStock ?? p.availableStock;
+
+  const isSoldOut = availableStock === 0;
   const reserved = hasReservation(p.id);
   const reservation = getReservation(p.id);
   const countdown = useReservationCountdown(reservation?.expires_at ?? null);
@@ -96,7 +103,7 @@ export const ProductCard = memo(function ProductCard({ p }: { p: Product }) {
         )}
 
         {/* Stock pill (only when not sold out — sold-out overlay covers it) */}
-        {!isSoldOut && <StockPill availableStock={p.availableStock} />}
+        {!isSoldOut && <StockPill availableStock={availableStock} />}
         {reserved && (
           <StockPill
             availableStock={0}

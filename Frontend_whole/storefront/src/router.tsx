@@ -3,6 +3,8 @@ import { createRouter } from "@tanstack/react-router";
 import { routeTree } from "./routeTree.gen";
 import { isApiError } from "./lib/api/errors";
 import { initSync } from "@hadha/shared-api";
+import { listenInventoryEvents } from "@/hooks/inventory/listenInventoryEvents";
+import { listenReservationEvents } from "@/hooks/reservation/listenReservationEvents";
 
 /**
  * App-wide QueryClient defaults. Per-query overrides (staleTime, etc.) follow
@@ -36,6 +38,18 @@ export const getRouter = () => {
   // Initialize the centralized sync engine with the app's QueryClient.
   // This must happen once at startup so all sync methods can invalidate queries.
   initSync(queryClient);
+
+  // Mount the Zustand-store SSE writers globally, for the whole app
+  // lifetime — previously these only ran while a product detail page
+  // happened to be mounted (via useInventorySync/useReservationSync), so
+  // real-time stock/reservation pushes were silently dropped on every other
+  // route (home, listings, cart, checkout). initSync above already starts
+  // the SSE connection itself and the broader React-Query-invalidation
+  // listeners globally; these are the two that were missing the same
+  // treatment. Safe to call once here (not inside a component) since
+  // getRouter() itself only runs once per app instance.
+  listenInventoryEvents();
+  listenReservationEvents();
 
   const router = createRouter({
     routeTree,

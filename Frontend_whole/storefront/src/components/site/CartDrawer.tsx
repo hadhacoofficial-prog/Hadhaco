@@ -1,9 +1,11 @@
 import { Link } from "@tanstack/react-router";
-import { X, ShoppingBag, Trash2, Lock } from "lucide-react";
+import { X, ShoppingBag, Trash2, Lock, AlertTriangle } from "lucide-react";
 import { useCart } from "@/stores/cart";
 import { useBuyNowStore } from "@/stores/buyNow";
 import { useActiveReservations } from "@/hooks/useActiveReservations";
 import { useReservationCountdown } from "@/hooks/reservation/useReservationCountdown";
+import { useInventoryStore, inventoryKey } from "@/stores/inventory";
+import { computeQuantityBounds } from "@/lib/cartQuantity";
 import { formatINR } from "@/lib/format";
 import { QuantityStepper } from "@/components/site/QuantityStepper";
 import { NavJewelleryBgMobile } from "@/components/site/NavJewelleryBgMobile";
@@ -12,6 +14,22 @@ export function CartDrawer() {
   const { isOpen, close, lines, setQty, remove, subtotal } = useCart();
   const clearBuyNow = useBuyNowStore((s) => s.clear);
   const { isReserved, getReservation } = useActiveReservations();
+  // Subscribed once for all lines (not per-line, since hooks can't run
+  // inside a loop) — same real-time entries the cart page and product
+  // cards read, so the drawer never lets a shopper increment past stock
+  // another shopper just took.
+  const inventoryEntries = useInventoryStore((s) => s.entries);
+  const hasStockIssues = lines.some((line) => {
+    const entry = inventoryEntries[inventoryKey(line.productId, line.variantId)];
+    if (!entry) return false;
+    if (entry.availableStock === 0) return true;
+    const bounds = computeQuantityBounds({
+      availableStock: entry.availableStock,
+      maxOrderQty: entry.maxOrderQuantity,
+      cartQty: 0,
+    });
+    return line.qty > bounds.effectiveCap;
+  });
   if (!isOpen) return null;
 
   return (
@@ -43,67 +61,97 @@ export function CartDrawer() {
         ) : (
           <>
             <div className="relative z-10 flex-1 overflow-y-auto px-6 py-4 divide-y divide-border">
-              {lines.map((line) => (
-                <div key={`${line.productId}::${line.variantId ?? ""}`} className="flex gap-4 py-4">
-                  {line.snapshot ? (
-                    <Link
-                      to="/products/$slug"
-                      params={{ slug: line.snapshot.slug }}
-                      onClick={close}
-                      className="block w-20 h-20 bg-secondary overflow-hidden shrink-0"
-                    >
-                      <img
-                        src={line.snapshot.image}
-                        alt={line.snapshot.name}
-                        className="w-full h-full object-cover"
-                      />
-                    </Link>
-                  ) : (
-                    <div className="w-20 h-20 bg-secondary shrink-0" />
-                  )}
-                  <div className="flex-1 min-w-0">
+              {lines.map((line) => {
+                const entry = inventoryEntries[inventoryKey(line.productId, line.variantId)];
+                const bounds = entry
+                  ? computeQuantityBounds({
+                      availableStock: entry.availableStock,
+                      maxOrderQty: entry.maxOrderQuantity,
+                      cartQty: 0,
+                    })
+                  : null;
+                const isSoldOut = entry !== undefined && entry.availableStock === 0;
+                const isOverQty = bounds !== null && line.qty > bounds.effectiveCap && !isSoldOut;
+                const stepperMax = bounds ? bounds.effectiveCap : 99;
+
+                return (
+                  <div
+                    key={`${line.productId}::${line.variantId ?? ""}`}
+                    className="flex gap-4 py-4"
+                  >
                     {line.snapshot ? (
                       <Link
                         to="/products/$slug"
                         params={{ slug: line.snapshot.slug }}
                         onClick={close}
-                        className="text-sm leading-snug line-clamp-2 hover:text-accent"
+                        className="block w-20 h-20 bg-secondary overflow-hidden shrink-0"
                       >
-                        {line.snapshot.name}
+                        <img
+                          src={line.snapshot.image}
+                          alt={line.snapshot.name}
+                          className="w-full h-full object-cover"
+                        />
                       </Link>
                     ) : (
-                      <span className="text-sm text-muted-foreground">Product</span>
+                      <div className="w-20 h-20 bg-secondary shrink-0" />
                     )}
-                    {line.snapshot?.variantName && (
-                      <p className="text-xs text-muted-foreground mt-0.5">
-                        {line.snapshot.variantName}
-                      </p>
-                    )}
-                    {isReserved(line.productId, line.variantId) && (
-                      <ReservationInlineBadge
-                        productId={line.productId}
-                        variantId={line.variantId}
-                      />
-                    )}
-                    <div className="mt-1 font-sans font-bold">
-                      {line.snapshot ? formatINR(line.snapshot.price) : "—"}
-                    </div>
-                    <div className="mt-2 flex items-center justify-between">
-                      <QuantityStepper
-                        value={line.qty}
-                        onChange={(n) => setQty(line.productId, n, line.variantId)}
-                      />
-                      <button
-                        onClick={() => remove(line.productId, line.variantId)}
-                        aria-label="Remove"
-                        className="text-muted-foreground hover:text-destructive"
-                      >
-                        <Trash2 className="size-4" />
-                      </button>
+                    <div className="flex-1 min-w-0">
+                      {line.snapshot ? (
+                        <Link
+                          to="/products/$slug"
+                          params={{ slug: line.snapshot.slug }}
+                          onClick={close}
+                          className="text-sm leading-snug line-clamp-2 hover:text-accent"
+                        >
+                          {line.snapshot.name}
+                        </Link>
+                      ) : (
+                        <span className="text-sm text-muted-foreground">Product</span>
+                      )}
+                      {line.snapshot?.variantName && (
+                        <p className="text-xs text-muted-foreground mt-0.5">
+                          {line.snapshot.variantName}
+                        </p>
+                      )}
+                      {isReserved(line.productId, line.variantId) && (
+                        <ReservationInlineBadge
+                          productId={line.productId}
+                          variantId={line.variantId}
+                        />
+                      )}
+                      {isOverQty && (
+                        <p className="mt-1 text-[10px] text-amber-700 flex items-center gap-1">
+                          <AlertTriangle className="size-2.5 shrink-0" aria-hidden />
+                          Only {entry?.availableStock} available
+                        </p>
+                      )}
+                      <div className="mt-1 font-sans font-bold">
+                        {line.snapshot ? formatINR(line.snapshot.price) : "—"}
+                      </div>
+                      <div className="mt-2 flex items-center justify-between">
+                        {isSoldOut ? (
+                          <span className="text-[10px] text-destructive uppercase tracking-[0.18em]">
+                            Sold Out
+                          </span>
+                        ) : (
+                          <QuantityStepper
+                            value={line.qty}
+                            onChange={(n) => setQty(line.productId, n, line.variantId)}
+                            max={stepperMax}
+                          />
+                        )}
+                        <button
+                          onClick={() => remove(line.productId, line.variantId)}
+                          aria-label="Remove"
+                          className="text-muted-foreground hover:text-destructive"
+                        >
+                          <Trash2 className="size-4" />
+                        </button>
+                      </div>
                     </div>
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
             <div className="relative z-10 border-t border-border px-6 py-5 space-y-4">
               <div className="flex justify-between text-sm">
@@ -121,16 +169,27 @@ export function CartDrawer() {
                 >
                   View Cart
                 </Link>
-                <Link
-                  to="/checkout"
-                  onClick={() => {
-                    clearBuyNow();
-                    close();
-                  }}
-                  className="bg-primary text-primary-foreground text-[11px] uppercase tracking-[0.22em] py-3 text-center hover:bg-accent hover:text-accent-foreground transition"
-                >
-                  Checkout
-                </Link>
+                {hasStockIssues ? (
+                  <button
+                    disabled
+                    aria-disabled="true"
+                    title="Resolve stock issues in your cart before checking out"
+                    className="bg-primary/40 text-primary-foreground text-[11px] uppercase tracking-[0.22em] py-3 text-center cursor-not-allowed"
+                  >
+                    Checkout
+                  </button>
+                ) : (
+                  <Link
+                    to="/checkout"
+                    onClick={() => {
+                      clearBuyNow();
+                      close();
+                    }}
+                    className="bg-primary text-primary-foreground text-[11px] uppercase tracking-[0.22em] py-3 text-center hover:bg-accent hover:text-accent-foreground transition"
+                  >
+                    Checkout
+                  </Link>
+                )}
               </div>
             </div>
           </>

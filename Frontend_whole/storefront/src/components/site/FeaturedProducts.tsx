@@ -1,3 +1,4 @@
+import { useEffect } from "react";
 import { Link } from "@tanstack/react-router";
 import { ArrowUpRight } from "lucide-react";
 import { motion } from "framer-motion";
@@ -8,6 +9,7 @@ import { ProductCardSkeleton } from "@/components/loading/ProductCardSkeleton";
 import { api } from "@/lib/api/client";
 import { queryKeys } from "@/lib/api/queryKeys";
 import { toProduct } from "@/lib/api/mappers";
+import { hydrateInventoryFromListItems } from "@/hooks/inventory/hydrateInventory";
 import type { ProductListResponse } from "@/types/admin";
 import type { ProductGridConfig } from "@/types/cms";
 
@@ -47,6 +49,10 @@ export function FeaturedProducts({ config }: FeaturedProductsProps) {
     queryFn: () => api.get<ProductListResponse>("/products", { params }),
     staleTime: 5 * 60_000,
   });
+
+  useEffect(() => {
+    if (data?.items?.length) hydrateInventoryFromListItems(data.items);
+  }, [data]);
 
   const items = (data?.items ?? []).map(toProduct);
   if (!isLoading && items.length === 0) return null;

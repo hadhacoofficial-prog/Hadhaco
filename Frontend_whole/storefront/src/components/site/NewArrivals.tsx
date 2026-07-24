@@ -1,4 +1,4 @@
-import { useRef } from "react";
+import { useEffect, useRef } from "react";
 import { Link } from "@tanstack/react-router";
 import { ChevronLeft, ChevronRight, ArrowUpRight } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
@@ -6,6 +6,7 @@ import { ProductCard } from "@/components/site/ProductCard";
 import { api } from "@/lib/api/client";
 import { queryKeys } from "@/lib/api/queryKeys";
 import { toProduct } from "@/lib/api/mappers";
+import { hydrateInventoryFromListItems } from "@/hooks/inventory/hydrateInventory";
 import type { ProductListResponse } from "@/types/admin";
 
 export function NewArrivals() {
@@ -17,6 +18,10 @@ export function NewArrivals() {
       }),
     staleTime: 5 * 60_000,
   });
+
+  useEffect(() => {
+    if (data?.items?.length) hydrateInventoryFromListItems(data.items);
+  }, [data]);
 
   const list = (data?.items ?? []).map(toProduct);
   const scroller = useRef<HTMLDivElement>(null);

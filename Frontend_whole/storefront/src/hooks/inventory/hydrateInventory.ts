@@ -6,7 +6,7 @@
  */
 
 import { useInventoryStore } from "@/stores/inventory";
-import type { ProductDetail } from "@/types/public";
+import type { ProductDetail, ProductListItem } from "@/types/public";
 
 /**
  * Hydrate the inventory Zustand store from a raw ProductDetail API response.
@@ -41,5 +41,30 @@ export function hydrateInventoryFromProduct(raw: ProductDetail): void {
 export function hydrateInventoryFromProducts(products: ProductDetail[]): void {
   for (const raw of products) {
     hydrateInventoryFromProduct(raw);
+  }
+}
+
+/**
+ * Hydrate inventory from list/grid/search results — these only carry the
+ * slim `ProductListItem` shape (no reserved/sold/threshold/variants), unlike
+ * the full `ProductDetail` a PDP fetches. Writes only the fields we actually
+ * have via `upsert` (not `upsertProduct`, which requires the full shape) so
+ * every product card/grid can still read a real-time `availableStock` out of
+ * the store instead of only ever showing the number from its one-time list
+ * fetch.
+ */
+export function hydrateInventoryFromListItems(items: ProductListItem[]): void {
+  const store = useInventoryStore.getState();
+  for (const item of items) {
+    if (!item.id) continue;
+    store.upsert(item.id, {
+      variantId: null,
+      stockQuantity: item.stock_quantity,
+      availableStock: item.available_stock ?? item.stock_quantity,
+      price: item.base_price,
+      compareAtPrice: item.compare_at_price ?? null,
+      source: "api",
+      confidence: "high",
+    });
   }
 }

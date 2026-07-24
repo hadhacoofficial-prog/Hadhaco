@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useMutation, useQueries } from "@tanstack/react-query";
 import { ShoppingBag, Trash2, Tag, AlertTriangle, RefreshCw } from "lucide-react";
@@ -11,6 +11,8 @@ import { InventoryBadge } from "@/components/site/InventoryBadge";
 import { ReservationCard } from "@/components/reservation/ReservationCard";
 import { useActiveReservations } from "@/hooks/useActiveReservations";
 import { useCart, cartLineKey } from "@/stores/cart";
+import { useInventoryStore, inventoryKey } from "@/stores/inventory";
+import { hydrateInventoryFromProduct } from "@/hooks/inventory/hydrateInventory";
 import { computeQuantityBounds } from "@/lib/cartQuantity";
 import { api } from "@/lib/api/client";
 import { toUserMessage } from "@/lib/api/errors";
@@ -31,7 +33,12 @@ function CartPage() {
   const [discount, setDiscount] = useState(0);
   const [appliedCode, setAppliedCode] = useState<string | null>(null);
 
-  // Fetch live stock for every cart line (polls every 60 s)
+  // Fetch live stock for every cart line. This is now a fallback/seed
+  // source, not the primary one — cart lines a shopper never visited a
+  // listing/PDP for (e.g. a cart restored from days ago) would otherwise
+  // have nothing in the real-time inventory store to read from. Polling
+  // stays as a backstop for that case and for reconciliation if an SSE
+  // event was ever missed, but every render prefers the live store value.
   const stockQueries = useQueries({
     queries: lines.map((line) => ({
       queryKey: queryKeys.products.stock(line.snapshot?.slug ?? `product-${line.productId}`),
@@ -40,24 +47,41 @@ function CartPage() {
       staleTime: 30_000,
       refetchInterval: 60_000,
       refetchOnWindowFocus: true,
-      select: (data: ProductDetail) => {
-        const variant = line.variantId ? data.variants.find((v) => v.id === line.variantId) : null;
-        const availableStock = variant
-          ? (variant.available_stock ?? variant.stock_quantity)
-          : (data.available_stock ?? data.stock_quantity);
-        return {
-          lineKey: cartLineKey(line.productId, line.variantId),
-          availableStock,
-          maxOrderQty: data.max_order_quantity ?? 0,
-        };
-      },
     })),
   });
 
-  // Build lineKey → { availableStock, maxOrderQty } map
+  // Hydrate the real-time inventory store from each successful poll so the
+  // SSE listener (mounted globally in router.tsx) has an entry to update
+  // going forward, even for a product this shopper never viewed elsewhere.
+  useEffect(() => {
+    for (const q of stockQueries) {
+      if (q.data) hydrateInventoryFromProduct(q.data);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [stockQueries.map((q) => q.dataUpdatedAt).join(",")]);
+
+  const inventoryEntries = useInventoryStore((s) => s.entries);
+
+  // Build lineKey → { availableStock, maxOrderQty } map, preferring the
+  // live store entry (SSE-updated) over the polled REST fallback.
   const stockMap: Record<string, { availableStock: number; maxOrderQty: number }> = {};
-  stockQueries.forEach((q) => {
-    if (q.data) stockMap[q.data.lineKey] = q.data;
+  lines.forEach((line, i) => {
+    const key = cartLineKey(line.productId, line.variantId);
+    const entry = inventoryEntries[inventoryKey(line.productId, line.variantId)];
+    if (entry) {
+      stockMap[key] = {
+        availableStock: entry.availableStock,
+        maxOrderQty: entry.maxOrderQuantity,
+      };
+      return;
+    }
+    const polled = stockQueries[i]?.data;
+    if (!polled) return;
+    const variant = line.variantId ? polled.variants.find((v) => v.id === line.variantId) : null;
+    const availableStock = variant
+      ? (variant.available_stock ?? variant.stock_quantity)
+      : (polled.available_stock ?? polled.stock_quantity);
+    stockMap[key] = { availableStock, maxOrderQty: polled.max_order_quantity ?? 0 };
   });
 
   // Detect items where cart qty exceeds the effective cap (stock or order limit)

@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useMemo, useEffect } from "react";
 import { createFileRoute } from "@tanstack/react-router";
 import { useQuery, keepPreviousData } from "@tanstack/react-query";
 import { z } from "zod";
@@ -11,6 +11,7 @@ import { ProductGridSkeleton } from "@/components/loading/ProductGridSkeleton";
 import { api } from "@/lib/api/client";
 import { queryKeys } from "@/lib/api/queryKeys";
 import { toProduct } from "@/lib/api/mappers";
+import { hydrateInventoryFromListItems } from "@/hooks/inventory/hydrateInventory";
 import type { ProductListResponse } from "@/types/admin";
 
 // ─── Route ───────────────────────────────────────────────────────────────────
@@ -75,6 +76,10 @@ function ProductsPage() {
     staleTime: 30_000,
     placeholderData: keepPreviousData,
   });
+
+  useEffect(() => {
+    if (data?.items?.length) hydrateInventoryFromListItems(data.items);
+  }, [data]);
 
   const products = useMemo(() => (data?.items ?? []).map(toProduct), [data]);
 

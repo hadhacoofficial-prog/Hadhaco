@@ -1,8 +1,10 @@
+import { useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { ProductCard } from "./ProductCard";
 import { api } from "@/lib/api/client";
 import { queryKeys } from "@/lib/api/queryKeys";
 import { toProduct } from "@/lib/api/mappers";
+import { hydrateInventoryFromListItems } from "@/hooks/inventory/hydrateInventory";
 import type { ProductListResponse } from "@/types/admin";
 
 export function Trending() {
@@ -14,6 +16,10 @@ export function Trending() {
       }),
     staleTime: 5 * 60_000,
   });
+
+  useEffect(() => {
+    if (data?.items?.length) hydrateInventoryFromListItems(data.items);
+  }, [data]);
 
   const items = (data?.items ?? []).map(toProduct);
 

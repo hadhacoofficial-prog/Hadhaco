@@ -22,6 +22,8 @@ import { ProtectedRoute } from "@/components/common/ProtectedRoute";
 import { useCart } from "@/stores/cart";
 import { useCheckoutStore } from "@/stores/checkout";
 import { useBuyNowStore } from "@/stores/buyNow";
+import { useInventoryStore, inventoryKey } from "@/stores/inventory";
+import { computeQuantityBounds } from "@/lib/cartQuantity";
 import { api } from "@/lib/api/client";
 import { queryKeys } from "@/lib/api/queryKeys";
 import { toUserMessage } from "@/lib/api/errors";
@@ -87,6 +89,23 @@ function CheckoutPage() {
   const sub = buyNowActive
     ? buyNowItems.reduce((n, l) => n + (l.snapshot ? l.snapshot.price * l.qty : 0), 0)
     : cartSubtotal();
+
+  // Live stock check, reactive to the SSE-updated store — surfaces a
+  // shopper's stock changing *while they're filling in the form*, not only
+  // when they hit "Place order" (see the same check inside placeOrder below).
+  const inventoryEntries = useInventoryStore((s) => s.entries);
+  const stockIssueLines = lines.filter((line) => {
+    const entry = inventoryEntries[inventoryKey(line.productId, line.variantId)];
+    if (!entry) return false;
+    if (entry.availableStock === 0) return true;
+    const bounds = computeQuantityBounds({
+      availableStock: entry.availableStock,
+      maxOrderQty: entry.maxOrderQuantity,
+      cartQty: 0,
+    });
+    return line.qty > bounds.effectiveCap;
+  });
+  const hasLiveStockIssues = stockIssueLines.length > 0;
 
   // Checkout form state — persisted in Zustand so it survives auth redirects
   const shippingMethod = useCheckoutStore((s) => s.shippingMethod);
@@ -378,6 +397,31 @@ function CheckoutPage() {
     e.preventDefault();
     if (lines.length === 0) return;
     if (checkoutState !== "idle") return;
+
+    // Live pre-submit stock check — previously checkout only ever learned
+    // about insufficient stock from the reservation API's error response,
+    // after already spending a round trip. Reading the real-time store
+    // (kept current by the globally-mounted SSE listener) catches the
+    // common case instantly and with the exact number, matching what the
+    // cart page already enforces before a shopper even reaches this page.
+    const store = useInventoryStore.getState();
+    for (const line of lines) {
+      const entry = store.entries[inventoryKey(line.productId, line.variantId)];
+      if (!entry) continue;
+      const bounds = computeQuantityBounds({
+        availableStock: entry.availableStock,
+        maxOrderQty: entry.maxOrderQuantity,
+        cartQty: 0,
+      });
+      if (line.qty > bounds.effectiveCap) {
+        toast.error(
+          entry.availableStock === 0
+            ? `${line.snapshot?.name ?? "An item"} is now sold out — remove it to continue.`
+            : `Only ${entry.availableStock} of ${line.snapshot?.name ?? "an item"} available — reduce the quantity to continue.`,
+        );
+        return;
+      }
+    }
 
     let shippingAddressId = selectedAddressId !== "new" ? selectedAddressId : null;
 
@@ -797,6 +841,35 @@ function CheckoutPage() {
 
               <aside className="border border-border bg-card p-6 h-fit lg:sticky lg:top-28">
                 <h2 className="font-display text-xl mb-4">Order summary</h2>
+                {hasLiveStockIssues && (
+                  <div
+                    className="flex items-start gap-2 p-3 bg-amber-50 border border-amber-200 mb-4 text-xs"
+                    role="alert"
+                    aria-live="polite"
+                  >
+                    <AlertTriangle
+                      className="size-3.5 shrink-0 text-amber-600 mt-0.5"
+                      aria-hidden
+                    />
+                    <div className="text-amber-800">
+                      <p className="font-medium">Stock has changed</p>
+                      {stockIssueLines.map((line) => {
+                        const entry =
+                          inventoryEntries[inventoryKey(line.productId, line.variantId)];
+                        return (
+                          <p key={`${line.productId}::${line.variantId ?? ""}`} className="mt-0.5">
+                            {entry?.availableStock === 0
+                              ? `${line.snapshot?.name ?? "An item"} is now sold out.`
+                              : `Only ${entry?.availableStock} of ${line.snapshot?.name ?? "an item"} available.`}
+                          </p>
+                        );
+                      })}
+                      <Link to="/cart" className="underline mt-1 inline-block">
+                        Update cart
+                      </Link>
+                    </div>
+                  </div>
+                )}
                 <div className="divide-y divide-border max-h-72 overflow-y-auto -mx-2 px-2">
                   {lines.map((line) => (
                     <div
@@ -872,7 +945,7 @@ function CheckoutPage() {
                 </div>
                 <button
                   type="submit"
-                  disabled={lines.length === 0 || submitting}
+                  disabled={lines.length === 0 || submitting || hasLiveStockIssues}
                   className="mt-5 w-full bg-primary text-primary-foreground text-[11px] uppercase tracking-[0.22em] py-3.5 hover:bg-accent hover:text-accent-foreground transition disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
                 >
                   {checkoutState === "reserving" && (

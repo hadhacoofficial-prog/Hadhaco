@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { createFileRoute, Link, notFound } from "@tanstack/react-router";
 import { useQuery, keepPreviousData } from "@tanstack/react-query";
 import { SlidersHorizontal, X } from "lucide-react";
@@ -11,6 +11,7 @@ import { ProductGridSkeleton } from "@/components/loading/ProductGridSkeleton";
 import { api } from "@/lib/api/client";
 import { queryKeys } from "@/lib/api/queryKeys";
 import { toCollection, toProduct } from "@/lib/api/mappers";
+import { hydrateInventoryFromListItems } from "@/hooks/inventory/hydrateInventory";
 import type { CollectionDto } from "@/types/public";
 import type { ProductListResponse } from "@/types/admin";
 
@@ -81,6 +82,10 @@ function CollectionPage() {
     staleTime: 60_000,
     placeholderData: keepPreviousData,
   });
+
+  useEffect(() => {
+    if (data?.items?.length) hydrateInventoryFromListItems(data.items);
+  }, [data]);
 
   const products = useMemo(() => (data?.items ?? []).map(toProduct), [data]);
   const total = data?.total ?? 0;
