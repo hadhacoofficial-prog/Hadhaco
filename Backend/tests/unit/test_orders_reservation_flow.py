@@ -29,6 +29,7 @@ import app.modules.categories.models  # noqa: F401
 import app.modules.collections.models  # noqa: F401
 import app.modules.coupons.models  # noqa: F401
 import app.modules.inventory.models  # noqa: F401
+import app.modules.media.models  # noqa: F401
 import app.modules.orders.models  # noqa: F401
 import app.modules.payments.models  # noqa: F401
 import app.modules.profiles.models  # noqa: F401
@@ -167,8 +168,6 @@ class TestCreatePaymentIntentReservation:
         payload.coupon_code = None
         payload.notes = None
 
-        # CartRepository and AddressRepository are imported locally in the service,
-        # so patch them in their source modules.
         with patch("app.modules.cart.repository.CartRepository") as MockCartRepo:
             MockCartRepo.return_value.get_for_user = AsyncMock(return_value=mock_cart)
             with patch(
@@ -176,44 +175,45 @@ class TestCreatePaymentIntentReservation:
             ) as MockAddrRepo:
                 MockAddrRepo.return_value.get = AsyncMock(return_value=addr)
                 with patch(
-                    "app.modules.orders.service._reservation_svc.reserve_items",
-                    AsyncMock(return_value=[reservation]),
-                ) as mock_reserve:
+                    "app.modules.orders.service.OrderService._find_matching_pending_order",
+                    new_callable=AsyncMock,
+                    return_value=None,
+                ):
                     with patch(
-                        "app.modules.orders.service._reservation_svc.link_reservations_to_order",
-                        AsyncMock(),
-                    ):
+                        "app.modules.orders.service._reservation_svc.reserve_items",
+                        AsyncMock(return_value=[reservation]),
+                    ) as mock_reserve:
                         with patch(
-                            "app.modules.orders.service._repo.generate_order_number",
-                            AsyncMock(return_value="ORD-2024-001"),
+                            "app.modules.orders.service._reservation_svc.link_reservations_to_order",
+                            AsyncMock(),
                         ):
                             with patch(
-                                "app.modules.orders.service._repo.create",
-                                AsyncMock(return_value=mock_order),
+                                "app.modules.orders.service._repo.generate_order_number",
+                                AsyncMock(return_value="ORD-2024-001"),
                             ):
                                 with patch(
-                                    "app.modules.orders.service._repo.add_item",
-                                    AsyncMock(),
+                                    "app.modules.orders.service._repo.create",
+                                    AsyncMock(return_value=mock_order),
                                 ):
                                     with patch(
-                                        "app.modules.orders.service._repo.update",
+                                        "app.modules.orders.service._repo.add_item",
                                         AsyncMock(),
                                     ):
                                         with patch(
-                                            "asyncio.get_running_loop"
-                                        ) as mock_loop:
-                                            mock_loop.return_value.run_in_executor = (
-                                                AsyncMock(
+                                            "app.modules.orders.service._repo.update",
+                                            AsyncMock(),
+                                        ):
+                                            with patch(
+                                                "asyncio.get_running_loop"
+                                            ) as mock_loop:
+                                                mock_loop.return_value.run_in_executor = AsyncMock(
                                                     return_value={
                                                         "id": "rzp_ord_test123"
                                                     }
                                                 )
-                                            )
-                                            response = (
-                                                await self.svc.create_payment_intent(
+                                                response = await self.svc.create_payment_intent(
                                                     db, user_id, payload
                                                 )
-                                            )
 
         mock_reserve.assert_called_once()
         assert response.razorpay_order_id == "rzp_ord_test123"
@@ -247,52 +247,55 @@ class TestCreatePaymentIntentReservation:
             ) as MockAddrRepo:
                 MockAddrRepo.return_value.get = AsyncMock(return_value=addr)
                 with patch(
-                    "app.modules.orders.service._reservation_svc.reserve_items",
-                    AsyncMock(return_value=[reservation]),
+                    "app.modules.orders.service.OrderService._find_matching_pending_order",
+                    new_callable=AsyncMock,
+                    return_value=None,
                 ):
                     with patch(
-                        "app.modules.orders.service._reservation_svc.link_reservations_to_order",
-                        AsyncMock(),
+                        "app.modules.orders.service._reservation_svc.reserve_items",
+                        AsyncMock(return_value=[reservation]),
                     ):
                         with patch(
-                            "app.modules.orders.service._reservation_svc.release_order_reservations",
+                            "app.modules.orders.service._reservation_svc.link_reservations_to_order",
                             AsyncMock(),
-                        ) as mock_release:
+                        ):
                             with patch(
-                                "app.modules.orders.service._repo.generate_order_number",
-                                AsyncMock(return_value="ORD-2024-001"),
-                            ):
+                                "app.modules.orders.service._reservation_svc.release_order_reservations",
+                                AsyncMock(),
+                            ) as mock_release:
                                 with patch(
-                                    "app.modules.orders.service._repo.create",
-                                    AsyncMock(return_value=mock_order),
+                                    "app.modules.orders.service._repo.generate_order_number",
+                                    AsyncMock(return_value="ORD-2024-001"),
                                 ):
                                     with patch(
-                                        "app.modules.orders.service._repo.add_item",
-                                        AsyncMock(),
+                                        "app.modules.orders.service._repo.create",
+                                        AsyncMock(return_value=mock_order),
                                     ):
                                         with patch(
-                                            "asyncio.get_running_loop"
-                                        ) as mock_loop:
-                                            mock_loop.return_value.run_in_executor = (
-                                                AsyncMock(
+                                            "app.modules.orders.service._repo.add_item",
+                                            AsyncMock(),
+                                        ):
+                                            with patch(
+                                                "asyncio.get_running_loop"
+                                            ) as mock_loop:
+                                                mock_loop.return_value.run_in_executor = AsyncMock(
                                                     side_effect=Exception(
                                                         "Razorpay down"
                                                     )
                                                 )
-                                            )
 
-                                            from app.core.exceptions import (
-                                                ValidationError,
-                                            )
-
-                                            with pytest.raises(ValidationError):
-                                                await self.svc.create_payment_intent(
-                                                    db, user_id, payload
+                                                from app.core.exceptions import (
+                                                    ValidationError,
                                                 )
 
-                                            mock_release.assert_called_once_with(
-                                                db, mock_order.id, reason="RELEASED"
-                                            )
+                                                with pytest.raises(ValidationError):
+                                                    await self.svc.create_payment_intent(
+                                                        db, user_id, payload
+                                                    )
+
+                                                mock_release.assert_called_once_with(
+                                                    db, mock_order.id, reason="RELEASED"
+                                                )
 
     async def test_empty_cart_raises_validation_error(self):
         from app.core.exceptions import ValidationError
@@ -338,11 +341,277 @@ class TestCreatePaymentIntentReservation:
             ) as MockAddrRepo:
                 MockAddrRepo.return_value.get = AsyncMock(return_value=addr)
                 with patch(
-                    "app.modules.orders.service._reservation_svc.reserve_items",
-                    AsyncMock(side_effect=InventoryError("Only 2 item(s) available")),
+                    "app.modules.orders.service.OrderService._find_matching_pending_order",
+                    new_callable=AsyncMock,
+                    return_value=None,
                 ):
-                    with pytest.raises(InventoryError, match="2 item"):
+                    with patch(
+                        "app.modules.orders.service._reservation_svc.reserve_items",
+                        AsyncMock(
+                            side_effect=InventoryError("Only 2 item(s) available")
+                        ),
+                    ):
+                        with pytest.raises(InventoryError, match="2 item"):
+                            await self.svc.create_payment_intent(db, user_id, payload)
+
+
+# ── TestDuplicateOrderGuard ───────────────────────────────────────────────────
+
+
+class TestDuplicateOrderGuard:
+    def setup_method(self):
+        from app.modules.orders.service import OrderService
+
+        self.svc = OrderService()
+
+    def _make_existing_order(self, *, rzp_order_id: str | None = "rzp_ord_existing123"):
+        order = MagicMock()
+        order.id = uuid.uuid4()
+        order.razorpay_order_id = rzp_order_id
+        order.total = 1060.0
+        order.status = "stock_reserved"
+        order.items = []
+        return order
+
+    async def test_redirects_to_existing_order_with_rzp_id(self):
+        """When a matching order with razorpay_order_id exists, return its details."""
+        user_id = uuid.uuid4()
+        product_id = uuid.uuid4()
+        cart_item = _make_cart_item(product_id=product_id, quantity=2)
+        mock_cart = MagicMock()
+        mock_cart.id = uuid.uuid4()
+        mock_cart.items = [cart_item]
+
+        prod_row = _make_product_row(product_id=product_id)
+        db = _mock_db_for_line_items(prod_row)
+
+        addr = _make_address()
+        existing_order = self._make_existing_order(rzp_order_id="rzp_ord_existing123")
+
+        payload = MagicMock()
+        payload.shipping_address_id = uuid.uuid4()
+        payload.billing_address_id = None
+        payload.coupon_code = None
+        payload.notes = None
+
+        with patch("app.modules.cart.repository.CartRepository") as MockCartRepo:
+            MockCartRepo.return_value.get_for_user = AsyncMock(return_value=mock_cart)
+            with patch(
+                "app.modules.addresses.repository.AddressRepository"
+            ) as MockAddrRepo:
+                MockAddrRepo.return_value.get = AsyncMock(return_value=addr)
+                with patch(
+                    "app.modules.orders.service.OrderService._find_matching_pending_order",
+                    new_callable=AsyncMock,
+                    return_value=existing_order,
+                ):
+                    response = await self.svc.create_payment_intent(
+                        db, user_id, payload
+                    )
+
+        assert response.razorpay_order_id == "rzp_ord_existing123"
+        assert response.order_id == str(existing_order.id)
+        assert response.amount == 106000
+
+    async def test_raises_error_when_order_in_flight_no_rzp_id(self):
+        """When a matching order exists without razorpay_order_id, raise error."""
+        from app.core.exceptions import ValidationError
+
+        user_id = uuid.uuid4()
+        product_id = uuid.uuid4()
+        cart_item = _make_cart_item(product_id=product_id, quantity=2)
+        mock_cart = MagicMock()
+        mock_cart.id = uuid.uuid4()
+        mock_cart.items = [cart_item]
+
+        prod_row = _make_product_row(product_id=product_id)
+        db = _mock_db_for_line_items(prod_row)
+
+        addr = _make_address()
+        existing_order = self._make_existing_order(rzp_order_id=None)
+
+        payload = MagicMock()
+        payload.shipping_address_id = uuid.uuid4()
+        payload.billing_address_id = None
+        payload.coupon_code = None
+        payload.notes = None
+
+        with patch("app.modules.cart.repository.CartRepository") as MockCartRepo:
+            MockCartRepo.return_value.get_for_user = AsyncMock(return_value=mock_cart)
+            with patch(
+                "app.modules.addresses.repository.AddressRepository"
+            ) as MockAddrRepo:
+                MockAddrRepo.return_value.get = AsyncMock(return_value=addr)
+                with patch(
+                    "app.modules.orders.service.OrderService._find_matching_pending_order",
+                    new_callable=AsyncMock,
+                    return_value=existing_order,
+                ):
+                    with pytest.raises(
+                        ValidationError, match="already being processed"
+                    ):
                         await self.svc.create_payment_intent(db, user_id, payload)
+
+    async def test_proceeds_when_no_matching_order(self):
+        """When no matching order exists, proceed normally."""
+        user_id = uuid.uuid4()
+        product_id = uuid.uuid4()
+        cart_item = _make_cart_item(product_id=product_id, quantity=2)
+        mock_cart = MagicMock()
+        mock_cart.id = uuid.uuid4()
+        mock_cart.items = [cart_item]
+
+        prod_row = _make_product_row(product_id=product_id)
+        db = _mock_db_for_line_items(prod_row)
+
+        addr = _make_address()
+        reservation = _make_reservation()
+        mock_order = _make_order(user_id=user_id)
+        mock_order.id = uuid.uuid4()
+
+        payload = MagicMock()
+        payload.shipping_address_id = uuid.uuid4()
+        payload.billing_address_id = None
+        payload.coupon_code = None
+        payload.notes = None
+
+        with patch("app.modules.cart.repository.CartRepository") as MockCartRepo:
+            MockCartRepo.return_value.get_for_user = AsyncMock(return_value=mock_cart)
+            with patch(
+                "app.modules.addresses.repository.AddressRepository"
+            ) as MockAddrRepo:
+                MockAddrRepo.return_value.get = AsyncMock(return_value=addr)
+                with patch(
+                    "app.modules.orders.service.OrderService._find_matching_pending_order",
+                    new_callable=AsyncMock,
+                    return_value=None,
+                ):
+                    with patch(
+                        "app.modules.orders.service._reservation_svc.reserve_items",
+                        AsyncMock(return_value=[reservation]),
+                    ):
+                        with patch(
+                            "app.modules.orders.service._reservation_svc.link_reservations_to_order",
+                            AsyncMock(),
+                        ):
+                            with patch(
+                                "app.modules.orders.service._repo.generate_order_number",
+                                AsyncMock(return_value="ORD-2024-002"),
+                            ):
+                                with patch(
+                                    "app.modules.orders.service._repo.create",
+                                    AsyncMock(return_value=mock_order),
+                                ):
+                                    with patch(
+                                        "app.modules.orders.service._repo.add_item",
+                                        AsyncMock(),
+                                    ):
+                                        with patch(
+                                            "app.modules.orders.service._repo.update",
+                                            AsyncMock(),
+                                        ):
+                                            with patch(
+                                                "asyncio.get_running_loop"
+                                            ) as mock_loop:
+                                                mock_loop.return_value.run_in_executor = AsyncMock(
+                                                    return_value={
+                                                        "id": "rzp_ord_new123"
+                                                    }
+                                                )
+                                                response = await self.svc.create_payment_intent(
+                                                    db, user_id, payload
+                                                )
+
+        assert response.razorpay_order_id == "rzp_ord_new123"
+
+    async def test_razorpay_failure_marks_order_payment_failed(self):
+        """On Razorpay failure, order status transitions to payment_failed."""
+        user_id = uuid.uuid4()
+        product_id = uuid.uuid4()
+        cart_item = _make_cart_item(product_id=product_id, quantity=1)
+        mock_cart = MagicMock()
+        mock_cart.id = uuid.uuid4()
+        mock_cart.items = [cart_item]
+
+        prod_row = _make_product_row(product_id=product_id)
+        db = _mock_db_for_line_items(prod_row)
+
+        addr = _make_address()
+        reservation = _make_reservation()
+        mock_order = _make_order(user_id=user_id)
+
+        payload = MagicMock()
+        payload.shipping_address_id = uuid.uuid4()
+        payload.billing_address_id = None
+        payload.coupon_code = None
+        payload.notes = None
+
+        with patch("app.modules.cart.repository.CartRepository") as MockCartRepo:
+            MockCartRepo.return_value.get_for_user = AsyncMock(return_value=mock_cart)
+            with patch(
+                "app.modules.addresses.repository.AddressRepository"
+            ) as MockAddrRepo:
+                MockAddrRepo.return_value.get = AsyncMock(return_value=addr)
+                with patch(
+                    "app.modules.orders.service.OrderService._find_matching_pending_order",
+                    new_callable=AsyncMock,
+                    return_value=None,
+                ):
+                    with patch(
+                        "app.modules.orders.service._reservation_svc.reserve_items",
+                        AsyncMock(return_value=[reservation]),
+                    ):
+                        with patch(
+                            "app.modules.orders.service._reservation_svc.link_reservations_to_order",
+                            AsyncMock(),
+                        ):
+                            with patch(
+                                "app.modules.orders.service._reservation_svc.release_order_reservations",
+                                AsyncMock(),
+                            ) as mock_release:
+                                with patch(
+                                    "app.modules.orders.service._repo.generate_order_number",
+                                    AsyncMock(return_value="ORD-2024-003"),
+                                ):
+                                    with patch(
+                                        "app.modules.orders.service._repo.create",
+                                        AsyncMock(return_value=mock_order),
+                                    ):
+                                        with patch(
+                                            "app.modules.orders.service._repo.add_item",
+                                            AsyncMock(),
+                                        ):
+                                            with patch(
+                                                "app.modules.orders.service._repo.update",
+                                                AsyncMock(),
+                                            ) as mock_update:
+                                                with patch(
+                                                    "asyncio.get_running_loop"
+                                                ) as mock_loop:
+                                                    mock_loop.return_value.run_in_executor = AsyncMock(
+                                                        side_effect=Exception(
+                                                            "Razorpay down"
+                                                        )
+                                                    )
+
+                                                    from app.core.exceptions import (
+                                                        ValidationError,
+                                                    )
+
+                                                    with pytest.raises(
+                                                        ValidationError,
+                                                    ):
+                                                        await self.svc.create_payment_intent(
+                                                            db, user_id, payload
+                                                        )
+
+                                                    # Verify order was marked payment_failed
+                                                    mock_update.assert_any_call(
+                                                        db,
+                                                        mock_order.id,
+                                                        {"status": "payment_failed"},
+                                                    )
+                                                    mock_release.assert_called_once()
 
 
 # ── TestVerifyAndFulfill ──────────────────────────────────────────────────────
@@ -555,42 +824,45 @@ class TestCreateFromCartCOD:
             ) as MockAddrRepo:
                 MockAddrRepo.return_value.get = AsyncMock(return_value=addr)
                 with patch(
-                    "app.modules.orders.service._reservation_svc.reserve_items",
-                    AsyncMock(return_value=[reservation]),
-                ) as mock_reserve:
+                    "app.modules.orders.service.OrderService._find_matching_pending_order",
+                    new_callable=AsyncMock,
+                    return_value=None,
+                ):
                     with patch(
-                        "app.modules.orders.service._reservation_svc.link_reservations_to_order",
-                        AsyncMock(),
-                    ) as mock_link:
+                        "app.modules.orders.service._reservation_svc.reserve_items",
+                        AsyncMock(return_value=[reservation]),
+                    ) as mock_reserve:
                         with patch(
-                            "app.modules.orders.service._repo.generate_order_number",
-                            AsyncMock(return_value="ORD-2024-001"),
-                        ):
+                            "app.modules.orders.service._reservation_svc.link_reservations_to_order",
+                            AsyncMock(),
+                        ) as mock_link:
                             with patch(
-                                "app.modules.orders.service._repo.create",
-                                AsyncMock(return_value=mock_order),
+                                "app.modules.orders.service._repo.generate_order_number",
+                                AsyncMock(return_value="ORD-2024-001"),
                             ):
                                 with patch(
-                                    "app.modules.orders.service._repo.add_item",
-                                    AsyncMock(),
+                                    "app.modules.orders.service._repo.create",
+                                    AsyncMock(return_value=mock_order),
                                 ):
                                     with patch(
-                                        "app.modules.orders.service._repo.update",
+                                        "app.modules.orders.service._repo.add_item",
                                         AsyncMock(),
                                     ):
                                         with patch(
-                                            "asyncio.get_running_loop"
-                                        ) as mock_loop:
-                                            mock_loop.return_value.run_in_executor = (
-                                                AsyncMock(
+                                            "app.modules.orders.service._repo.update",
+                                            AsyncMock(),
+                                        ):
+                                            with patch(
+                                                "asyncio.get_running_loop"
+                                            ) as mock_loop:
+                                                mock_loop.return_value.run_in_executor = AsyncMock(
                                                     return_value={
                                                         "id": "rzp_ord_cod_test"
                                                     }
                                                 )
-                                            )
-                                            await self.svc.create_payment_intent(
-                                                db, user_id, payload
-                                            )
+                                                await self.svc.create_payment_intent(
+                                                    db, user_id, payload
+                                                )
 
         mock_reserve.assert_called_once()
         mock_link.assert_called_once()

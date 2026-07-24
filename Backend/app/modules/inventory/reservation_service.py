@@ -290,6 +290,12 @@ class ReservationService:
         # from "any variant".
         existing_by_key: dict[tuple[str, str | None], dict[str, Any]] = {}
         for er in existing_reservations:
+            # Only reuse unlinked (free) reservations.  Reservations already
+            # linked to an order are owned by that order and must never be
+            # modified — adjusting them would desynchronise the original
+            # order's stock accounting.
+            if er.get("order_id") is not None:
+                continue
             key = (
                 str(er["product_id"]),
                 str(er["variant_id"]) if er["variant_id"] else None,
@@ -314,30 +320,69 @@ class ReservationService:
             existing = existing_by_key.get(lookup_key)
 
             if existing:
-                # Reuse: extend expiry, don't double-count reserved_quantity.
+                # Reuse unlinked reservation with delta-based reconciliation.
+                # Adjust reserved_quantity by the delta between the old and new
+                # quantities so the stock counters always match the reservation.
+                old_qty: int = existing["quantity"]
+                delta: int = quantity - old_qty
+
+                if delta > 0:
+                    # Need more stock — lock and validate availability.
+                    stock = await self._lock_stock_target(db, product_id, variant_id)
+                    available = (
+                        stock["stock_quantity"]
+                        - stock["reserved_quantity"]
+                        - stock["sold_quantity"]
+                    )
+                    if not stock["allow_backorder"] and available < delta:
+                        raise InventoryError(
+                            f"Only {max(available, 0)} additional item(s) "
+                            f"available for '{stock['item_name']}'. "
+                            f"Please reduce your quantity."
+                        )
+                    await self._update_stock_target(
+                        db,
+                        stock,
+                        "reserved_quantity = reserved_quantity + :qty",
+                        {"qty": delta},
+                    )
+                elif delta < 0:
+                    # Releasing stock back — lock row and decrement.
+                    stock = await self._lock_stock_target(db, product_id, variant_id)
+                    await self._update_stock_target(
+                        db,
+                        stock,
+                        "reserved_quantity = GREATEST(reserved_quantity - :qty, 0)",
+                        {"qty": -delta},
+                    )
+                # delta == 0: no stock change needed.
+
                 # Bind the datetime directly — this is raw asyncpg SQL, which
                 # encodes a datetime as timestamptz. Passing expires_at.isoformat()
                 # (a str) raises DataError: "expected a datetime, got 'str'".
                 await db.execute(
                     text(
                         "UPDATE inventory_reservations "
-                        "SET expires_at = :expires, updated_at = now() "
+                        "SET quantity = :qty, expires_at = :expires, "
+                        "updated_at = now() "
                         "WHERE id = :rid AND status = 'ACTIVE'"
                     ),
-                    {"expires": expires_at, "rid": str(existing["id"])},
+                    {
+                        "qty": quantity,
+                        "expires": expires_at,
+                        "rid": str(existing["id"]),
+                    },
                 )
                 await db.flush()
 
-                # Build a lightweight ORM-like object so callers see a
-                # consistent return type.
                 reservation = InventoryReservation(
                     id=existing["id"],
                     reservation_number=existing["reservation_number"],
                     user_id=user_id,
-                    order_id=existing.get("order_id"),
+                    order_id=None,
                     product_id=product_id,
                     variant_id=variant_id,
-                    quantity=existing["quantity"],
+                    quantity=quantity,
                     status="ACTIVE",
                     expires_at=expires_at,
                 )
@@ -346,9 +391,13 @@ class ReservationService:
                     "reservation_reused",
                     reservation_number=existing["reservation_number"],
                     product_id=str(product_id),
-                    quantity=existing["quantity"],
+                    old_quantity=old_qty,
+                    new_quantity=quantity,
+                    delta=delta,
                     user_id=str(user_id),
                 )
+                if delta != 0:
+                    cache_targets.append((product_id, variant_id))
                 continue
 
             # ── New reservation: lock, validate, reserve ─────────────────────

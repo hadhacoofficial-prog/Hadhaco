@@ -138,6 +138,54 @@ class OrderService:
             )
         return line_items
 
+    async def _find_matching_pending_order(
+        self, db: AsyncSession, user_id: uuid.UUID, line_items: list[dict]
+    ) -> Any:
+        """Return an existing pending order whose items match *line_items* exactly.
+
+        Checked before creating a new order to prevent duplicate pending
+        orders from multi-tab or rapid-retry scenarios.  Returns ``None``
+        if no matching order is found.
+        """
+        from sqlalchemy import select
+        from sqlalchemy.orm import selectinload
+
+        from app.modules.orders.models import Order
+
+        result = await db.execute(
+            select(Order)
+            .where(
+                Order.user_id == user_id,
+                Order.status.in_(["stock_reserved", "payment_pending"]),
+            )
+            .options(selectinload(Order.items))
+            .order_by(Order.created_at.desc())
+            .limit(5)
+        )
+        candidates = result.scalars().all()
+
+        # Build a comparable set from the incoming line_items.
+        incoming: dict[tuple[str, str | None], int] = {}
+        for li in line_items:
+            key = (
+                str(li["product_id"]),
+                str(li["variant_id"]) if li.get("variant_id") else None,
+            )
+            incoming[key] = incoming.get(key, 0) + li["quantity"]
+
+        for order in candidates:
+            existing: dict[tuple[str, str | None], int] = {}
+            for oi in order.items:
+                key = (
+                    str(oi.product_id),
+                    str(oi.variant_id) if oi.variant_id else None,
+                )
+                existing[key] = existing.get(key, 0) + oi.quantity
+            if existing == incoming:
+                return order
+
+        return None
+
     async def _compute_totals(
         self,
         db: AsyncSession,
@@ -239,8 +287,20 @@ class OrderService:
 
         Stock is held for exactly 10 minutes. If payment is not completed by then
         the reservation_expiry background worker releases the inventory automatically.
+
+        Concurrency: a per-user advisory lock serialises concurrent checkout
+        requests for the same user so the duplicate-order guard always sees
+        committed state.  The lock is transaction-scoped (released on
+        commit/rollback) so it does NOT block the later Razorpay HTTP call.
         """
         t0 = time.perf_counter()
+
+        # ── Per-user advisory lock (serialises concurrent checkouts) ──────────
+        # Ensures the duplicate-order guard below always reads committed state.
+        # pg_advisory_xact_lock is released when the first transaction ends
+        # (the db.commit() at line 388), well before the Razorpay HTTP call.
+        _lock_key = user_id.int % (2**31)
+        await db.execute(text("SELECT pg_advisory_xact_lock(:lk)"), {"lk": _lock_key})
 
         from app.modules.cart.repository import CartRepository
 
@@ -255,6 +315,45 @@ class OrderService:
             bill_addr = await self._get_address(db, payload.billing_address_id, user_id)
 
         line_items = await self._resolve_line_items(db, cart.items)
+
+        # ── Duplicate-order guard ─────────────────────────────────────────────
+        # If the user already has a pending order covering the exact same
+        # products and quantities, return that order's Razorpay details
+        # instead of creating a duplicate.  Prevents orphan reservations
+        # from multi-tab or rapid retry scenarios.
+        existing_order = await self._find_matching_pending_order(
+            db, user_id, line_items
+        )
+        if existing_order is not None:
+            if existing_order.razorpay_order_id:
+                log.info(
+                    "duplicate_order_redirected",
+                    existing_order_id=str(existing_order.id),
+                    user_id=str(user_id),
+                )
+                amount_paise = int(round(float(existing_order.total) * 100))
+                return CreatePaymentIntentResponse(
+                    order_id=str(existing_order.id),
+                    razorpay_order_id=existing_order.razorpay_order_id,
+                    amount=amount_paise,
+                    currency=settings.RAZORPAY_CURRENCY,
+                    key=settings.RAZORPAY_KEY_ID,
+                )
+            # Order exists with matching items but no razorpay_order_id yet.
+            # This means the Razorpay call for the first attempt is still in
+            # progress (concurrent tab/device).  Tell the frontend to retry —
+            # the first attempt will either succeed (and this request will be
+            # redirected on the next call) or fail and be cleaned up by the
+            # expiry worker.
+            log.info(
+                "duplicate_order_in_flight",
+                existing_order_id=str(existing_order.id),
+                user_id=str(user_id),
+            )
+            raise ValidationError(
+                "A payment for this order is already being processed. "
+                "Please wait a moment and try again."
+            )
 
         # ── Atomic stock reservation with row-level locking ───────────────────
         reservation_items = [
@@ -332,6 +431,12 @@ class OrderService:
             log.error(
                 "razorpay_order_create_failed", order_id=str(order.id), error=str(exc)
             )
+            # Transition order to payment_failed BEFORE releasing stock so the
+            # duplicate-order guard won't match this order on retry.  Without
+            # this the orphan order stays in 'stock_reserved' and would either
+            # match the guard (falling through without a razorpay_order_id) or
+            # block the partial unique index from allowing a retry.
+            await _repo.update(db, order.id, {"status": "payment_failed"})
             # Release stock if Razorpay call fails so customer isn't locked out.
             # Committed explicitly here — get_db's generic rollback on the
             # ValidationError raised below would otherwise undo the release,

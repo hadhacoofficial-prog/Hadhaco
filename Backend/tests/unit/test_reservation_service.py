@@ -6,6 +6,8 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
+import app.modules.media.models  # noqa: F401 — ensure Image mapper is registered
+
 # ── helpers ────────────────────────────────────────────────────────────────────
 
 
@@ -147,10 +149,10 @@ class TestReserveItems:
         assert db.add.call_count == 2
 
     async def test_reserve_reuses_existing_reservation_binds_datetime(self):
-        """When the customer already holds an ACTIVE reservation, reserve_items
-        reuses it via a raw UPDATE. The expires_at bind MUST be a datetime, not
-        an isoformat string, or asyncpg raises DataError against the timestamptz
-        column (regression: the reuse path 500'd on every checkout retry)."""
+        """When the customer already holds an ACTIVE unlinked reservation,
+        reserve_items reuses it with delta reconciliation. The expires_at
+        bind MUST be a datetime, not an isoformat string, or asyncpg raises
+        DataError against the timestamptz column."""
         product_id = uuid.uuid4()
         user_id = uuid.uuid4()
 
@@ -162,14 +164,14 @@ class TestReserveItems:
             "variant_id": None,
             "quantity": 2,
             "expires_at": datetime.now(UTC),
-            "order_id": None,
+            "order_id": None,  # unlinked — passes the order_id guard
         }
 
         db = AsyncMock()
         db.execute = AsyncMock(
             side_effect=[
                 _fetchall_result([existing_row]),  # get_user_active_reservations
-                _noop_result(),  # reuse UPDATE inventory_reservations
+                _noop_result(),  # reuse UPDATE inventory_reservations (delta=0)
             ]
         )
         db.add = MagicMock()
@@ -183,10 +185,11 @@ class TestReserveItems:
         assert reservations[0].quantity == 2
         db.add.assert_not_called()
 
-        # The UPDATE (2nd execute) must bind a datetime for expires_at.
+        # The UPDATE (2nd execute) must bind datetime and quantity.
         update_call = db.execute.call_args_list[1]
         bound_params = update_call.args[1]
         assert isinstance(bound_params["expires"], datetime)
+        assert bound_params["qty"] == 2  # quantity updated in SET clause
 
     async def test_reserve_multiple_items_success(self):
         # Fixed, lexicographically-ordered UUIDs: reserve_items sorts by
@@ -402,8 +405,304 @@ class TestReserveItems:
         assert expires_at > before + timedelta(minutes=9, seconds=50)
         assert expires_at < after + timedelta(minutes=10, seconds=10)
 
+    async def test_reserve_delta_increase_adds_stock(self):
+        """Reusing an unlinked reservation with a higher quantity must
+        lock the product, validate availability, and increment
+        reserved_quantity by the delta."""
+        product_id = uuid.uuid4()
+        user_id = uuid.uuid4()
 
-# ── TestLinkReservationsToOrder ────────────────────────────────────────────────
+        existing_row = MagicMock()
+        existing_row._mapping = {
+            "id": uuid.uuid4(),
+            "reservation_number": "RES-DELTA1",
+            "product_id": product_id,
+            "variant_id": None,
+            "quantity": 2,
+            "expires_at": datetime.now(UTC),
+            "order_id": None,
+        }
+        # Product has stock=10, reserved=2, sold=0 → available=8
+        stock_mapping = _prod_mapping(
+            product_id=product_id, stock=10, reserved=2, sold=0
+        )
+
+        db = AsyncMock()
+        db.execute = AsyncMock(
+            side_effect=[
+                _fetchall_result([existing_row]),  # get_user_active_reservations
+                _lock_result(stock_mapping),  # FOR UPDATE (delta > 0)
+                _noop_result(),  # UPDATE reserved += delta (2)
+                _noop_result(),  # UPDATE reservation SET quantity, expires_at
+            ]
+        )
+        db.add = MagicMock()
+        db.flush = AsyncMock()
+
+        # Request qty=4, existing qty=2 → delta=+2
+        items = [{"product_id": product_id, "variant_id": None, "quantity": 4}]
+        reservations = await self.svc.reserve_items(db, user_id=user_id, items=items)
+
+        assert len(reservations) == 1
+        assert reservations[0].quantity == 4  # new qty
+        # No new reservation created (reused)
+        db.add.assert_not_called()
+        # Stock was locked and updated
+        assert db.execute.call_count == 4
+
+    async def test_reserve_delta_increase_insufficient_stock_raises(self):
+        """When reusing with a higher quantity but insufficient stock,
+        InventoryError must be raised."""
+        from app.core.exceptions import InventoryError
+
+        product_id = uuid.uuid4()
+        user_id = uuid.uuid4()
+
+        existing_row = MagicMock()
+        existing_row._mapping = {
+            "id": uuid.uuid4(),
+            "reservation_number": "RES-DELTA2",
+            "product_id": product_id,
+            "variant_id": None,
+            "quantity": 2,
+            "expires_at": datetime.now(UTC),
+            "order_id": None,
+        }
+        # Product has stock=5, reserved=2, sold=2 → available=1
+        # Requesting delta=+2 (qty 2→4), but only 1 available
+        stock_mapping = _prod_mapping(
+            product_id=product_id, stock=5, reserved=2, sold=2
+        )
+
+        db = AsyncMock()
+        db.execute = AsyncMock(
+            side_effect=[
+                _fetchall_result([existing_row]),  # get_user_active_reservations
+                _lock_result(stock_mapping),  # FOR UPDATE
+            ]
+        )
+        db.add = MagicMock()
+        db.flush = AsyncMock()
+
+        items = [{"product_id": product_id, "variant_id": None, "quantity": 4}]
+        with pytest.raises(InventoryError, match="additional"):
+            await self.svc.reserve_items(db, user_id=user_id, items=items)
+
+    async def test_reserve_delta_decrease_releases_stock(self):
+        """Reusing with a lower quantity must decrement reserved_quantity
+        by the absolute delta."""
+        product_id = uuid.uuid4()
+        user_id = uuid.uuid4()
+
+        existing_row = MagicMock()
+        existing_row._mapping = {
+            "id": uuid.uuid4(),
+            "reservation_number": "RES-DELTA3",
+            "product_id": product_id,
+            "variant_id": None,
+            "quantity": 5,
+            "expires_at": datetime.now(UTC),
+            "order_id": None,
+        }
+        # Product: stock=10, reserved=5, sold=0
+        stock_mapping = _prod_mapping(
+            product_id=product_id, stock=10, reserved=5, sold=0
+        )
+
+        db = AsyncMock()
+        db.execute = AsyncMock(
+            side_effect=[
+                _fetchall_result([existing_row]),  # get_user_active_reservations
+                _lock_result(stock_mapping),  # FOR UPDATE (delta < 0)
+                _noop_result(),  # UPDATE reserved -= 3
+                _noop_result(),  # UPDATE reservation SET quantity, expires_at
+            ]
+        )
+        db.add = MagicMock()
+        db.flush = AsyncMock()
+
+        # Request qty=2, existing qty=5 → delta=-3
+        items = [{"product_id": product_id, "variant_id": None, "quantity": 2}]
+        reservations = await self.svc.reserve_items(db, user_id=user_id, items=items)
+
+        assert len(reservations) == 1
+        assert reservations[0].quantity == 2  # new qty
+        db.add.assert_not_called()
+
+    async def test_reserve_linked_reservation_not_reused(self):
+        """A reservation already linked to an order (order_id != NULL) must
+        NOT be reused — a new reservation must be created instead."""
+        product_id = uuid.uuid4()
+        user_id = uuid.uuid4()
+        order_id = uuid.uuid4()
+
+        linked_row = MagicMock()
+        linked_row._mapping = {
+            "id": uuid.uuid4(),
+            "reservation_number": "RES-LINKED",
+            "product_id": product_id,
+            "variant_id": None,
+            "quantity": 2,
+            "expires_at": datetime.now(UTC),
+            "order_id": order_id,  # linked — must be filtered out
+        }
+        # New reservation needs stock
+        stock_mapping = _prod_mapping(
+            product_id=product_id, stock=10, reserved=2, sold=0
+        )
+
+        db = AsyncMock()
+        db.execute = AsyncMock(
+            side_effect=[
+                _fetchall_result([linked_row]),  # get_user_active_reservations
+                _lock_result(stock_mapping),  # FOR UPDATE (new reservation)
+                _noop_result(),  # UPDATE reserved += 2
+            ]
+        )
+        db.add = MagicMock()
+        db.flush = AsyncMock()
+
+        items = [{"product_id": product_id, "variant_id": None, "quantity": 2}]
+        reservations = await self.svc.reserve_items(db, user_id=user_id, items=items)
+
+        assert len(reservations) == 1
+        r = reservations[0]
+        assert r.id != linked_row._mapping["id"]  # new reservation, not the linked one
+        assert r.quantity == 2
+        assert r.order_id is None
+        # New reservation created via ORM add (reservation + transaction = 2 calls)
+        assert db.add.call_count == 2
+
+    async def test_reserve_delta_same_quantity_no_stock_change(self):
+        """Reusing with the same quantity must not touch the product stock
+        at all — only update expiry and reservation quantity."""
+        product_id = uuid.uuid4()
+        user_id = uuid.uuid4()
+
+        existing_row = MagicMock()
+        existing_row._mapping = {
+            "id": uuid.uuid4(),
+            "reservation_number": "RES-SAME",
+            "product_id": product_id,
+            "variant_id": None,
+            "quantity": 3,
+            "expires_at": datetime.now(UTC),
+            "order_id": None,
+        }
+
+        db = AsyncMock()
+        db.execute = AsyncMock(
+            side_effect=[
+                _fetchall_result([existing_row]),  # get_user_active_reservations
+                _noop_result(),  # UPDATE reservation (delta=0, no stock lock)
+            ]
+        )
+        db.add = MagicMock()
+        db.flush = AsyncMock()
+
+        items = [{"product_id": product_id, "variant_id": None, "quantity": 3}]
+        reservations = await self.svc.reserve_items(db, user_id=user_id, items=items)
+
+        assert len(reservations) == 1
+        assert reservations[0].quantity == 3
+        # No stock lock, no ORM add — only 2 execute calls total
+        assert db.execute.call_count == 2
+        db.add.assert_not_called()
+
+    async def test_reserve_mixed_linked_and_unlinked_items(self):
+        """When cart has two products: one with a linked reservation (skipped)
+        and one with an unlinked reservation (reused), the system must create
+        a new reservation for the linked product and reuse the unlinked one."""
+        pid_linked = uuid.uuid4()
+        pid_unlinked = uuid.uuid4()
+        user_id = uuid.uuid4()
+
+        linked_row = MagicMock()
+        linked_row._mapping = {
+            "id": uuid.uuid4(),
+            "reservation_number": "RES-LINK",
+            "product_id": pid_linked,
+            "variant_id": None,
+            "quantity": 1,
+            "expires_at": datetime.now(UTC),
+            "order_id": uuid.uuid4(),  # linked
+        }
+        unlinked_row = MagicMock()
+        unlinked_row._mapping = {
+            "id": uuid.uuid4(),
+            "reservation_number": "RES-FREE",
+            "product_id": pid_unlinked,
+            "variant_id": None,
+            "quantity": 2,
+            "expires_at": datetime.now(UTC),
+            "order_id": None,  # unlinked
+        }
+
+        stock_linked = _prod_mapping(product_id=pid_linked, stock=5, reserved=1, sold=0)
+
+        db = AsyncMock()
+        db.execute = AsyncMock(
+            side_effect=[
+                _fetchall_result(
+                    [linked_row, unlinked_row]
+                ),  # get_user_active_reservations
+                _lock_result(stock_linked),  # FOR UPDATE pid_linked (new reservation)
+                _noop_result(),  # UPDATE reserved += 1
+                _noop_result(),  # UPDATE unlinked reservation (delta=0)
+            ]
+        )
+        db.add = MagicMock()
+        db.flush = AsyncMock()
+
+        # Sorted by product_id: pid_linked first (UUID int=1 < int=2)
+        items = [
+            {"product_id": pid_linked, "variant_id": None, "quantity": 1},
+            {"product_id": pid_unlinked, "variant_id": None, "quantity": 2},
+        ]
+        reservations = await self.svc.reserve_items(db, user_id=user_id, items=items)
+
+        assert len(reservations) == 2
+        # One new reservation (reservation + transaction = 2 add calls)
+        # One reused (delta=0, no add calls)
+        assert db.add.call_count == 2
+
+    async def test_reserve_cache_targets_only_on_delta_change(self):
+        """cache_targets should only include products where delta != 0."""
+        product_id = uuid.uuid4()
+        user_id = uuid.uuid4()
+
+        existing_row = MagicMock()
+        existing_row._mapping = {
+            "id": uuid.uuid4(),
+            "reservation_number": "RES-CACHE",
+            "product_id": product_id,
+            "variant_id": None,
+            "quantity": 3,
+            "expires_at": datetime.now(UTC),
+            "order_id": None,
+        }
+        stock_mapping = _prod_mapping(
+            product_id=product_id, stock=10, reserved=3, sold=0
+        )
+
+        db = AsyncMock()
+        db.execute = AsyncMock(
+            side_effect=[
+                _fetchall_result([existing_row]),  # get_user_active_reservations
+                _lock_result(stock_mapping),  # FOR UPDATE (delta > 0)
+                _noop_result(),  # UPDATE reserved += 1
+                _noop_result(),  # UPDATE reservation
+            ]
+        )
+        db.add = MagicMock()
+        db.flush = AsyncMock()
+
+        # qty 3→4, delta=+1 → should add to cache_targets
+        items = [{"product_id": product_id, "variant_id": None, "quantity": 4}]
+        reservations = await self.svc.reserve_items(db, user_id=user_id, items=items)
+
+        assert len(reservations) == 1
+        assert reservations[0].quantity == 4
 
 
 class TestLinkReservationsToOrder:
