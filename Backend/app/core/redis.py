@@ -1,4 +1,5 @@
 import asyncio
+import json
 import time
 from collections.abc import AsyncGenerator
 from enum import Enum
@@ -212,14 +213,35 @@ async def safe_redis_delete(redis: aioredis.Redis, *keys: str) -> None:
         mark_redis_error()
 
 
+# Must match catalog/router.py's `_PRODUCT_LIST_TTL` (the `ttl` *and*
+# `swr_window` passed to `cache_swr` for the product-list cache — both are
+# 300s there). Duplicated here rather than imported to avoid a cycle
+# (app.core.cache imports bust_product_list_cache from this module already).
+_PRODUCT_LIST_SWR_TTL_SECONDS = 300
+
+
 async def bust_product_list_cache(redis: aioredis.Redis) -> None:
-    """Delete all cached storefront product-list pages (`products:list:v1:*`).
+    """Soft-invalidate every cached storefront product-list page
+    (`products:list:v1:*`) — rewrites each entry's cache_swr staleness
+    timestamp to "just expired" instead of deleting the key outright.
 
     Called after any mutation that changes what a product listing renders —
     not just catalog field edits, but also product image crop/replace/
     set-primary/delete/upload via the media module, since those change the
     thumbnail a `ProductListItem` serves without touching the `products`
     table row itself.
+
+    Previously this did a hard DELETE. cache_swr (app/core/cache.py) only
+    serves stale-while-revalidating when *some* cached value exists — a
+    fully deleted key is a hard miss, and cache_swr's hard-miss path blocks
+    every reader on a fresh DB round-trip. In production, a single admin
+    session doing a product image upload followed by a crop (two busts
+    seconds apart) turned every /api/v1/products request in between into a
+    ~2.3-2.7s synchronous fetch, repeatedly — confirmed via Loki correlation
+    post-deploy. Rewriting the timestamp instead keeps the still-valid
+    cached page servable instantly (slightly stale — acceptable, same
+    tradeoff cache_swr already makes on every normal TTL expiry) while
+    triggering exactly one coalesced background refresh.
     """
     if not redis_available():
         return
@@ -232,10 +254,43 @@ async def bust_product_list_cache(redis: aioredis.Redis) -> None:
             ]
 
         keys = await asyncio.wait_for(_collect(), timeout=1.0)
-        if keys:
-            await safe_redis_delete(redis, *keys)
+        for key in keys:
+            await _soft_expire_swr_entry(
+                redis, key, ttl_seconds=_PRODUCT_LIST_SWR_TTL_SECONDS
+            )
     except Exception:
         mark_redis_error()
+
+
+async def _soft_expire_swr_entry(
+    redis: aioredis.Redis, key: str, *, ttl_seconds: int
+) -> None:
+    """Rewrite one `cache_swr`-format entry's `"t"` field so the next read
+    lands on cache_swr's soft-expired (stale-serve + background-refresh)
+    branch instead of fresh or hard-miss. Falls back to a hard DELETE if the
+    stored value isn't in the expected `{"d": ..., "t": ...}` wrapper shape
+    (legacy/foreign entry) — the same defensive fallback cache_swr's own
+    read path uses for unparseable values, so an entry this can't safely
+    rewrite is still invalidated, just via the old (correct, if blocking)
+    path rather than silently left fresh.
+    """
+    from app.core.cache import _compress_value, _decompress_value
+
+    try:
+        raw = await safe_redis_get(redis, key)
+        if not raw:
+            return
+        wrapper = json.loads(_decompress_value(raw))
+        # Must have the {"d", "t"} shape cache_swr writes — KeyError below
+        # falls through to the hard-delete fallback for anything else.
+        wrapper["d"]
+        wrapper["t"] = time.time() - ttl_seconds
+        rewritten = _compress_value(json.dumps(wrapper, default=str))
+        # cache_swr always stores at Redis TTL = ttl + swr_window; for the
+        # product list both are ttl_seconds, so 2x here reproduces that.
+        await safe_redis_setex(redis, key, ttl_seconds * 2, rewritten)
+    except (json.JSONDecodeError, KeyError, TypeError):
+        await safe_redis_delete(redis, key)
 
 
 def get_redis_pool() -> aioredis.Redis:
