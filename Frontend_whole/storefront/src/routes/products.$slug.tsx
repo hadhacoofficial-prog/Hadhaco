@@ -133,7 +133,11 @@ function ProductPage() {
   // stale `Cache-Control: max-age` copy from the browser cache — otherwise the
   // poll silently reuses the cached response and admin edits to variant data
   // only surface once that max-age window expires.
-  const { data: liveDetail, dataUpdatedAt } = useQuery({
+  const {
+    data: liveDetail,
+    dataUpdatedAt,
+    refetch: refetchLiveDetail,
+  } = useQuery({
     queryKey: queryKeys.products.stock(slug),
     queryFn: () => api.get<ProductDetail>(`/products/${slug}`, { cache: "no-cache" }),
     refetchInterval: 60_000,
@@ -166,6 +170,21 @@ function ProductPage() {
   const inventoryEntry = useInventoryStore((s) => s.get(product.id, currentVariant?.id ?? null));
 
   const liveAvailableStock = inventoryEntry?.availableStock ?? liveProduct.availableStock;
+
+  // A SyncBus event (reservation created/expired, inventory changed, order
+  // placed/cancelled) drops this entry's confidence to "medium" -- see
+  // listenInventoryEvents.ts. Without an active refetch here, a viewer
+  // sitting on this page (no window blur/focus to trigger React Query's
+  // focus refetch) would wait up to the full 60s refetchInterval to see
+  // reconciled stock, and the SAME user whose own reservation just expired
+  // would keep seeing their optimistic-decremented "out of stock" state
+  // until they manually refresh.
+  const inventoryConfidence = inventoryEntry?.confidence;
+  useEffect(() => {
+    if (inventoryConfidence && inventoryConfidence !== "high") {
+      refetchLiveDetail();
+    }
+  }, [inventoryConfidence, refetchLiveDetail]);
 
   // Resolved variant stock (use live data if we have it)
   const variantStock = currentVariant

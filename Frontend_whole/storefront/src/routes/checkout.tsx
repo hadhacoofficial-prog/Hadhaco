@@ -464,6 +464,24 @@ function CheckoutPage() {
     setCheckoutState("reservation_expired");
   };
 
+  // checkoutStep lives in a module-level Zustand store, so it survives this
+  // component unmounting -- e.g. the user cancels the Razorpay popup (state
+  // stays "payment_open") and navigates away. Without this, reopening
+  // /checkout later inherits that stale non-"idle" state: the button
+  // renders enabled but placeOrder's `checkoutState !== "idle"` guard
+  // silently no-ops on click, and only a full page reload (which
+  // reinitializes the store) fixes it. Reset on unmount unless we're
+  // navigating away because the order just completed (already "idle" by
+  // then via resetCheckout() in verifyPaymentMutation.onSuccess).
+  useEffect(() => {
+    return () => {
+      if (useCheckoutStore.getState().checkoutStep !== "idle") {
+        resetCheckout();
+      }
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const isReservationActive =
     checkoutState === "payment_open" ||
     checkoutState === "verifying" ||
