@@ -90,6 +90,8 @@ function CheckoutPage() {
     ? buyNowItems.reduce((n, l) => n + (l.snapshot ? l.snapshot.price * l.qty : 0), 0)
     : cartSubtotal();
 
+  const checkoutState = useCheckoutStore((s) => s.checkoutStep);
+
   // Live stock check, reactive to the SSE-updated store — surfaces a
   // shopper's stock changing *while they're filling in the form*, not only
   // when they hit "Place order" (see the same check inside placeOrder below).
@@ -105,7 +107,12 @@ function CheckoutPage() {
     });
     return line.qty > bounds.effectiveCap;
   });
-  const hasLiveStockIssues = stockIssueLines.length > 0;
+  // Once a reservation exists for this checkout attempt (payment_open /
+  // verifying / payment_failed), the reserved quantity is subtracted from
+  // global availableStock and broadcast back to this same user over SSE —
+  // so without this guard the shopper's own successful reservation makes
+  // their own cart look "sold out" to them and blocks completing payment.
+  const hasLiveStockIssues = checkoutState === "idle" && stockIssueLines.length > 0;
 
   // Checkout form state — persisted in Zustand so it survives auth redirects
   const shippingMethod = useCheckoutStore((s) => s.shippingMethod);
@@ -122,7 +129,6 @@ function CheckoutPage() {
   const setCouponCode = useCheckoutStore((s) => s.setCouponCode);
   const appliedCoupon = useCheckoutStore((s) => s.appliedCoupon);
   const setAppliedCoupon = useCheckoutStore((s) => s.setAppliedCoupon);
-  const checkoutState = useCheckoutStore((s) => s.checkoutStep);
   const setCheckoutState = useCheckoutStore((s) => s.setCheckoutStep);
   const reservationStartedAt = useCheckoutStore((s) => s.reservationStartedAt);
   const setReservationStartedAt = useCheckoutStore((s) => s.setReservationStartedAt);
@@ -396,7 +402,16 @@ function CheckoutPage() {
   const placeOrder = async (e: React.FormEvent) => {
     e.preventDefault();
     if (lines.length === 0) return;
-    if (checkoutState !== "idle") return;
+    if (checkoutState !== "idle") {
+      // The reservation from a prior attempt is still alive (e.g. the
+      // shopper dismissed the Razorpay modal) — reopen payment for the
+      // same intent instead of silently no-opping, which used to leave
+      // the button looking clickable but dead until a page refresh.
+      if (checkoutState === "payment_open") {
+        void retryPayment();
+      }
+      return;
+    }
 
     // Live pre-submit stock check — previously checkout only ever learned
     // about insufficient stock from the reservation API's error response,
@@ -957,7 +972,9 @@ function CheckoutPage() {
                       ? "Reserving your items…"
                       : checkoutState === "payment_failed"
                         ? "Try Again"
-                        : "Place Order"}
+                        : checkoutState === "payment_open"
+                          ? "Complete Payment"
+                          : "Place Order"}
                 </button>
                 <p className="mt-3 text-[11px] text-center text-muted-foreground">
                   Secured by Razorpay · Cards, UPI, Net Banking & more
