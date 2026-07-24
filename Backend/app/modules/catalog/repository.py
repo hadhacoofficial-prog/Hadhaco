@@ -420,7 +420,14 @@ class ProductRepository:
     async def adjust_stock(
         self, db: AsyncSession, product_id: uuid.UUID, delta: int
     ) -> int:
-        """Atomically adjusts stock. Returns new quantity."""
+        """Atomically adjusts stock. Returns new quantity.
+
+        WARNING: not on the enriched inventory pipeline — no row lock beyond
+        the UPDATE itself, no InventoryChangedEvent, no cache invalidation,
+        no transaction log. CatalogService.adjust_stock deliberately calls
+        ReservationService.record_adjustment instead of this method; real
+        callers should do the same. Kept only for existing repository-level
+        tests — do not call this from new code."""
         result = await db.execute(
             text(
                 "UPDATE products SET stock_quantity = stock_quantity + :delta "

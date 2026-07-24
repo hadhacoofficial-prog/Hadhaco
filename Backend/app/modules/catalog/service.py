@@ -12,6 +12,7 @@ from app.core.exceptions import (
     NotFoundError,
     ValidationError,
 )
+from app.modules.catalog.models import ProductVariant
 from app.modules.catalog.repository import ProductRepository
 from app.modules.catalog.schemas import (
     ProductAttributeCreateRequest,
@@ -320,11 +321,33 @@ class CatalogService:
         data = payload.model_dump()
         data["product_id"] = product_id
         try:
-            return await _repo.add_variant(db, data)
+            variant = await _repo.add_variant(db, data)
         except IntegrityError as exc:
             # Safety net for the check-then-insert race (two concurrent adds of
             # the same SKU both pass the guard above).
             raise ConflictError(f"Variant SKU '{payload.sku}' already exists") from exc
+
+        # New variant may be added to an already-live product page — tell
+        # any connected SSE subscribers so its stock isn't invisible until
+        # an unrelated refetch happens to pick it up. Mirrors the publish
+        # pattern in InventoryService.record_movement (the other
+        # cross-module publisher outside ReservationService itself).
+        try:
+            from app.core.events import InventoryChangedEvent, event_bus
+            from app.modules.inventory.reservation_service import (
+                invalidate_inventory_cache,
+            )
+
+            await event_bus.publish(
+                InventoryChangedEvent(
+                    product_ids=[str(product_id)],
+                    available_by_product={str(product_id): variant.stock_quantity},
+                )
+            )
+            await invalidate_inventory_cache([(product_id, variant.id)])
+        except Exception:
+            pass  # Event publishing / cache invalidation is best-effort.
+        return variant
 
     async def update_variant(
         self,
@@ -335,9 +358,27 @@ class CatalogService:
         variant = await _repo.get_variant(db, variant_id)
         if not variant:
             raise NotFoundError("Variant not found")
-        return await _repo.update_variant(
-            db, variant_id, payload.model_dump(exclude_unset=True)
-        )
+
+        data = payload.model_dump(exclude_unset=True)
+        # stock_quantity must go through ReservationService.record_adjustment
+        # (row lock + InventoryChangedEvent + cache bust), not a raw column
+        # write — a direct update here previously left every real-time
+        # subscriber (SSE-driven product cards/PDP/cart) showing a stale
+        # number until their next unrelated refetch.
+        new_stock = data.pop("stock_quantity", None)
+        updated: ProductVariant | None = variant
+        if data:
+            updated = await _repo.update_variant(db, variant_id, data)
+        if new_stock is not None and new_stock != variant.stock_quantity:
+            await _reservation_svc.record_adjustment(
+                db,
+                product_id=variant.product_id,
+                variant_id=variant.id,
+                delta=new_stock - variant.stock_quantity,
+                reference=f"variant_edit:{variant_id}",
+            )
+            updated = await _repo.get_variant(db, variant_id)
+        return updated
 
     async def delete_variant(
         self, db: AsyncSession, variant_id: uuid.UUID
