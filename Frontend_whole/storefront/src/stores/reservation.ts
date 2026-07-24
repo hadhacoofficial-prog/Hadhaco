@@ -61,7 +61,7 @@ export interface ReservationEntry {
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
-export const RESERVATION_TTL_MS = 10 * 60 * 1000; // 10 minutes
+export const RESERVATION_TTL_MS = 2 * 60 * 1000; // 2 minutes
 export const RESERVATION_URGENT_THRESHOLD_S = 60; // last 60s = "expiring"
 
 // ── Helpers ───────────────────────────────────────────────────────────────────

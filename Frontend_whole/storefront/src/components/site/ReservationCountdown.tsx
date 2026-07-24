@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { Clock, AlertTriangle } from "lucide-react";
 import { Link } from "@tanstack/react-router";
 
-const RESERVATION_TTL_SECONDS = 10 * 60; // 10 minutes
+const RESERVATION_TTL_SECONDS = 2 * 60; // 2 minutes
 
 function formatTime(seconds: number): string {
   const m = Math.floor(seconds / 60);
@@ -148,7 +148,7 @@ export function ReservationExpiredModal({ onDismiss }: { onDismiss: () => void }
           Reservation Expired
         </h2>
         <p className="text-sm text-muted-foreground leading-relaxed mb-7">
-          Your reserved items have been released because the 10-minute reservation window ended
+          Your reserved items have been released because the 2-minute reservation window ended
           before payment was completed.
         </p>
         <div className="flex flex-col sm:flex-row gap-3">

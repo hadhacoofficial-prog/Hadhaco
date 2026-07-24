@@ -23,6 +23,7 @@ import { useCart } from "@/stores/cart";
 import { useCheckoutStore } from "@/stores/checkout";
 import { useBuyNowStore } from "@/stores/buyNow";
 import { useInventoryStore, inventoryKey } from "@/stores/inventory";
+import { useActiveReservations } from "@/hooks/useActiveReservations";
 import { computeQuantityBounds } from "@/lib/cartQuantity";
 import { api } from "@/lib/api/client";
 import { queryKeys } from "@/lib/api/queryKeys";
@@ -92,6 +93,16 @@ function CheckoutPage() {
 
   const checkoutState = useCheckoutStore((s) => s.checkoutStep);
 
+  // This user's own active (unexpired) reservations, from the server — not
+  // the local checkoutStep/reservationStore, which reset to "idle" whenever
+  // this page unmounts (e.g. navigating to a product page and back via its
+  // "Continue Checkout" link). availableStock is a global number that
+  // already has this shopper's own reservation subtracted out of it, so it
+  // must be added back per line before comparing against cart quantity —
+  // otherwise a shopper's own reservation reads as "stock has changed" for
+  // the very cart it's holding stock for.
+  const { getReservation } = useActiveReservations();
+
   // Live stock check, reactive to the SSE-updated store — surfaces a
   // shopper's stock changing *while they're filling in the form*, not only
   // when they hit "Place order" (see the same check inside placeOrder below).
@@ -99,20 +110,17 @@ function CheckoutPage() {
   const stockIssueLines = lines.filter((line) => {
     const entry = inventoryEntries[inventoryKey(line.productId, line.variantId)];
     if (!entry) return false;
-    if (entry.availableStock === 0) return true;
+    const myReserved = getReservation(line.productId, line.variantId)?.quantity ?? 0;
+    const effectiveAvailable = entry.availableStock + myReserved;
+    if (effectiveAvailable === 0) return true;
     const bounds = computeQuantityBounds({
-      availableStock: entry.availableStock,
+      availableStock: effectiveAvailable,
       maxOrderQty: entry.maxOrderQuantity,
       cartQty: 0,
     });
     return line.qty > bounds.effectiveCap;
   });
-  // Once a reservation exists for this checkout attempt (payment_open /
-  // verifying / payment_failed), the reserved quantity is subtracted from
-  // global availableStock and broadcast back to this same user over SSE —
-  // so without this guard the shopper's own successful reservation makes
-  // their own cart look "sold out" to them and blocks completing payment.
-  const hasLiveStockIssues = checkoutState === "idle" && stockIssueLines.length > 0;
+  const hasLiveStockIssues = stockIssueLines.length > 0;
 
   // Checkout form state — persisted in Zustand so it survives auth redirects
   const shippingMethod = useCheckoutStore((s) => s.shippingMethod);
@@ -423,16 +431,18 @@ function CheckoutPage() {
     for (const line of lines) {
       const entry = store.entries[inventoryKey(line.productId, line.variantId)];
       if (!entry) continue;
+      const myReserved = getReservation(line.productId, line.variantId)?.quantity ?? 0;
+      const effectiveAvailable = entry.availableStock + myReserved;
       const bounds = computeQuantityBounds({
-        availableStock: entry.availableStock,
+        availableStock: effectiveAvailable,
         maxOrderQty: entry.maxOrderQuantity,
         cartQty: 0,
       });
       if (line.qty > bounds.effectiveCap) {
         toast.error(
-          entry.availableStock === 0
+          effectiveAvailable === 0
             ? `${line.snapshot?.name ?? "An item"} is now sold out — remove it to continue.`
-            : `Only ${entry.availableStock} of ${line.snapshot?.name ?? "an item"} available — reduce the quantity to continue.`,
+            : `Only ${effectiveAvailable} of ${line.snapshot?.name ?? "an item"} available — reduce the quantity to continue.`,
         );
         return;
       }

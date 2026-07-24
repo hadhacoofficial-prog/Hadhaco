@@ -2,7 +2,7 @@
 Reservation expiry worker — runs every 60 seconds.
 
 Finds all ACTIVE inventory reservations that have passed their expires_at
-(i.e. the customer did not complete payment within the 10-minute window),
+(i.e. the customer did not complete payment within the 2-minute window),
 releases the reserved stock back to available, marks the reservation EXPIRED,
 and transitions the associated order to payment_expired.
 

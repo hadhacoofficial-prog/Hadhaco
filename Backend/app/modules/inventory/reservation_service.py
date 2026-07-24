@@ -35,7 +35,7 @@ from app.modules.inventory.models import InventoryReservation, InventoryTransact
 
 log = structlog.get_logger(__name__)
 
-_RESERVATION_TTL_MINUTES = 10
+_RESERVATION_TTL_MINUTES = 2
 
 
 def _generate_reservation_number() -> str:

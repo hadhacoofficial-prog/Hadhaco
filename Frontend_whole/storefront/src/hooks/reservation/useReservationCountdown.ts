@@ -62,7 +62,7 @@ export function useReservationCountdown(
     return () => clearInterval(id);
   }, [expiresAt]);
 
-  const totalTTL = 10 * 60; // 10 minutes matching backend RESERVATION_TTL_MINUTES
+  const totalTTL = 2 * 60; // 2 minutes matching backend RESERVATION_TTL_MINUTES
   return {
     remainingSeconds: remaining,
     formatted: formatCountdown(remaining),

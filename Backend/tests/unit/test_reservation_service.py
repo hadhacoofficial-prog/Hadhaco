@@ -402,8 +402,8 @@ class TestReserveItems:
         after = datetime.now(UTC)
 
         expires_at = reservations[0].expires_at
-        assert expires_at > before + timedelta(minutes=9, seconds=50)
-        assert expires_at < after + timedelta(minutes=10, seconds=10)
+        assert expires_at > before + timedelta(minutes=1, seconds=50)
+        assert expires_at < after + timedelta(minutes=2, seconds=10)
 
     async def test_reserve_delta_increase_adds_stock(self):
         """Reusing an unlinked reservation with a higher quantity must
