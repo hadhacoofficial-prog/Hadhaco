@@ -35,6 +35,12 @@ async def _event_generator(request: Request):
     """Yield SSE-formatted events from the Redis pub/sub subscription."""
     queue = await subscribe_sse()
     try:
+        # uvicorn coalesces the HTTP header write with the first body write,
+        # so nothing reaches the client — not even the response headers —
+        # until the first yield. Yield immediately on connect so headers
+        # flush right away instead of waiting up to KEEPALIVE_INTERVAL.
+        yield ": connected\n\n"
+
         while True:
             # Check if client disconnected
             if await request.is_disconnected():
