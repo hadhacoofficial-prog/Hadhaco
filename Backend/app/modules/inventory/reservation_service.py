@@ -792,6 +792,15 @@ class ReservationService:
                 order_id=str(order_id) if order_id else None,
             )
 
+        # Commit before invalidating the cache / publishing SSE events.
+        # A concurrent reader who refetches a product on the SSE signal
+        # opens a fresh session under read-committed isolation -- if we
+        # publish first, it can't see the reserved_quantity decrement
+        # above yet, recomputes available_stock as still-reserved, and
+        # re-populates the Redis cache with that stale value for the
+        # full TTL. Committing first guarantees readers see the release.
+        await db.commit()
+
         await self._invalidate_inventory_cache(cache_targets)
 
         return transitioned_order_ids

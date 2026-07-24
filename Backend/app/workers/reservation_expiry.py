@@ -36,6 +36,10 @@ async def _expire_reservations(db) -> None:
         order_svc = OrderService()
         await order_svc.handle_expired_order_side_effects(db, expired_order_ids)
 
+        # Commit the coupon-restoration writes before publishing -- listeners
+        # that react to the event open a fresh session and must see them.
+        await db.commit()
+
         # Publish frontend sync events so connected clients see the expiry
         from app.core.events import ReservationExpiredEvent, event_bus
 
