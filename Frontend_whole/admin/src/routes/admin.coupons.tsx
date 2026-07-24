@@ -1,12 +1,27 @@
 import { useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { ChevronDown, ChevronRight, Loader2, Plus, Tag, Trash2, X } from "lucide-react";
+import { useQuery, useMutation, useQueryClient, keepPreviousData } from "@tanstack/react-query";
+import {
+  ChevronDown,
+  ChevronRight,
+  ChevronLeft,
+  Loader2,
+  Plus,
+  Tag,
+  Trash2,
+  X,
+} from "lucide-react";
 import { toast } from "sonner";
 import { api } from "@/lib/api/client";
 import { queryKeys } from "@/lib/api/queryKeys";
 import { toUserMessage } from "@/lib/api/errors";
-import type { CouponDto, CouponStatus, CouponType, CreateCouponDto } from "@/types/admin";
+import type {
+  CouponDto,
+  CouponListResponse,
+  CouponStatus,
+  CouponType,
+  CreateCouponDto,
+} from "@/types/admin";
 
 export const Route = createFileRoute("/admin/coupons")({
   component: AdminCoupons,
@@ -49,11 +64,14 @@ function AdminCoupons() {
   const [draft, setDraft] = useState<CreateCouponDto>(makeEmpty());
   const [editing, setEditing] = useState<CouponDto | null>(null);
   const [openSection, setOpenSection] = useState<string>("basic");
+  const [page, setPage] = useState(1);
 
-  const { data: coupons } = useQuery({
-    queryKey: queryKeys.admin.coupons({}),
-    queryFn: () => api.get<CouponDto[]>("/admin/coupons"),
+  const { data: couponsData } = useQuery({
+    queryKey: queryKeys.admin.coupons({ page, page_size: 15 }),
+    queryFn: () =>
+      api.get<CouponListResponse>("/admin/coupons", { params: { page, page_size: 15 } }),
     staleTime: 60_000,
+    placeholderData: keepPreviousData,
   });
 
   const createMutation = useMutation({
@@ -81,7 +99,9 @@ function AdminCoupons() {
     createMutation.mutate({ ...draft, code: draft.code.toUpperCase() });
   };
 
-  const list = coupons ?? [];
+  const list = couponsData?.items ?? [];
+  const totalPages = couponsData?.total_pages ?? 1;
+  const total = couponsData?.total ?? 0;
   const set = (patch: Partial<CreateCouponDto>) => setDraft((d) => ({ ...d, ...patch }));
 
   return (
@@ -89,7 +109,7 @@ function AdminCoupons() {
       <header className="mb-8">
         <p className="text-[11px] uppercase tracking-[0.3em] text-muted-foreground">Promotions</p>
         <h1 className="font-display text-4xl mt-1">
-          Coupons <span className="text-muted-foreground text-2xl">({list.length})</span>
+          Coupons <span className="text-muted-foreground text-2xl">({total})</span>
         </h1>
       </header>
 
@@ -168,6 +188,30 @@ function AdminCoupons() {
             </tbody>
           </table>
         </div>
+
+        {totalPages > 1 && (
+          <div className="flex items-center justify-between mt-4">
+            <p className="text-sm text-muted-foreground">
+              Page {page} of {totalPages} · {total} coupons
+            </p>
+            <div className="flex gap-2">
+              <button
+                onClick={() => setPage((p) => Math.max(1, p - 1))}
+                disabled={page === 1}
+                className="p-2 border border-border hover:bg-secondary disabled:opacity-50"
+              >
+                <ChevronLeft className="size-4" />
+              </button>
+              <button
+                onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                disabled={page === totalPages}
+                className="p-2 border border-border hover:bg-secondary disabled:opacity-50"
+              >
+                <ChevronRight className="size-4" />
+              </button>
+            </div>
+          </div>
+        )}
 
         {/* ── Create / view form ────────────────────────────────────────────── */}
         <aside className="bg-background border border-border p-5 h-fit space-y-0">

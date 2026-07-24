@@ -147,6 +147,14 @@ class CouponResponse(BaseModel):
     model_config = {"from_attributes": True}
 
 
+class CouponListResponse(BaseModel):
+    items: list[CouponResponse]
+    total: int
+    page: int
+    page_size: int
+    total_pages: int
+
+
 class CouponValidateRequest(BaseModel):
     code: str = Field(..., min_length=1, max_length=50)
     order_subtotal: float = Field(..., gt=0)

@@ -5,6 +5,7 @@ from typing import Any
 
 from sqlalchemy import delete, func, select, text, update
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.sql.elements import ColumnElement
 
 from app.modules.catalog.models import Product
 from app.modules.reviews.models import Review, ReviewVote
@@ -209,6 +210,40 @@ class ReviewRepository:
 
         result = await db.execute(q)
         return [(row[0], row[1]) for row in result.all()]
+
+    async def list_all_paginated(
+        self,
+        db: AsyncSession,
+        *,
+        status: str | None = None,
+        page: int = 1,
+        page_size: int = 15,
+    ) -> tuple[list[tuple[Review, str | None]], int]:
+        """Admin: paginated list of all reviews with product name and total count."""
+        filters: list[ColumnElement[bool]] = [Review.deleted_at.is_(None)]
+        if status == "approved":
+            filters.append(Review.is_approved.is_(True))
+        elif status == "rejected":
+            filters.extend([Review.is_rejected.is_(True), Review.is_approved.is_(False)])
+        elif status == "pending":
+            filters.extend([Review.is_approved.is_(False), Review.is_rejected.is_(False)])
+
+        count_window = func.count().over().label("_total_count")
+        q = (
+            select(Review, Product.name, count_window)
+            .outerjoin(Product, Product.id == Review.product_id)
+            .where(*filters)
+            .order_by(Review.created_at.desc())
+            .offset((page - 1) * page_size)
+            .limit(page_size)
+        )
+        result = await db.execute(q)
+        rows = result.all()
+        if not rows:
+            return [], 0
+        total: int = rows[0][2]
+        items = [(row[0], row[1]) for row in rows]
+        return items, total
 
     # ── Rating summary ────────────────────────────────────────────────────────
 

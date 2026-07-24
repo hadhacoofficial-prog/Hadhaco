@@ -50,10 +50,16 @@ def _nonempty(lst: list | None) -> list | None:
 
 class CouponService:
     async def list_all(
-        self, db: AsyncSession, is_active: bool | None = None
-    ) -> list[CouponResponse]:
-        coupons = await _repo.list_all(db, is_active=is_active)
-        return [CouponResponse.model_validate(c) for c in coupons]
+        self,
+        db: AsyncSession,
+        is_active: bool | None = None,
+        page: int = 1,
+        page_size: int = 15,
+    ) -> tuple[list[CouponResponse], int]:
+        coupons, total = await _repo.list_all_paginated(
+            db, is_active=is_active, page=page, page_size=page_size
+        )
+        return [CouponResponse.model_validate(c) for c in coupons], total
 
     async def create(
         self, db: AsyncSession, payload: CouponCreateRequest

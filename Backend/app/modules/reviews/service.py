@@ -271,16 +271,18 @@ class ReviewService:
         db: AsyncSession,
         *,
         status: str | None = None,
-        offset: int = 0,
-        limit: int = 50,
-    ) -> list[AdminReviewOut]:
-        rows = await self._repo.list_all(db, status=status, offset=offset, limit=limit)
+        page: int = 1,
+        page_size: int = 15,
+    ) -> tuple[list[AdminReviewOut], int]:
+        rows, total = await self._repo.list_all_paginated(
+            db, status=status, page=page, page_size=page_size
+        )
         result: list[AdminReviewOut] = []
         for review, product_name in rows:
             out = AdminReviewOut.model_validate(review)
             out.product_name = product_name
             result.append(out)
-        return result
+        return result, total
 
     # ── ReviewRequest event listener ──────────────────────────────────────────
 

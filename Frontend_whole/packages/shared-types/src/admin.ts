@@ -422,6 +422,14 @@ export interface CouponDto {
   created_at: string;
 }
 
+export interface CouponListResponse {
+  items: CouponDto[];
+  total: number;
+  page: number;
+  page_size: number;
+  total_pages: number;
+}
+
 export interface CreateCouponDto {
   code: string;
   coupon_type: CouponType;
@@ -485,6 +493,14 @@ export interface ReviewDto {
 }
 
 export type ReviewAction = "approve" | "reject" | "flag" | "delete";
+
+export interface ReviewListResponse {
+  items: ReviewDto[];
+  total: number;
+  page: number;
+  page_size: number;
+  total_pages: number;
+}
 
 // ── CMS sections (admin) ─────────────────────────────────────────────────────
 export interface LandingSectionDto {

@@ -3,6 +3,7 @@ from typing import Any
 
 from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.sql.elements import ColumnElement
 
 from app.modules.coupons.models import Coupon, CouponUsage
 
@@ -37,6 +38,36 @@ class CouponRepository:
         if is_active is not None:
             q = q.where(Coupon.is_active == is_active)
         return list((await db.execute(q)).scalars().all())
+
+    async def list_all_paginated(
+        self,
+        db: AsyncSession,
+        *,
+        is_active: bool | None = None,
+        page: int = 1,
+        page_size: int = 15,
+    ) -> tuple[list[Coupon], int]:
+        """Paginated list of coupons with total count."""
+        filters: list[ColumnElement[bool]] = []
+        if is_active is not None:
+            filters.append(Coupon.is_active == is_active)
+
+        count_window = func.count().over().label("_total_count")
+        q = (
+            select(Coupon, count_window)
+            .order_by(Coupon.created_at.desc())
+            .offset((page - 1) * page_size)
+            .limit(page_size)
+        )
+        if filters:
+            q = q.where(*filters)
+        result = await db.execute(q)
+        rows = result.all()
+        if not rows:
+            return [], 0
+        total: int = rows[0][1]
+        items = [row[0] for row in rows]
+        return items, total
 
     async def create(self, db: AsyncSession, data: dict[str, Any]) -> Coupon:
         coupon = Coupon(**data)

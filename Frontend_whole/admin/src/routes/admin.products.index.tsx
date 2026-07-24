@@ -1,7 +1,17 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { createFileRoute, useNavigate, Link } from "@tanstack/react-router";
 import { useQuery, useMutation, useQueryClient, keepPreviousData } from "@tanstack/react-query";
-import { Search, Plus, Trash2, Pencil, FolderOpen, ChevronDown, Loader2 } from "lucide-react";
+import {
+  Search,
+  Plus,
+  Trash2,
+  Pencil,
+  FolderOpen,
+  ChevronDown,
+  ChevronLeft,
+  ChevronRight,
+  Loader2,
+} from "lucide-react";
 import { toast } from "sonner";
 import { api } from "@/lib/api/client";
 import { queryKeys } from "@/lib/api/queryKeys";
@@ -20,6 +30,7 @@ function AdminProducts() {
   const [q, setQ] = useState("");
   const debouncedQ = useDebounce(q, 300);
   const [collectionId, setCollectionId] = useState<string>("");
+  const [page, setPage] = useState(1);
   const queryClient = useQueryClient();
   const navigate = useNavigate();
 
@@ -27,11 +38,15 @@ function AdminProducts() {
     () => ({
       search: debouncedQ || undefined,
       collection_id: collectionId || undefined,
-      page: 1,
-      page_size: 50,
+      page,
+      page_size: 15,
     }),
-    [debouncedQ, collectionId],
+    [debouncedQ, collectionId, page],
   );
+
+  useEffect(() => {
+    setPage(1);
+  }, [debouncedQ, collectionId]);
 
   const { data, isLoading, isPlaceholderData } = useQuery({
     queryKey: queryKeys.admin.products(params),
@@ -60,6 +75,8 @@ function AdminProducts() {
 
   const list = data?.items ?? [];
   const collections = collectionsData?.items ?? [];
+  const totalPages = data?.total_pages ?? 1;
+  const total = data?.total ?? 0;
 
   return (
     <div>
@@ -228,6 +245,30 @@ function AdminProducts() {
           </table>
         )}
       </div>
+
+      {totalPages > 1 && (
+        <div className="flex items-center justify-between mt-4">
+          <p className="text-sm text-muted-foreground">
+            Page {page} of {totalPages} · {total} products
+          </p>
+          <div className="flex gap-2">
+            <button
+              onClick={() => setPage((p) => Math.max(1, p - 1))}
+              disabled={page === 1}
+              className="p-2 border border-border hover:bg-secondary disabled:opacity-50"
+            >
+              <ChevronLeft className="size-4" />
+            </button>
+            <button
+              onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+              disabled={page === totalPages}
+              className="p-2 border border-border hover:bg-secondary disabled:opacity-50"
+            >
+              <ChevronRight className="size-4" />
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

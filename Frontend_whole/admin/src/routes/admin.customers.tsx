@@ -1,7 +1,7 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
 import { useQuery, keepPreviousData } from "@tanstack/react-query";
-import { Search } from "lucide-react";
+import { Search, ChevronLeft, ChevronRight } from "lucide-react";
 import { api } from "@/lib/api/client";
 import { queryKeys } from "@/lib/api/queryKeys";
 import { TableSkeleton } from "@/components/loading/TableSkeleton";
@@ -15,11 +15,16 @@ export const Route = createFileRoute("/admin/customers")({
 function AdminCustomers() {
   const [search, setSearch] = useState("");
   const debouncedSearch = useDebounce(search, 300);
+  const [page, setPage] = useState(1);
 
   const params = useMemo(
-    () => ({ page: 1, page_size: 50, search: debouncedSearch || undefined }),
-    [debouncedSearch],
+    () => ({ page, page_size: 15, search: debouncedSearch || undefined }),
+    [debouncedSearch, page],
   );
+
+  useEffect(() => {
+    setPage(1);
+  }, [debouncedSearch]);
 
   const { data, isLoading, isPlaceholderData } = useQuery({
     queryKey: queryKeys.admin.customers(params),
@@ -29,6 +34,8 @@ function AdminCustomers() {
   });
 
   const customers = data?.items ?? [];
+  const totalPages = data?.total_pages ?? 1;
+  const total = data?.total ?? 0;
 
   return (
     <div>
@@ -126,6 +133,30 @@ function AdminCustomers() {
           </table>
         )}
       </div>
+
+      {totalPages > 1 && (
+        <div className="flex items-center justify-between mt-4">
+          <p className="text-sm text-muted-foreground">
+            Page {page} of {totalPages} · {total} customers
+          </p>
+          <div className="flex gap-2">
+            <button
+              onClick={() => setPage((p) => Math.max(1, p - 1))}
+              disabled={page === 1}
+              className="p-2 border border-border hover:bg-secondary disabled:opacity-50"
+            >
+              <ChevronLeft className="size-4" />
+            </button>
+            <button
+              onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+              disabled={page === totalPages}
+              className="p-2 border border-border hover:bg-secondary disabled:opacity-50"
+            >
+              <ChevronRight className="size-4" />
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

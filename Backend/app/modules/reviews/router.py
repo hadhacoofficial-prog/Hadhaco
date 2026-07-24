@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import math
 import uuid
 
 import redis.asyncio as aioredis
@@ -25,10 +26,10 @@ from app.core.dependencies import (
 from app.core.redis import get_redis, safe_redis_get, safe_redis_setex
 from app.modules.reviews.schemas import (
     AdminReviewAction,
-    AdminReviewOut,
     MyProductReviewStatus,
     ProductRatingSummary,
     ReviewCreate,
+    ReviewListResponse,
     ReviewOut,
     ReviewUpdate,
     ReviewVoteIn,
@@ -257,16 +258,26 @@ async def vote_review(
 # ── Admin ─────────────────────────────────────────────────────────────────────
 
 
-@router.get("/admin/reviews", response_model=BaseSuccessResponse[list[AdminReviewOut]])
+@router.get("/admin/reviews", response_model=BaseSuccessResponse[ReviewListResponse])
 async def list_all_reviews(
     status: str | None = Query(None, description="pending | approved | rejected"),
-    offset: int = Query(0, ge=0),
-    limit: int = Query(50, ge=1, le=200),
+    page: int = Query(1, ge=1),
+    page_size: int = Query(15, ge=1, le=200),
     db: AsyncSession = Depends(get_db),
     _=Depends(require_admin),
 ):
-    result = await _svc.list_all_reviews(db, status=status, offset=offset, limit=limit)
-    return ok(result, ResponseCode.REVIEW_ALL_LISTED, "Reviews listed successfully")
+    items, total = await _svc.list_all_reviews(
+        db, status=status, page=page, page_size=page_size
+    )
+    total_pages = math.ceil(total / page_size) if total else 1
+    data = ReviewListResponse(
+        items=items,
+        total=total,
+        page=page,
+        page_size=page_size,
+        total_pages=total_pages,
+    )
+    return ok(data, ResponseCode.REVIEW_ALL_LISTED, "Reviews listed successfully")
 
 
 @router.get("/admin/pending", response_model=BaseSuccessResponse[list[ReviewOut]])

@@ -98,6 +98,14 @@ class AdminReviewOut(ReviewOut):
     product_name: str | None = None
 
 
+class ReviewListResponse(BaseModel):
+    items: list[AdminReviewOut]
+    total: int
+    page: int
+    page_size: int
+    total_pages: int
+
+
 # ── My review status (post-delivery reminder visibility) ─────────────────────
 
 

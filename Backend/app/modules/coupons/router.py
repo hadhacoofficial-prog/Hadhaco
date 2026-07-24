@@ -1,3 +1,4 @@
+import math
 import uuid
 
 from fastapi import APIRouter, Depends, Query
@@ -9,6 +10,7 @@ from app.core.database import get_db
 from app.core.dependencies import get_current_user, require_admin, require_customer
 from app.modules.coupons.schemas import (
     CouponCreateRequest,
+    CouponListResponse,
     CouponResponse,
     CouponUpdateRequest,
     CouponValidateRequest,
@@ -45,15 +47,27 @@ async def validate_coupon(
 
 @router.get(
     "/admin/coupons",
-    response_model=BaseSuccessResponse[list[CouponResponse]],
+    response_model=BaseSuccessResponse[CouponListResponse],
     dependencies=[Depends(require_admin)],
 )
 async def list_coupons(
     is_active: bool | None = Query(None),
+    page: int = Query(1, ge=1),
+    page_size: int = Query(15, ge=1, le=200),
     db: AsyncSession = Depends(get_db),
 ):
-    result = await _service.list_all(db, is_active=is_active)
-    return ok(result, ResponseCode.COUPON_LISTED, "Coupons listed successfully")
+    items, total = await _service.list_all(
+        db, is_active=is_active, page=page, page_size=page_size
+    )
+    total_pages = math.ceil(total / page_size) if total else 1
+    data = CouponListResponse(
+        items=items,
+        total=total,
+        page=page,
+        page_size=page_size,
+        total_pages=total_pages,
+    )
+    return ok(data, ResponseCode.COUPON_LISTED, "Coupons listed successfully")
 
 
 @router.post(

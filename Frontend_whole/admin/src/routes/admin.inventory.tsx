@@ -1,7 +1,7 @@
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Minus, Plus, AlertTriangle, Loader2 } from "lucide-react";
+import { useQuery, useMutation, useQueryClient, keepPreviousData } from "@tanstack/react-query";
+import { Minus, Plus, AlertTriangle, Loader2, ChevronLeft, ChevronRight } from "lucide-react";
 import { toast } from "sonner";
 import { api } from "@/lib/api/client";
 import { queryKeys } from "@/lib/api/queryKeys";
@@ -16,6 +16,7 @@ export const Route = createFileRoute("/admin/inventory")({
 
 function AdminInventory() {
   const queryClient = useQueryClient();
+  const [page, setPage] = useState(1);
 
   const { data: lowStockData } = useQuery({
     queryKey: queryKeys.admin.lowStock,
@@ -24,10 +25,11 @@ function AdminInventory() {
   });
 
   const { data: productsData, isLoading } = useQuery({
-    queryKey: queryKeys.admin.products({ page: 1, page_size: 200 }),
+    queryKey: queryKeys.admin.products({ page, page_size: 15 }),
     queryFn: () =>
-      api.get<ProductListResponse>("/admin/products", { params: { page: 1, page_size: 200 } }),
+      api.get<ProductListResponse>("/admin/products", { params: { page, page_size: 15 } }),
     staleTime: 60_000,
+    placeholderData: keepPreviousData,
   });
 
   const adjustMutation = useMutation({
@@ -44,6 +46,8 @@ function AdminInventory() {
   });
 
   const products = productsData?.items ?? [];
+  const totalPages = productsData?.total_pages ?? 1;
+  const total = productsData?.total ?? 0;
   const lowStockIds = useMemo(() => new Set((lowStockData ?? []).map((l) => l.id)), [lowStockData]);
   const lowCount = lowStockData?.length ?? 0;
 
@@ -162,6 +166,30 @@ function AdminInventory() {
           </table>
         )}
       </div>
+
+      {totalPages > 1 && (
+        <div className="flex items-center justify-between mt-4">
+          <p className="text-sm text-muted-foreground">
+            Page {page} of {totalPages} · {total} products
+          </p>
+          <div className="flex gap-2">
+            <button
+              onClick={() => setPage((p) => Math.max(1, p - 1))}
+              disabled={page === 1}
+              className="p-2 border border-border hover:bg-secondary disabled:opacity-50"
+            >
+              <ChevronLeft className="size-4" />
+            </button>
+            <button
+              onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+              disabled={page === totalPages}
+              className="p-2 border border-border hover:bg-secondary disabled:opacity-50"
+            >
+              <ChevronRight className="size-4" />
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

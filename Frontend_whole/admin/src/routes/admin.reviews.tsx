@@ -1,14 +1,14 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Star, Check, X, Trash2, Loader2 } from "lucide-react";
+import { useQuery, useMutation, useQueryClient, keepPreviousData } from "@tanstack/react-query";
+import { Star, Check, X, Trash2, Loader2, ChevronLeft, ChevronRight } from "lucide-react";
 import { toast } from "sonner";
 import { api } from "@/lib/api/client";
 import { queryKeys } from "@/lib/api/queryKeys";
 import { toUserMessage } from "@/lib/api/errors";
 import { ReviewListSkeleton } from "@/components/loading/ReviewCardSkeleton";
 import { ImageWithFallback } from "@/components/common/ImageWithFallback";
-import type { ReviewAction, ReviewDto } from "@/types/admin";
+import type { ReviewAction, ReviewDto, ReviewListResponse } from "@/types/admin";
 
 export const Route = createFileRoute("/admin/reviews")({
   component: AdminReviews,
@@ -48,14 +48,20 @@ function statusBadge(r: ReviewDto) {
 function AdminReviews() {
   const queryClient = useQueryClient();
   const [activeTab, setActiveTab] = useState<StatusFilter>("all");
+  const [page, setPage] = useState(1);
 
-  const { data: reviews, isLoading } = useQuery({
-    queryKey: queryKeys.admin.reviewsAll(activeTab === "all" ? undefined : activeTab),
+  useEffect(() => {
+    setPage(1);
+  }, [activeTab]);
+
+  const { data, isLoading } = useQuery({
+    queryKey: queryKeys.admin.reviewsAll(activeTab === "all" ? undefined : activeTab, page),
     queryFn: () =>
-      api.get<ReviewDto[]>("/reviews/admin/reviews", {
-        params: activeTab !== "all" ? { status: activeTab } : {},
+      api.get<ReviewListResponse>("/reviews/admin/reviews", {
+        params: { page, page_size: 15, ...(activeTab !== "all" ? { status: activeTab } : {}) },
       }),
     staleTime: 30_000,
+    placeholderData: keepPreviousData,
   });
 
   const invalidate = () => {
@@ -81,7 +87,9 @@ function AdminReviews() {
     onError: (e) => toast.error(toUserMessage(e)),
   });
 
-  const list = reviews ?? [];
+  const list = data?.items ?? [];
+  const totalPages = data?.total_pages ?? 1;
+  const total = data?.total ?? 0;
 
   const pendingCount = list.filter((r) => !r.is_approved && !r.is_rejected).length;
 
@@ -266,6 +274,30 @@ function AdminReviews() {
           </p>
         )}
       </div>
+
+      {totalPages > 1 && (
+        <div className="flex items-center justify-between mt-4">
+          <p className="text-sm text-muted-foreground">
+            Page {page} of {totalPages} · {total} reviews
+          </p>
+          <div className="flex gap-2">
+            <button
+              onClick={() => setPage((p) => Math.max(1, p - 1))}
+              disabled={page === 1}
+              className="p-2 border border-border hover:bg-secondary disabled:opacity-50"
+            >
+              <ChevronLeft className="size-4" />
+            </button>
+            <button
+              onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+              disabled={page === totalPages}
+              className="p-2 border border-border hover:bg-secondary disabled:opacity-50"
+            >
+              <ChevronRight className="size-4" />
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

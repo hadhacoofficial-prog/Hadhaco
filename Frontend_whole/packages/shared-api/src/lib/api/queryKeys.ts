@@ -157,7 +157,7 @@ export const queryKeys = {
     lowStock: ["admin", "inventory", "low-stock"] as const,
     coupons: (filters?: Filters) => ["admin", "coupons", filters ?? {}] as const,
     reviewsPending: ["admin", "reviews", "pending"] as const,
-    reviewsAll: (status?: string) => ["admin", "reviews", "all", status ?? "all"] as const,
+    reviewsAll: (status?: string, page?: number) => ["admin", "reviews", "all", status ?? "all", page ?? 1] as const,
     cms: ["admin", "cms"] as const,
     cmsSections: ["admin", "cms", "sections"] as const,
     cmsSection: (key: string) => ["admin", "cms", "section", key] as const,
