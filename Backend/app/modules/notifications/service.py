@@ -14,7 +14,6 @@ from app.core.events import (
     OrderShippedEvent,
     OrderStatusChangedEvent,
     PaymentCapturedEvent,
-    PaymentFailedEvent,
     RefundCreatedEvent,
     RefundFailedEvent,
     RefundProcessedEvent,
@@ -104,6 +103,7 @@ class NotificationService:
         event_type: str,
         recipient: str,
         context: dict[str, Any],
+        order_id: str | uuid.UUID | None = None,
     ) -> None:
         """Send an email notification.
 
@@ -146,6 +146,7 @@ class NotificationService:
             rendered_body=rendered_body,
             template_id=template.id,
             template_version=template.version,
+            order_id=uuid.UUID(str(order_id)) if order_id else None,
         )
         log_id = log.id
         await db.commit()
@@ -215,6 +216,7 @@ class NotificationService:
         event_type: str,
         recipient: str,
         context: dict[str, Any],
+        order_id: str | uuid.UUID | None = None,
     ) -> None:
         """Send a WhatsApp template notification.
 
@@ -260,6 +262,7 @@ class NotificationService:
             whatsapp_params=whatsapp_params,
             template_id=template.id,
             template_version=template.version,
+            order_id=uuid.UUID(str(order_id)) if order_id else None,
         )
         log_id = log.id
 
@@ -329,6 +332,7 @@ class NotificationService:
         recipient: str,
         recipient_phone: str | None = None,
         context: dict[str, Any],
+        order_id: str | uuid.UUID | None = None,
     ) -> None:
         """Send notification to all enabled channels for this event type.
 
@@ -336,7 +340,24 @@ class NotificationService:
         before sending on each channel.  Each ``send_*`` method commits the
         session before its HTTP call so no database connection is held during
         external API requests.
+
+        When ``order_id`` is provided, an idempotency guard prevents duplicate
+        order-related emails (e.g. when a webhook and frontend verification
+        both try to send order_created / payment_captured for the same order).
         """
+        # ── Idempotency guard for order-related emails ──────────────────────
+        _ORDER_EVENT_TYPES = frozenset({"order_created", "payment_captured"})
+        if order_id and event_type in _ORDER_EVENT_TYPES:
+            if await self._repo.has_order_email_been_sent(
+                db, order_id=uuid.UUID(str(order_id)), event_type=event_type
+            ):
+                logger.info(
+                    "order_email_skipped_idempotent",
+                    event_type=event_type,
+                    order_id=str(order_id),
+                )
+                return
+
         # Email channel
         if await self._repo.should_send(db, event_type=event_type, channel="email"):
             if user_id:
@@ -356,6 +377,7 @@ class NotificationService:
                         event_type=event_type,
                         recipient=recipient,
                         context=context,
+                        order_id=order_id,
                     )
             else:
                 await self.send_email(
@@ -364,6 +386,7 @@ class NotificationService:
                     event_type=event_type,
                     recipient=recipient,
                     context=context,
+                    order_id=order_id,
                 )
 
         # WhatsApp channel
@@ -387,6 +410,7 @@ class NotificationService:
                         event_type=event_type,
                         recipient=recipient_phone,
                         context=context,
+                        order_id=order_id,
                     )
             else:
                 await self.send_whatsapp(
@@ -395,6 +419,7 @@ class NotificationService:
                     event_type=event_type,
                     recipient=recipient_phone,
                     context=context,
+                    order_id=order_id,
                 )
 
     # ── Retry logic ───────────────────────────────────────────────────────────
@@ -614,6 +639,7 @@ class NotificationService:
                     recipient=event.customer_email,
                     recipient_phone=event.customer_phone or None,
                     context=ctx,
+                    order_id=event.order_id,
                 )
 
         async def _handle_payment_captured(event: PaymentCapturedEvent) -> None:
@@ -635,32 +661,7 @@ class NotificationService:
                         "amount": format_inr_number(event.amount),
                         "frontend_url": settings.FRONTEND_URL,
                     },
-                )
-
-        async def _handle_payment_failed(event: PaymentFailedEvent) -> None:
-            from app.core.database import AsyncSessionLocal
-            from app.modules.profiles.repository import ProfileRepository
-
-            async with AsyncSessionLocal() as db:
-                order, order_ctx = await load_order_context(db, event.order_id)
-                if not order:
-                    return
-                profile = await ProfileRepository().get_by_id(db, order.user_id)
-                if not profile or not profile.email:
-                    return
-                phone = profile.phone if hasattr(profile, "phone") else None
-                await svc.dispatch(
-                    db,
-                    user_id=event.user_id,
-                    event_type="payment_failed",
-                    recipient=profile.email,
-                    recipient_phone=phone,
-                    context={
-                        **order_ctx,
-                        "order_number": order.order_number,
-                        "reason": event.reason,
-                        "frontend_url": settings.FRONTEND_URL,
-                    },
+                    order_id=event.order_id,
                 )
 
         async def _handle_order_status_changed(
@@ -691,6 +692,7 @@ class NotificationService:
                         "new_status": event.new_status,
                         "frontend_url": settings.FRONTEND_URL,
                     },
+                    order_id=event.order_id,
                 )
 
         async def _handle_order_shipped(event: OrderShippedEvent) -> None:
@@ -721,6 +723,7 @@ class NotificationService:
                         "timeline_stage": 4,
                         "frontend_url": settings.FRONTEND_URL,
                     },
+                    order_id=event.order_id,
                 )
 
         async def _handle_order_delivered(event: OrderDeliveredEvent) -> None:
@@ -747,6 +750,7 @@ class NotificationService:
                         "timeline_stage": 5,
                         "frontend_url": settings.FRONTEND_URL,
                     },
+                    order_id=event.order_id,
                 )
 
         async def _handle_refund_created(event: RefundCreatedEvent) -> None:
@@ -768,6 +772,7 @@ class NotificationService:
                         "amount": format_inr_number(event.amount),
                         "frontend_url": settings.FRONTEND_URL,
                     },
+                    order_id=event.order_id,
                 )
 
         async def _handle_refund_processed(event: RefundProcessedEvent) -> None:
@@ -789,6 +794,7 @@ class NotificationService:
                         "amount": format_inr_number(event.amount),
                         "frontend_url": settings.FRONTEND_URL,
                     },
+                    order_id=event.order_id,
                 )
 
         async def _handle_refund_failed(event: RefundFailedEvent) -> None:
@@ -840,12 +846,12 @@ class NotificationService:
                         "order_number": event.order_number,
                         "frontend_url": settings.FRONTEND_URL,
                     },
+                    order_id=event.order_id,
                 )
 
         event_bus.on(UserRegisteredEvent, _handle_user_registered)
         event_bus.on(OrderCreatedEvent, _handle_order_created)
         event_bus.on(PaymentCapturedEvent, _handle_payment_captured)
-        event_bus.on(PaymentFailedEvent, _handle_payment_failed)
         event_bus.on(OrderStatusChangedEvent, _handle_order_status_changed)
         event_bus.on(OrderShippedEvent, _handle_order_shipped)
         event_bus.on(OrderDeliveredEvent, _handle_order_delivered)

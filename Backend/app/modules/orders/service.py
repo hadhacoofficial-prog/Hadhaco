@@ -419,7 +419,54 @@ class OrderService:
             "payment_method": "razorpay",
             "notes": payload.notes,
         }
-        order = await _repo.create(db, order_data)
+        try:
+            order = await _repo.create(db, order_data)
+        except IntegrityError:
+            # The partial unique index idx_one_pending_order_per_user rejects
+            # the INSERT when a concurrent request created a pending order
+            # between our guard check and this insert.  Roll back to the
+            # savepoint so the session recovers, then query the existing
+            # order and either reuse it or clean up and error.
+            await db.rollback()
+            from sqlalchemy import select
+            from sqlalchemy.orm import selectinload
+
+            from app.modules.orders.models import Order
+
+            existing = (
+                await db.execute(
+                    select(Order)
+                    .where(
+                        Order.user_id == user_id,
+                        Order.status.in_(["stock_reserved", "payment_pending"]),
+                    )
+                    .options(selectinload(Order.items))
+                    .order_by(Order.created_at.desc())
+                    .limit(1)
+                )
+            ).scalar_one_or_none()
+            if existing and existing.razorpay_order_id:
+                log.info(
+                    "duplicate_order_redirected_integrity",
+                    existing_order_id=str(existing.id),
+                    user_id=str(user_id),
+                )
+                amount_paise = int(round(float(existing.total) * 100))
+                return CreatePaymentIntentResponse(
+                    order_id=str(existing.id),
+                    razorpay_order_id=existing.razorpay_order_id,
+                    amount=amount_paise,
+                    currency=settings.RAZORPAY_CURRENCY,
+                    key=settings.RAZORPAY_KEY_ID,
+                )
+            # Release the orphan reservations (not linked to any order)
+            await _reservation_svc.release_orphan_reservations(
+                db, user_id, reason="RELEASED"
+            )
+            await db.commit()
+            raise ValidationError(
+                "A pending order already exists. Please wait a moment and try again."
+            ) from None
 
         for item_data in line_items:
             item_data["order_id"] = order.id

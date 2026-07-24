@@ -50,6 +50,30 @@ class NotificationRepository:
         )
         return result.scalar_one_or_none() is not None
 
+    async def has_order_email_been_sent(
+        self,
+        db: AsyncSession,
+        *,
+        order_id: uuid.UUID,
+        event_type: str,
+    ) -> bool:
+        """True when a successful send exists for (order, event_type).
+
+        Used as an idempotency guard before dispatching order-related
+        emails (order_created, payment_captured) to prevent duplicates
+        when webhooks and frontend verification race.
+        """
+        result = await db.execute(
+            select(NotificationLog.id)
+            .where(
+                NotificationLog.order_id == order_id,
+                NotificationLog.event_type == event_type,
+                NotificationLog.status.in_(["sent", "delivered", "read", "pending"]),
+            )
+            .limit(1)
+        )
+        return result.scalar_one_or_none() is not None
+
     async def list_templates(self, db: AsyncSession) -> list[NotificationTemplate]:
         result = await db.execute(
             select(NotificationTemplate).order_by(NotificationTemplate.event_type)

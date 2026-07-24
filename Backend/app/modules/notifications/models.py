@@ -95,6 +95,11 @@ class NotificationLog(Base):
         UUID(as_uuid=True), nullable=True
     )
     template_version: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    # Links the log to a specific order for idempotency checks — prevents
+    # duplicate emails when webhooks and frontend verification race.
+    order_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), nullable=True
+    )
     # Lifecycle timestamps — set by the matching NotificationRepository.mark_*
     # method, one-way (never cleared once set).
     sent_at: Mapped[datetime | None] = mapped_column(

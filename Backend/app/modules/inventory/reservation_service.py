@@ -703,6 +703,81 @@ class ReservationService:
         if has_expired.fetchone():
             await self.complete_expired_order_reservations(db, order_id)
 
+    async def release_orphan_reservations(
+        self,
+        db: AsyncSession,
+        user_id: uuid.UUID,
+        reason: str = "RELEASED",
+    ) -> None:
+        """Release ACTIVE reservations not linked to any order.
+
+        Used by the IntegrityError recovery path in create_payment_intent
+        when the order INSERT fails due to the partial unique index and the
+        reservations were never linked to an order.
+        """
+        result = await db.execute(
+            text(
+                "SELECT id, product_id, variant_id, quantity "
+                "FROM inventory_reservations "
+                "WHERE user_id = :uid AND status = 'ACTIVE' AND order_id IS NULL "
+                "FOR UPDATE"
+            ),
+            {"uid": str(user_id)},
+        )
+        rows = result.fetchall()
+        if not rows:
+            return
+
+        cache_targets: list[tuple[uuid.UUID, uuid.UUID | None]] = []
+        available_by_product: dict[str, int] = {}
+        for row in rows:
+            res_id: uuid.UUID = row[0]
+            product_id: uuid.UUID = row[1]
+            variant_id: uuid.UUID | None = row[2]
+            quantity: int = row[3]
+
+            try:
+                stock = await self._lock_stock_target(db, product_id, variant_id)
+            except NotFoundError:
+                continue
+
+            await self._update_stock_target(
+                db,
+                stock,
+                "reserved_quantity = GREATEST(reserved_quantity - :qty, 0)",
+                {"qty": quantity},
+            )
+
+            await db.execute(
+                text(
+                    "UPDATE inventory_reservations "
+                    "SET status = :status, updated_at = now() "
+                    "WHERE id = :rid"
+                ),
+                {"rid": str(res_id), "status": reason},
+            )
+
+            after_reserved = max(stock["reserved_quantity"] - quantity, 0)
+            await self._log_transaction(
+                db,
+                product_id=product_id,
+                variant_id=variant_id,
+                reservation_id=res_id,
+                order_id=None,
+                transaction_type="RELEASE",
+                quantity=quantity,
+                before_stock=stock,
+                after_reserved=after_reserved,
+                after_sold=stock["sold_quantity"],
+                reference=reason,
+            )
+            cache_targets.append((product_id, variant_id))
+            available_by_product[str(product_id)] = _compute_available(
+                stock, after_reserved, stock["sold_quantity"]
+            )
+
+        await self._invalidate_inventory_cache(db, cache_targets, available_by_product)
+
     async def release_order_reservations(
         self,
         db: AsyncSession,
