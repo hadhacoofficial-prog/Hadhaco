@@ -112,14 +112,14 @@ class TestApplyGeometryFullPipeline:
         assert result.mode == "RGBA"
 
     def test_rotation_rejected_for_no_rotation_preset(self):
-        preset = PRESET_REGISTRY["hero"]  # rotation NONE
+        preset = PRESET_REGISTRY["hero_desktop"]  # rotation NONE
         img = Image.new("RGB", (2000, 800), (10, 20, 30))
         box = CropBox(x=0, y=0, width=1920, height=700)
         with pytest.raises(CropGeometryError):
             apply_geometry(img, box, rotation_degrees=15, preset=preset)
 
     def test_strict_bounds_preset_rejects_oob_box(self):
-        preset = PRESET_REGISTRY["hero"]  # strict_bounds=True
+        preset = PRESET_REGISTRY["hero_desktop"]  # strict_bounds=True
         img = Image.new("RGB", (1000, 500), (10, 20, 30))
         box = CropBox(x=0, y=0, width=1920, height=700)  # exceeds source
         with pytest.raises(CropGeometryError):

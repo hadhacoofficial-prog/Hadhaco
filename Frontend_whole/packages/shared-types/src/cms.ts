@@ -125,11 +125,14 @@ export interface HeroSlideMedia {
   desktop_image_url: string;
   tablet_image_url?: string;
   mobile_image_url?: string;
-  /** Set once this slide's image goes through the Universal Responsive
-   * Image System (desktop + mobile crop) instead of the legacy plain-upload
-   * fields above. When present, this is the source of truth for rendering —
-   * see resolveSlide()/hero-mappings.ts. */
-  image_bundle?: ImageBundle;
+  /** Set once the desktop image goes through the Universal Responsive Image
+   * System instead of the legacy plain-upload `desktop_image_url` above.
+   * Desktop and mobile are independent uploads/crops — see
+   * resolveSlide()/hero-mappings.ts. */
+  desktop_image_bundle?: ImageBundle;
+  /** Same as `desktop_image_bundle`, for the mobile frame — independent
+   * upload/crop, not derived from the desktop image. */
+  mobile_image_bundle?: ImageBundle;
   video_url?: string;
   video_poster_url?: string;
 }

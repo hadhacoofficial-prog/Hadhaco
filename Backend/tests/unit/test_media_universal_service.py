@@ -41,7 +41,7 @@ class TestCropBoxInAllowsNegativeOrigin:
 
 class TestDefaultCropsForPreset:
     def test_seeds_one_entry_per_breakpoint(self):
-        preset = PRESET_REGISTRY["hero"]
+        preset = PRESET_REGISTRY["hero_desktop"]
         crops = _default_crops_for_preset(preset, 4000, 3000)
         assert set(crops.keys()) == set(preset.breakpoints)
         for bp in preset.breakpoints:
@@ -158,7 +158,7 @@ class TestUpload:
 
             image = await svc.upload(
                 db,
-                preset_id="hero",
+                preset_id="hero_desktop",
                 file_bytes=content,
                 filename="hero.jpg",
                 content_type="image/jpeg",
@@ -168,10 +168,10 @@ class TestUpload:
             )
 
         enqueue.assert_called_once_with(image.id)
-        assert image.preset_id == "hero"
+        assert image.preset_id == "hero_desktop"
         assert image.status == "pending"
         assert set(image.metadata_["generation"]["pending_breakpoints"]) == {
-            bp.value for bp in PRESET_REGISTRY["hero"].breakpoints
+            bp.value for bp in PRESET_REGISTRY["hero_desktop"].breakpoints
         }
 
 
@@ -333,7 +333,7 @@ class TestCrop:
 
         svc = UniversalImageService()
         db = _mock_db()
-        image = self._make_image("hero", 1920, 700)  # hero is strict_bounds
+        image = self._make_image("hero_desktop", 1920, 700)  # hero is strict_bounds
 
         payload = CropGeometryIn(
             crops={

@@ -85,27 +85,37 @@ export const PRESET_REGISTRY: Record<string, CropPreset> = {
     storageRules: jpegPngWebp("categories/", 10),
     referenceUi: "category-tile",
   },
-  hero: {
-    id: "hero",
-    label: "Hero",
+  // Split into two single-breakpoint presets — the CMS Hero Carousel editor
+  // uploads and crops the desktop and mobile hero images as two entirely
+  // independent images (often different source photos), each with its own
+  // upload button and single-frame crop, not one image cropped two ways.
+  hero_desktop: {
+    id: "hero_desktop",
+    label: "Hero — Desktop",
     shape: "rectangle",
     maskSvg: null,
-    // Desktop + mobile only — matches the CMS Hero Carousel editor, which
-    // has exactly two crop slots (wide landscape, tall mobile); no tablet
-    // upload exists there for a tablet aspect to ever apply to.
-    aspectRatio: { desktop: 1920 / 700, mobile: 390 / 600 },
+    aspectRatio: { desktop: 1920 / 700 },
     safeArea: { top: 0, right: 0, bottom: 0, left: 45 },
-    minResolution: {
-      desktop: res(1920, 700),
-      mobile: res(390, 600),
-    },
+    minResolution: { desktop: res(1920, 700) },
     maxZoom: 3,
     rotation: defaultRotation("none"),
-    breakpoints: ["desktop", "mobile"],
-    outputVariants: [
-      { name: "hero-desktop", width: 1920, height: 700, dprs: [1, 2], format: "webp" },
-      { name: "hero-mobile", width: 390, height: 600, dprs: [1, 2], format: "webp" },
-    ],
+    breakpoints: ["desktop"],
+    outputVariants: [{ name: "hero-desktop", width: 1920, height: 700, dprs: [1, 2], format: "webp" }],
+    storageRules: jpegPngWebp("hero/", 15, true),
+    referenceUi: "hero-full-bleed",
+  },
+  hero_mobile: {
+    id: "hero_mobile",
+    label: "Hero — Mobile",
+    shape: "rectangle",
+    maskSvg: null,
+    aspectRatio: { mobile: 390 / 600 },
+    safeArea: { top: 0, right: 0, bottom: 0, left: 0 },
+    minResolution: { mobile: res(390, 600) },
+    maxZoom: 3,
+    rotation: defaultRotation("none"),
+    breakpoints: ["mobile"],
+    outputVariants: [{ name: "hero-mobile", width: 390, height: 600, dprs: [1, 2], format: "webp" }],
     storageRules: jpegPngWebp("hero/", 15, true),
     referenceUi: "hero-full-bleed",
   },

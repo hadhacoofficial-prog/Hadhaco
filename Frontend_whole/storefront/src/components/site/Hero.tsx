@@ -352,12 +352,16 @@ const SlideBackground = memo(function SlideBackground({
     );
   }
 
-  // A slide cropped through the Universal Responsive Image System carries
-  // its own desktop + mobile variants (see hero-mappings.ts resolveSlide) —
-  // always prefer it over the legacy fields below, which may still hold a
-  // stale mobile_image_url that the old "auto-adjust" editor only hid rather
-  // than cleared.
-  if (slide.media.imageBundle) {
+  // The desktop and mobile hero images are independent uploads/crops (see
+  // hero-mappings.ts resolveSlide) — each renders in its own breakpoint slot
+  // rather than switching a single image's variant, so an admin can pick two
+  // entirely different source photos for the two frames. Legacy plain-URL
+  // fields (mobileUrl/desktopUrl) are the fallback for whichever slot hasn't
+  // been migrated to a bundle yet.
+  if (slide.media.desktopBundle || slide.media.mobileBundle) {
+    const loading = isPreload ? "eager" : "lazy";
+    const fetchPriority = isPreload ? "high" : "low";
+    const alt = slide.content.seoAlt || null;
     return (
       <div
         className="absolute inset-0 w-full h-full"
@@ -366,14 +370,48 @@ const SlideBackground = memo(function SlideBackground({
           transition: `opacity ${durationMs}ms ${easing}`,
         }}
       >
-        <ResponsiveImage
-          bundle={{ ...slide.media.imageBundle, altText: slide.content.seoAlt || null }}
-          className="w-full h-full"
-          imgClassName="w-full h-full object-cover"
-          sizes="100vw"
-          loading={isPreload ? "eager" : "lazy"}
-          fetchPriority={isPreload ? "high" : "low"}
-        />
+        {/* Mobile frame — hidden at sm (640px) and up. */}
+        <div className="absolute inset-0 w-full h-full sm:hidden">
+          {slide.media.mobileBundle ? (
+            <ResponsiveImage
+              bundle={{ ...slide.media.mobileBundle, altText: alt }}
+              className="w-full h-full"
+              imgClassName="w-full h-full object-cover"
+              sizes="100vw"
+              loading={loading}
+              fetchPriority={fetchPriority}
+            />
+          ) : slide.media.mobileUrl ? (
+            <img
+              src={slide.media.mobileUrl}
+              alt={slide.content.seoAlt}
+              className="w-full h-full object-cover"
+              loading={loading}
+              fetchPriority={fetchPriority}
+            />
+          ) : null}
+        </div>
+        {/* Desktop frame — hidden below sm (640px). */}
+        <div className="absolute inset-0 w-full h-full hidden sm:block">
+          {slide.media.desktopBundle ? (
+            <ResponsiveImage
+              bundle={{ ...slide.media.desktopBundle, altText: alt }}
+              className="w-full h-full"
+              imgClassName="w-full h-full object-cover"
+              sizes="100vw"
+              loading={loading}
+              fetchPriority={fetchPriority}
+            />
+          ) : slide.media.desktopUrl ? (
+            <img
+              src={slide.media.desktopUrl}
+              alt={slide.content.seoAlt}
+              className="w-full h-full object-cover"
+              loading={loading}
+              fetchPriority={fetchPriority}
+            />
+          ) : null}
+        </div>
       </div>
     );
   }

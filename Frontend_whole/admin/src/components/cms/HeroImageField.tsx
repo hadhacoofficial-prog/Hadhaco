@@ -15,14 +15,15 @@ import type { Breakpoint, BreakpointCropGeometry, ImageBundle } from "@hadha/sha
 import { ImageWithFallback } from "@/components/common/ImageWithFallback";
 import { toUserMessage } from "@/lib/api/errors";
 
-const HERO_PRESET = PRESET_REGISTRY.hero;
-
 /** Mirrors ProductForm's parseStoredCrops — turns ImageOut's stored
  * metadata.crops back into the shape UniversalImageEditor seeds itself
- * from, so re-opening the editor restores the admin's earlier desktop/
- * mobile framing instead of resetting to a centered default. */
-function parseStoredHeroCrops(
+ * from, so re-opening the editor restores the admin's earlier framing
+ * instead of resetting to a centered default. Generic over the preset's own
+ * breakpoint list (each hero preset here has exactly one). */
+function parseStoredCrops(
   metadataCrops: unknown,
+  breakpoints: Breakpoint[],
+  aspectRatio: Partial<Record<Breakpoint, number | null>>,
 ): Partial<Record<Breakpoint, BreakpointCropGeometry>> | undefined {
   const crops = metadataCrops as
     | Record<
@@ -36,11 +37,11 @@ function parseStoredHeroCrops(
     | undefined;
   if (!crops) return undefined;
   const result: Partial<Record<Breakpoint, BreakpointCropGeometry>> = {};
-  for (const bp of HERO_PRESET.breakpoints) {
+  for (const bp of breakpoints) {
     const c = crops[bp];
     if (!c) continue;
     result[bp] = {
-      aspectRatio: HERO_PRESET.aspectRatio[bp] ?? null,
+      aspectRatio: aspectRatio[bp] ?? null,
       box: c.box,
       zoom: c.zoom,
       pan: { x: 0, y: 0 },
@@ -54,26 +55,30 @@ interface HeroImageFieldProps {
   /** The slide's SectionItem id — real once the slide has been saved at
    * least once via "Save Draft", a synthetic "__new_..." id before that. */
   slideId: string;
+  label: string;
+  presetId: "hero_desktop" | "hero_mobile";
   bundle?: ImageBundle;
-  /** Legacy desktop_image_url, shown as a read-only preview when this slide
+  /** Legacy plain-URL value, shown as a read-only preview when this slot
    * hasn't been migrated to the crop pipeline yet. */
-  legacyDesktopUrl?: string;
+  legacyUrl?: string;
   onBundleChange: (bundle: ImageBundle) => void;
 }
 
 /**
- * Desktop + mobile crop for one hero slide, via the Universal Responsive
- * Image System's "hero" preset — replaces the old separate desktop/tablet/
- * mobile URL fields with a single upload that's cropped per breakpoint and
- * always renders the correctly-cropped mobile frame (no more a stale
- * mobile_image_url silently overriding the desktop image on phones).
+ * One independent upload + single-frame crop for a hero slide — desktop and
+ * mobile are two entirely separate images (often different source photos),
+ * each via its own instance of this field and its own Universal Image
+ * Editor session, rather than one image cropped two ways.
  */
 export function HeroImageField({
   slideId,
+  label,
+  presetId,
   bundle,
-  legacyDesktopUrl,
+  legacyUrl,
   onBundleChange,
 }: HeroImageFieldProps) {
+  const preset = PRESET_REGISTRY[presetId];
   const isSaved = !slideId.startsWith("__");
   const [open, setOpen] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -83,8 +88,7 @@ export function HeroImageField({
     Partial<Record<Breakpoint, BreakpointCropGeometry>> | undefined
   >(undefined);
 
-  const thumbUrl =
-    bundle?.variants.find((v) => v.breakpoint === "desktop")?.url ?? legacyDesktopUrl ?? "";
+  const thumbUrl = bundle?.variants[0]?.url ?? legacyUrl ?? "";
 
   const openEditor = useCallback(async () => {
     if (!isSaved) return;
@@ -93,7 +97,9 @@ export function HeroImageField({
       try {
         const raw = await getImage(bundle.imageId);
         setExistingImageSrc(raw.original_url);
-        setInitialCrops(parseStoredHeroCrops(raw.metadata.crops));
+        setInitialCrops(
+          parseStoredCrops(raw.metadata.crops, preset.breakpoints, preset.aspectRatio),
+        );
       } catch (e) {
         toast.error(toUserMessage(e as Error));
         return;
@@ -105,7 +111,7 @@ export function HeroImageField({
       setInitialCrops(undefined);
     }
     setOpen(true);
-  }, [isSaved, bundle?.imageId]);
+  }, [isSaved, bundle?.imageId, preset]);
 
   const handleSave = useCallback(
     async ({ file, geometry }: UniversalImageEditorSaveResult, intent: SaveIntent) => {
@@ -114,7 +120,7 @@ export function HeroImageField({
         let raw;
         if (file) {
           const uploaded = await uploadImage({
-            presetId: "hero",
+            presetId,
             file,
             ownerType: "cms_section_item",
             ownerId: slideId,
@@ -126,7 +132,7 @@ export function HeroImageField({
           return;
         }
         onBundleChange(toImageBundle(raw));
-        toast.success("Hero image saved.");
+        toast.success(`${label} saved.`);
         if (intent === "save") setOpen(false);
       } catch (e) {
         toast.error(toUserMessage(e as Error));
@@ -134,13 +140,13 @@ export function HeroImageField({
         setSaving(false);
       }
     },
-    [bundle?.imageId, onBundleChange, slideId],
+    [bundle?.imageId, onBundleChange, slideId, presetId, label],
   );
 
   return (
     <div className="space-y-1.5">
       <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-muted-foreground">
-        Hero image (desktop + mobile crop)
+        {label}
       </p>
 
       {thumbUrl && (
@@ -173,14 +179,14 @@ export function HeroImageField({
         </button>
       ) : (
         <p className="text-[10px] text-muted-foreground/60 italic">
-          Save this slide (Save Draft) once to enable the desktop/mobile crop editor.
+          Save this slide (Save Draft) once to enable cropping.
         </p>
       )}
 
       <UniversalImageEditor
         open={open}
         onOpenChange={setOpen}
-        preset={HERO_PRESET}
+        preset={preset}
         existingImageSrc={existingImageSrc}
         initialCrops={initialCrops}
         saving={saving}

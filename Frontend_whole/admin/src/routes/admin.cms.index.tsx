@@ -787,37 +787,41 @@ function HeroSlideCard({
               <div className="space-y-3">
                 <HeroImageField
                   slideId={item.id}
-                  bundle={media.image_bundle}
-                  legacyDesktopUrl={media.desktop_image_url}
+                  label="Desktop image"
+                  presetId="hero_desktop"
+                  bundle={media.desktop_image_bundle}
+                  legacyUrl={media.desktop_image_url}
                   onBundleChange={(bundle) => {
-                    onUpdateMedia("image_bundle", bundle);
-                    // Keep desktop_image_url as a plain-URL fallback (SEO/
-                    // social meta tags, any code not yet bundle-aware), but
-                    // clear tablet/mobile — those are what used to silently
-                    // leak a stale image onto phones once the bundle exists.
-                    const desktopVariant = bundle.variants.find((v) => v.breakpoint === "desktop");
-                    if (desktopVariant) onUpdateMedia("desktop_image_url", desktopVariant.url);
-                    onUpdateMedia("tablet_image_url", undefined);
-                    onUpdateMedia("mobile_image_url", undefined);
+                    onUpdateMedia("desktop_image_bundle", bundle);
+                    // Keep desktop_image_url as a plain-URL fallback for any
+                    // code not yet bundle-aware (SEO/social meta tags).
+                    const variant = bundle.variants[0];
+                    if (variant) onUpdateMedia("desktop_image_url", variant.url);
                   }}
                 />
-                {!media.image_bundle && !autoAdjust && (
-                  <>
-                    <ImageUploadField
-                      label="Tablet image (optional, legacy)"
-                      value={media.tablet_image_url ?? ""}
-                      onChange={(v) => onUpdateMedia("tablet_image_url", v)}
-                      folder="/cms/hero"
-                      previewHeight={70}
-                    />
-                    <ImageUploadField
-                      label="Mobile image (optional, legacy)"
-                      value={media.mobile_image_url ?? ""}
-                      onChange={(v) => onUpdateMedia("mobile_image_url", v)}
-                      folder="/cms/hero"
-                      previewHeight={70}
-                    />
-                  </>
+                <HeroImageField
+                  slideId={item.id}
+                  label="Mobile image"
+                  presetId="hero_mobile"
+                  bundle={media.mobile_image_bundle}
+                  legacyUrl={media.mobile_image_url}
+                  onBundleChange={(bundle) => {
+                    onUpdateMedia("mobile_image_bundle", bundle);
+                    const variant = bundle.variants[0];
+                    // Once a real mobile crop exists, clear the legacy plain
+                    // mobile_image_url — that field is what used to silently
+                    // leak a stale image onto phones.
+                    onUpdateMedia("mobile_image_url", variant?.url ?? undefined);
+                  }}
+                />
+                {!autoAdjust && (
+                  <ImageUploadField
+                    label="Tablet image (optional, legacy)"
+                    value={media.tablet_image_url ?? ""}
+                    onChange={(v) => onUpdateMedia("tablet_image_url", v)}
+                    folder="/cms/hero"
+                    previewHeight={70}
+                  />
                 )}
                 <Field label="Video URL (optional)">
                   <TextInput
@@ -1275,7 +1279,8 @@ function HeroEditor({
         />
         <p className="text-[10px] text-muted-foreground/70 mt-1 ml-0.5 leading-relaxed">
           Configure once in desktop mode. Typography, height, and layout scale automatically for
-          laptop, tablet, and mobile. Desktop image is used as fallback for smaller screens.
+          laptop, tablet, and mobile. Desktop and mobile images are set separately above and are not
+          affected by this toggle.
         </p>
       </div>
       {validationErrors.length > 0 && (

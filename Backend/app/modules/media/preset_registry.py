@@ -171,29 +171,33 @@ PRESET_REGISTRY: dict[str, CropPreset] = {
         storage_rules=_jpeg_png_webp("categories/", 10),
         reference_ui="category-tile",
     ),
-    "hero": CropPreset(
-        id="hero",
-        label="Hero",
+    # Split into two single-breakpoint presets rather than one combined
+    # desktop+mobile preset — the CMS Hero Carousel editor uploads and crops
+    # the desktop and mobile hero images as two entirely independent images
+    # (often different source photos), each with its own upload button and
+    # its own single-frame crop, not one image cropped two ways.
+    "hero_desktop": CropPreset(
+        id="hero_desktop",
+        label="Hero — Desktop",
         shape=ShapeType.RECTANGLE,
-        # Only desktop + mobile — the CMS Hero Carousel editor exposes exactly
-        # these two crops (one wide landscape frame, one tall mobile frame);
-        # there is no separate tablet upload slot, so a tablet aspect here
-        # would never be reachable from the editor.
-        aspect_ratio={
-            Breakpoint.DESKTOP: 1920 / 700,
-            Breakpoint.MOBILE: 390 / 600,
-        },
+        aspect_ratio={Breakpoint.DESKTOP: 1920 / 700},
         safe_area=SafeArea(left=45.0),
-        min_resolution={
-            Breakpoint.DESKTOP: _res(1920, 700),
-            Breakpoint.MOBILE: _res(390, 600),
-        },
+        min_resolution={Breakpoint.DESKTOP: _res(1920, 700)},
         max_zoom=3.0,
-        breakpoints=[Breakpoint.DESKTOP, Breakpoint.MOBILE],
-        output_variants=[
-            _variants_1x2x("hero-desktop", 1920, 700),
-            _variants_1x2x("hero-mobile", 390, 600),
-        ],
+        breakpoints=[Breakpoint.DESKTOP],
+        output_variants=[_variants_1x2x("hero-desktop", 1920, 700)],
+        storage_rules=_jpeg_png_webp("hero/", 15, strict=True),
+        reference_ui="hero-full-bleed",
+    ),
+    "hero_mobile": CropPreset(
+        id="hero_mobile",
+        label="Hero — Mobile",
+        shape=ShapeType.RECTANGLE,
+        aspect_ratio={Breakpoint.MOBILE: 390 / 600},
+        min_resolution={Breakpoint.MOBILE: _res(390, 600)},
+        max_zoom=3.0,
+        breakpoints=[Breakpoint.MOBILE],
+        output_variants=[_variants_1x2x("hero-mobile", 390, 600)],
         storage_rules=_jpeg_png_webp("hero/", 15, strict=True),
         reference_ui="hero-full-bleed",
     ),

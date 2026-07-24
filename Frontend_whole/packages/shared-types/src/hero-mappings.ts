@@ -390,11 +390,14 @@ export interface ResolvedSlide {
     videoUrl: string;
     videoPosterUrl: string;
     hasVideo: boolean;
-    /** Present once this slide has been through the Universal Responsive
-     * Image System — takes priority over desktopUrl/tabletUrl/mobileUrl,
-     * since those legacy fields may still carry stale values that were
-     * simply hidden (not cleared) by the old "auto-adjust" UI. */
-    imageBundle?: ImageBundle;
+    /** Present once the desktop/mobile frame has been through the Universal
+     * Responsive Image System — each takes priority over the corresponding
+     * legacy desktopUrl/mobileUrl, which may still carry a stale value that
+     * was simply hidden (not cleared) by the old "auto-adjust" UI. Desktop
+     * and mobile are independent uploads, so one can be bundle-based while
+     * the other still falls back to its legacy URL. */
+    desktopBundle?: ImageBundle;
+    mobileBundle?: ImageBundle;
   };
   content: {
     eyebrow: string;
@@ -439,7 +442,8 @@ export function resolveSlide(slide: HeroSlideConfig): ResolvedSlide {
       videoUrl: media.video_url ?? "",
       videoPosterUrl: media.video_poster_url ?? "",
       hasVideo: hasVideoBackground(media),
-      imageBundle: media.image_bundle,
+      desktopBundle: media.desktop_image_bundle,
+      mobileBundle: media.mobile_image_bundle,
     },
     content: {
       eyebrow: content.eyebrow ?? "",
@@ -591,7 +595,9 @@ export function validateHeroConfig(
 
   items.forEach((slide, i) => {
     const hasImage = Boolean(
-      slide.media?.desktop_image_url || slide.media?.image_bundle,
+      slide.media?.desktop_image_url ||
+        slide.media?.desktop_image_bundle ||
+        slide.media?.mobile_image_bundle,
     );
     const hasVideo = Boolean(slide.media?.video_url);
 
@@ -657,9 +663,9 @@ export function validateHeroConfig(
     }
 
     if (
-      slide.media?.desktop_image_url &&
+      (slide.media?.desktop_image_url || slide.media?.desktop_image_bundle) &&
       !slide.media?.mobile_image_url &&
-      !slide.media?.image_bundle
+      !slide.media?.mobile_image_bundle
     ) {
       warnings.push({
         type: "warning",
