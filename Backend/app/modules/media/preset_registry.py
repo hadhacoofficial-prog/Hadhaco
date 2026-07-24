@@ -175,21 +175,24 @@ PRESET_REGISTRY: dict[str, CropPreset] = {
         id="hero",
         label="Hero",
         shape=ShapeType.RECTANGLE,
+        # Only desktop + mobile — the CMS Hero Carousel editor exposes exactly
+        # these two crops (one wide landscape frame, one tall mobile frame);
+        # there is no separate tablet upload slot, so a tablet aspect here
+        # would never be reachable from the editor.
         aspect_ratio={
             Breakpoint.DESKTOP: 1920 / 700,
-            Breakpoint.TABLET: 1024 / 700,
             Breakpoint.MOBILE: 390 / 600,
         },
         safe_area=SafeArea(left=45.0),
         min_resolution={
             Breakpoint.DESKTOP: _res(1920, 700),
-            Breakpoint.TABLET: _res(1024, 700),
             Breakpoint.MOBILE: _res(390, 600),
         },
         max_zoom=3.0,
-        breakpoints=[Breakpoint.DESKTOP, Breakpoint.TABLET, Breakpoint.MOBILE],
+        breakpoints=[Breakpoint.DESKTOP, Breakpoint.MOBILE],
         output_variants=[
-            _variants_1x2x("hero", 1920, 700),
+            _variants_1x2x("hero-desktop", 1920, 700),
+            _variants_1x2x("hero-mobile", 390, 600),
         ],
         storage_rules=_jpeg_png_webp("hero/", 15, strict=True),
         reference_ui="hero-full-bleed",

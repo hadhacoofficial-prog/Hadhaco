@@ -1,5 +1,6 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ArrowRight, ChevronLeft, ChevronRight, Pause, Play } from "lucide-react";
+import { ResponsiveImage } from "@hadha/shared-media";
 import type { HeroCarouselConfig, HeroSlideConfig, SectionItem } from "@/types/cms";
 import {
   resolveSlide,
@@ -348,6 +349,32 @@ const SlideBackground = memo(function SlideBackground({
           transition: `opacity ${durationMs}ms ${easing}`,
         }}
       />
+    );
+  }
+
+  // A slide cropped through the Universal Responsive Image System carries
+  // its own desktop + mobile variants (see hero-mappings.ts resolveSlide) —
+  // always prefer it over the legacy fields below, which may still hold a
+  // stale mobile_image_url that the old "auto-adjust" editor only hid rather
+  // than cleared.
+  if (slide.media.imageBundle) {
+    return (
+      <div
+        className="absolute inset-0 w-full h-full"
+        style={{
+          opacity: isActive ? 1 : 0,
+          transition: `opacity ${durationMs}ms ${easing}`,
+        }}
+      >
+        <ResponsiveImage
+          bundle={{ ...slide.media.imageBundle, altText: slide.content.seoAlt || null }}
+          className="w-full h-full"
+          imgClassName="w-full h-full object-cover"
+          sizes="100vw"
+          loading={isPreload ? "eager" : "lazy"}
+          fetchPriority={isPreload ? "high" : "low"}
+        />
+      </div>
     );
   }
 

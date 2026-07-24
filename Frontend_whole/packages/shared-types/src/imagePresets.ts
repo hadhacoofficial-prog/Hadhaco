@@ -90,17 +90,22 @@ export const PRESET_REGISTRY: Record<string, CropPreset> = {
     label: "Hero",
     shape: "rectangle",
     maskSvg: null,
-    aspectRatio: { desktop: 1920 / 700, tablet: 1024 / 700, mobile: 390 / 600 },
+    // Desktop + mobile only — matches the CMS Hero Carousel editor, which
+    // has exactly two crop slots (wide landscape, tall mobile); no tablet
+    // upload exists there for a tablet aspect to ever apply to.
+    aspectRatio: { desktop: 1920 / 700, mobile: 390 / 600 },
     safeArea: { top: 0, right: 0, bottom: 0, left: 45 },
     minResolution: {
       desktop: res(1920, 700),
-      tablet: res(1024, 700),
       mobile: res(390, 600),
     },
     maxZoom: 3,
     rotation: defaultRotation("none"),
-    breakpoints: ["desktop", "tablet", "mobile"],
-    outputVariants: [{ name: "hero", width: 1920, height: 700, dprs: [1, 2], format: "webp" }],
+    breakpoints: ["desktop", "mobile"],
+    outputVariants: [
+      { name: "hero-desktop", width: 1920, height: 700, dprs: [1, 2], format: "webp" },
+      { name: "hero-mobile", width: 390, height: 600, dprs: [1, 2], format: "webp" },
+    ],
     storageRules: jpegPngWebp("hero/", 15, true),
     referenceUi: "hero-full-bleed",
   },

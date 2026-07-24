@@ -46,6 +46,7 @@ import { api } from "@/lib/api/client";
 import { queryKeys } from "@/lib/api/queryKeys";
 import { isApiError, toUserMessage } from "@/lib/api/errors";
 import { ImageUploadField } from "@/components/cms/ImageUploadField";
+import { HeroImageField } from "@/components/cms/HeroImageField";
 import { ColorPaletteSelect } from "@/components/cms/ColorPaletteSelect";
 import { LayoutPresetSelect } from "@/components/cms/LayoutPresetSelect";
 import { ImageWithFallback } from "@/components/common/ImageWithFallback";
@@ -97,6 +98,7 @@ import type {
   SectionType,
   VideoSectionConfig,
   WhyChooseCardConfig,
+  ImageBundle,
 } from "@/types/cms";
 import {
   migrateSlideConfig,
@@ -783,36 +785,39 @@ function HeroSlideCard({
             )}
             {id === "images" && (
               <div className="space-y-3">
-                <ImageUploadField
-                  label={autoAdjust ? "Desktop image (used for all viewports)" : "Desktop image"}
-                  value={media.desktop_image_url ?? ""}
-                  onChange={(v) => onUpdateMedia("desktop_image_url", v)}
-                  folder="/cms/hero"
-                  previewHeight={90}
+                <HeroImageField
+                  slideId={item.id}
+                  bundle={media.image_bundle}
+                  legacyDesktopUrl={media.desktop_image_url}
+                  onBundleChange={(bundle) => {
+                    onUpdateMedia("image_bundle", bundle);
+                    // Keep desktop_image_url as a plain-URL fallback (SEO/
+                    // social meta tags, any code not yet bundle-aware), but
+                    // clear tablet/mobile — those are what used to silently
+                    // leak a stale image onto phones once the bundle exists.
+                    const desktopVariant = bundle.variants.find((v) => v.breakpoint === "desktop");
+                    if (desktopVariant) onUpdateMedia("desktop_image_url", desktopVariant.url);
+                    onUpdateMedia("tablet_image_url", undefined);
+                    onUpdateMedia("mobile_image_url", undefined);
+                  }}
                 />
-                {!autoAdjust && (
+                {!media.image_bundle && !autoAdjust && (
                   <>
                     <ImageUploadField
-                      label="Tablet image (optional)"
+                      label="Tablet image (optional, legacy)"
                       value={media.tablet_image_url ?? ""}
                       onChange={(v) => onUpdateMedia("tablet_image_url", v)}
                       folder="/cms/hero"
                       previewHeight={70}
                     />
                     <ImageUploadField
-                      label="Mobile image (optional)"
+                      label="Mobile image (optional, legacy)"
                       value={media.mobile_image_url ?? ""}
                       onChange={(v) => onUpdateMedia("mobile_image_url", v)}
                       folder="/cms/hero"
                       previewHeight={70}
                     />
                   </>
-                )}
-                {autoAdjust && (
-                  <p className="text-[10px] text-muted-foreground/60 italic">
-                    Responsive images auto-scale from the desktop version. Disable auto-adjust to
-                    set custom images per device.
-                  </p>
                 )}
                 <Field label="Video URL (optional)">
                   <TextInput

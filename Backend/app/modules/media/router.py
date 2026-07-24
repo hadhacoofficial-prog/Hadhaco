@@ -8,7 +8,7 @@ from app.common.response_codes import ResponseCode
 from app.common.responses import BaseSuccessResponse, deleted, ok
 from app.core.database import get_db
 from app.core.dependencies import require_admin
-from app.core.redis import bust_product_list_cache, get_redis
+from app.core.redis import bust_product_list_cache, get_redis, safe_redis_delete
 from app.modules.media.crop_engine import CropGeometryError
 from app.modules.media.repository import ImageRepository
 from app.modules.media.schemas import (
@@ -54,6 +54,12 @@ async def _bust_cache_for(owner_type: OwnerType, redis: aioredis.Redis) -> None:
     `_PRODUCT_LIST_TTL` seconds after the edit."""
     if owner_type == "product":
         await bust_product_list_cache(redis)
+    if owner_type == "cms_section_item":
+        # Mirrors app/modules/cms/service.py's _HOMEPAGE_CACHE_KEY — a hero
+        # slide's image lives inside cms_section_items.config, which the
+        # homepage cache snapshots, so cropping/replacing it must invalidate
+        # that cache the same way editing the slide's text fields already does.
+        await safe_redis_delete(redis, "cms:homepage")
 
 
 @router.get(

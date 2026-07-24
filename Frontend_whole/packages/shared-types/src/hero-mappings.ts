@@ -24,6 +24,7 @@ import type {
   HeroTransitionSpeed,
   HeroCarouselConfig,
 } from "./cms";
+import type { ImageBundle } from "./media";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Color Palette – derives from project design tokens via CSS variables
@@ -389,6 +390,11 @@ export interface ResolvedSlide {
     videoUrl: string;
     videoPosterUrl: string;
     hasVideo: boolean;
+    /** Present once this slide has been through the Universal Responsive
+     * Image System — takes priority over desktopUrl/tabletUrl/mobileUrl,
+     * since those legacy fields may still carry stale values that were
+     * simply hidden (not cleared) by the old "auto-adjust" UI. */
+    imageBundle?: ImageBundle;
   };
   content: {
     eyebrow: string;
@@ -433,6 +439,7 @@ export function resolveSlide(slide: HeroSlideConfig): ResolvedSlide {
       videoUrl: media.video_url ?? "",
       videoPosterUrl: media.video_poster_url ?? "",
       hasVideo: hasVideoBackground(media),
+      imageBundle: media.image_bundle,
     },
     content: {
       eyebrow: content.eyebrow ?? "",
@@ -649,7 +656,11 @@ export function validateHeroConfig(
       });
     }
 
-    if (slide.media?.desktop_image_url && !slide.media?.mobile_image_url) {
+    if (
+      slide.media?.desktop_image_url &&
+      !slide.media?.mobile_image_url &&
+      !slide.media?.image_bundle
+    ) {
       warnings.push({
         type: "warning",
         field: "media.mobile_image_url",
