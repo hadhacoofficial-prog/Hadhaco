@@ -5,6 +5,7 @@ from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from sqlalchemy import func, select, update
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -214,18 +215,59 @@ class ImageRepository:
         variant_rows: list[dict[str, Any]],
     ) -> None:
         """
-        Delete any existing variants for *breakpoint* on this image, then
-        insert *variant_rows*. Scoped to one breakpoint so a re-crop of a
-        single breakpoint (e.g. "mobile") never touches the other
-        breakpoints' already-generated variants.
-        """
-        existing = [v for v in image.variants if v.breakpoint == breakpoint]
-        for v in existing:
-            await db.delete(v)
-        await db.flush()
+        Upsert *variant_rows* for *breakpoint* on this image, then delete any
+        now-stale rows for that breakpoint not present in the new set.
+        Scoped to one breakpoint so a re-crop of a single breakpoint (e.g.
+        "mobile") never touches the other breakpoints' already-generated
+        variants.
 
-        for row in variant_rows:
-            db.add(ImageVariant(image_id=image.id, **row))
+        Uses INSERT ... ON CONFLICT DO UPDATE rather than delete-then-insert:
+        two media-generation jobs for the same image can legitimately run
+        concurrently (e.g. an upload's initial generation overlapping a
+        crop triggered moments later), each in its own DB session with its
+        own independently-loaded `image` object. The old delete-then-insert
+        approach decided what to delete from that possibly-stale in-memory
+        `image.variants` collection — a job that loaded `image` before a
+        concurrent job's rows committed would delete nothing, then collide
+        on insert (uq_image_variants_image_breakpoint_variant_dpr). Upsert
+        is race-safe: Postgres resolves the conflict atomically via the
+        unique index regardless of what either session's in-memory state
+        looked like when it started.
+        """
+        if variant_rows:
+            stmt = pg_insert(ImageVariant).values(
+                [{"image_id": image.id, **row} for row in variant_rows]
+            )
+            stmt = stmt.on_conflict_do_update(
+                constraint="uq_image_variants_image_breakpoint_variant_dpr",
+                set_={
+                    "format": stmt.excluded.format,
+                    "url": stmt.excluded.url,
+                    "width": stmt.excluded.width,
+                    "height": stmt.excluded.height,
+                    "size_bytes": stmt.excluded.size_bytes,
+                    "status": stmt.excluded.status,
+                    "error_message": stmt.excluded.error_message,
+                },
+            )
+            await db.execute(stmt)
+
+        # Clean up rows for this breakpoint that the new set no longer
+        # produces (e.g. a preset's variant list shrank). Scoped by a fresh
+        # query, not the in-memory `image.variants`, and excludes exactly
+        # the keys just upserted above — so this can never delete a row a
+        # concurrent job just wrote for the same (variant_name, dpr).
+        new_keys = {(row["variant_name"], row["dpr"]) for row in variant_rows}
+        result = await db.execute(
+            select(ImageVariant).where(
+                ImageVariant.image_id == image.id,
+                ImageVariant.breakpoint == breakpoint,
+            )
+        )
+        for v in result.scalars().all():
+            if (v.variant_name, v.dpr) not in new_keys:
+                await db.delete(v)
+
         await db.flush()
         await db.refresh(image, attribute_names=["variants"])
 
