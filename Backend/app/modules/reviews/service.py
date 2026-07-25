@@ -112,7 +112,7 @@ class ReviewService:
         viewer_user_id: uuid.UUID | None = None,
         offset: int = 0,
         limit: int = 20,
-    ) -> list[Review]:
+    ) -> tuple[list[Review], int]:
         return await self._repo.list_for_product(
             db,
             product_id=product_id,

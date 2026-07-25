@@ -293,10 +293,15 @@ class TestReviewServiceOwned:
     async def test_list_product_reviews_returns_list(self):
         db = AsyncMock()
         with patch.object(
-            ReviewRepository, "list_for_product", AsyncMock(return_value=[])
+            ReviewRepository,
+            "list_for_product",
+            AsyncMock(return_value=([], 0)),
         ):
-            result = await self.svc.list_product_reviews(db, product_id=uuid.uuid4())
-        assert result == []
+            reviews, total = await self.svc.list_product_reviews(
+                db, product_id=uuid.uuid4()
+            )
+        assert reviews == []
+        assert total == 0
 
     async def test_rating_summary_delegates_to_repo(self):
         db = AsyncMock()

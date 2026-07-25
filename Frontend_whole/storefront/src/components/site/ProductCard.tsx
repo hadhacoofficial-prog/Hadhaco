@@ -109,8 +109,9 @@ export const ProductCard = memo(function ProductCard({ p }: { p: Product }) {
           </span>
         )}
 
-        {/* Stock pill (only when not sold out — sold-out overlay covers it) */}
-        {!isSoldOut && <StockPill status={status} />}
+        {/* Stock pill (only when not sold out — sold-out overlay covers it).
+            Low stock is intentionally PDP-only; the card doesn't flag it. */}
+        {!isSoldOut && status !== "LOW_STOCK" && <StockPill status={status} />}
         {reserved && (
           <StockPill
             status="OUT_OF_STOCK"

@@ -106,6 +106,13 @@ class ReviewListResponse(BaseModel):
     total_pages: int
 
 
+class ReviewListPublicResponse(BaseModel):
+    """Public review list response — includes total count for pagination."""
+
+    items: list[ReviewOut]
+    total: int
+
+
 # ── My review status (post-delivery reminder visibility) ─────────────────────
 
 

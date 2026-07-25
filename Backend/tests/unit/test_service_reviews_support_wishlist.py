@@ -210,10 +210,15 @@ class TestReviewService:
         db = AsyncMock()
         mock_review = MagicMock()
         with patch.object(
-            self.repo_cls, "list_for_product", AsyncMock(return_value=[mock_review])
+            self.repo_cls,
+            "list_for_product",
+            AsyncMock(return_value=([mock_review], 1)),
         ):
-            result = await self.svc.list_product_reviews(db, product_id=uuid.uuid4())
-        assert result == [mock_review]
+            reviews, total = await self.svc.list_product_reviews(
+                db, product_id=uuid.uuid4()
+            )
+        assert reviews == [mock_review]
+        assert total == 1
 
     async def test_rating_summary(self):
         db = AsyncMock()

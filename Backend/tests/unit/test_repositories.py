@@ -513,9 +513,10 @@ class TestReviewRepository:
 
     async def test_list_for_product_returns_reviews(self):
         mock_rev = MagicMock()
-        db = _db(_scalars_result([mock_rev]))
-        result = await self.repo.list_for_product(db, product_id=uuid.uuid4())
-        assert result == [mock_rev]
+        db = _db(_all_result([(mock_rev, 1)]))
+        reviews, total = await self.repo.list_for_product(db, product_id=uuid.uuid4())
+        assert reviews == [mock_rev]
+        assert total == 1
 
     async def test_list_pending_returns_reviews(self):
         mock_rev = MagicMock()

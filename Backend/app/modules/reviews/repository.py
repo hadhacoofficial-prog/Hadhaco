@@ -136,26 +136,35 @@ class ReviewRepository:
         viewer_user_id: uuid.UUID | None = None,
         offset: int = 0,
         limit: int = 20,
-    ) -> list[Review]:
-        """Return approved reviews + viewer's own pending/rejected if authenticated."""
+    ) -> tuple[list[Review], int]:
+        """Return approved reviews + viewer's own pending/rejected if authenticated.
+
+        Returns (reviews, total_count) where total_count reflects all matching
+        rows (before offset/limit) so callers can build pagination metadata.
+        """
         from sqlalchemy import or_
 
-        q = select(Review).where(
+        base_filters: list[ColumnElement[bool]] = [
             Review.product_id == product_id,
             Review.deleted_at.is_(None),
-        )
+        ]
         if viewer_user_id is not None:
-            q = q.where(
+            base_filters.append(
                 or_(
                     Review.is_approved.is_(True),
                     Review.user_id == viewer_user_id,
                 )
             )
         else:
-            q = q.where(Review.is_approved.is_(True))
-        # Own pending/rejected reviews first, then approved by newest
+            base_filters.append(Review.is_approved.is_(True))
+
+        # Count window — total rows matching the filter (before OFFSET/LIMIT)
+        count_window = func.count().over().label("_total_count")
+
         q = (
-            q.order_by(
+            select(Review, count_window)
+            .where(*base_filters)
+            .order_by(
                 Review.is_approved.asc(),
                 Review.created_at.desc(),
             )
@@ -163,7 +172,12 @@ class ReviewRepository:
             .limit(limit)
         )
         result = await db.execute(q)
-        return list(result.scalars().all())
+        rows = result.all()
+        if not rows:
+            return [], 0
+        total: int = rows[0][1]
+        reviews = [row[0] for row in rows]
+        return reviews, total
 
     async def list_pending(
         self, db: AsyncSession, *, offset: int = 0, limit: int = 50

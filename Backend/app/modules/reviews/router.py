@@ -29,6 +29,7 @@ from app.modules.reviews.schemas import (
     MyProductReviewStatus,
     ProductRatingSummary,
     ReviewCreate,
+    ReviewListPublicResponse,
     ReviewListResponse,
     ReviewOut,
     ReviewUpdate,
@@ -45,7 +46,8 @@ _svc = ReviewService()
 
 
 @router.get(
-    "/products/{product_id}", response_model=BaseSuccessResponse[list[ReviewOut]]
+    "/products/{product_id}",
+    response_model=BaseSuccessResponse[ReviewListPublicResponse],
 )
 async def list_product_reviews(
     product_id: uuid.UUID,
@@ -70,15 +72,18 @@ async def list_product_reviews(
             add_cache_headers(response, TTL_REVIEW_LIST, private=True)
             return response
 
-    result = await _svc.list_product_reviews(
+    reviews, total = await _svc.list_product_reviews(
         db,
         product_id=product_id,
         viewer_user_id=viewer_user_id,
         offset=offset,
         limit=limit,
     )
+    review_dtos = [ReviewOut.model_validate(r) for r in reviews]
     response_data = ok(
-        result, ResponseCode.REVIEW_LISTED, "Reviews listed successfully"
+        ReviewListPublicResponse(items=review_dtos, total=total),
+        ResponseCode.REVIEW_LISTED,
+        "Reviews listed successfully",
     )
     if viewer_user_id is None:
         import json as _json
