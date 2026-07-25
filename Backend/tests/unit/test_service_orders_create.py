@@ -1,6 +1,7 @@
 """Tests for OrderService.create_payment_intent success path."""
 
 import uuid
+from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -136,7 +137,7 @@ class TestOrderServiceCreatePaymentIntent:
             ),
             patch(
                 "app.modules.orders.service._reservation_svc.lock_for_checkout",
-                AsyncMock(),
+                AsyncMock(return_value=datetime.now(UTC) + timedelta(minutes=10)),
             ),
             patch(
                 "app.modules.orders.service._repo.generate_order_number",
@@ -276,7 +277,7 @@ class TestOrderServiceCreatePaymentIntent:
             ),
             patch(
                 "app.modules.orders.service._reservation_svc.lock_for_checkout",
-                AsyncMock(),
+                AsyncMock(return_value=datetime.now(UTC) + timedelta(minutes=10)),
             ),
             patch(
                 "app.modules.orders.service._repo.generate_order_number",
@@ -347,7 +348,7 @@ class TestOrderServiceCreatePaymentIntent:
             ),
             patch(
                 "app.modules.orders.service._reservation_svc.lock_for_checkout",
-                AsyncMock(),
+                AsyncMock(return_value=datetime.now(UTC) + timedelta(minutes=10)),
             ),
             patch(
                 "app.modules.orders.service._repo.generate_order_number",
@@ -425,7 +426,7 @@ class TestOrderServiceCreatePaymentIntent:
             ),
             patch(
                 "app.modules.orders.service._reservation_svc.lock_for_checkout",
-                AsyncMock(),
+                AsyncMock(return_value=datetime.now(UTC) + timedelta(minutes=10)),
             ),
             patch(
                 "app.modules.orders.service._repo.generate_order_number",
@@ -498,7 +499,7 @@ class TestOrderServiceCreatePaymentIntent:
             ),
             patch(
                 "app.modules.orders.service._reservation_svc.lock_for_checkout",
-                AsyncMock(),
+                AsyncMock(return_value=datetime.now(UTC) + timedelta(minutes=10)),
             ),
             patch(
                 "app.modules.orders.service._repo.generate_order_number",

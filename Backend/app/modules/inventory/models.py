@@ -67,7 +67,8 @@ class InventoryReservation(Base):
     """
     Tracks stock held for a pending checkout.
     Status flow: ACTIVE → COMPLETED (payment success) | RELEASED (failure/cancel) | EXPIRED (timeout).
-    reserved_quantity on products is decremented when leaving ACTIVE.
+    reserved_quantity on the target row (product_variants, or products for the
+    legacy no-variant case) is decremented when leaving ACTIVE.
     """
 
     __tablename__ = "inventory_reservations"
@@ -187,12 +188,22 @@ class InventoryTransaction(Base):
     before_sold: Mapped[int] = mapped_column(Integer, nullable=False)
     after_sold: Mapped[int] = mapped_column(Integer, nullable=False)
     reference: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    performed_by: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("profiles.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    request_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    adjustment_mode: Mapped[str | None] = mapped_column(String(10), nullable=True)
+    reason: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    notes: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )
 
     __table_args__ = (
         Index("idx_inv_txn_product_id", "product_id"),
+        Index("idx_inv_txn_variant_id", "variant_id"),
         Index("idx_inv_txn_reservation_id", "reservation_id"),
         Index("idx_inv_txn_order_id", "order_id"),
         Index("idx_inv_txn_type", "transaction_type"),

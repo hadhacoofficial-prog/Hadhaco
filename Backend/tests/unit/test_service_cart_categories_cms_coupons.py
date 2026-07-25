@@ -964,6 +964,11 @@ class TestCartServiceSuccessPaths:
             ),
             patch.object(
                 self.svc,
+                "_resolve_default_variant_id",
+                AsyncMock(return_value=uuid.uuid4()),
+            ),
+            patch.object(
+                self.svc,
                 "_fetch_add_item_validations",
                 AsyncMock(return_value=(10, True, False, 0, 999.0)),
             ),

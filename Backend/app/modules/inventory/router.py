@@ -50,6 +50,7 @@ async def get_inventory_history(
         None,
         pattern="^(purchase|sale|return|adjustment|damage|transfer|correction)$",
     ),
+    variant_id: uuid.UUID | None = Query(None),
     db: AsyncSession = Depends(get_db),
 ):
     result = await _service.get_history(
@@ -58,6 +59,7 @@ async def get_inventory_history(
         page=page,
         page_size=page_size,
         movement_type=movement_type,
+        variant_id=variant_id,
     )
     return ok(
         result,
@@ -77,6 +79,9 @@ async def manual_adjustment(
     db: AsyncSession = Depends(get_db),
     current_user: Profile = Depends(get_current_user),
 ):
+    """Deprecated: superseded by POST /admin/products/{product_id}/stock/adjust,
+    which is variant-aware and carries the full Add/Remove/Set + reason/notes
+    audit trail. Kept for backward compatibility only."""
     result = await _service.manual_adjustment(db, product_id, payload, current_user.id)
     return ok(
         result, ResponseCode.INVENTORY_ADJUSTED, "Inventory adjusted successfully"
@@ -93,10 +98,13 @@ async def manual_adjustment(
 )
 async def get_stock_summary(
     product_id: uuid.UUID,
+    variant_id: uuid.UUID | None = Query(None),
     db: AsyncSession = Depends(get_db),
 ):
-    """Returns total / reserved / sold / available stock counts for a product."""
-    result = await _service.get_stock_summary(db, product_id)
+    """Returns total / reserved / sold / available stock counts. With
+    variant_id, summarizes that variant; without, aggregates across all of
+    the product's active variants."""
+    result = await _service.get_stock_summary(db, product_id, variant_id=variant_id)
     return ok(result, ResponseCode.INVENTORY_SUMMARY_FETCHED, "Stock summary fetched")
 
 
@@ -107,6 +115,7 @@ async def get_stock_summary(
 )
 async def list_reservations(
     product_id: uuid.UUID | None = Query(None),
+    variant_id: uuid.UUID | None = Query(None),
     status: str | None = Query(
         None,
         pattern="^(ACTIVE|CHECKOUT_IN_PROGRESS|COMPLETED|RELEASED|CANCELLED|"
@@ -116,9 +125,14 @@ async def list_reservations(
     page_size: int = Query(20, ge=1, le=100),
     db: AsyncSession = Depends(get_db),
 ):
-    """List inventory reservations with optional filtering by product or status."""
+    """List inventory reservations, optionally filtered by product, variant, or status."""
     result = await _service.list_reservations(
-        db, product_id=product_id, status=status, page=page, page_size=page_size
+        db,
+        product_id=product_id,
+        variant_id=variant_id,
+        status=status,
+        page=page,
+        page_size=page_size,
     )
     return ok(result, ResponseCode.INVENTORY_RESERVATIONS_LISTED, "Reservations listed")
 
@@ -144,6 +158,7 @@ async def check_inventory_alerts(db: AsyncSession = Depends(get_db)):
 )
 async def list_transactions(
     product_id: uuid.UUID | None = Query(None),
+    variant_id: uuid.UUID | None = Query(None),
     transaction_type: str | None = Query(
         None,
         pattern="^(RESERVE|RELEASE|SALE|RETURN|RESTOCK|ADJUSTMENT)$",
@@ -156,6 +171,7 @@ async def list_transactions(
     result = await _service.list_transactions(
         db,
         product_id=product_id,
+        variant_id=variant_id,
         transaction_type=transaction_type,
         page=page,
         page_size=page_size,

@@ -189,12 +189,8 @@ class CategoryService:
         items = []
         for r in rows:
             row = dict(r)
-            available = max(
-                row["stock_quantity"] - row["reserved_quantity"] - row["sold_quantity"],
-                0,
-            )
             inventory_status, can_purchase = compute_inventory_status(
-                available,
+                row["available_stock"],
                 row["low_stock_threshold"],
                 row["track_inventory"],
                 row["allow_backorder"],

@@ -66,27 +66,18 @@ class TestInventoryService:
         from app.modules.inventory.schemas import InventoryMovementResponse
 
         db = AsyncMock()
-        db.execute = AsyncMock()  # stock update execute
         product_id = uuid.uuid4()
-        snapshot = {
-            "stock_quantity": 10,
-            "allow_backorder": False,
-            "low_stock_threshold": 2,
-            "sku": "ABC",
-            "product_name": "Ring",
-        }
         mock_movement = MagicMock()
         mock_resp = MagicMock()
         with (
             patch(
-                "app.modules.inventory.service._repo.get_stock_snapshot",
-                AsyncMock(return_value=snapshot),
+                "app.modules.inventory.service._reservation_svc.record_adjustment",
+                AsyncMock(return_value=5),  # new stock_quantity after delta=-5
             ),
             patch(
                 "app.modules.inventory.service._repo.record",
                 AsyncMock(return_value=mock_movement),
             ),
-            patch("app.core.events.event_bus.publish", AsyncMock()),
             patch.object(
                 InventoryMovementResponse, "model_validate", return_value=mock_resp
             ),
@@ -101,8 +92,8 @@ class TestInventoryService:
 
         db = AsyncMock()
         with patch(
-            "app.modules.inventory.service._repo.get_stock_snapshot",
-            AsyncMock(return_value=None),
+            "app.modules.inventory.service._reservation_svc.record_adjustment",
+            AsyncMock(side_effect=NotFoundError("Product not found")),
         ):
             with pytest.raises(NotFoundError):
                 await self.svc.record_movement(
@@ -113,14 +104,9 @@ class TestInventoryService:
         from app.core.exceptions import ValidationError
 
         db = AsyncMock()
-        snapshot = {
-            "stock_quantity": 3,
-            "allow_backorder": False,
-            "low_stock_threshold": 5,
-        }
         with patch(
-            "app.modules.inventory.service._repo.get_stock_snapshot",
-            AsyncMock(return_value=snapshot),
+            "app.modules.inventory.service._reservation_svc.record_adjustment",
+            AsyncMock(side_effect=ValidationError("Insufficient stock")),
         ):
             with pytest.raises(ValidationError):
                 await self.svc.record_movement(
@@ -134,26 +120,17 @@ class TestInventoryService:
         )
 
         db = AsyncMock()
-        db.execute = AsyncMock()
         product_id = uuid.uuid4()
-        snapshot = {
-            "stock_quantity": 20,
-            "allow_backorder": True,
-            "low_stock_threshold": 2,
-            "sku": "S",
-            "product_name": "P",
-        }
         mock_resp = MagicMock()
         with (
             patch(
-                "app.modules.inventory.service._repo.get_stock_snapshot",
-                AsyncMock(return_value=snapshot),
+                "app.modules.inventory.service._reservation_svc.record_adjustment",
+                AsyncMock(return_value=25),  # new stock_quantity after delta=+5
             ),
             patch(
                 "app.modules.inventory.service._repo.record",
                 AsyncMock(return_value=MagicMock()),
             ),
-            patch("app.core.events.event_bus.publish", AsyncMock()),
             patch.object(
                 InventoryMovementResponse, "model_validate", return_value=mock_resp
             ),
@@ -652,6 +629,10 @@ class TestCatalogServiceExtra:
                 "app.modules.catalog.service._repo.create",
                 AsyncMock(return_value=mock_product),
             ),
+            patch(
+                "app.modules.catalog.service._repo.get_variant_by_sku",
+                AsyncMock(return_value=None),
+            ),
             patch("app.modules.catalog.service._repo.add_variant", AsyncMock()),
             patch("app.modules.catalog.service._repo.upsert_attribute", AsyncMock()),
             patch(
@@ -749,6 +730,111 @@ class TestCatalogServiceExtra:
             )
         assert result is mock_attr
 
+    async def test_create_with_no_variants_auto_creates_default_variant(self):
+        """Every product must have >=1 variant (variant-first inventory).
+        Creating a product with an empty variants list must not leave it
+        variant-less — regression test for a real gap found in production
+        verification: products created via the normal admin flow after the
+        0060 backfill migration ran were NOT getting a default variant."""
+        from app.modules.catalog.schemas import ProductCreateRequest
+
+        db = AsyncMock()
+        mock_product = MagicMock()
+        mock_product.id = uuid.uuid4()
+        mock_product.sku = "NEW-SKU-001"
+
+        payload = ProductCreateRequest(
+            sku="NEW-SKU-001",
+            name="Test Ring",
+            slug="test-ring",
+            base_price=100.0,
+            stock_quantity=7,
+        )
+
+        with (
+            patch(
+                "app.modules.catalog.service._repo.get_by_sku",
+                AsyncMock(return_value=None),
+            ),
+            patch(
+                "app.modules.catalog.service._repo.get_by_slug",
+                AsyncMock(return_value=None),
+            ),
+            patch(
+                "app.modules.catalog.service._repo.create",
+                AsyncMock(return_value=mock_product),
+            ),
+            patch(
+                "app.modules.catalog.service._repo.get_variant_by_sku",
+                AsyncMock(return_value=None),
+            ) as mock_get_variant_by_sku,
+            patch(
+                "app.modules.catalog.service._repo.add_variant", AsyncMock()
+            ) as mock_add_variant,
+            patch(
+                "app.modules.catalog.service.ProductResponse.model_validate",
+                return_value=MagicMock(collections=[]),
+            ),
+        ):
+            await self.svc.create(db, payload)
+
+        mock_get_variant_by_sku.assert_awaited_once_with(db, "NEW-SKU-001")
+        mock_add_variant.assert_awaited_once()
+        variant_data = mock_add_variant.await_args.args[1]
+        assert variant_data["sku"] == "NEW-SKU-001"
+        assert variant_data["name"] == "Default"
+        assert variant_data["stock_quantity"] == 7
+        assert variant_data["is_active"] is True
+
+    async def test_create_with_explicit_variants_does_not_add_default(self):
+        from app.modules.catalog.schemas import (
+            ProductCreateRequest,
+            ProductVariantCreateRequest,
+        )
+
+        db = AsyncMock()
+        mock_product = MagicMock()
+        mock_product.id = uuid.uuid4()
+        mock_product.sku = "NEW-SKU-002"
+
+        payload = ProductCreateRequest(
+            sku="NEW-SKU-002",
+            name="Test Necklace",
+            slug="test-necklace",
+            base_price=200.0,
+            variants=[ProductVariantCreateRequest(sku="NEW-SKU-002-S", name="Short")],
+        )
+
+        with (
+            patch(
+                "app.modules.catalog.service._repo.get_by_sku",
+                AsyncMock(return_value=None),
+            ),
+            patch(
+                "app.modules.catalog.service._repo.get_by_slug",
+                AsyncMock(return_value=None),
+            ),
+            patch(
+                "app.modules.catalog.service._repo.create",
+                AsyncMock(return_value=mock_product),
+            ),
+            patch(
+                "app.modules.catalog.service._repo.get_variant_by_sku",
+                AsyncMock(return_value=None),
+            ),
+            patch(
+                "app.modules.catalog.service._repo.add_variant", AsyncMock()
+            ) as mock_add_variant,
+            patch(
+                "app.modules.catalog.service.ProductResponse.model_validate",
+                return_value=MagicMock(collections=[]),
+            ),
+        ):
+            await self.svc.create(db, payload)
+
+        # Exactly one variant added (the explicit one) — no synthetic default.
+        mock_add_variant.assert_awaited_once()
+
     async def test_adjust_stock_raises_when_negative(self):
         from app.core.exceptions import ValidationError
 
@@ -768,7 +854,9 @@ class TestCatalogServiceExtra:
         ):
             with pytest.raises(ValidationError):
                 await self.svc.adjust_stock(
-                    db, uuid.uuid4(), StockAdjustRequest(delta=-100)
+                    db,
+                    uuid.uuid4(),
+                    StockAdjustRequest(mode="remove", quantity=100, reason="OTHER"),
                 )
 
 

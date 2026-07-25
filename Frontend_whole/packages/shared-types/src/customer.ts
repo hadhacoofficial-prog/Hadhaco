@@ -139,6 +139,10 @@ export interface CreatePaymentIntentResponse {
   amount: number; // paise
   currency: string;
   key: string;
+  /** Server-authoritative reservation deadline (ISO 8601) — the checkout
+   * countdown must derive its remaining time from this, not a hardcoded
+   * assumption, since the server extends the hold once Razorpay opens. */
+  expires_at: string;
 }
 
 export interface VerifyPaymentRequest {

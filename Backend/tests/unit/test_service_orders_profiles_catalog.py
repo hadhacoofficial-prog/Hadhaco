@@ -635,6 +635,11 @@ class TestCatalogServiceWrite:
                 AsyncMock(return_value=mock_product),
             ),
             patch(
+                "app.modules.catalog.service._repo.get_variant_by_sku",
+                AsyncMock(return_value=None),
+            ),
+            patch("app.modules.catalog.service._repo.add_variant", AsyncMock()),
+            patch(
                 "app.modules.catalog.service._repo.get_by_id",
                 AsyncMock(return_value=mock_product),
             ),

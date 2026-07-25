@@ -32,8 +32,7 @@ async def dashboard(db: AsyncSession = Depends(get_db), _=Depends(require_admin)
             (SELECT COUNT(*) FROM orders WHERE status = 'pending')                                    AS pending_orders,
             (SELECT COUNT(*) FROM support_tickets WHERE status IN ('open','in_progress'))             AS open_support_tickets,
             (SELECT COUNT(*) FROM fraud_signals WHERE is_resolved = FALSE)                            AS unresolved_fraud_signals,
-            (SELECT COUNT(*) FROM products WHERE track_inventory = TRUE AND deleted_at IS NULL
-                AND stock_quantity <= low_stock_threshold)                                            AS low_stock_products
+            (SELECT COUNT(*) FROM low_stock_products)                                                 AS low_stock_products
         """),
         {"ts": today_start, "te": tomorrow_start},
     )

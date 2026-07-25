@@ -1,6 +1,6 @@
 import uuid
 from datetime import datetime
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field, field_validator, model_validator
 
@@ -465,9 +465,90 @@ class ProductListResponse(BaseModel):
 
 
 class StockAdjustRequest(BaseModel):
-    delta: int = Field(..., description="Positive to add, negative to subtract")
+    mode: Literal["add", "remove", "set"]
+    quantity: int = Field(..., ge=0, description="Magnitude — always non-negative")
+    reason: Literal[
+        "RESTOCK", "DAMAGE", "CORRECTION", "RETURN", "THEFT_LOSS", "RECOUNT", "OTHER"
+    ]
+    notes: str | None = None
     variant_id: uuid.UUID | None = None
-    reason: str | None = None
+
+
+# ---------- Variant-level admin inventory listing ----------
+
+
+class LastAdjustmentInfo(BaseModel):
+    """Renders as e.g. "+5 Manual • 2h ago" on the admin inventory row.
+
+    ``quantity`` is the unsigned magnitude stored on InventoryTransaction —
+    combine with ``mode`` client-side for the +/- sign (ADD=+, REMOVE=-,
+    SET has no recoverable sign, render as "Set").
+    """
+
+    quantity: int
+    mode: str | None
+    reason: str | None
+    at: datetime
+    by_name: str | None = None
+
+
+class VariantInventoryRow(BaseModel):
+    variant_id: uuid.UUID
+    product_id: uuid.UUID
+    product_name: str
+    variant_name: str
+    sku: str
+    category_name: str | None = None
+    primary_image: str | None = None
+    stock_quantity: int
+    reserved_quantity: int
+    sold_quantity: int
+    available_stock: int
+    low_stock_threshold: int
+    track_inventory: bool
+    allow_backorder: bool
+    is_active: bool
+    product_status: str
+    is_low_stock: bool
+    updated_at: datetime
+    last_adjustment: LastAdjustmentInfo | None = None
+
+    model_config = {"from_attributes": True}
+
+
+class VariantInventorySummary(BaseModel):
+    total_variants: int
+    low_stock_variants: int
+    out_of_stock_variants: int
+    reserved_units: int
+    available_units: int
+    total_inventory_units: int
+
+
+class VariantInventoryListResponse(BaseModel):
+    items: list[VariantInventoryRow]
+    total: int
+    page: int
+    page_size: int
+    total_pages: int
+    summary: VariantInventorySummary
+
+
+class VariantOrderHistoryItem(BaseModel):
+    order_id: uuid.UUID
+    order_number: str
+    status: str
+    created_at: datetime
+    quantity: int
+    line_total: float
+
+
+class VariantOrderHistoryResponse(BaseModel):
+    items: list[VariantOrderHistoryItem]
+    total: int
+    page: int
+    page_size: int
+    total_pages: int
 
 
 # ---------- Variant update ----------

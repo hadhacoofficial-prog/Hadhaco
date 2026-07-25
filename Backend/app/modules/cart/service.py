@@ -90,42 +90,53 @@ class CartService:
             raise NotFoundError("Product not found or unavailable")
         return float(result[0])
 
+    async def _resolve_default_variant_id(
+        self, db: AsyncSession, product_id: uuid.UUID
+    ) -> uuid.UUID | None:
+        """The variant a bare product_id (no explicit variant chosen) resolves
+        to — the earliest active variant by sort_order/created_at. Every
+        product is guaranteed >=1 variant post-backfill (see migration
+        0060_backfill_default_variants), so this only returns None for a
+        product whose variants have all been deactivated."""
+        result = await db.execute(
+            text(
+                "SELECT id FROM product_variants"
+                " WHERE product_id = :pid AND is_active = true"
+                " ORDER BY sort_order ASC, created_at ASC LIMIT 1"
+            ),
+            {"pid": str(product_id)},
+        )
+        row = result.fetchone()
+        return row[0] if row else None
+
     async def _fetch_available_stock(
         self,
         db: AsyncSession,
         product_id: uuid.UUID,
         variant_id: uuid.UUID | None = None,
     ) -> int:
-        """Returns available = stock_quantity - reserved_quantity - sold_quantity.
-
-        When variant_id is supplied the variant's own counters are used; the
-        allow_backorder / track_inventory settings are always taken from the
-        parent product row.
+        """Returns available = stock_quantity - reserved_quantity - sold_quantity
+        for the variant (resolving the default variant first if none given).
+        track_inventory / allow_backorder are always taken from the parent
+        product row.
         """
-        if variant_id:
-            result = await db.execute(
-                text(
-                    "SELECT GREATEST(pv.stock_quantity - pv.reserved_quantity"
-                    " - pv.sold_quantity, 0) AS available,"
-                    " p.track_inventory, p.allow_backorder"
-                    " FROM product_variants pv"
-                    " JOIN products p ON p.id = pv.product_id"
-                    " WHERE pv.id = :vid AND pv.product_id = :pid"
-                    " AND p.deleted_at IS NULL AND p.status = 'active'"
-                    " AND pv.is_active = true"
-                ),
-                {"vid": str(variant_id), "pid": str(product_id)},
-            )
-        else:
-            result = await db.execute(
-                text(
-                    "SELECT GREATEST(stock_quantity - reserved_quantity - sold_quantity, 0)"
-                    " AS available, track_inventory, allow_backorder"
-                    " FROM products WHERE id = :pid"
-                    " AND deleted_at IS NULL AND status = 'active'"
-                ),
-                {"pid": str(product_id)},
-            )
+        if variant_id is None:
+            variant_id = await self._resolve_default_variant_id(db, product_id)
+            if variant_id is None:
+                raise NotFoundError("Product not found or unavailable")
+        result = await db.execute(
+            text(
+                "SELECT GREATEST(pv.stock_quantity - pv.reserved_quantity"
+                " - pv.sold_quantity, 0) AS available,"
+                " p.track_inventory, p.allow_backorder"
+                " FROM product_variants pv"
+                " JOIN products p ON p.id = pv.product_id"
+                " WHERE pv.id = :vid AND pv.product_id = :pid"
+                " AND p.deleted_at IS NULL AND p.status = 'active'"
+                " AND pv.is_active = true"
+            ),
+            {"vid": str(variant_id), "pid": str(product_id)},
+        )
         row = result.fetchone()
         if not row:
             raise NotFoundError("Product not found or unavailable")
@@ -163,36 +174,27 @@ class CartService:
         variant_id: uuid.UUID | None = None,
     ) -> tuple[int, bool, bool, int, float]:
         """Single-query fetch: available_stock, track_inventory, allow_backorder,
-        max_order_quantity, and price. Reduces 3 queries to 1."""
-        if variant_id:
-            row = await db.execute(
-                text(
-                    "SELECT GREATEST(pv.stock_quantity - pv.reserved_quantity"
-                    " - pv.sold_quantity, 0) AS available,"
-                    " p.track_inventory, p.allow_backorder,"
-                    " p.max_order_quantity,"
-                    " p.base_price + COALESCE(v.price_adjustment, 0) AS price"
-                    " FROM product_variants pv"
-                    " JOIN products p ON p.id = pv.product_id"
-                    " LEFT JOIN product_variants v ON v.id = pv.id"
-                    " WHERE pv.id = :vid AND pv.product_id = :pid"
-                    " AND p.deleted_at IS NULL AND p.status = 'active'"
-                    " AND pv.is_active = true"
-                ),
-                {"vid": str(variant_id), "pid": str(product_id)},
-            )
-        else:
-            row = await db.execute(
-                text(
-                    "SELECT GREATEST(stock_quantity - reserved_quantity"
-                    " - sold_quantity, 0) AS available,"
-                    " track_inventory, allow_backorder,"
-                    " max_order_quantity, base_price AS price"
-                    " FROM products WHERE id = :pid"
-                    " AND deleted_at IS NULL AND status = 'active'"
-                ),
-                {"pid": str(product_id)},
-            )
+        max_order_quantity, and price. Reduces 3 queries to 1. Resolves the
+        default variant first when none is given."""
+        if variant_id is None:
+            variant_id = await self._resolve_default_variant_id(db, product_id)
+            if variant_id is None:
+                raise NotFoundError("Product not found or unavailable")
+        row = await db.execute(
+            text(
+                "SELECT GREATEST(pv.stock_quantity - pv.reserved_quantity"
+                " - pv.sold_quantity, 0) AS available,"
+                " p.track_inventory, p.allow_backorder,"
+                " p.max_order_quantity,"
+                " p.base_price + COALESCE(pv.price_adjustment, 0) AS price"
+                " FROM product_variants pv"
+                " JOIN products p ON p.id = pv.product_id"
+                " WHERE pv.id = :vid AND pv.product_id = :pid"
+                " AND p.deleted_at IS NULL AND p.status = 'active'"
+                " AND pv.is_active = true"
+            ),
+            {"vid": str(variant_id), "pid": str(product_id)},
+        )
         result = row.fetchone()
         if not result:
             raise NotFoundError("Product not found or unavailable")
@@ -245,17 +247,24 @@ class CartService:
         user_id: uuid.UUID | None = None,
         session_id: str | None = None,
     ) -> CartSummary:
+        # Resolve once so the same variant is used for validation, the
+        # persisted cart row, and reservation lookups — never left NULL for
+        # a product the customer added without explicitly picking a variant.
+        variant_id = payload.variant_id
+        if variant_id is None:
+            variant_id = await self._resolve_default_variant_id(db, payload.product_id)
+            if variant_id is None:
+                raise NotFoundError("Product not found or unavailable")
+
         # Single combined query: stock + max_order + price (saves 2 DB round-trips)
         available, track_inventory, allow_backorder, max_qty, unit_price = (
-            await self._fetch_add_item_validations(
-                db, payload.product_id, payload.variant_id
-            )
+            await self._fetch_add_item_validations(db, payload.product_id, variant_id)
         )
         # Don't let a logged-in customer's own ACTIVE reservation (e.g. from an
         # abandoned checkout) block them from re-adding the item they hold.
         if user_id and track_inventory and not allow_backorder:
             available += await self._own_active_reserved_qty(
-                db, user_id, payload.product_id, payload.variant_id
+                db, user_id, payload.product_id, variant_id
             )
         if track_inventory and not allow_backorder and payload.quantity > available:
             if available <= 0:
@@ -273,7 +282,7 @@ class CartService:
             db,
             cart.id,
             payload.product_id,
-            payload.variant_id,
+            variant_id,
             payload.quantity,
             unit_price,
         )
@@ -301,14 +310,17 @@ class CartService:
 
         # Validate if increasing quantity (single combined query)
         if payload.quantity > item.quantity:
+            variant_id = item.variant_id
+            if variant_id is None:
+                variant_id = await self._resolve_default_variant_id(db, item.product_id)
+                if variant_id is None:
+                    raise NotFoundError("Product not found or unavailable")
             available, track_inventory, allow_backorder, max_qty, _price = (
-                await self._fetch_add_item_validations(
-                    db, item.product_id, item.variant_id
-                )
+                await self._fetch_add_item_validations(db, item.product_id, variant_id)
             )
             if user_id and track_inventory and not allow_backorder:
                 available += await self._own_active_reserved_qty(
-                    db, user_id, item.product_id, item.variant_id
+                    db, user_id, item.product_id, variant_id
                 )
             if track_inventory and not allow_backorder and payload.quantity > available:
                 raise InventoryError(

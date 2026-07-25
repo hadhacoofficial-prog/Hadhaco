@@ -281,6 +281,11 @@ class ReservationService:
         after_sold: int,
         after_stock_quantity: int | None = None,
         reference: str | None = None,
+        performed_by: uuid.UUID | None = None,
+        request_id: str | None = None,
+        adjustment_mode: str | None = None,
+        reason: str | None = None,
+        notes: str | None = None,
     ) -> None:
         total = before_stock["stock_quantity"]
         b_res = before_stock["reserved_quantity"]
@@ -307,6 +312,11 @@ class ReservationService:
             before_sold=b_sold,
             after_sold=a_sold,
             reference=reference,
+            performed_by=performed_by,
+            request_id=request_id,
+            adjustment_mode=adjustment_mode,
+            reason=reason,
+            notes=notes,
         )
         db.add(txn)
 
@@ -588,7 +598,9 @@ class ReservationService:
             params,
         )
 
-    async def lock_for_checkout(self, db: AsyncSession, order_id: uuid.UUID) -> None:
+    async def lock_for_checkout(
+        self, db: AsyncSession, order_id: uuid.UUID
+    ) -> datetime:
         """
         Move an order's reservations from ACTIVE to CHECKOUT_IN_PROGRESS.
 
@@ -609,6 +621,12 @@ class ReservationService:
         Does not publish InventoryChangedEvent: reserved_quantity/
         available_stock are unchanged by this transition, only status/
         expires_at — nothing for a listener to react to.
+
+        Returns the new expires_at so the caller can hand it back to the
+        frontend — without this, the checkout countdown UI has no way to
+        learn that its hold just got extended past the original 2-minute
+        cart TTL, and fires a false "reservation expired" at the 2-minute
+        mark while the server is still actually holding the stock.
         """
         expires_at = datetime.now(UTC) + timedelta(
             minutes=settings.RESERVATION_CHECKOUT_GRACE_MINUTES
@@ -626,6 +644,7 @@ class ReservationService:
         if cursor.rowcount > 0:
             checkout_started_total.inc(cursor.rowcount)
         log.info("checkout_locked", order_id=str(order_id))
+        return expires_at
 
     async def complete_order_reservations(
         self, db: AsyncSession, order_id: uuid.UUID
@@ -1261,19 +1280,62 @@ class ReservationService:
         )
         return [dict(row._mapping) for row in result.fetchall()]
 
-    async def get_available_stock(self, db: AsyncSession, product_id: uuid.UUID) -> int:
-        """Returns available = total - reserved - sold. No locking."""
+    async def get_available_stock(
+        self,
+        db: AsyncSession,
+        product_id: uuid.UUID,
+        variant_id: uuid.UUID | None = None,
+    ) -> int:
+        """Returns available = total - reserved - sold. No locking.
+
+        With ``variant_id``, reads directly off that variant. Without one,
+        replicates Product.available_stock's exact ORM semantics: sum
+        active variants' available stock if any exist, else fall back to
+        the product's own columns — so this and the ORM property can never
+        disagree. Uses GREATEST(...) (mirrors compute_available_stock() in
+        inventory/status.py) throughout.
+        """
+        if variant_id is not None:
+            result = await db.execute(
+                text(
+                    "SELECT GREATEST(v.stock_quantity - v.reserved_quantity "
+                    "- v.sold_quantity, 0) AS available "  # mirrors compute_available_stock()
+                    "FROM product_variants v "
+                    "JOIN products p ON p.id = v.product_id "
+                    "WHERE v.id = :vid AND v.product_id = :pid "
+                    "AND p.deleted_at IS NULL"
+                ),
+                {"vid": str(variant_id), "pid": str(product_id)},
+            )
+            row = result.fetchone()
+            if not row:
+                raise NotFoundError(
+                    f"Variant {variant_id} not found for product {product_id}"
+                )
+            return max(int(row[0]), 0)
+
         result = await db.execute(
             text(
-                "SELECT stock_quantity - reserved_quantity - sold_quantity AS available "
-                "FROM products WHERE id = :pid AND deleted_at IS NULL"
+                "SELECT "
+                "(SELECT SUM(GREATEST(v.stock_quantity - v.reserved_quantity "
+                "- v.sold_quantity, 0)) "  # mirrors compute_available_stock(); NULL
+                # when zero active variants exist, distinguishing that case from
+                # "active variants summing to zero" so we know when to fall back.
+                " FROM product_variants v "
+                " WHERE v.product_id = p.id AND v.is_active = true) AS variant_sum, "
+                "GREATEST(p.stock_quantity - p.reserved_quantity - p.sold_quantity, 0) "
+                "AS own_available "  # mirrors compute_available_stock()
+                "FROM products p WHERE p.id = :pid AND p.deleted_at IS NULL"
             ),
             {"pid": str(product_id)},
         )
         row = result.fetchone()
         if not row:
             raise NotFoundError(f"Product {product_id} not found")
-        return max(int(row[0]), 0)
+        variant_sum, own_available = row[0], row[1]
+        if variant_sum is not None:
+            return max(int(variant_sum), 0)
+        return max(int(own_available), 0)
 
     async def record_restock(
         self,
@@ -1283,6 +1345,10 @@ class ReservationService:
         variant_id: uuid.UUID | None,
         quantity: int,
         reference: str | None = None,
+        performed_by: uuid.UUID | None = None,
+        request_id: str | None = None,
+        reason: str | None = None,
+        notes: str | None = None,
     ) -> None:
         """
         Admin restock: adds to stock_quantity (the warehouse total).
@@ -1314,6 +1380,10 @@ class ReservationService:
             after_sold=stock["sold_quantity"],
             after_stock_quantity=new_stock,
             reference=reference,
+            performed_by=performed_by,
+            request_id=request_id,
+            reason=reason,
+            notes=notes,
         )
         available = max(
             new_stock - stock["reserved_quantity"] - stock["sold_quantity"], 0
@@ -1372,14 +1442,40 @@ class ReservationService:
         *,
         product_id: uuid.UUID,
         variant_id: uuid.UUID | None,
-        delta: int,
+        delta: int | None = None,
+        target_quantity: int | None = None,
         reference: str | None = None,
+        performed_by: uuid.UUID | None = None,
+        request_id: str | None = None,
+        adjustment_mode: str | None = None,
+        reason: str | None = None,
+        notes: str | None = None,
     ) -> int:
-        """Admin correction: applies a signed delta to stock_quantity."""
-        if delta == 0:
-            raise ValidationError("Adjustment delta must be non-zero")
+        """Admin correction: applies a signed delta to stock_quantity.
+
+        Exactly one of ``delta`` (relative add/remove) or ``target_quantity``
+        (absolute "set to") must be supplied. For ``target_quantity``, the
+        delta is computed from the value read *inside* the row lock acquired
+        by ``_lock_stock_target`` below — never from a pre-lock read — so two
+        concurrent "set to X" calls can't race each other.
+
+        A delta that computes to zero (an admin re-confirming a count via
+        "set" to the current value, or an explicit add/remove of 0) is a
+        successful no-op: the stock row is still touched and an
+        InventoryTransaction with quantity=0 is still written so a confirmed
+        recount stays visible in the audit trail. Only genuinely invalid
+        *results* (negative stock, or reserved+sold exceeding stock) raise.
+        """
+        if (delta is None) == (target_quantity is None):
+            raise ValidationError(
+                "Exactly one of delta or target_quantity must be provided"
+            )
 
         stock = await self._lock_stock_target(db, product_id, variant_id)
+        if target_quantity is not None:
+            delta = target_quantity - stock["stock_quantity"]
+        assert delta is not None  # narrowed by the exactly-one check above
+
         new_stock = stock["stock_quantity"] + delta
         if new_stock < 0:
             raise ValidationError("Insufficient stock")
@@ -1405,6 +1501,11 @@ class ReservationService:
             after_sold=stock["sold_quantity"],
             after_stock_quantity=new_stock,
             reference=reference,
+            performed_by=performed_by,
+            request_id=request_id,
+            adjustment_mode=adjustment_mode,
+            reason=reason,
+            notes=notes,
         )
         available = max(
             new_stock - stock["reserved_quantity"] - stock["sold_quantity"], 0

@@ -9,7 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.common.response_codes import ResponseCode
 from app.common.responses import BaseSuccessResponse, deleted, ok
 from app.core.database import AsyncSessionLocal, get_db
-from app.core.dependencies import require_admin
+from app.core.dependencies import get_current_user, require_admin
 from app.core.redis import (
     get_redis,
     safe_redis_get,
@@ -25,8 +25,11 @@ from app.modules.catalog.schemas import (
     ProductVariantResponse,
     ProductVariantUpdateRequest,
     StockAdjustRequest,
+    VariantInventoryListResponse,
+    VariantOrderHistoryResponse,
 )
 from app.modules.catalog.service import CatalogService
+from app.modules.profiles.models import Profile
 
 router = APIRouter()
 _service = CatalogService()
@@ -254,6 +257,70 @@ async def admin_list_products(
         image_variant="thumbnail",
     )
     return ok(result, ResponseCode.PRODUCT_LISTED, "Products listed successfully")
+
+
+@router.get(
+    "/admin/product-variants",
+    response_model=BaseSuccessResponse[VariantInventoryListResponse],
+    dependencies=[Depends(require_admin)],
+)
+async def admin_list_product_variants(
+    page: int = Query(1, ge=1),
+    page_size: int = Query(20, ge=1, le=200),
+    search: str | None = Query(None, max_length=200),
+    sort_by: str = Query(
+        "updated_at",
+        pattern="^(updated_at|available_stock|stock_quantity|product_name|sku)$",
+    ),
+    sort_dir: str = Query("desc", pattern="^(asc|desc)$"),
+    variant_status: str | None = Query(
+        None, pattern="^(active|inactive|out_of_stock)$"
+    ),
+    has_reservations: bool | None = None,
+    recently_updated_hours: int | None = Query(None, ge=1, le=8760),
+    category_id: uuid.UUID | None = None,
+    collection_id: uuid.UUID | None = None,
+    db: AsyncSession = Depends(get_db),
+):
+    """Variant-level inventory listing for the admin Inventory page — one row
+    per purchasable ProductVariant, with search/sort/filter and a global KPI
+    summary all in a single response (no per-row follow-up calls)."""
+    result = await _service.list_variant_inventory(
+        db,
+        page=page,
+        page_size=page_size,
+        search=search,
+        sort_by=sort_by,
+        sort_dir=sort_dir,
+        variant_status=variant_status,
+        has_reservations=has_reservations,
+        recently_updated_hours=recently_updated_hours,
+        category_id=category_id,
+        collection_id=collection_id,
+    )
+    return ok(
+        result,
+        ResponseCode.PRODUCT_LISTED,
+        "Product variants listed successfully",
+    )
+
+
+@router.get(
+    "/admin/product-variants/{variant_id}/orders",
+    response_model=BaseSuccessResponse[VariantOrderHistoryResponse],
+    dependencies=[Depends(require_admin)],
+)
+async def admin_variant_order_history(
+    variant_id: uuid.UUID,
+    page: int = Query(1, ge=1),
+    page_size: int = Query(20, ge=1, le=100),
+    db: AsyncSession = Depends(get_db),
+):
+    """On-demand order history for a variant's expanded inventory row."""
+    result = await _service.list_orders_for_variant(
+        db, variant_id, page=page, page_size=page_size
+    )
+    return ok(result, ResponseCode.PRODUCT_LISTED, "Order history listed successfully")
 
 
 @router.post(
@@ -501,10 +568,18 @@ async def get_product_collections(
 async def adjust_stock(
     product_id: uuid.UUID,
     payload: StockAdjustRequest,
+    request: Request,
     db: AsyncSession = Depends(get_db),
     redis: aioredis.Redis = Depends(get_redis),
+    current_user: Profile = Depends(get_current_user),
 ):
-    new_qty = await _service.adjust_stock(db, product_id, payload)
+    new_qty = await _service.adjust_stock(
+        db,
+        product_id,
+        payload,
+        performed_by=current_user.id,
+        request_id=getattr(request.state, "request_id", None),
+    )
     from app.core.cache import bust_all_product_caches
 
     await bust_all_product_caches(redis)

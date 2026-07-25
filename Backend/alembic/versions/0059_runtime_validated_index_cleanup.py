@@ -89,7 +89,21 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    # Re-create dropped indexes (best-effort, without CONCURRENTLY for safety)
+    import logging
+
+    log = logging.getLogger("alembic")
+
+    # Re-create dropped indexes (best-effort, without CONCURRENTLY for safety).
+    #
+    # DOWNGRADE LIMITATION: This downgrade was written against the schema at
+    # migration 0059. Later migrations (0060+) may rename or drop columns that
+    # these indexes reference. Each recreation uses a SAVEPOINT so that a
+    # failure on one index does not cascade to others or abort the transaction.
+    #
+    # If you are downgrading past 0059 from a later head, some indexes will
+    # be skipped with a warning. This is expected and safe — the indexes were
+    # confirmed unused before being dropped, and the schema they reference may
+    # no longer exist.
     RECREATE = [
         ("products", "idx_products_compare_price"),
         ("products", "idx_products_is_new"),
@@ -116,15 +130,25 @@ def downgrade() -> None:
         ("search_history", "idx_search_history_query"),
     ]
 
-    for entry in RECREATE:
+    for i, entry in enumerate(RECREATE):
         table = entry[0]
         idx_name = entry[1]
         custom_def = entry[2] if len(entry) > 2 else None
-        if custom_def:
-            op.execute(f"CREATE INDEX IF NOT EXISTS {idx_name} {custom_def}")
-        else:
-            op.execute(
-                f"CREATE INDEX IF NOT EXISTS {idx_name} ON {table} ({idx_name.replace(f'idx_{table}_', '').replace(f'{table}_', '')})"
+        sp_name = f"sp_recreate_{i}"
+        op.execute(f"SAVEPOINT {sp_name}")
+        try:
+            if custom_def:
+                op.execute(f"CREATE INDEX IF NOT EXISTS {idx_name} {custom_def}")
+            else:
+                col = idx_name.replace(f"idx_{table}_", "").replace(f"{table}_", "")
+                op.execute(f"CREATE INDEX IF NOT EXISTS {idx_name} ON {table} ({col})")
+            op.execute(f"RELEASE SAVEPOINT {sp_name}")
+        except Exception as exc:
+            op.execute(f"ROLLBACK TO SAVEPOINT {sp_name}")
+            log.warning(
+                "Skipping index %s recreation (column may have been removed): %s",
+                idx_name,
+                exc,
             )
 
     # Drop the description trigram index

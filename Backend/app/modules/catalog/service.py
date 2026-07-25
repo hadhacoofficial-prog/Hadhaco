@@ -15,6 +15,7 @@ from app.core.exceptions import (
 from app.modules.catalog.models import ProductVariant
 from app.modules.catalog.repository import ProductRepository
 from app.modules.catalog.schemas import (
+    LastAdjustmentInfo,
     ProductAttributeCreateRequest,
     ProductCollectionRef,
     ProductCreateRequest,
@@ -26,6 +27,11 @@ from app.modules.catalog.schemas import (
     ProductVariantCreateRequest,
     ProductVariantUpdateRequest,
     StockAdjustRequest,
+    VariantInventoryListResponse,
+    VariantInventoryRow,
+    VariantInventorySummary,
+    VariantOrderHistoryItem,
+    VariantOrderHistoryResponse,
 )
 from app.modules.inventory.reservation_service import ReservationService
 from app.modules.inventory.status import compute_inventory_status
@@ -243,6 +249,33 @@ class CatalogService:
             vdata["product_id"] = product.id
             await _repo.add_variant(db, vdata)
 
+        if not variants_data:
+            # Every product must have >=1 variant (variant-first inventory —
+            # see migration 0060_backfill_default_variants, which backfilled
+            # this invariant for pre-existing data but does not cover
+            # products created afterwards). Mirror its logic: a synthetic
+            # "Default" variant reusing the product's own sku (falling back
+            # to a suffixed sku on collision) inherits the product's
+            # stock/reserved/sold counters given at creation time.
+            default_sku = product.sku
+            if await _repo.get_variant_by_sku(db, default_sku):
+                default_sku = f"{product.sku}-DEFAULT"
+            await _repo.add_variant(
+                db,
+                {
+                    "product_id": product.id,
+                    "sku": default_sku,
+                    "name": "Default",
+                    "price_adjustment": 0,
+                    "stock_quantity": data.get("stock_quantity", 0),
+                    "reserved_quantity": data.get("reserved_quantity", 0),
+                    "sold_quantity": data.get("sold_quantity", 0),
+                    "weight_grams": data.get("weight_grams"),
+                    "is_active": True,
+                    "sort_order": 0,
+                },
+            )
+
         for a in attributes_data:
             await _repo.upsert_attribute(db, product.id, a.name, a.value, a.sort_order)
 
@@ -379,11 +412,17 @@ class CatalogService:
         if data:
             updated = await _repo.update_variant(db, variant_id, data)
         if new_stock is not None and new_stock != variant.stock_quantity:
+            # target_quantity (not delta) so record_adjustment computes the
+            # actual delta from the value it reads INSIDE its row lock, not
+            # from the variant.stock_quantity snapshot read above — two
+            # concurrent edits racing to "set" the same field must not step
+            # on each other (same race class the Set Exact Quantity admin
+            # dialog guards against; this is a second entry point to it).
             await _reservation_svc.record_adjustment(
                 db,
                 product_id=variant.product_id,
                 variant_id=variant.id,
-                delta=new_stock - variant.stock_quantity,
+                target_quantity=new_stock,
                 reference=f"variant_edit:{variant_id}",
             )
             updated = await _repo.get_variant(db, variant_id)
@@ -424,18 +463,149 @@ class CatalogService:
     # ---------- Stock ----------
 
     async def adjust_stock(
-        self, db: AsyncSession, product_id: uuid.UUID, payload: StockAdjustRequest
+        self,
+        db: AsyncSession,
+        product_id: uuid.UUID,
+        payload: StockAdjustRequest,
+        *,
+        performed_by: uuid.UUID | None = None,
+        request_id: str | None = None,
     ) -> int:
         product = await _repo.get_by_id(db, product_id)
         if not product:
             raise NotFoundError("Product not found")
+
+        variant_id = payload.variant_id
+        if variant_id is None:
+            # Every product has >=1 variant (migration 0060_backfill_default_
+            # variants + CatalogService.create's default-variant fallback).
+            # Resolving here instead of falling through to the vestigial
+            # Product.stock_quantity column means "adjust this product's
+            # stock" always affects real, purchasable inventory.
+            variant_id = await _repo.resolve_default_variant_id(db, product_id)
+            if variant_id is None:
+                raise NotFoundError("Product has no active variant to adjust")
+
+        delta = None
+        target_quantity = None
+        if payload.mode == "add":
+            delta = payload.quantity
+        elif payload.mode == "remove":
+            delta = -payload.quantity
+        else:
+            target_quantity = payload.quantity
         try:
             return await _reservation_svc.record_adjustment(
                 db,
                 product_id=product_id,
-                variant_id=payload.variant_id,
-                delta=payload.delta,
-                reference=payload.reason,
+                variant_id=variant_id,
+                delta=delta,
+                target_quantity=target_quantity,
+                reference=payload.notes,
+                performed_by=performed_by,
+                request_id=request_id,
+                adjustment_mode=payload.mode.upper(),
+                reason=payload.reason,
+                notes=payload.notes,
             )
         except InventoryError as exc:
             raise ValidationError(str(exc)) from exc
+
+    # ---------- Variant-level admin inventory listing ----------
+
+    async def list_variant_inventory(
+        self,
+        db: AsyncSession,
+        *,
+        page: int = 1,
+        page_size: int = 20,
+        search: str | None = None,
+        sort_by: str = "updated_at",
+        sort_dir: str = "desc",
+        variant_status: str | None = None,
+        has_reservations: bool | None = None,
+        recently_updated_hours: int | None = None,
+        category_id: uuid.UUID | None = None,
+        collection_id: uuid.UUID | None = None,
+    ) -> VariantInventoryListResponse:
+        rows, total = await _repo.list_variants_paginated(
+            db,
+            page=page,
+            page_size=page_size,
+            search=search,
+            sort_by=sort_by,
+            sort_dir=sort_dir,
+            variant_status=variant_status,
+            has_reservations=has_reservations,
+            recently_updated_hours=recently_updated_hours,
+            category_id=category_id,
+            collection_id=collection_id,
+        )
+        summary_data = await _repo.get_variant_inventory_summary(db)
+
+        items = []
+        for row in rows:
+            last_adjustment = None
+            if row.get("last_adjustment_at") is not None:
+                last_adjustment = LastAdjustmentInfo(
+                    quantity=row["last_adjustment_quantity"],
+                    mode=row["last_adjustment_mode"],
+                    reason=row["last_adjustment_reason"],
+                    at=row["last_adjustment_at"],
+                    by_name=row["last_adjustment_by_name"],
+                )
+            is_low_stock = (
+                row["track_inventory"]
+                and row["available_stock"] <= row["low_stock_threshold"]
+            )
+            items.append(
+                VariantInventoryRow(
+                    variant_id=row["variant_id"],
+                    product_id=row["product_id"],
+                    product_name=row["product_name"],
+                    variant_name=row["variant_name"],
+                    sku=row["sku"],
+                    category_name=row["category_name"],
+                    primary_image=row["primary_image"],
+                    stock_quantity=row["stock_quantity"],
+                    reserved_quantity=row["reserved_quantity"],
+                    sold_quantity=row["sold_quantity"],
+                    available_stock=row["available_stock"],
+                    low_stock_threshold=row["low_stock_threshold"],
+                    track_inventory=row["track_inventory"],
+                    allow_backorder=row["allow_backorder"],
+                    is_active=row["is_active"],
+                    product_status=row["product_status"],
+                    is_low_stock=is_low_stock,
+                    updated_at=row["updated_at"],
+                    last_adjustment=last_adjustment,
+                )
+            )
+
+        return VariantInventoryListResponse(
+            items=items,
+            total=total,
+            page=page,
+            page_size=page_size,
+            total_pages=math.ceil(total / page_size) if total else 0,
+            summary=VariantInventorySummary(**summary_data),
+        )
+
+    async def list_orders_for_variant(
+        self,
+        db: AsyncSession,
+        variant_id: uuid.UUID,
+        *,
+        page: int = 1,
+        page_size: int = 20,
+    ) -> VariantOrderHistoryResponse:
+        rows, total = await _repo.list_orders_for_variant(
+            db, variant_id, page=page, page_size=page_size
+        )
+        return VariantOrderHistoryResponse(
+            items=[VariantOrderHistoryItem(**row) for row in rows],
+            total=total,
+            page=page,
+            page_size=page_size,
+            total_pages=math.ceil(total / page_size) if total else 0,
+        )

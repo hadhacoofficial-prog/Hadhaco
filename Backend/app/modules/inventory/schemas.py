@@ -36,9 +36,12 @@ class ManualAdjustmentRequest(BaseModel):
 
 
 class LowStockItem(BaseModel):
-    id: uuid.UUID
+    variant_id: uuid.UUID
+    product_id: uuid.UUID
     sku: str
-    name: str
+    variant_name: str
+    product_name: str
+    available_stock: int
     stock_quantity: int
     low_stock_threshold: int
     status: str

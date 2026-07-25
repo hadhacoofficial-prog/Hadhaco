@@ -627,13 +627,135 @@ export interface AuditLogPage {
 
 // ── Inventory (admin) ────────────────────────────────────────────────────────
 export interface LowStockItem {
-  id: string;
+  variant_id: string;
+  product_id: string;
   sku: string;
-  name: string;
+  variant_name: string;
+  product_name: string;
+  available_stock: number;
   stock_quantity: number;
   low_stock_threshold: number;
   status: string;
   category_id: string | null;
+}
+
+export type StockAdjustMode = "add" | "remove" | "set";
+
+export type StockAdjustReason =
+  | "RESTOCK"
+  | "DAMAGE"
+  | "CORRECTION"
+  | "RETURN"
+  | "THEFT_LOSS"
+  | "RECOUNT"
+  | "OTHER";
+
+export interface StockAdjustRequest {
+  mode: StockAdjustMode;
+  quantity: number;
+  reason: StockAdjustReason;
+  notes?: string | null;
+  variant_id?: string | null;
+}
+
+export interface LastAdjustmentInfo {
+  quantity: number;
+  mode: string | null;
+  reason: string | null;
+  at: string;
+  by_name: string | null;
+}
+
+export interface VariantInventoryRow {
+  variant_id: string;
+  product_id: string;
+  product_name: string;
+  variant_name: string;
+  sku: string;
+  category_name: string | null;
+  primary_image: string | null;
+  stock_quantity: number;
+  reserved_quantity: number;
+  sold_quantity: number;
+  available_stock: number;
+  low_stock_threshold: number;
+  track_inventory: boolean;
+  allow_backorder: boolean;
+  is_active: boolean;
+  product_status: string;
+  is_low_stock: boolean;
+  updated_at: string;
+  last_adjustment: LastAdjustmentInfo | null;
+}
+
+export interface VariantInventorySummary {
+  total_variants: number;
+  low_stock_variants: number;
+  out_of_stock_variants: number;
+  reserved_units: number;
+  available_units: number;
+  total_inventory_units: number;
+}
+
+export interface VariantInventoryListResponse {
+  items: VariantInventoryRow[];
+  total: number;
+  page: number;
+  page_size: number;
+  total_pages: number;
+  summary: VariantInventorySummary;
+}
+
+export interface VariantOrderHistoryItem {
+  order_id: string;
+  order_number: string;
+  status: string;
+  created_at: string;
+  quantity: number;
+  line_total: number;
+}
+
+export interface VariantOrderHistoryResponse {
+  items: VariantOrderHistoryItem[];
+  total: number;
+  page: number;
+  page_size: number;
+  total_pages: number;
+}
+
+export interface ReservationItem {
+  id: string;
+  reservation_number: string;
+  quantity: number;
+  status: string;
+  expires_at: string;
+  created_at: string;
+}
+
+export interface ReservationListResponse {
+  items: ReservationItem[];
+  total: number;
+  page: number;
+  page_size: number;
+  total_pages: number;
+}
+
+export interface InventoryMovementItem {
+  id: string;
+  movement_type: string;
+  delta: number;
+  quantity_before: number;
+  quantity_after: number;
+  notes: string | null;
+  created_at: string;
+}
+
+export interface InventoryMovementListResponse {
+  items: InventoryMovementItem[];
+  total: number;
+  page: number;
+  page_size: number;
+  total_pages: number;
 }
 
 // ── Enquiries (admin) ────────────────────────────────────────────────────────

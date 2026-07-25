@@ -39,6 +39,10 @@ class TestFetchAvailableStock:
         # Default: customer holds no reservation of their own, so availability
         # is unchanged. Tests exercising the self-block credit override this.
         self.svc._own_active_reserved_qty = AsyncMock(return_value=0)
+        # variant_id=None auto-resolves to a default variant now — mock it so
+        # tests calling with a bare product_id exercise the variant-branch
+        # query without needing a real product_variants row.
+        self.svc._resolve_default_variant_id = AsyncMock(return_value=uuid.uuid4())
 
     async def test_returns_computed_available(self):
         product_id = uuid.uuid4()
@@ -76,6 +80,18 @@ class TestFetchAvailableStock:
         with pytest.raises(NotFoundError):
             await self.svc._fetch_available_stock(db, uuid.uuid4())
 
+    async def test_no_active_variant_raises_not_found(self):
+        """A product whose variants have all been deactivated resolves to
+        None and must raise before ever touching the stock query."""
+        from app.core.exceptions import NotFoundError
+
+        self.svc._resolve_default_variant_id = AsyncMock(return_value=None)
+        db = AsyncMock()
+        db.execute = AsyncMock(return_value=_fetch_result(_stock_row(7)))
+
+        with pytest.raises(NotFoundError):
+            await self.svc._fetch_available_stock(db, uuid.uuid4())
+
 
 # ── TestAddItemStockValidation ────────────────────────────────────────────────
 
@@ -88,6 +104,9 @@ class TestAddItemStockValidation:
         # Default: customer holds no reservation of their own, so availability
         # is unchanged. Tests exercising the self-block credit override this.
         self.svc._own_active_reserved_qty = AsyncMock(return_value=0)
+        # Payloads below use variant_id=None (customer didn't pick a variant
+        # explicitly) — add_item now resolves a default variant up front.
+        self.svc._resolve_default_variant_id = AsyncMock(return_value=uuid.uuid4())
 
     def _payload(self, product_id: uuid.UUID | None = None, quantity: int = 1):
         p = MagicMock()

@@ -138,6 +138,11 @@ class CreatePaymentIntentResponse(BaseModel):
     amount: int  # paise (INR × 100)
     currency: str
     key: str
+    # Server-authoritative reservation deadline (post lock_for_checkout grace
+    # window) — the frontend countdown must derive its remaining time from
+    # this, not a hardcoded assumption, or it fires a false "expired" state
+    # while the server is still holding the stock.
+    expires_at: datetime
 
 
 class VerifyOrderPaymentRequest(BaseModel):

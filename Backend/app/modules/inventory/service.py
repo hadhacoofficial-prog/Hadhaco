@@ -1,11 +1,12 @@
 import math
 import uuid
 
-from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.exceptions import NotFoundError, ValidationError
+from app.core.exceptions import NotFoundError
+from app.modules.catalog.repository import ProductRepository
 from app.modules.inventory.repository import InventoryRepository
+from app.modules.inventory.reservation_service import ReservationService
 from app.modules.inventory.schemas import (
     InventoryMovementListResponse,
     InventoryMovementResponse,
@@ -19,6 +20,8 @@ from app.modules.inventory.schemas import (
 )
 
 _repo = InventoryRepository()
+_reservation_svc = ReservationService()
+_product_repo = ProductRepository()
 
 
 class InventoryService:
@@ -36,28 +39,36 @@ class InventoryService:
         created_by: uuid.UUID | None = None,
     ) -> InventoryMovementResponse:
         """
-        Legacy movement recorder — updates stock_quantity for restock/adjustment ops.
-        New flows (checkout, payment) use ReservationService instead.
+        Legacy movement recorder — kept only for backward compatibility with
+        whatever still calls it; superseded by
+        POST /admin/products/{product_id}/stock/adjust (CatalogService.
+        adjust_stock -> ReservationService.record_adjustment).
+
+        Delegates to ReservationService.record_adjustment so the row it locks
+        and writes to is correctly chosen from variant_id (product_variants)
+        vs products — this method used to always write `products.
+        stock_quantity` regardless of variant_id, silently corrupting stock
+        for variant-bearing products. record_adjustment also owns cache
+        invalidation and SSE publishing centrally, so this method no longer
+        does its own (avoids double-firing InventoryChangedEvent).
         """
-        snapshot = await _repo.get_stock_snapshot(db, product_id)
-        if not snapshot:
-            raise NotFoundError("Product not found")
+        if variant_id is None:
+            # Every product has >=1 variant post-backfill; resolve rather
+            # than let this fall through to the vestigial Product.
+            # stock_quantity column (same fix as CatalogService.adjust_stock).
+            variant_id = await _product_repo.resolve_default_variant_id(db, product_id)
 
-        quantity_before: int = snapshot["stock_quantity"]
-        quantity_after = quantity_before + delta
-
-        if quantity_after < 0 and not snapshot["allow_backorder"]:
-            raise ValidationError(
-                f"Insufficient stock: available {quantity_before}, requested {abs(delta)}"
-            )
-
-        await db.execute(
-            text(
-                "UPDATE products SET stock_quantity = stock_quantity + :delta "
-                "WHERE id = :id AND deleted_at IS NULL"
-            ),
-            {"delta": delta, "id": str(product_id)},
+        quantity_after = await _reservation_svc.record_adjustment(
+            db,
+            product_id=product_id,
+            variant_id=variant_id,
+            delta=delta,
+            reference=reference_id,
+            performed_by=created_by,
+            reason="OTHER",
+            notes=notes,
         )
+        quantity_before = quantity_after - delta
 
         movement = await _repo.record(
             db,
@@ -75,32 +86,6 @@ class InventoryService:
                 "created_by": created_by,
             },
         )
-
-        # Publish inventory change event for SSE → frontend synchronization
-        # AND invalidate Redis cache so React Query refetches get fresh data.
-        # This ensures the legacy path uses the same pipeline as the
-        # ReservationService-based modern path.
-        try:
-            from app.core.events import InventoryChangedEvent, event_bus
-            from app.modules.inventory.reservation_service import (
-                invalidate_inventory_cache,
-            )
-
-            available_after = max(
-                quantity_after
-                - snapshot["reserved_quantity"]
-                - snapshot["sold_quantity"],
-                0,
-            )
-            await event_bus.publish(
-                InventoryChangedEvent(
-                    product_ids=[str(product_id)],
-                    available_by_product={str(product_id): available_after},
-                )
-            )
-            await invalidate_inventory_cache([(product_id, None)])
-        except Exception:
-            pass  # Event publishing / cache invalidation is best-effort.
 
         return InventoryMovementResponse.model_validate(movement)
 
@@ -131,6 +116,7 @@ class InventoryService:
         page: int = 1,
         page_size: int = 20,
         movement_type: str | None = None,
+        variant_id: uuid.UUID | None = None,
     ) -> InventoryMovementListResponse:
         snapshot = await _repo.get_stock_snapshot(db, product_id)
         if not snapshot:
@@ -142,6 +128,7 @@ class InventoryService:
             page=page,
             page_size=page_size,
             movement_type=movement_type,
+            variant_id=variant_id,
         )
         return InventoryMovementListResponse(
             items=[InventoryMovementResponse.model_validate(m) for m in items],
@@ -158,9 +145,13 @@ class InventoryService:
     # ── New reservation-aware queries ─────────────────────────────────────────
 
     async def get_stock_summary(
-        self, db: AsyncSession, product_id: uuid.UUID
+        self,
+        db: AsyncSession,
+        product_id: uuid.UUID,
+        *,
+        variant_id: uuid.UUID | None = None,
     ) -> ProductStockSummary:
-        data = await _repo.get_stock_summary(db, product_id)
+        data = await _repo.get_stock_summary(db, product_id, variant_id=variant_id)
         if not data:
             raise NotFoundError("Product not found")
         return ProductStockSummary(**data)
@@ -170,12 +161,18 @@ class InventoryService:
         db: AsyncSession,
         *,
         product_id: uuid.UUID | None = None,
+        variant_id: uuid.UUID | None = None,
         status: str | None = None,
         page: int = 1,
         page_size: int = 20,
     ) -> ReservationListResponse:
         items, total = await _repo.list_reservations(
-            db, product_id=product_id, status=status, page=page, page_size=page_size
+            db,
+            product_id=product_id,
+            variant_id=variant_id,
+            status=status,
+            page=page,
+            page_size=page_size,
         )
         return ReservationListResponse(
             items=[ReservationResponse.model_validate(r) for r in items],
@@ -190,6 +187,7 @@ class InventoryService:
         db: AsyncSession,
         *,
         product_id: uuid.UUID | None = None,
+        variant_id: uuid.UUID | None = None,
         transaction_type: str | None = None,
         page: int = 1,
         page_size: int = 20,
@@ -197,6 +195,7 @@ class InventoryService:
         items, total = await _repo.list_transactions(
             db,
             product_id=product_id,
+            variant_id=variant_id,
             transaction_type=transaction_type,
             page=page,
             page_size=page_size,

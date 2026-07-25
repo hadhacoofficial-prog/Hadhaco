@@ -97,7 +97,7 @@ class CollectionProductItem(BaseModel):
     slug: str
     category_id: uuid.UUID | None
     base_price: float
-    stock_quantity: int
+    available_stock: int
     status: str
     is_featured: bool
     primary_image: str | None = None

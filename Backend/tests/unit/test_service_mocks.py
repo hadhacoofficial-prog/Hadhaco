@@ -299,8 +299,8 @@ class TestInventoryService:
 
         db = AsyncMock()
         with patch(
-            "app.modules.inventory.service._repo.get_stock_snapshot",
-            AsyncMock(return_value=None),
+            "app.modules.inventory.service._reservation_svc.record_adjustment",
+            AsyncMock(side_effect=NotFoundError("Product not found")),
         ):
             with pytest.raises(NotFoundError):
                 await self.svc.record_movement(
@@ -315,16 +315,8 @@ class TestInventoryService:
 
         db = AsyncMock()
         with patch(
-            "app.modules.inventory.service._repo.get_stock_snapshot",
-            AsyncMock(
-                return_value={
-                    "stock_quantity": 2,
-                    "allow_backorder": False,
-                    "low_stock_threshold": 5,
-                    "sku": "SR-001",
-                    "product_name": "Silver Ring",
-                }
-            ),
+            "app.modules.inventory.service._reservation_svc.record_adjustment",
+            AsyncMock(side_effect=ValidationError("Insufficient stock")),
         ):
             with pytest.raises(ValidationError) as exc:
                 await self.svc.record_movement(

@@ -17,6 +17,21 @@ class InventoryStatus(StrEnum):
     OUT_OF_STOCK = "OUT_OF_STOCK"
 
 
+def compute_available_stock(
+    stock_quantity: int, reserved_quantity: int, sold_quantity: int
+) -> int:
+    """Single source of truth for availability: stock - reserved - sold,
+    clamped at zero.
+
+    Unlike compute_inventory_status (which takes available_stock as a
+    pre-computed input), this is the one place that does the subtraction.
+    Every other consumer — SQL views, LATERAL joins, ORM properties — must
+    produce a value identical to this function; each such site should carry
+    a comment pointing back here so they can't silently drift apart.
+    """
+    return max(stock_quantity - reserved_quantity - sold_quantity, 0)
+
+
 def compute_inventory_status(
     available_stock: int,
     low_stock_threshold: int,

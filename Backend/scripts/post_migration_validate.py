@@ -21,7 +21,7 @@ load_dotenv()
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 sys.stdout.reconfigure(encoding="utf-8")
 
-from sqlalchemy import create_engine, text
+from sqlalchemy import create_engine, text  # noqa: E402
 
 DROPPED_INDEXES = [
     "idx_products_compare_price",
@@ -82,19 +82,22 @@ def verify_fk_safety(engine) -> bool:
     print("=" * 70)
 
     with engine.connect() as conn:
-        rows = conn.execute(text("""
+        rows = conn.execute(
+            text("""
             SELECT conname, contype::text, conrelid::regclass
             FROM pg_constraint
             WHERE conname = ANY(:names)
-        """), {"names": DROPPED_INDEXES}).fetchall()
+        """),
+            {"names": DROPPED_INDEXES},
+        ).fetchall()
     if rows:
         print(f"  WARNING: Constraints share names with dropped indexes: {rows}")
         return False
 
     with engine.connect() as conn:
-        fk_count = conn.execute(text(
-            "SELECT count(*) FROM pg_constraint WHERE contype = 'f'"
-        )).scalar()
+        fk_count = conn.execute(
+            text("SELECT count(*) FROM pg_constraint WHERE contype = 'f'")
+        ).scalar()
     print(f"  Total FK constraints in database: {fk_count}")
     print("  OK: No FK constraints share names with dropped indexes.")
     return True
@@ -245,22 +248,26 @@ def run_explain_analyze(engine) -> list[dict]:
             has_idx = "Index Scan" in plan_text or "Index Only Scan" in plan_text
             node_type = plan[0]["Plan"]["Node Type"]
 
-            print(f"  {name}: {total:.2f}ms (plan={planning:.2f}ms, exec={execution:.2f}ms)")
+            print(
+                f"  {name}: {total:.2f}ms (plan={planning:.2f}ms, exec={execution:.2f}ms)"
+            )
             print(f"    Root node: {node_type}")
             if has_seq:
                 print("    Contains sequential scan")
             if has_idx:
                 print("    Uses index scan")
 
-            results.append({
-                "name": name,
-                "planning_ms": planning,
-                "execution_ms": execution,
-                "total_ms": total,
-                "root_node": node_type,
-                "has_seq_scan": has_seq,
-                "has_index_scan": has_idx,
-            })
+            results.append(
+                {
+                    "name": name,
+                    "planning_ms": planning,
+                    "execution_ms": execution,
+                    "total_ms": total,
+                    "root_node": node_type,
+                    "has_seq_scan": has_seq,
+                    "has_index_scan": has_idx,
+                }
+            )
         except Exception as e:
             print(f"  {name}: ERROR - {e}")
             results.append({"name": name, "error": str(e)})

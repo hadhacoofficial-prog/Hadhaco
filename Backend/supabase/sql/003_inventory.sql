@@ -75,19 +75,31 @@ CREATE POLICY "inventory_movements_admin_read" ON inventory_movements FOR SELECT
 
 
 -- ── Low-stock view ────────────────────────────────────────────────────────────
+-- NOTE: this file is a hand-maintained reference snapshot, not applied via
+-- Alembic. The live schema is governed by Backend/alembic/versions/ — this
+-- view was rewritten as variant-level + available_stock-aware in
+-- 0062_variant_aware_low_stock_view.py (2026-07-25). Keep this in sync so it
+-- doesn't silently describe a schema that no longer exists.
 
 CREATE OR REPLACE VIEW low_stock_products AS
     SELECT
-        p.id,
-        p.sku,
-        p.name,
-        p.stock_quantity,
+        v.id AS variant_id,
+        v.product_id,
+        v.sku,
+        v.name AS variant_name,
+        p.name AS product_name,
+        GREATEST(v.stock_quantity - v.reserved_quantity - v.sold_quantity, 0)
+            AS available_stock,
+        v.stock_quantity,
         p.low_stock_threshold,
         p.status,
         p.category_id
-    FROM products p
+    FROM product_variants v
+    JOIN products p ON p.id = v.product_id
     WHERE
         p.deleted_at IS NULL
         AND p.track_inventory = true
-        AND p.stock_quantity <= p.low_stock_threshold;
+        AND v.is_active = true
+        AND GREATEST(v.stock_quantity - v.reserved_quantity - v.sold_quantity, 0)
+            <= p.low_stock_threshold;
 

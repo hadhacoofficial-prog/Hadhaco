@@ -29,7 +29,6 @@ from app.modules.reviews.schemas import (
     MyProductReviewStatus,
     ProductRatingSummary,
     ReviewCreate,
-    ReviewListPublicResponse,
     ReviewListResponse,
     ReviewOut,
     ReviewUpdate,
@@ -47,7 +46,7 @@ _svc = ReviewService()
 
 @router.get(
     "/products/{product_id}",
-    response_model=BaseSuccessResponse[ReviewListPublicResponse],
+    response_model=BaseSuccessResponse[list[ReviewOut]],
 )
 async def list_product_reviews(
     product_id: uuid.UUID,
@@ -80,26 +79,27 @@ async def list_product_reviews(
         limit=limit,
     )
     review_dtos = [ReviewOut.model_validate(r) for r in reviews]
+    # Backward-compatible: data is the reviews array (unchanged shape).
+    # Total count for pagination is returned in the X-Total-Count header.
     response_data = ok(
-        ReviewListPublicResponse(items=review_dtos, total=total),
+        review_dtos,
         ResponseCode.REVIEW_LISTED,
         "Reviews listed successfully",
     )
+    import json as _json
+
+    from fastapi.responses import JSONResponse
+
+    serialized = _json.dumps(_json.loads(response_data.model_dump_json()), default=str)
+    content = _json.loads(serialized)
+    headers = {"X-Total-Count": str(total)}
     if viewer_user_id is None:
-        import json as _json
-
-        from fastapi.responses import JSONResponse
-
-        serialized = _json.dumps(
-            _json.loads(response_data.model_dump_json()), default=str
-        )
         cache_key = f"{PREFIX_REVIEW_LIST}:{product_id}:{offset}:{limit}"
         await safe_redis_setex(redis, cache_key, TTL_REVIEW_LIST, serialized)
-        content = _json.loads(serialized)
-        response = JSONResponse(content=content)
+        response = JSONResponse(content=content, headers=headers)
         add_cache_headers(response, TTL_REVIEW_LIST, private=True)
         return response
-    return response_data
+    return JSONResponse(content=content, headers=headers)
 
 
 @router.get(

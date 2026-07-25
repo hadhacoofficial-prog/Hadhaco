@@ -25,7 +25,10 @@ interface CheckoutFormState {
   couponCode: string;
   appliedCoupon: AppliedCoupon | null;
   checkoutStep: CheckoutStep;
-  reservationStartedAt: number | null;
+  /** Server-authoritative reservation deadline (ISO 8601), from
+   * CreatePaymentIntentResponse.expires_at — NOT a client-computed fixed
+   * window, since the server extends the hold once Razorpay opens. */
+  reservationExpiresAt: string | null;
 
   setShippingMethod: (m: "standard" | "express") => void;
   setBillingSame: (v: boolean) => void;
@@ -35,7 +38,7 @@ interface CheckoutFormState {
   setCouponCode: (v: string) => void;
   setAppliedCoupon: (c: AppliedCoupon | null) => void;
   setCheckoutStep: (s: CheckoutStep) => void;
-  setReservationStartedAt: (t: number | null) => void;
+  setReservationExpiresAt: (t: string | null) => void;
   reset: () => void;
 }
 
@@ -48,7 +51,7 @@ const INITIAL_STATE = {
   couponCode: "",
   appliedCoupon: null,
   checkoutStep: "idle" as const,
-  reservationStartedAt: null,
+  reservationExpiresAt: null,
 };
 
 /**
@@ -56,7 +59,7 @@ const INITIAL_STATE = {
  *
  * Persists safe fields (address selection, shipping method, coupon) to
  * localStorage so they survive a full page refresh during checkout.
- * Transient fields (checkoutStep, reservationStartedAt) are intentionally
+ * Transient fields (checkoutStep, reservationExpiresAt) are intentionally
  * excluded — they reset on page reload, which is correct behavior since
  * a server-side reservation would need to be re-established anyway.
  */
@@ -73,7 +76,7 @@ export const useCheckoutStore = create<CheckoutFormState>()(
       setCouponCode: (v) => set({ couponCode: v }),
       setAppliedCoupon: (c) => set({ appliedCoupon: c }),
       setCheckoutStep: (s) => set({ checkoutStep: s }),
-      setReservationStartedAt: (t) => set({ reservationStartedAt: t }),
+      setReservationExpiresAt: (t) => set({ reservationExpiresAt: t }),
       reset: () => set(INITIAL_STATE),
     }),
     {

@@ -42,7 +42,7 @@ import type {
   MyProductReviewStatus,
   ProductDetail,
   ProductVariant,
-  PublicReview,
+  PublicReviewListResponse,
   ReviewSummary,
 } from "@/types/public";
 import type { Product, ProductSpec, Review } from "@/types/shop";
@@ -245,13 +245,15 @@ function ProductPage() {
 
   const queryClient = useQueryClient();
 
-  const { data: rawReviews, refetch: refetchReviews } = useQuery({
+  const { data: reviewsResponse, refetch: refetchReviews } = useQuery({
     queryKey: queryKeys.reviews.forProduct(product.id),
     queryFn: () =>
-      api.get<PublicReview[]>(`/reviews/products/${product.id}`, { params: { limit: 50 } }),
+      api.get<PublicReviewListResponse>(`/reviews/products/${product.id}`, {
+        params: { limit: 50 },
+      }),
     staleTime: 2 * 60_000,
   });
-  const reviews = (rawReviews ?? []).map(toReview);
+  const reviews = (reviewsResponse?.items ?? []).map(toReview);
 
   const { data: reviewSummary, refetch: refetchSummary } = useQuery({
     queryKey: queryKeys.reviews.summary(product.id),

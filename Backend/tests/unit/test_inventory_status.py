@@ -1,4 +1,25 @@
-from app.modules.inventory.status import InventoryStatus, compute_inventory_status
+from app.modules.inventory.status import (
+    InventoryStatus,
+    compute_available_stock,
+    compute_inventory_status,
+)
+
+
+class TestComputeAvailableStock:
+    def test_normal_case(self):
+        assert compute_available_stock(10, 3, 2) == 5
+
+    def test_zero_after_subtraction(self):
+        assert compute_available_stock(5, 3, 2) == 0
+
+    def test_negative_clamps_to_zero(self):
+        assert compute_available_stock(5, 4, 4) == 0
+
+    def test_all_zero(self):
+        assert compute_available_stock(0, 0, 0) == 0
+
+    def test_reserved_and_sold_exceed_stock(self):
+        assert compute_available_stock(2, 5, 5) == 0
 
 
 class TestComputeInventoryStatus:

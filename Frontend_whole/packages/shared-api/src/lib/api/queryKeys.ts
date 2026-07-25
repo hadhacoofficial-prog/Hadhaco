@@ -155,6 +155,14 @@ export const queryKeys = {
     },
     inventory: (filters?: Filters) => ["admin", "inventory", filters ?? {}] as const,
     lowStock: ["admin", "inventory", "low-stock"] as const,
+    productVariants: (filters?: Filters) =>
+      ["admin", "product-variants", filters ?? {}] as const,
+    variantOrders: (variantId: string, filters?: Filters) =>
+      ["admin", "product-variants", variantId, "orders", filters ?? {}] as const,
+    variantReservations: (variantId: string) =>
+      ["admin", "inventory", "reservations", variantId] as const,
+    variantMovements: (variantId: string) =>
+      ["admin", "product", "inventory", "history", variantId] as const,
     coupons: (filters?: Filters) => ["admin", "coupons", filters ?? {}] as const,
     reviewsPending: ["admin", "reviews", "pending"] as const,
     reviewsAll: (status?: string, page?: number) => ["admin", "reviews", "all", status ?? "all", page ?? 1] as const,

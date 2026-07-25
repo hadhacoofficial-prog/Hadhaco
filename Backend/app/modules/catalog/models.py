@@ -261,7 +261,19 @@ class ProductVariant(Base):
 
     __table_args__ = (
         Index("idx_product_variants_product_id", "product_id"),
-        Index("idx_product_variants_sku", "sku"),
+        Index("idx_product_variants_updated_at", "updated_at"),
+        Index(
+            "idx_product_variants_sku_trgm",
+            "sku",
+            postgresql_using="gin",
+            postgresql_ops={"sku": "gin_trgm_ops"},
+        ),
+        Index(
+            "idx_product_variants_name_trgm",
+            "name",
+            postgresql_using="gin",
+            postgresql_ops={"name": "gin_trgm_ops"},
+        ),
         CheckConstraint(
             "stock_quantity >= 0", name="product_variants_stock_quantity_check"
         ),

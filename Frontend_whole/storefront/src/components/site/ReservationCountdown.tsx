@@ -1,61 +1,38 @@
-import { useEffect, useRef, useState } from "react";
 import { Clock, AlertTriangle } from "lucide-react";
 import { Link } from "@tanstack/react-router";
-
-const RESERVATION_TTL_SECONDS = 2 * 60; // 2 minutes
-
-function formatTime(seconds: number): string {
-  const m = Math.floor(seconds / 60);
-  const s = seconds % 60;
-  return `${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
-}
+import { useReservationCountdown } from "@/hooks/reservation/useReservationCountdown";
 
 /**
- * Fixed countdown bar shown during checkout once items are reserved.
- * `startedAt` is the timestamp (ms) when the reservation was created.
- * `onExpired` fires when the timer reaches zero.
+ * Countdown bar shown during checkout once items are reserved. Derives
+ * remaining time from the server's actual `expiresAt` deadline (ISO 8601) —
+ * never a client-guessed fixed window, since the server silently extends
+ * the hold from the 2-minute cart TTL to a longer checkout grace period
+ * once Razorpay opens (see RESERVATION_CHECKOUT_GRACE_MINUTES). A fixed
+ * client-side timer would fire a false "expired" state mid-payment while
+ * the server is still holding the stock. `onExpired` fires once when the
+ * real deadline passes.
  */
 export function ReservationCountdown({
-  startedAt,
+  expiresAt,
   onExpired,
 }: {
-  startedAt: number;
+  expiresAt: string;
   onExpired: () => void;
 }) {
-  const [remaining, setRemaining] = useState(() => {
-    const elapsed = Math.floor((Date.now() - startedAt) / 1000);
-    return Math.max(0, RESERVATION_TTL_SECONDS - elapsed);
-  });
-
-  const onExpiredRef = useRef(onExpired);
-  onExpiredRef.current = onExpired;
-
-  useEffect(() => {
-    if (remaining === 0) {
-      onExpiredRef.current();
-      return;
-    }
-    const id = setInterval(() => {
-      setRemaining((prev) => {
-        const next = prev - 1;
-        if (next <= 0) {
-          clearInterval(id);
-          onExpiredRef.current();
-          return 0;
-        }
-        return next;
-      });
-    }, 1000);
-    return () => clearInterval(id);
-  }, [remaining]);
-
-  const isUrgent = remaining <= 60;
-  const pct = (remaining / RESERVATION_TTL_SECONDS) * 100;
+  const { remainingSeconds, formatted, isUrgent, isExpired } = useReservationCountdown(
+    expiresAt,
+    onExpired,
+  );
+  // progress is cosmetic only — scaled against a nominal 10-minute grace
+  // window so the bar doesn't look empty right after the checkout-grace
+  // extension kicks in; isExpired/remainingSeconds above are what actually
+  // gate behaviour and are always derived from the real expiresAt.
+  const pct = isExpired ? 0 : Math.min(100, (remainingSeconds / (10 * 60)) * 100);
 
   return (
     <div
       role="timer"
-      aria-label={`Reservation expires in ${formatTime(remaining)}`}
+      aria-label={`Reservation expires in ${formatted}`}
       aria-live="polite"
       className={`fixed top-0 left-0 right-0 z-50 ${isUrgent ? "bg-amber-600" : "bg-foreground"} text-background`}
     >
@@ -72,7 +49,7 @@ export function ReservationCountdown({
           {isUrgent ? "Reservation expiring! " : "Your items are reserved for "}
         </span>
         <span className="font-mono font-bold text-base tabular-nums" aria-atomic="true">
-          {formatTime(remaining)}
+          {formatted}
         </span>
       </div>
     </div>
@@ -148,8 +125,8 @@ export function ReservationExpiredModal({ onDismiss }: { onDismiss: () => void }
           Reservation Expired
         </h2>
         <p className="text-sm text-muted-foreground leading-relaxed mb-7">
-          Your reserved items have been released because the 2-minute reservation window ended
-          before payment was completed.
+          Your reserved items have been released because the reservation window ended before payment
+          was completed.
         </p>
         <div className="flex flex-col sm:flex-row gap-3">
           <Link

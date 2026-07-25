@@ -331,6 +331,25 @@ class ProductRepository:
         )
         return result.scalar_one_or_none()
 
+    async def resolve_default_variant_id(
+        self, db: AsyncSession, product_id: uuid.UUID
+    ) -> uuid.UUID | None:
+        """The variant an admin operation targeting "the product" (no
+        explicit variant chosen) resolves to — mirrors CartService.
+        _resolve_default_variant_id's rule (earliest active variant by
+        sort_order/created_at), so admin stock adjustments never silently
+        fall through to the vestigial Product.stock_quantity column."""
+        result = await db.execute(
+            select(ProductVariant.id)
+            .where(
+                ProductVariant.product_id == product_id,
+                ProductVariant.is_active.is_(True),
+            )
+            .order_by(ProductVariant.sort_order.asc(), ProductVariant.created_at.asc())
+            .limit(1)
+        )
+        return result.scalar_one_or_none()
+
     async def get_variant_by_sku(
         self, db: AsyncSession, sku: str
     ) -> ProductVariant | None:
@@ -438,3 +457,227 @@ class ProductRepository:
         )
         row = result.fetchone()
         return row[0] if row else 0
+
+    # ---------- Variant-level inventory listing (admin) ----------
+
+    _VARIANT_SORT_COLUMNS: dict[str, str] = {
+        "updated_at": "v.updated_at",
+        "available_stock": "available_stock",
+        "stock_quantity": "v.stock_quantity",
+        "product_name": "p.name",
+        "sku": "v.sku",
+    }
+
+    async def list_variants_paginated(
+        self,
+        db: AsyncSession,
+        *,
+        page: int = 1,
+        page_size: int = 20,
+        search: str | None = None,
+        sort_by: str = "updated_at",
+        sort_dir: str = "desc",
+        variant_status: str | None = None,
+        has_reservations: bool | None = None,
+        recently_updated_hours: int | None = None,
+        category_id: uuid.UUID | None = None,
+        collection_id: uuid.UUID | None = None,
+    ) -> tuple[list[dict[str, Any]], int]:
+        """Single-query, variant-level inventory listing for the admin page.
+
+        One row per ProductVariant, joined to Product/Category (for display
+        + filters) and LEFT JOIN LATERAL'd against InventoryTransaction (last
+        adjustment) and InventoryReservation (has_reservations filter) so the
+        whole page renders from one round-trip — no N+1, no per-row follow-up
+        calls. Uses COUNT(*) OVER() to fetch total alongside the page.
+        """
+        params: dict[str, Any] = {
+            "limit": page_size,
+            "offset": (page - 1) * page_size,
+        }
+        where: list[str] = ["p.deleted_at IS NULL"]
+
+        if variant_status == "active":
+            where.append("v.is_active = true")
+        elif variant_status == "inactive":
+            where.append("v.is_active = false")
+        elif variant_status == "out_of_stock":
+            where.append(
+                "GREATEST(v.stock_quantity - v.reserved_quantity - v.sold_quantity, 0) = 0"
+            )
+
+        if has_reservations is not None:
+            exists_clause = (
+                "EXISTS (SELECT 1 FROM inventory_reservations r "
+                "WHERE r.variant_id = v.id "
+                "AND r.status IN ('ACTIVE', 'CHECKOUT_IN_PROGRESS'))"
+            )
+            where.append(exists_clause if has_reservations else f"NOT {exists_clause}")
+
+        if recently_updated_hours is not None:
+            where.append("v.updated_at >= now() - make_interval(hours => :hours)")
+            params["hours"] = recently_updated_hours
+
+        if category_id is not None:
+            where.append("p.category_id = :category_id")
+            params["category_id"] = str(category_id)
+
+        if collection_id is not None:
+            where.append(
+                "EXISTS (SELECT 1 FROM product_collections pc "
+                "WHERE pc.product_id = p.id AND pc.collection_id = :collection_id)"
+            )
+            params["collection_id"] = str(collection_id)
+
+        search_rank_sql = "6"
+        if search:
+            term = search.strip()[:200]
+            params["exact"] = term
+            params["prefix"] = f"{term}%"
+            params["partial"] = f"%{term}%"
+            where.append(
+                "("
+                "v.sku ILIKE :partial OR p.sku ILIKE :partial OR p.name ILIKE :partial "
+                "OR v.name ILIKE :partial OR c.name ILIKE :partial "
+                "OR EXISTS (SELECT 1 FROM product_collections pc2 "
+                "JOIN collections col2 ON col2.id = pc2.collection_id "
+                "WHERE pc2.product_id = p.id "
+                "AND (col2.name ILIKE :partial OR col2.slug ILIKE :partial))"
+                ")"
+            )
+            search_rank_sql = """
+                CASE
+                    WHEN v.sku ILIKE :exact THEN 0
+                    WHEN p.sku ILIKE :exact THEN 1
+                    WHEN p.name ILIKE :exact THEN 2
+                    WHEN v.name ILIKE :exact THEN 3
+                    WHEN c.name ILIKE :exact THEN 4
+                    WHEN v.sku ILIKE :prefix THEN 5
+                    ELSE 6
+                END
+            """
+
+        where_sql = " AND ".join(where)
+        sort_col = self._VARIANT_SORT_COLUMNS.get(sort_by, "v.updated_at")
+        sort_dir_sql = "ASC" if sort_dir == "asc" else "DESC"
+
+        query = text(f"""
+            SELECT
+                v.id AS variant_id,
+                v.product_id,
+                p.name AS product_name,
+                v.name AS variant_name,
+                v.sku,
+                c.name AS category_name,
+                (SELECT iv.url FROM images i
+                 JOIN image_variants iv ON iv.image_id = i.id
+                 WHERE i.owner_type = 'product' AND i.owner_id = p.id
+                   AND i.is_primary = TRUE AND i.deleted_at IS NULL
+                   AND iv.variant_name = 'medium' AND iv.breakpoint = 'desktop'
+                   AND iv.status = 'ready'
+                 LIMIT 1) AS primary_image,
+                v.stock_quantity,
+                v.reserved_quantity,
+                v.sold_quantity,
+                GREATEST(v.stock_quantity - v.reserved_quantity - v.sold_quantity, 0)
+                    AS available_stock,  -- mirrors compute_available_stock()
+                p.low_stock_threshold,
+                p.track_inventory,
+                p.allow_backorder,
+                v.is_active,
+                p.status AS product_status,
+                v.updated_at,
+                la.quantity AS last_adjustment_quantity,
+                la.adjustment_mode AS last_adjustment_mode,
+                la.reason AS last_adjustment_reason,
+                la.created_at AS last_adjustment_at,
+                prof.full_name AS last_adjustment_by_name,
+                {search_rank_sql} AS search_rank,
+                COUNT(*) OVER() AS _total_count
+            FROM product_variants v
+            JOIN products p ON p.id = v.product_id
+            LEFT JOIN categories c ON c.id = p.category_id
+            LEFT JOIN LATERAL (
+                SELECT t.quantity, t.adjustment_mode, t.reason, t.created_at,
+                       t.performed_by
+                FROM inventory_transactions t
+                WHERE t.variant_id = v.id
+                ORDER BY t.created_at DESC
+                LIMIT 1
+            ) la ON true
+            LEFT JOIN profiles prof ON prof.id = la.performed_by
+            WHERE {where_sql}  -- nosec B608
+            ORDER BY search_rank ASC, {sort_col} {sort_dir_sql}, v.id ASC
+            LIMIT :limit OFFSET :offset
+        """)  # nosec B608 — where_sql/sort_col/sort_dir_sql built from a fixed
+        # whitelist + bound params only, never raw user input.
+
+        result = await db.execute(query, params)
+        rows = [dict(r._mapping) for r in result.fetchall()]
+        total = rows[0]["_total_count"] if rows else 0
+        for row in rows:
+            row.pop("_total_count", None)
+            row.pop("search_rank", None)
+        return rows, total
+
+    async def list_orders_for_variant(
+        self,
+        db: AsyncSession,
+        variant_id: uuid.UUID,
+        *,
+        page: int = 1,
+        page_size: int = 20,
+    ) -> tuple[list[dict[str, Any]], int]:
+        """Paginated order history for a variant's expandable admin row."""
+        result = await db.execute(
+            text("""
+                SELECT
+                    o.id AS order_id,
+                    o.order_number,
+                    o.status,
+                    o.created_at,
+                    oi.quantity,
+                    oi.line_total,
+                    COUNT(*) OVER() AS _total_count
+                FROM order_items oi
+                JOIN orders o ON o.id = oi.order_id
+                WHERE oi.variant_id = :variant_id
+                ORDER BY o.created_at DESC
+                LIMIT :limit OFFSET :offset
+            """),
+            {
+                "variant_id": str(variant_id),
+                "limit": page_size,
+                "offset": (page - 1) * page_size,
+            },
+        )
+        rows = [dict(r._mapping) for r in result.fetchall()]
+        total = rows[0]["_total_count"] if rows else 0
+        for row in rows:
+            row.pop("_total_count", None)
+        return rows, total
+
+    async def get_variant_inventory_summary(self, db: AsyncSession) -> dict[str, int]:
+        """Global (unfiltered) KPI rollup for the admin inventory page header."""
+        result = await db.execute(text("""
+                SELECT
+                    COUNT(*) AS total_variants,
+                    COUNT(*) FILTER (
+                        WHERE GREATEST(v.stock_quantity - v.reserved_quantity
+                            - v.sold_quantity, 0) <= p.low_stock_threshold
+                            AND p.track_inventory = true
+                    ) AS low_stock_variants,
+                    COUNT(*) FILTER (
+                        WHERE GREATEST(v.stock_quantity - v.reserved_quantity
+                            - v.sold_quantity, 0) = 0
+                    ) AS out_of_stock_variants,
+                    COALESCE(SUM(v.reserved_quantity), 0) AS reserved_units,
+                    COALESCE(SUM(GREATEST(v.stock_quantity - v.reserved_quantity
+                        - v.sold_quantity, 0)), 0) AS available_units,
+                    COALESCE(SUM(v.stock_quantity), 0) AS total_inventory_units
+                FROM product_variants v
+                JOIN products p ON p.id = v.product_id
+                WHERE p.deleted_at IS NULL AND v.is_active = true
+            """))
+        row = result.fetchone()
+        return dict(row._mapping) if row else {}

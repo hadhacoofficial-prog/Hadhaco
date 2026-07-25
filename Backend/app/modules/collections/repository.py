@@ -271,8 +271,8 @@ class CollectionRepository:
             text("""
                 SELECT
                     p.id, p.sku, p.name, p.slug, p.category_id,
-                    p.base_price, p.stock_quantity, p.status, p.is_featured,
-                    p.reserved_quantity, p.sold_quantity, p.low_stock_threshold,
+                    p.base_price, p.status, p.is_featured,
+                    vs.available_stock, p.low_stock_threshold,
                     p.track_inventory, p.allow_backorder,
                     pc.sort_order,
                     (SELECT iv.url FROM images i
@@ -284,6 +284,13 @@ class CollectionRepository:
                      LIMIT 1) AS primary_image
                 FROM product_collections pc
                 JOIN products p ON p.id = pc.product_id
+                -- mirrors compute_available_stock() in inventory/status.py
+                LEFT JOIN LATERAL (
+                    SELECT COALESCE(SUM(GREATEST(v.stock_quantity - v.reserved_quantity
+                    - v.sold_quantity, 0)), 0) AS available_stock
+                    FROM product_variants v
+                    WHERE v.product_id = p.id AND v.is_active = true
+                ) vs ON true
                 WHERE pc.collection_id = :col_id AND p.deleted_at IS NULL
                 ORDER BY pc.sort_order ASC
                 LIMIT :limit OFFSET :offset

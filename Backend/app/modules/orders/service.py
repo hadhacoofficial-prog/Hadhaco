@@ -4,7 +4,7 @@ import hmac
 import math
 import time
 import uuid
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 import structlog
@@ -137,6 +137,31 @@ class OrderService:
                 }
             )
         return line_items
+
+    async def _reservation_expiry_for_order(
+        self, db: AsyncSession, order_id: uuid.UUID
+    ) -> datetime:
+        """Server-authoritative reservation deadline for an order's still-live
+        reservation rows — used to populate CreatePaymentIntentResponse.expires_at
+        so the frontend countdown never drifts from what the backend actually
+        holds. Falls back to a fresh grace window if no row is found (should
+        not happen for an order with a razorpay_order_id, but keeps the
+        response well-formed either way)."""
+        result = await db.execute(
+            text(
+                "SELECT expires_at FROM inventory_reservations "
+                "WHERE order_id = :oid "
+                "AND status IN ('ACTIVE', 'CHECKOUT_IN_PROGRESS') "
+                "ORDER BY expires_at DESC LIMIT 1"
+            ),
+            {"oid": str(order_id)},
+        )
+        row = result.fetchone()
+        if row:
+            return row[0]
+        return datetime.now(UTC) + timedelta(
+            minutes=settings.RESERVATION_CHECKOUT_GRACE_MINUTES
+        )
 
     async def _find_matching_pending_order(
         self, db: AsyncSession, user_id: uuid.UUID, line_items: list[dict]
@@ -353,12 +378,16 @@ class OrderService:
                     user_id=str(user_id),
                 )
                 amount_paise = int(round(float(existing_order.total) * 100))
+                expires_at = await self._reservation_expiry_for_order(
+                    db, existing_order.id
+                )
                 return CreatePaymentIntentResponse(
                     order_id=str(existing_order.id),
                     razorpay_order_id=existing_order.razorpay_order_id,
                     amount=amount_paise,
                     currency=settings.RAZORPAY_CURRENCY,
                     key=settings.RAZORPAY_KEY_ID,
+                    expires_at=expires_at,
                 )
             # Order exists with matching items but no razorpay_order_id yet.
             # This means the Razorpay call for the first attempt is still in
@@ -452,12 +481,14 @@ class OrderService:
                     user_id=str(user_id),
                 )
                 amount_paise = int(round(float(existing.total) * 100))
+                expires_at = await self._reservation_expiry_for_order(db, existing.id)
                 return CreatePaymentIntentResponse(
                     order_id=str(existing.id),
                     razorpay_order_id=existing.razorpay_order_id,
                     amount=amount_paise,
                     currency=settings.RAZORPAY_CURRENCY,
                     key=settings.RAZORPAY_KEY_ID,
+                    expires_at=expires_at,
                 )
             # Release the orphan reservations (not linked to any order)
             await _reservation_svc.release_orphan_reservations(
@@ -535,7 +566,7 @@ class OrderService:
         # reservation from the short cart-hold TTL for the checkout grace
         # window (inventory domain plan §2, §2.1a). No-op if, somehow, the
         # reservation already left ACTIVE by this point.
-        await _reservation_svc.lock_for_checkout(db, order.id)
+        reservation_expires_at = await _reservation_svc.lock_for_checkout(db, order.id)
 
         duration_ms = round((time.perf_counter() - t0) * 1000)
         log.info(
@@ -553,6 +584,7 @@ class OrderService:
             amount=amount_paise,
             currency=settings.RAZORPAY_CURRENCY,
             key=settings.RAZORPAY_KEY_ID,
+            expires_at=reservation_expires_at,
         )
 
     # ── Razorpay flow — Phase 2: verify payment + fulfill ────────────────────

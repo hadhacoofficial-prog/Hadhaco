@@ -138,8 +138,8 @@ function CheckoutPage() {
   const appliedCoupon = useCheckoutStore((s) => s.appliedCoupon);
   const setAppliedCoupon = useCheckoutStore((s) => s.setAppliedCoupon);
   const setCheckoutState = useCheckoutStore((s) => s.setCheckoutStep);
-  const reservationStartedAt = useCheckoutStore((s) => s.reservationStartedAt);
-  const setReservationStartedAt = useCheckoutStore((s) => s.setReservationStartedAt);
+  const reservationExpiresAt = useCheckoutStore((s) => s.reservationExpiresAt);
+  const setReservationExpiresAt = useCheckoutStore((s) => s.setReservationExpiresAt);
   const resetCheckout = useCheckoutStore((s) => s.reset);
 
   // Transient UI state (not persisted — resets on remount, which is fine)
@@ -272,7 +272,7 @@ function CheckoutPage() {
     },
     onSuccess: (intent) => {
       currentIntentRef.current = intent;
-      setReservationStartedAt(Date.now());
+      setReservationExpiresAt(intent.expires_at);
       setCheckoutState("payment_open");
       checkoutLog.reserveSuccess(intent.order_id);
       // ── Centralized sync: inventory changed due to reservation ──
@@ -564,9 +564,9 @@ function CheckoutPage() {
   return (
     <ProtectedRoute loginPath="/account/login" defaultRedirect="/checkout">
       {/* Countdown bar — visible once reservation is active */}
-      {isReservationActive && reservationStartedAt && (
+      {isReservationActive && reservationExpiresAt && (
         <ReservationCountdown
-          startedAt={reservationStartedAt}
+          expiresAt={reservationExpiresAt}
           onExpired={handleReservationExpired}
         />
       )}
@@ -576,7 +576,7 @@ function CheckoutPage() {
         <ReservationExpiredModal
           onDismiss={() => {
             setCheckoutState("idle");
-            setReservationStartedAt(null);
+            setReservationExpiresAt(null);
             currentIntentRef.current = null;
             isVerifyingRef.current = false;
             // Read buyNow state before clearing — need slug for navigation.

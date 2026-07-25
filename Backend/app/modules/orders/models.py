@@ -226,6 +226,7 @@ class OrderItem(Base):
     __table_args__ = (
         Index("idx_order_items_order_id", "order_id"),
         Index("idx_order_items_product_id", "product_id"),
+        Index("idx_order_items_variant_id", "variant_id"),
         CheckConstraint("quantity > 0", name="order_items_quantity_check"),
         CheckConstraint("unit_price >= 0", name="order_items_unit_price_check"),
         CheckConstraint("tax_amount >= 0", name="order_items_tax_amount_check"),

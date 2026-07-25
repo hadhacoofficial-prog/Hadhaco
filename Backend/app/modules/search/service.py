@@ -92,34 +92,42 @@ class SearchService:
 
             items_sql = text(
                 f"SELECT p.id, p.name, p.slug, p.base_price, p.compare_at_price, "  # nosec B608
-                f"p.stock_quantity, p.reserved_quantity, p.sold_quantity, "
+                f"vs.available_stock, "
                 f"p.low_stock_threshold, p.track_inventory, p.allow_backorder, "
                 f"p.metal_type, p.is_featured "
-                f"FROM products p WHERE {fallback_sql} "
+                f"FROM products p "
+                f"LEFT JOIN LATERAL ("
+                f"    SELECT COALESCE(SUM(GREATEST(v.stock_quantity - v.reserved_quantity"
+                f"    - v.sold_quantity, 0)), 0) AS available_stock"  # mirrors compute_available_stock()
+                f"    FROM product_variants v"
+                f"    WHERE v.product_id = p.id AND v.is_active = true"
+                f") vs ON true "
+                f"WHERE {fallback_sql} "
                 f"ORDER BY p.created_at DESC OFFSET :offset LIMIT :limit"
             )
         else:
             items_sql = text(
                 f"SELECT p.id, p.name, p.slug, p.base_price, p.compare_at_price, "  # nosec B608
-                f"p.stock_quantity, p.reserved_quantity, p.sold_quantity, "
+                f"vs.available_stock, "
                 f"p.low_stock_threshold, p.track_inventory, p.allow_backorder, "
                 f"p.metal_type, p.is_featured, "
                 f"ts_rank(p.search_vector, plainto_tsquery('english', :query)) AS rank "
-                f"FROM products p WHERE {where_sql} "
+                f"FROM products p "
+                f"LEFT JOIN LATERAL ("
+                f"    SELECT COALESCE(SUM(GREATEST(v.stock_quantity - v.reserved_quantity"
+                f"    - v.sold_quantity, 0)), 0) AS available_stock"  # mirrors compute_available_stock()
+                f"    FROM product_variants v"
+                f"    WHERE v.product_id = p.id AND v.is_active = true"
+                f") vs ON true "
+                f"WHERE {where_sql} "
                 f"ORDER BY rank DESC OFFSET :offset LIMIT :limit"
             )
 
         rows = await db.execute(items_sql, params)
         items = [dict(r._mapping) for r in rows.fetchall()]
         for item in items:
-            available = max(
-                item["stock_quantity"]
-                - item["reserved_quantity"]
-                - item["sold_quantity"],
-                0,
-            )
             inventory_status, can_purchase = compute_inventory_status(
-                available,
+                item["available_stock"],
                 item["low_stock_threshold"],
                 item["track_inventory"],
                 item["allow_backorder"],

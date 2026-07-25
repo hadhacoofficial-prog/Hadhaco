@@ -17,6 +17,7 @@ target the source module, not app.modules.orders.service.ClassName.
 import hashlib
 import hmac
 import uuid
+from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -189,7 +190,10 @@ class TestCreatePaymentIntentReservation:
                         ):
                             with patch(
                                 "app.modules.orders.service._reservation_svc.lock_for_checkout",
-                                AsyncMock(),
+                                AsyncMock(
+                                    return_value=datetime.now(UTC)
+                                    + timedelta(minutes=10)
+                                ),
                             ) as mock_lock_checkout:
                                 with patch(
                                     "app.modules.orders.service._repo.generate_order_number",
@@ -503,7 +507,10 @@ class TestDuplicateOrderGuard:
                         ):
                             with patch(
                                 "app.modules.orders.service._reservation_svc.lock_for_checkout",
-                                AsyncMock(),
+                                AsyncMock(
+                                    return_value=datetime.now(UTC)
+                                    + timedelta(minutes=10)
+                                ),
                             ):
                                 with patch(
                                     "app.modules.orders.service._repo.generate_order_number",
@@ -849,7 +856,10 @@ class TestCreateFromCartCOD:
                         ) as mock_link:
                             with patch(
                                 "app.modules.orders.service._reservation_svc.lock_for_checkout",
-                                AsyncMock(),
+                                AsyncMock(
+                                    return_value=datetime.now(UTC)
+                                    + timedelta(minutes=10)
+                                ),
                             ):
                                 with patch(
                                     "app.modules.orders.service._repo.generate_order_number",

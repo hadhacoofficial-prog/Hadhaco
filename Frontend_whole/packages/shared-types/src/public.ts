@@ -135,6 +135,12 @@ export interface PublicReview {
   images: { id: string; url: string; sort_order: number }[];
 }
 
+/** Response shape from GET /reviews/products/{id} */
+export interface PublicReviewListResponse {
+  items: PublicReview[];
+  total: number;
+}
+
 /** Read-only reminder state for the product-page review banner. */
 export interface MyProductReviewStatus {
   product_id: string;
