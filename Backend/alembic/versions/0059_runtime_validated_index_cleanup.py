@@ -6,7 +6,9 @@ unused indexes confirmed by pg_stat_user_indexes (0 scans since boot).
 Changes:
   1. CREATE idx_products_description_trgm — trigram GIN on products.description
      for ILIKE '%query%' fallback when FTS returns no results.
-  2. DROP 20 unused indexes confirmed by pg_stat_user_indexes (0 cumulative scans).
+   2. DROP 17 unused standalone indexes confirmed by pg_stat_user_indexes (0 scans).
+      UNIQUE constraints (products_sku_key, reviews_product_id_user_id_key,
+      orders_order_number_key) are preserved — they enforce data integrity.
      These indexes cause unnecessary write amplification on INSERT/UPDATE/DELETE
      and consume 2.32 MB of index space.
 
@@ -50,6 +52,9 @@ def upgrade() -> None:
     # Each of these indexes had idx_scan = 0 in the cumulative pg_stat output,
     # meaning no query path has used them since the database was last restarted.
     # Removing them reduces write amplification on every INSERT/UPDATE/DELETE.
+    # UNIQUE constraints (products_sku_key, reviews_product_id_user_id_key,
+    # orders_order_number_key) are excluded — they enforce data integrity,
+    # not query performance.  They cannot be dropped with DROP INDEX.
     DROP_INDEXES = [
         # Products — redundant covering/partial indexes
         "idx_products_compare_price",
@@ -58,8 +63,6 @@ def upgrade() -> None:
         "idx_products_active_created_covering",
         "idx_products_status_deleted",
         "idx_products_featured_status_deleted",
-        # Products — duplicate unique constraint (sku_key already exists)
-        "products_sku_key",
         # Product variants — unused SKU lookup
         "idx_product_variants_sku",
         # Categories — partial active index never used
@@ -73,12 +76,10 @@ def upgrade() -> None:
         "idx_collections_name_trgm",
         "idx_collections_slug_trgm",
         # Reviews — redundant/unused indexes
-        "reviews_product_id_user_id_key",
         "idx_reviews_rating",
         "idx_reviews_is_approved",
         # Orders — unused indexes
         "idx_orders_user_id",
-        "orders_order_number_key",
         # Search history — unused query index (created_query covers this)
         "idx_search_history_query",
     ]
@@ -101,7 +102,6 @@ def downgrade() -> None:
         ),
         ("products", "idx_products_status_deleted"),
         ("products", "idx_products_featured_status_deleted"),
-        ("products", "products_sku_key"),
         ("product_variants", "idx_product_variants_sku"),
         ("categories", "idx_categories_active"),
         ("categories", "idx_categories_name_trgm"),
@@ -110,11 +110,9 @@ def downgrade() -> None:
         ("collections", "idx_collections_featured"),
         ("collections", "idx_collections_name_trgm"),
         ("collections", "idx_collections_slug_trgm"),
-        ("reviews", "reviews_product_id_user_id_key"),
         ("reviews", "idx_reviews_rating"),
         ("reviews", "idx_reviews_is_approved"),
         ("orders", "idx_orders_user_id"),
-        ("orders", "orders_order_number_key"),
         ("search_history", "idx_search_history_query"),
     ]
 

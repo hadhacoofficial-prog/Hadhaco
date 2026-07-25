@@ -1,9 +1,9 @@
-"""Alembic migration environment — synchronous psycopg driver.
+"""Alembic migration environment - synchronous psycopg driver.
 
 Connection priority:
-  1. ALEMBIC_DATABASE_URL (postgresql+psycopg://) — Supabase Direct Connection,
+  1. ALEMBIC_DATABASE_URL (postgresql+psycopg://) - Supabase Direct Connection,
      bypasses pgBouncer entirely. No prepared-statement conflicts, no pool limits.
-  2. DATABASE_URL fallback — asyncpg driver is swapped to psycopg automatically
+   2. DATABASE_URL fallback - asyncpg driver is swapped to psycopg automatically
      so the same session-pooler host can be used with the sync driver.
 
 Why psycopg (not asyncpg)?
@@ -109,6 +109,9 @@ def _conn_label() -> str:
 
 def run_migrations_offline() -> None:
     """Emit migration SQL to stdout without a live connection."""
+    import sys
+
+    sys.stdout.reconfigure(encoding="utf-8")
     url = get_migration_url()
     print(f"[alembic] Offline mode — endpoint: {_url_endpoint(url)}")
     context.configure(
@@ -131,15 +134,18 @@ def do_run_migrations(connection) -> None:  # type: ignore[no-untyped-def]
 
 
 def run_migrations_online() -> None:
+    import sys
+
+    sys.stdout.reconfigure(encoding="utf-8")
     migration_url = get_migration_url()
 
-    print("[alembic] ─────────────────────────────────────────────────────")
+    print("[alembic] -----------------------------------------------------")
     print(f"[alembic] Migration endpoint : {_url_endpoint(migration_url)}")
     print(f"[alembic] Safe URL           : {_mask_url(migration_url)}")
     print(f"[alembic] Connection type    : {_conn_label()}")
-    print("[alembic] Driver             : psycopg (sync) — no pgBouncer conflicts")
-    print("[alembic] Pool class         : NullPool — one connection, disposed on close")
-    print("[alembic] ─────────────────────────────────────────────────────")
+    print("[alembic] Driver             : psycopg (sync) - no pgBouncer conflicts")
+    print("[alembic] Pool class         : NullPool - one connection, disposed on close")
+    print("[alembic] -----------------------------------------------------")
 
     t_total = _time.monotonic()
     engine = create_engine(migration_url, poolclass=pool.NullPool)
