@@ -25,8 +25,12 @@ depends_on: str | Sequence[str] | None = None
 
 def upgrade() -> None:
     # General
-    op.add_column("company_config", sa.Column("legal_name", sa.String(255), nullable=True))
-    op.add_column("company_config", sa.Column("brand_name", sa.String(255), nullable=True))
+    op.add_column(
+        "company_config", sa.Column("legal_name", sa.String(255), nullable=True)
+    )
+    op.add_column(
+        "company_config", sa.Column("brand_name", sa.String(255), nullable=True)
+    )
     op.add_column("company_config", sa.Column("description", sa.Text(), nullable=True))
     op.add_column("company_config", sa.Column("domain", sa.String(255), nullable=True))
 
@@ -34,36 +38,62 @@ def upgrade() -> None:
     op.add_column("company_config", sa.Column("favicon_url", sa.Text(), nullable=True))
 
     # Contact
-    op.add_column("company_config", sa.Column("alternate_phone", sa.String(30), nullable=True))
+    op.add_column(
+        "company_config", sa.Column("alternate_phone", sa.String(30), nullable=True)
+    )
     op.add_column("company_config", sa.Column("whatsapp", sa.String(30), nullable=True))
-    op.add_column("company_config", sa.Column("sales_email", sa.String(255), nullable=True))
+    op.add_column(
+        "company_config", sa.Column("sales_email", sa.String(255), nullable=True)
+    )
 
     # Location
-    op.add_column("company_config", sa.Column("address_line_1", sa.String(255), nullable=True))
-    op.add_column("company_config", sa.Column("address_line_2", sa.String(255), nullable=True))
+    op.add_column(
+        "company_config", sa.Column("address_line_1", sa.String(255), nullable=True)
+    )
+    op.add_column(
+        "company_config", sa.Column("address_line_2", sa.String(255), nullable=True)
+    )
 
     # Maps
-    op.add_column("company_config", sa.Column("google_maps_url", sa.Text(), nullable=True))
+    op.add_column(
+        "company_config", sa.Column("google_maps_url", sa.Text(), nullable=True)
+    )
     op.add_column("company_config", sa.Column("latitude", sa.Float(), nullable=True))
     op.add_column("company_config", sa.Column("longitude", sa.Float(), nullable=True))
 
     # Business
     op.add_column("company_config", sa.Column("cin", sa.String(30), nullable=True))
-    op.add_column("company_config", sa.Column("business_hours", sa.String(255), nullable=True))
+    op.add_column(
+        "company_config", sa.Column("business_hours", sa.String(255), nullable=True)
+    )
 
     # Social
     op.add_column("company_config", sa.Column("youtube_url", sa.Text(), nullable=True))
-    op.add_column("company_config", sa.Column("twitter_x_url", sa.Text(), nullable=True))
+    op.add_column(
+        "company_config", sa.Column("twitter_x_url", sa.Text(), nullable=True)
+    )
     op.add_column("company_config", sa.Column("linkedin_url", sa.Text(), nullable=True))
-    op.add_column("company_config", sa.Column("pinterest_url", sa.Text(), nullable=True))
+    op.add_column(
+        "company_config", sa.Column("pinterest_url", sa.Text(), nullable=True)
+    )
 
     # SEO
-    op.add_column("company_config", sa.Column("default_meta_title", sa.String(255), nullable=True))
-    op.add_column("company_config", sa.Column("default_meta_description", sa.Text(), nullable=True))
-    op.add_column("company_config", sa.Column("organization_description", sa.Text(), nullable=True))
+    op.add_column(
+        "company_config", sa.Column("default_meta_title", sa.String(255), nullable=True)
+    )
+    op.add_column(
+        "company_config",
+        sa.Column("default_meta_description", sa.Text(), nullable=True),
+    )
+    op.add_column(
+        "company_config",
+        sa.Column("organization_description", sa.Text(), nullable=True),
+    )
 
     # Theme
-    op.add_column("company_config", sa.Column("theme_color", sa.String(10), nullable=True))
+    op.add_column(
+        "company_config", sa.Column("theme_color", sa.String(10), nullable=True)
+    )
 
 
 def downgrade() -> None:
