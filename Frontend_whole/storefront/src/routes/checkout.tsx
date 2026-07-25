@@ -237,7 +237,7 @@ function CheckoutPage() {
   // though the server may still be holding an active CHECKOUT_IN_PROGRESS
   // reservation for this exact cart. Without this, the banner/countdown
   // disappear and the button reverts to "Place Order" while the customer's
-  // stock hold (and 2-minute clock) is still very much alive server-side.
+  // stock hold (and 5-minute clock) is still very much alive server-side.
   const reservationRehydrated = useRef(false);
   useEffect(() => {
     if (reservationRehydrated.current) return;

@@ -595,8 +595,8 @@ class TestCatalogServiceWrite:
 
         db = AsyncMock()
         with patch(
-            "app.modules.catalog.service._repo.get_by_sku",
-            AsyncMock(return_value=MagicMock()),
+            "app.modules.catalog.service._repo.sku_exists",
+            AsyncMock(return_value=True),
         ):
             with pytest.raises(ConflictError):
                 await self.svc.create(db, await self._make_create_request())
@@ -607,12 +607,12 @@ class TestCatalogServiceWrite:
         db = AsyncMock()
         with (
             patch(
-                "app.modules.catalog.service._repo.get_by_sku",
-                AsyncMock(return_value=None),
+                "app.modules.catalog.service._repo.sku_exists",
+                AsyncMock(return_value=False),
             ),
             patch(
-                "app.modules.catalog.service._repo.get_by_slug",
-                AsyncMock(return_value=MagicMock()),
+                "app.modules.catalog.service._repo.slug_exists",
+                AsyncMock(return_value=True),
             ),
         ):
             with pytest.raises(ConflictError):
@@ -623,12 +623,12 @@ class TestCatalogServiceWrite:
         mock_product = MagicMock()
         with (
             patch(
-                "app.modules.catalog.service._repo.get_by_sku",
-                AsyncMock(return_value=None),
+                "app.modules.catalog.service._repo.sku_exists",
+                AsyncMock(return_value=False),
             ),
             patch(
-                "app.modules.catalog.service._repo.get_by_slug",
-                AsyncMock(return_value=None),
+                "app.modules.catalog.service._repo.slug_exists",
+                AsyncMock(return_value=False),
             ),
             patch(
                 "app.modules.catalog.service._repo.create",
@@ -678,8 +678,8 @@ class TestCatalogServiceWrite:
                 AsyncMock(return_value=mock_product),
             ),
             patch(
-                "app.modules.catalog.service._repo.get_by_slug",
-                AsyncMock(return_value=MagicMock()),
+                "app.modules.catalog.service._repo.slug_exists",
+                AsyncMock(return_value=True),
             ),
         ):
             with pytest.raises(ConflictError):

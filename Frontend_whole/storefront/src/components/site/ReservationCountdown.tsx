@@ -6,8 +6,8 @@ import { RESERVATION_TTL_S } from "@/stores/reservation";
 /**
  * Checkout grace period in seconds — the server resets the reservation's
  * expires_at to a fresh window once Razorpay opens (see
- * RESERVATION_CHECKOUT_GRACE_MINUTES), matching the 2-minute cart TTL by
- * product decision: the hold must never exceed 2 minutes, including during
+ * RESERVATION_CHECKOUT_GRACE_MINUTES), matching the 5-minute cart TTL by
+ * product decision: the hold must never exceed 5 minutes, including during
  * payment. This constant scales the cosmetic progress bar; isExpired/
  * remainingSeconds are always derived from the real expiresAt and gate
  * actual behaviour.

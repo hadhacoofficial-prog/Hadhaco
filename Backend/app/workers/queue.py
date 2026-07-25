@@ -98,7 +98,7 @@ def build_queue() -> QueueService:
     # Reservation expiry runs every 15s — must fire quickly to free stock
     # so other customers can purchase after a session timeout. Tighter than
     # the general 60s cadence because the reservation TTL itself is only
-    # 2 minutes (_RESERVATION_TTL_MINUTES); a 60s poll could sit on expired
+    # 5 minutes (_RESERVATION_TTL_MINUTES); a 60s poll could sit on expired
     # stock for up to half the hold window before releasing it.
     queue.add_interval_job(
         reservation_expiry.run, seconds=15, job_id="reservation_expiry"

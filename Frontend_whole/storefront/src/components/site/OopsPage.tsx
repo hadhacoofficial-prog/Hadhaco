@@ -243,7 +243,7 @@ export function ReservationExpiredOopsPage() {
     <OopsLayout
       illustration={<TimerIllustration />}
       title="Reservation Expired"
-      description="Your reserved items have been released because the 2-minute reservation window ended before payment was completed."
+      description="Your reserved items have been released because the 5-minute reservation window ended before payment was completed."
       actions={
         <>
           <Link

@@ -618,12 +618,12 @@ class TestCatalogServiceExtra:
         mock_resp = MagicMock()
         with (
             patch(
-                "app.modules.catalog.service._repo.get_by_sku",
-                AsyncMock(return_value=None),
+                "app.modules.catalog.service._repo.sku_exists",
+                AsyncMock(return_value=False),
             ),
             patch(
-                "app.modules.catalog.service._repo.get_by_slug",
-                AsyncMock(return_value=None),
+                "app.modules.catalog.service._repo.slug_exists",
+                AsyncMock(return_value=False),
             ),
             patch(
                 "app.modules.catalog.service._repo.create",
@@ -753,12 +753,12 @@ class TestCatalogServiceExtra:
 
         with (
             patch(
-                "app.modules.catalog.service._repo.get_by_sku",
-                AsyncMock(return_value=None),
+                "app.modules.catalog.service._repo.sku_exists",
+                AsyncMock(return_value=False),
             ),
             patch(
-                "app.modules.catalog.service._repo.get_by_slug",
-                AsyncMock(return_value=None),
+                "app.modules.catalog.service._repo.slug_exists",
+                AsyncMock(return_value=False),
             ),
             patch(
                 "app.modules.catalog.service._repo.create",
@@ -807,12 +807,12 @@ class TestCatalogServiceExtra:
 
         with (
             patch(
-                "app.modules.catalog.service._repo.get_by_sku",
-                AsyncMock(return_value=None),
+                "app.modules.catalog.service._repo.sku_exists",
+                AsyncMock(return_value=False),
             ),
             patch(
-                "app.modules.catalog.service._repo.get_by_slug",
-                AsyncMock(return_value=None),
+                "app.modules.catalog.service._repo.slug_exists",
+                AsyncMock(return_value=False),
             ),
             patch(
                 "app.modules.catalog.service._repo.create",

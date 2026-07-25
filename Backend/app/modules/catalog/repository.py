@@ -43,6 +43,24 @@ class ProductRepository:
         )
         return result.scalar_one_or_none()
 
+    async def sku_exists(self, db: AsyncSession, sku: str) -> bool:
+        """Whether `sku` is taken — across *all* rows, deleted or not.
+
+        `sku`/`slug` are globally unique at the DB level (not scoped to
+        `deleted_at IS NULL`), so a soft-deleted product still reserves its
+        sku/slug forever. Conflict pre-checks must use this instead of
+        `get_by_sku`/`get_by_slug` (which are deleted-filtered, for public
+        lookups) or a duplicate reused by a deleted row slips past the
+        check and blows up as an unhandled IntegrityError at insert time.
+        """
+        result = await db.execute(select(Product.id).where(Product.sku == sku))
+        return result.first() is not None
+
+    async def slug_exists(self, db: AsyncSession, slug: str) -> bool:
+        """Whether `slug` is taken — across *all* rows, deleted or not. See `sku_exists`."""
+        result = await db.execute(select(Product.id).where(Product.slug == slug))
+        return result.first() is not None
+
     async def get_collections_for_product(
         self, db: AsyncSession, product_id: uuid.UUID
     ) -> list:

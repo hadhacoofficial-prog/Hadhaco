@@ -225,11 +225,11 @@ class Settings(BaseSettings):
     SELLER_GSTIN: str = ""
     LOW_STOCK_THRESHOLD: int = 5
     # Grace window a reservation gets once it enters CHECKOUT_IN_PROGRESS
-    # (Razorpay order created). Reset to the same 2 minutes as the cart-hold
+    # (Razorpay order created). Reset to the same 5 minutes as the cart-hold
     # TTL in ReservationService._RESERVATION_TTL_MINUTES — product decision:
     # the customer-facing reservation must never hold stock for longer than
-    # 2 minutes, including during payment. See inventory domain plan §2.1a.
-    RESERVATION_CHECKOUT_GRACE_MINUTES: int = 2
+    # 5 minutes, including during payment. See inventory domain plan §2.1a.
+    RESERVATION_CHECKOUT_GRACE_MINUTES: int = 5
     ORDER_NUMBER_PREFIX: str = "HD"
     INVOICE_NUMBER_PREFIX: str = "INV"
 

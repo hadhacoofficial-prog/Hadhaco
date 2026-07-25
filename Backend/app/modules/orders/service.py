@@ -334,7 +334,7 @@ class OrderService:
         same product — worst exactly during flash-sale-style contention on hot
         SKUs, and risking exhaustion of the project's small connection pool.
 
-        Stock is held for exactly 2 minutes. If payment is not completed by then
+        Stock is held for exactly 5 minutes. If payment is not completed by then
         the reservation_expiry background worker releases the inventory automatically.
 
         Concurrency: a per-user advisory lock serialises concurrent checkout
@@ -542,7 +542,7 @@ class OrderService:
             # Release stock if Razorpay call fails so customer isn't locked out.
             # Committed explicitly here — get_db's generic rollback on the
             # ValidationError raised below would otherwise undo the release,
-            # leaving stock locked for the full 2-minute reservation TTL
+            # leaving stock locked for the full 5-minute reservation TTL
             # after a failed checkout the customer was told to retry.
             # reason=PAYMENT_FAILED (not RELEASED): the reservation never
             # reached CHECKOUT_IN_PROGRESS since Razorpay itself rejected the

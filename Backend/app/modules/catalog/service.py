@@ -226,9 +226,9 @@ class CatalogService:
     async def create(
         self, db: AsyncSession, payload: ProductCreateRequest
     ) -> ProductResponse:
-        if await _repo.get_by_sku(db, payload.sku):
+        if await _repo.sku_exists(db, payload.sku):
             raise ConflictError("Product with this SKU already exists")
-        if await _repo.get_by_slug(db, payload.slug):
+        if await _repo.slug_exists(db, payload.slug):
             raise ConflictError("Product with this slug already exists")
 
         variants_data = payload.variants
@@ -239,7 +239,12 @@ class CatalogService:
         if data.get("status") == "active":
             data["published_at"] = datetime.now(UTC)
 
-        product = await _repo.create(db, data)
+        try:
+            product = await _repo.create(db, data)
+        except IntegrityError as exc:
+            # Safety net for the check-then-insert race (two concurrent
+            # creates of the same sku/slug both pass the guards above).
+            raise ConflictError("Product with this SKU or slug already exists") from exc
 
         for v in variants_data:
             # Variant SKU uniqueness lives on product_variants, not products.
@@ -308,13 +313,18 @@ class CatalogService:
         new_collection_ids: list[uuid.UUID] | None = data.pop("collection_ids", None)
 
         if "slug" in data and data["slug"] != product.slug:
-            if await _repo.get_by_slug(db, data["slug"]):
+            if await _repo.slug_exists(db, data["slug"]):
                 raise ConflictError("Product with this slug already exists")
 
         if data.get("status") == "active" and product.status != "active":
             data["published_at"] = datetime.now(UTC)
 
-        updated = await _repo.update(db, product_id, data)
+        try:
+            updated = await _repo.update(db, product_id, data)
+        except IntegrityError as exc:
+            # Safety net for the check-then-update race (two concurrent
+            # edits to the same slug both pass the guard above).
+            raise ConflictError("Product with this slug already exists") from exc
 
         if new_collection_ids is not None:
             from sqlalchemy import delete as sa_delete

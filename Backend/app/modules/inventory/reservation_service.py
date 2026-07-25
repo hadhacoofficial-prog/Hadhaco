@@ -46,7 +46,7 @@ from app.modules.inventory.models import InventoryReservation, InventoryTransact
 
 log = structlog.get_logger(__name__)
 
-_RESERVATION_TTL_MINUTES = 2
+_RESERVATION_TTL_MINUTES = 5
 
 # Reservations in these statuses are "live" — they hold stock.
 # Used in every raw-SQL status filter across the inventory, cart, catalog,
@@ -613,7 +613,7 @@ class ReservationService:
         Razorpay order is accepted (i.e. the customer is now actually on the
         payment gateway, not just browsing checkout). Resets expires_at to a
         fresh RESERVATION_CHECKOUT_GRACE_MINUTES window — independent of and
-        longer than the 2-minute cart-hold TTL in _RESERVATION_TTL_MINUTES —
+        longer than the 5-minute cart-hold TTL in _RESERVATION_TTL_MINUTES —
         so the reservation_expiry worker's short-TTL sweep does not release
         stock out from under a customer who is mid-payment. See the inventory
         domain plan §2.1a for why these are two separate timers.
@@ -629,8 +629,8 @@ class ReservationService:
 
         Returns the new expires_at so the caller can hand it back to the
         frontend — without this, the checkout countdown UI has no way to
-        learn that its hold just got extended past the original 2-minute
-        cart TTL, and fires a false "reservation expired" at the 2-minute
+        learn that its hold just got extended past the original 5-minute
+        cart TTL, and fires a false "reservation expired" at the 5-minute
         mark while the server is still actually holding the stock.
         """
         expires_at = datetime.now(UTC) + timedelta(
