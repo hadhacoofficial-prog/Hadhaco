@@ -93,6 +93,72 @@ class TestFetchAvailableStock:
             await self.svc._fetch_available_stock(db, uuid.uuid4())
 
 
+# ── TestOwnActiveReservedQty ─────────────────────────────────────────────────
+
+
+class TestOwnActiveReservedQty:
+    """Direct unit tests for _own_active_reserved_qty SQL query.
+
+    Validates that both ACTIVE and CHECKOUT_IN_PROGRESS reservations are
+    counted — the latter is set by lock_for_checkout() when the Razorpay
+    modal opens. Without counting it, a retry-after-cancel falsely reports
+    "out of stock" during the cart-sync phase.
+    """
+
+    def setup_method(self):
+        from app.modules.cart.service import CartService
+
+        self.svc = CartService()
+
+    def _sum_row(self, qty: int) -> MagicMock:
+        row = MagicMock()
+        row.__getitem__ = lambda self, i: qty if i == 0 else None
+        row._mapping = {"qty": qty}
+        return row
+
+    def _exec_result(self, qty: int) -> MagicMock:
+        result = MagicMock()
+        result.scalar_one.return_value = qty
+        return result
+
+    async def test_counts_active_reservation(self):
+        db = AsyncMock()
+        db.execute = AsyncMock(return_value=self._exec_result(2))
+
+        result = await self.svc._own_active_reserved_qty(
+            db, uuid.uuid4(), uuid.uuid4(), uuid.uuid4()
+        )
+
+        assert result == 2
+        sql = db.execute.call_args[0][0].text
+        assert "ACTIVE" in sql
+        assert "CHECKOUT_IN_PROGRESS" in sql
+
+    async def test_returns_zero_when_no_reservations(self):
+        db = AsyncMock()
+        db.execute = AsyncMock(return_value=self._exec_result(0))
+
+        result = await self.svc._own_active_reserved_qty(
+            db, uuid.uuid4(), uuid.uuid4(), uuid.uuid4()
+        )
+
+        assert result == 0
+
+    async def test_includes_checkout_in_progress(self):
+        """Regression: lock_for_checkout moves ACTIVE → CHECKOUT_IN_PROGRESS.
+        The credit-back query must count both statuses so a retry after
+        Razorpay modal dismissal doesn't false-positive as out-of-stock."""
+        db = AsyncMock()
+        db.execute = AsyncMock(return_value=self._exec_result(1))
+
+        await self.svc._own_active_reserved_qty(
+            db, uuid.uuid4(), uuid.uuid4(), uuid.uuid4()
+        )
+
+        sql = db.execute.call_args[0][0].text
+        assert "CHECKOUT_IN_PROGRESS" in sql
+
+
 # ── TestAddItemStockValidation ────────────────────────────────────────────────
 
 

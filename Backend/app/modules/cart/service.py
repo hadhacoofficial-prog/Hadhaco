@@ -213,14 +213,21 @@ class CartService:
         product_id: uuid.UUID,
         variant_id: uuid.UUID | None,
     ) -> int:
-        """Quantity this customer already holds in ACTIVE (unexpired) reservations
-        for the target.
+        """Quantity this customer already holds in ACTIVE/CHECKOUT_IN_PROGRESS
+        (unexpired) reservations for the target.
 
         ``reserved_quantity`` in the availability query counts these against the
         customer, so someone holding a reservation from an abandoned/failed
         checkout would be blocked from re-adding the very item they hold.
         Checkout's ``reserve_items`` reuses that same reservation, so crediting
         it back here cannot oversell.
+
+        Both ACTIVE and CHECKOUT_IN_PROGRESS are included: the reservation
+        moves to CHECKOUT_IN_PROGRESS once the Razorpay modal opens
+        (``lock_for_checkout``), and a retry after modal dismissal must
+        still credit the customer's own held stock — otherwise the cart
+        re-add during checkout's cart-sync phase falsely reports "out of
+        stock".
         """
         params: dict[str, str] = {"uid": str(user_id), "pid": str(product_id)}
         if variant_id:
@@ -234,7 +241,8 @@ class CartService:
                 " FROM inventory_reservations"
                 " WHERE user_id = :uid AND product_id = :pid"
                 f" AND {cond}"  # nosec B608
-                " AND status = 'ACTIVE' AND expires_at > now()"
+                " AND status IN ('ACTIVE', 'CHECKOUT_IN_PROGRESS')"
+                " AND expires_at > now()"
             ),
             params,
         )
