@@ -308,9 +308,9 @@ function ProductPage() {
       },
       currentVariant?.id,
     );
-    // Optimistic: decrement stock in Zustand store (source of truth)
-    // so badges and quantity steppers update immediately across all pages.
-    useInventoryStore.getState().optimisticDecrement(product.id, currentVariant?.id ?? null, qty);
+    // The cart store's own add() already applies the optimistic stock
+    // decrement (and reverses it symmetrically on remove/qty-decrease) —
+    // doing it again here would double-decrement.
   };
 
   const handleWishlistToggle = () => {

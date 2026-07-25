@@ -18,17 +18,30 @@ interface InstagramSectionProps {
   items?: SectionItem[];
 }
 
+/** Accepts a bare handle ("hadha.silver"), an "@handle", or a full profile URL. */
+function toProfileUrl(handle: string): string {
+  const trimmed = handle.trim().replace(/^@/, "");
+  if (/^https?:\/\//i.test(trimmed)) return trimmed.replace(/\/+$/, "");
+  return `https://instagram.com/${trimmed}`;
+}
+
+function toDisplayHandle(handle: string): string {
+  const trimmed = handle.trim().replace(/^@/, "");
+  return trimmed.replace(/^https?:\/\/(www\.)?instagram\.com\//i, "").replace(/\/+$/, "");
+}
+
 export function InstagramSection({ config, items = [] }: InstagramSectionProps) {
   const c = { ...DEFAULTS, ...config };
-  const handle = c.handle.replace(/^@/, "");
-  const url = `https://instagram.com/${handle}`;
+  const handle = toDisplayHandle(c.handle);
+  const url = toProfileUrl(c.handle);
 
-  const { data: collections = [] } = useQuery({
+  const { data: rawCollections = [] } = useQuery({
     queryKey: queryKeys.collections.list,
-    queryFn: () => api.get<CollectionDto[]>("/collections").then((list) => list.map(toCollection)),
+    queryFn: () => api.get<CollectionDto[]>("/collections"),
     staleTime: 10 * 60_000,
     enabled: c.source !== "manual",
   });
+  const collections = rawCollections.map(toCollection);
 
   // Manual items mode — use CMS section items
   const manualTiles = items

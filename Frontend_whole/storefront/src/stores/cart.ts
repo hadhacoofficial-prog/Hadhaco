@@ -2,6 +2,7 @@ import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import { getBus, SyncEventType } from "@hadha/shared-api";
 import { cartLog } from "@/lib/sync/syncLog";
+import { useInventoryStore } from "@/stores/inventory";
 
 export interface CartProductSnapshot {
   name: string;
@@ -94,20 +95,40 @@ export const useCart = create<CartState>()(
           return { lines, isOpen: true };
         });
         cartLog.add(productId, qty, variantId);
+        // Optimistic: reflect the add immediately in the live stock store so
+        // badges/steppers update across every open page without waiting for
+        // a refetch. Must be reversed symmetrically in remove()/setQty()
+        // below — an unpaired decrement here previously left products
+        // permanently reading a phantom lower stock (or 0/"sold out") for
+        // anyone who added then removed an item, since nothing ever
+        // incremented it back.
+        useInventoryStore.getState().optimisticDecrement(productId, variantId ?? null, qty);
         notifyCartChange();
       },
 
       remove: (productId, variantId) => {
+        const existing = get().lines.find(
+          (l) => lineKey(l.productId, l.variantId) === lineKey(productId, variantId),
+        );
         set((s) => ({
           lines: s.lines.filter(
             (l) => lineKey(l.productId, l.variantId) !== lineKey(productId, variantId),
           ),
         }));
         cartLog.remove(productId, variantId);
+        if (existing) {
+          useInventoryStore
+            .getState()
+            .optimisticIncrement(productId, variantId ?? null, existing.qty);
+        }
         notifyCartChange();
       },
 
       setQty: (productId, qty, variantId) => {
+        const existing = get().lines.find(
+          (l) => lineKey(l.productId, l.variantId) === lineKey(productId, variantId),
+        );
+        const prevQty = existing?.qty ?? 0;
         set((s) => ({
           lines:
             qty <= 0
@@ -121,6 +142,13 @@ export const useCart = create<CartState>()(
                 ),
         }));
         cartLog.setQty(productId, qty, variantId);
+        const newQty = Math.max(qty, 0);
+        const delta = newQty - prevQty;
+        if (delta > 0) {
+          useInventoryStore.getState().optimisticDecrement(productId, variantId ?? null, delta);
+        } else if (delta < 0) {
+          useInventoryStore.getState().optimisticIncrement(productId, variantId ?? null, -delta);
+        }
         notifyCartChange();
       },
 
