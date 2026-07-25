@@ -9,6 +9,7 @@ from app.modules.inventory.models import (
     InventoryReservation,
     InventoryTransaction,
 )
+from app.modules.inventory.reservation_service import ACTIVE_OR_CHECKOUT_STATUSES
 
 
 class InventoryRepository:
@@ -149,7 +150,7 @@ class InventoryRepository:
         not kept in sync for variant-bearing products."""
         if variant_id is not None:
             result = await db.execute(
-                text("""
+                text(f"""
                     SELECT
                         p.id AS product_id,
                         v.sku,
@@ -161,18 +162,18 @@ class InventoryRepository:
                             AS available_quantity,  -- mirrors compute_available_stock()
                         (SELECT COUNT(*) FROM inventory_reservations ir
                          WHERE ir.variant_id = v.id
-                         AND ir.status IN ('ACTIVE', 'CHECKOUT_IN_PROGRESS')) AS active_reservations
+                         AND ir.status IN {ACTIVE_OR_CHECKOUT_STATUSES}) AS active_reservations
                     FROM product_variants v
                     JOIN products p ON p.id = v.product_id
                     WHERE v.id = :vid AND v.product_id = :pid AND p.deleted_at IS NULL
-                    """),
+                    """),  # nosec B608
                 {"vid": str(variant_id), "pid": str(product_id)},
             )
             row = result.fetchone()
             return dict(row._mapping) if row else None
 
         result = await db.execute(
-            text("""
+            text(f"""
                 SELECT
                     p.id AS product_id,
                     p.sku,
@@ -184,13 +185,13 @@ class InventoryRepository:
                         - v.sold_quantity, 0)), 0) AS available_quantity,  -- mirrors compute_available_stock()
                     (SELECT COUNT(*) FROM inventory_reservations ir
                      WHERE ir.product_id = p.id
-                     AND ir.status IN ('ACTIVE', 'CHECKOUT_IN_PROGRESS')) AS active_reservations
+                     AND ir.status IN {ACTIVE_OR_CHECKOUT_STATUSES}) AS active_reservations
                 FROM products p
                 LEFT JOIN product_variants v
                     ON v.product_id = p.id AND v.is_active = true
                 WHERE p.id = :pid AND p.deleted_at IS NULL
                 GROUP BY p.id, p.sku, p.name
-                """),
+                """),  # nosec B608
             {"pid": str(product_id)},
         )
         row = result.fetchone()

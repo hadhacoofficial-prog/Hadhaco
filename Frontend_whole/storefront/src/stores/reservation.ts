@@ -61,7 +61,9 @@ export interface ReservationEntry {
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
-export const RESERVATION_TTL_MS = 2 * 60 * 1000; // 2 minutes
+/** Reservation TTL in seconds — matches backend _RESERVATION_TTL_MINUTES. */
+export const RESERVATION_TTL_S = 2 * 60;
+export const RESERVATION_TTL_MS = RESERVATION_TTL_S * 1000;
 export const RESERVATION_URGENT_THRESHOLD_S = 60; // last 60s = "expiring"
 
 // ── Helpers ───────────────────────────────────────────────────────────────────

@@ -1,5 +1,5 @@
 import { Link } from "@tanstack/react-router";
-import { X, ShoppingBag, Trash2, Lock, AlertTriangle } from "lucide-react";
+import { X, ShoppingBag, Trash2, Lock, AlertTriangle, ShieldCheck, Clock } from "lucide-react";
 import { useCart } from "@/stores/cart";
 import { useBuyNowStore } from "@/stores/buyNow";
 import { useActiveReservations } from "@/hooks/useActiveReservations";
@@ -13,7 +13,17 @@ import { NavJewelleryBgMobile } from "@/components/site/NavJewelleryBgMobile";
 export function CartDrawer() {
   const { isOpen, close, lines, setQty, remove, subtotal } = useCart();
   const clearBuyNow = useBuyNowStore((s) => s.clear);
-  const { isReserved, getReservation } = useActiveReservations();
+  const { items, isReserved, getReservation } = useActiveReservations();
+  // Compute earliest reservation expiry for the summary banner
+  const earliestExpiry =
+    items.length > 0
+      ? items.reduce(
+          (min, item) => (new Date(item.expires_at) < new Date(min) ? item.expires_at : min),
+          items[0].expires_at,
+        )
+      : null;
+  const reservationCountdown = useReservationCountdown(earliestExpiry);
+  const totalReservedQty = items.reduce((sum, item) => sum + item.quantity, 0);
   // Subscribed once for all lines (not per-line, since hooks can't run
   // inside a loop) — same real-time entries the cart page and product
   // cards read, so the drawer never lets a shopper increment past stock
@@ -60,6 +70,46 @@ export function CartDrawer() {
           </div>
         ) : (
           <>
+            {/* Reservation summary banner */}
+            {items.length > 0 && !reservationCountdown.isExpired && (
+              <div
+                className={`relative z-10 mx-6 mt-4 flex items-center gap-3 px-3 py-2.5 rounded ${reservationCountdown.isUrgent ? "bg-amber-50 border border-amber-200" : "bg-blue-50 border border-blue-200"}`}
+                role="status"
+                aria-label={`${totalReservedQty} item${totalReservedQty > 1 ? "s" : ""} reserved — ${reservationCountdown.formatted} remaining`}
+              >
+                <ShieldCheck
+                  className={`size-4 shrink-0 ${reservationCountdown.isUrgent ? "text-amber-500" : "text-blue-500"}`}
+                  aria-hidden
+                />
+                <div className="flex-1 min-w-0">
+                  <p
+                    className={`text-[11px] font-medium ${reservationCountdown.isUrgent ? "text-amber-800" : "text-blue-800"}`}
+                  >
+                    {totalReservedQty} item{totalReservedQty > 1 ? "s" : ""} reserved for you
+                  </p>
+                  <p
+                    className={`text-[10px] ${reservationCountdown.isUrgent ? "text-amber-600" : "text-blue-600"}`}
+                  >
+                    Complete checkout before the timer expires
+                  </p>
+                </div>
+                <div className="shrink-0 flex items-center gap-1">
+                  <Clock
+                    className={`size-3 ${reservationCountdown.isUrgent ? "text-amber-500" : "text-blue-500"}`}
+                    aria-hidden
+                  />
+                  <span
+                    className={`font-mono font-bold text-xs tabular-nums ${reservationCountdown.isUrgent ? "text-amber-600" : "text-blue-600"}`}
+                    role="timer"
+                    aria-live="polite"
+                    aria-atomic="true"
+                  >
+                    {reservationCountdown.formatted}
+                  </span>
+                </div>
+              </div>
+            )}
+
             <div className="relative z-10 flex-1 overflow-y-auto px-6 py-4 divide-y divide-border">
               {lines.map((line) => {
                 const entry = inventoryEntries[inventoryKey(line.productId, line.variantId)];
@@ -161,6 +211,18 @@ export function CartDrawer() {
               <p className="text-[11px] text-muted-foreground uppercase tracking-[0.16em]">
                 Shipping calculated at checkout
               </p>
+              {/* Reservation expiry warning */}
+              {items.length > 0 && !reservationCountdown.isExpired && (
+                <p
+                  className={`text-[11px] flex items-center gap-1.5 ${reservationCountdown.isUrgent ? "text-amber-600" : "text-blue-600"}`}
+                >
+                  <ShieldCheck className="size-3 shrink-0" aria-hidden />
+                  Your items are reserved for{" "}
+                  <span className="font-mono font-bold tabular-nums">
+                    {reservationCountdown.formatted}
+                  </span>
+                </p>
+              )}
               <div className="grid grid-cols-2 gap-2">
                 <Link
                   to="/cart"

@@ -21,7 +21,10 @@ from app.core.events import (
 )
 from app.core.exceptions import InventoryError, NotFoundError, ValidationError
 from app.core.security import get_razorpay_client
-from app.modules.inventory.reservation_service import ReservationService
+from app.modules.inventory.reservation_service import (
+    ACTIVE_OR_CHECKOUT_STATUSES,
+    ReservationService,
+)
 from app.modules.orders.repository import OrderRepository
 from app.modules.orders.schemas import (
     CancelOrderRequest,
@@ -151,7 +154,7 @@ class OrderService:
             text(
                 "SELECT expires_at FROM inventory_reservations "
                 "WHERE order_id = :oid "
-                "AND status IN ('ACTIVE', 'CHECKOUT_IN_PROGRESS') "
+                f"AND status IN {ACTIVE_OR_CHECKOUT_STATUSES} "  # nosec B608
                 "ORDER BY expires_at DESC LIMIT 1"
             ),
             {"oid": str(order_id)},

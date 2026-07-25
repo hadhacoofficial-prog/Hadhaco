@@ -10,6 +10,7 @@ from app.modules.catalog.models import (
     ProductAttribute,
     ProductVariant,
 )
+from app.modules.inventory.reservation_service import ACTIVE_OR_CHECKOUT_STATUSES
 from app.modules.media.models import Image
 
 
@@ -510,7 +511,7 @@ class ProductRepository:
             exists_clause = (
                 "EXISTS (SELECT 1 FROM inventory_reservations r "
                 "WHERE r.variant_id = v.id "
-                "AND r.status IN ('ACTIVE', 'CHECKOUT_IN_PROGRESS'))"
+                f"AND r.status IN {ACTIVE_OR_CHECKOUT_STATUSES})"  # nosec B608
             )
             where.append(exists_clause if has_reservations else f"NOT {exists_clause}")
 

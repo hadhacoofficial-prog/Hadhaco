@@ -9,6 +9,10 @@ import { EmptyState } from "@/components/site/EmptyState";
 import { QuantityStepper } from "@/components/site/QuantityStepper";
 import { InventoryBadge } from "@/components/site/InventoryBadge";
 import { ReservationCard } from "@/components/reservation/ReservationCard";
+import {
+  ReservationCheckoutBanner,
+  PurchaseProtectedIndicator,
+} from "@/components/reservation/ReservationCheckoutBanner";
 import { useActiveReservations } from "@/hooks/useActiveReservations";
 import { useCart, cartLineKey } from "@/stores/cart";
 import { useInventoryStore, inventoryKey, toCustomerStatus } from "@/stores/inventory";
@@ -164,6 +168,9 @@ function CartPage() {
         ) : (
           <div className="grid lg:grid-cols-[1fr_380px] gap-10">
             <div>
+              {/* Cart-level reservation banner */}
+              <ReservationCheckoutBanner className="mb-4" />
+
               {/* Stock issues banner */}
               {hasStockIssues && (
                 <div
@@ -388,6 +395,8 @@ function CartPage() {
                     Proceed to Checkout
                   </Link>
                 )}
+
+                <PurchaseProtectedIndicator className="mt-3 justify-center" />
 
                 <Link
                   to="/collections"

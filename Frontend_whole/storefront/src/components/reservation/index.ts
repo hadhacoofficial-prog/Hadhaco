@@ -1,6 +1,5 @@
-export { CountdownTimer, ReservationShield } from "./CountdownTimer";
 export { ReservationBanner } from "./ReservationBanner";
-export { ReservationCard, ReservationExpiredNotice } from "./ReservationCard";
+export { ReservationCard } from "./ReservationCard";
 export {
   ReservationCheckoutBanner,
   PurchaseProtectedIndicator,

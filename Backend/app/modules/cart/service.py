@@ -12,6 +12,7 @@ from app.modules.cart.schemas import (
     CartSummary,
     UpdateCartItemRequest,
 )
+from app.modules.inventory.reservation_service import ACTIVE_OR_CHECKOUT_STATUSES
 
 _repo = CartRepository()
 
@@ -241,7 +242,7 @@ class CartService:
                 " FROM inventory_reservations"
                 " WHERE user_id = :uid AND product_id = :pid"
                 f" AND {cond}"  # nosec B608
-                " AND status IN ('ACTIVE', 'CHECKOUT_IN_PROGRESS')"
+                f" AND status IN {ACTIVE_OR_CHECKOUT_STATUSES}"  # nosec B608
                 " AND expires_at > now()"
             ),
             params,

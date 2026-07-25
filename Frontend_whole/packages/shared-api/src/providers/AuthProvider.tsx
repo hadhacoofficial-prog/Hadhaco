@@ -24,7 +24,7 @@ import {
   updatePassword,
 } from "../lib/supabase/auth";
 import { getSession } from "../lib/supabase/session";
-import { afterLogout, onSyncEvent, SyncEventType } from "../lib/sync";
+import { afterLogin, afterLogout, onSyncEvent, SyncEventType } from "../lib/sync";
 import type { AppRole } from "@hadha/shared-types";
 
 import { AuthContext, type AuthContextValue } from "./auth-context";
@@ -123,6 +123,7 @@ export function AuthProvider({ children, queryClient }: AuthProviderProps) {
           setSession(newSession);
           setRole((prev) => prev ?? metadataRole(newSession.user));
           setStatus("authenticated");
+          afterLogin();
         }
       },
       register: async (name, email, password) => {

@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
+import { RESERVATION_TTL_S, RESERVATION_URGENT_THRESHOLD_S } from "@/stores/reservation";
 
 const TICK_INTERVAL_MS = 1_000;
-const URGENT_THRESHOLD_S = 60;
 
 export interface CountdownState {
   remainingSeconds: number;
@@ -62,13 +62,12 @@ export function useReservationCountdown(
     return () => clearInterval(id);
   }, [expiresAt]);
 
-  const totalTTL = 2 * 60; // 2 minutes matching backend RESERVATION_TTL_MINUTES
   return {
     remainingSeconds: remaining,
     formatted: formatCountdown(remaining),
-    isUrgent: remaining > 0 && remaining <= URGENT_THRESHOLD_S,
+    isUrgent: remaining > 0 && remaining <= RESERVATION_URGENT_THRESHOLD_S,
     isExpired: remaining <= 0,
-    progress: Math.min(100, (remaining / totalTTL) * 100),
+    progress: Math.min(100, (remaining / RESERVATION_TTL_S) * 100),
   };
 }
 

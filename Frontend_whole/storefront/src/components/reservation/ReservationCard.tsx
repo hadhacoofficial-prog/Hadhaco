@@ -65,24 +65,3 @@ export function ReservationCard({
     </div>
   );
 }
-
-/**
- * Expiry overlay shown when a reservation expires.
- */
-export function ReservationExpiredNotice({ className = "" }: { className?: string }) {
-  return (
-    <div
-      className={`flex items-center gap-3 p-3 rounded-sm border border-amber-200 bg-amber-50/50 ${className}`}
-      role="alert"
-    >
-      <AlertTriangle className="size-4 shrink-0 text-amber-500" aria-hidden />
-      <div>
-        <p className="text-xs font-medium text-amber-800">Reservation Expired</p>
-        <p className="text-xs text-amber-600 mt-0.5">
-          Your reserved inventory has been released. Please reserve again if stock is still
-          available.
-        </p>
-      </div>
-    </div>
-  );
-}

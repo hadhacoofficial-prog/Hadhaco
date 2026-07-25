@@ -4,7 +4,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Truck, Tag, Plus, AlertTriangle, Loader2, Gift, X, Check } from "lucide-react";
 import { toast } from "sonner";
 import { getAuthRedirectUrl } from "@hadha/shared-utils";
-import { afterOrderCreated, afterReservationCreated } from "@hadha/shared-api";
+import { afterAddressChange, afterOrderCreated, afterReservationCreated } from "@hadha/shared-api";
 import { checkoutLog } from "@/lib/sync/syncLog";
 import { SiteLayout } from "@/components/site/SiteLayout";
 import { Breadcrumbs } from "@/components/site/Breadcrumbs";
@@ -23,6 +23,7 @@ import { useCart } from "@/stores/cart";
 import { useCheckoutStore } from "@/stores/checkout";
 import { useBuyNowStore } from "@/stores/buyNow";
 import { useInventoryStore, inventoryKey } from "@/stores/inventory";
+import { useReservationStore } from "@/stores/reservation";
 import { useActiveReservations } from "@/hooks/useActiveReservations";
 import { computeQuantityBounds } from "@/lib/cartQuantity";
 import { api } from "@/lib/api/client";
@@ -254,6 +255,7 @@ function CheckoutPage() {
   const createAddressMutation = useMutation({
     mutationFn: (data: AddressCreateRequest) =>
       api.post<AddressResponse>("/me/addresses", { body: data }),
+    onSuccess: () => afterAddressChange(),
   });
 
   const createPaymentMutation = useMutation({
@@ -295,6 +297,7 @@ function CheckoutPage() {
   const saveGiftMutation = useMutation({
     mutationFn: ({ orderId, gift }: { orderId: string; gift: ComplimentaryGift }) =>
       api.patch<unknown>(`/orders/${orderId}/complimentary-gift`, { body: { gift } }),
+    onSuccess: () => afterOrderCreated(),
   });
 
   const verifyPaymentMutation = useMutation({
@@ -314,6 +317,8 @@ function CheckoutPage() {
         clearCart();
       }
       resetCheckout();
+      // Stop reservation countdown and clear reservation state
+      useReservationStore.getState().markConverted();
 
       // ── Centralized sync: orders, cart, inventory, collections, CMS, search ──
       afterOrderCreated();

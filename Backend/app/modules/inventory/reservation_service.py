@@ -48,6 +48,11 @@ log = structlog.get_logger(__name__)
 
 _RESERVATION_TTL_MINUTES = 2
 
+# Reservations in these statuses are "live" — they hold stock.
+# Used in every raw-SQL status filter across the inventory, cart, catalog,
+# and orders domains.  Tuples format as ('A','B') which is valid SQL IN ().
+ACTIVE_OR_CHECKOUT_STATUSES: tuple[str, ...] = ("ACTIVE", "CHECKOUT_IN_PROGRESS")
+
 
 def _generate_reservation_number() -> str:
     suffix = uuid.uuid4().hex[:8].upper()
@@ -658,10 +663,10 @@ class ReservationService:
             text(
                 "SELECT id, product_id, variant_id, quantity "
                 "FROM inventory_reservations "
-                "WHERE order_id = :oid AND status IN ('ACTIVE', 'CHECKOUT_IN_PROGRESS') "
+                "WHERE order_id = :oid AND status IN :statuses "
                 "FOR UPDATE"
             ),
-            {"oid": str(order_id)},
+            {"oid": str(order_id), "statuses": ACTIVE_OR_CHECKOUT_STATUSES},
         )
         rows = result.fetchall()
 
@@ -882,10 +887,10 @@ class ReservationService:
             text(
                 "SELECT id, product_id, variant_id, quantity "
                 "FROM inventory_reservations "
-                "WHERE order_id = :oid AND status IN ('ACTIVE', 'CHECKOUT_IN_PROGRESS') "
+                "WHERE order_id = :oid AND status IN :statuses "
                 "FOR UPDATE"
             ),
-            {"oid": str(order_id)},
+            {"oid": str(order_id), "statuses": ACTIVE_OR_CHECKOUT_STATUSES},
         )
         rows = result.fetchall()
 
@@ -978,10 +983,11 @@ class ReservationService:
             text(
                 "SELECT id, product_id, variant_id, order_id, quantity, user_id "
                 "FROM inventory_reservations "
-                "WHERE status IN ('ACTIVE', 'CHECKOUT_IN_PROGRESS') "
+                "WHERE status IN :statuses "
                 "AND expires_at < now() "
                 "LIMIT 500"
-            )
+            ),
+            {"statuses": ACTIVE_OR_CHECKOUT_STATUSES},
         )
         candidates = result.fetchall()
         if not candidates:
@@ -1254,7 +1260,7 @@ class ReservationService:
         """
         conditions = [
             "user_id = :uid",
-            "status IN ('ACTIVE', 'CHECKOUT_IN_PROGRESS')",
+            f"status IN {ACTIVE_OR_CHECKOUT_STATUSES}",  # nosec B608
             "expires_at > now()",
         ]
         params: dict[str, Any] = {"uid": str(user_id)}

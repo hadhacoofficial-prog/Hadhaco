@@ -1,6 +1,17 @@
 import { Clock, AlertTriangle } from "lucide-react";
 import { Link } from "@tanstack/react-router";
 import { useReservationCountdown } from "@/hooks/reservation/useReservationCountdown";
+import { RESERVATION_TTL_S } from "@/stores/reservation";
+
+/**
+ * Checkout grace period in seconds — the server extends the reservation
+ * hold from the 2-minute cart TTL to a longer window once Razorpay opens
+ * (see RESERVATION_CHECKOUT_GRACE_MINUTES). This constant scales the
+ * cosmetic progress bar so it doesn't look empty right after the
+ * extension; isExpired/remainingSeconds are always derived from the
+ * real expiresAt and gate actual behaviour.
+ */
+const CHECKOUT_GRACE_TTL_S = 10 * 60;
 
 /**
  * Countdown bar shown during checkout once items are reserved. Derives
@@ -23,11 +34,9 @@ export function ReservationCountdown({
     expiresAt,
     onExpired,
   );
-  // progress is cosmetic only — scaled against a nominal 10-minute grace
-  // window so the bar doesn't look empty right after the checkout-grace
-  // extension kicks in; isExpired/remainingSeconds above are what actually
-  // gate behaviour and are always derived from the real expiresAt.
-  const pct = isExpired ? 0 : Math.min(100, (remainingSeconds / (10 * 60)) * 100);
+  // progress is cosmetic only — scaled against the checkout grace
+  // window so the bar doesn't look empty right after the extension.
+  const pct = isExpired ? 0 : Math.min(100, (remainingSeconds / CHECKOUT_GRACE_TTL_S) * 100);
 
   return (
     <div
