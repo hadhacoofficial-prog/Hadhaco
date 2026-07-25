@@ -1,0 +1,82 @@
+[
+  {
+    "name": "Q1_search_fts_multi",
+    "planning_ms": 7.619,
+    "execution_ms": 77.533,
+    "total_ms": 85.152,
+    "root_node": "Limit",
+    "has_seq_scan": false,
+    "has_index_scan": true
+  },
+  {
+    "name": "Q2_search_ilike",
+    "planning_ms": 2.566,
+    "execution_ms": 3.235,
+    "total_ms": 5.801,
+    "root_node": "Limit",
+    "has_seq_scan": true,
+    "has_index_scan": false
+  },
+  {
+    "name": "Q3_products_list",
+    "planning_ms": 0.183,
+    "execution_ms": 0.107,
+    "total_ms": 0.29,
+    "root_node": "Limit",
+    "has_seq_scan": false,
+    "has_index_scan": true
+  },
+  {
+    "name": "Q4_product_detail_slug",
+    "planning_ms": 0.15,
+    "execution_ms": 0.045,
+    "total_ms": 0.195,
+    "root_node": "Index Scan",
+    "has_seq_scan": false,
+    "has_index_scan": true
+  },
+  {
+    "name": "Q5_categories_tree",
+    "planning_ms": 0.339,
+    "execution_ms": 0.137,
+    "total_ms": 0.47600000000000003,
+    "root_node": "Sort",
+    "has_seq_scan": true,
+    "has_index_scan": false
+  },
+  {
+    "name": "Q6_collections_active",
+    "planning_ms": 0.245,
+    "execution_ms": 0.064,
+    "total_ms": 0.309,
+    "root_node": "Sort",
+    "has_seq_scan": true,
+    "has_index_scan": false
+  },
+  {
+    "name": "Q8_cart_with_variants",
+    "error": "(psycopg.errors.UndefinedColumn) column ci.product_variant_id does not exist\nLINE 6:         JOIN product_variants pv ON pv.id = ci.product_varia...\n                                                    ^\n[SQL: EXPLAIN (ANALYZE, BUFFERS, FORMAT JSON) \n        SELECT ci.id, ci.quantity, ci.unit_price,\n               pv.id AS variant_id, pv.name AS variant_name,\n               p.id AS product_id, p.name AS product_name, p.slug\n        FROM cart_items ci\n        JOIN product_variants pv ON pv.id = ci.product_variant_id\n        JOIN products p ON p.id = pv.product_id\n        WHERE ci.cart_id = '550e8400-e29b-41d4-a716-446655440000'\n          AND p.deleted_at IS NULL\n    ]\n(Background on this error at: https://sqlalche.me/e/20/f405)"
+  },
+  {
+    "name": "Q9_orders_user",
+    "error": "(psycopg.errors.UndefinedColumn) column o.total_amount does not exist\nLINE 2:         SELECT o.id, o.order_number, o.status, o.total_amoun...\n                                                       ^\nHINT:  Perhaps you meant to reference the column \"o.tax_amount\".\n[SQL: EXPLAIN (ANALYZE, BUFFERS, FORMAT JSON) \n        SELECT o.id, o.order_number, o.status, o.total_amount, o.created_at\n        FROM orders o\n        WHERE o.user_id = '550e8400-e29b-41d4-a716-446655440000'\n        ORDER BY o.created_at DESC\n        LIMIT 10 OFFSET 0\n    ]\n(Background on this error at: https://sqlalche.me/e/20/f405)"
+  },
+  {
+    "name": "Q12_products_pagination",
+    "planning_ms": 0.233,
+    "execution_ms": 0.212,
+    "total_ms": 0.445,
+    "root_node": "Limit",
+    "has_seq_scan": false,
+    "has_index_scan": true
+  },
+  {
+    "name": "Q15_search_combined",
+    "planning_ms": 1.257,
+    "execution_ms": 40.783,
+    "total_ms": 42.04,
+    "root_node": "Limit",
+    "has_seq_scan": false,
+    "has_index_scan": true
+  }
+]
