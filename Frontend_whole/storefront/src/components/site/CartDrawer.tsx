@@ -29,12 +29,17 @@ export function CartDrawer() {
   // cards read, so the drawer never lets a shopper increment past stock
   // another shopper just took.
   const inventoryEntries = useInventoryStore((s) => s.entries);
+  // availableStock already has this shopper's own reservation subtracted out
+  // of it server-side — add it back so their own held items never read as
+  // sold out / block checkout here (see cart.tsx, which has the same fix).
   const hasStockIssues = lines.some((line) => {
     const entry = inventoryEntries[inventoryKey(line.productId, line.variantId)];
     if (!entry) return false;
-    if (entry.availableStock === 0) return true;
+    const myReserved = getReservation(line.productId, line.variantId)?.quantity ?? 0;
+    const availableStock = entry.availableStock + myReserved;
+    if (availableStock === 0) return true;
     const bounds = computeQuantityBounds({
-      availableStock: entry.availableStock,
+      availableStock,
       maxOrderQty: entry.maxOrderQuantity,
       cartQty: 0,
     });
@@ -113,14 +118,17 @@ export function CartDrawer() {
             <div className="relative z-10 flex-1 overflow-y-auto px-6 py-4 divide-y divide-border">
               {lines.map((line) => {
                 const entry = inventoryEntries[inventoryKey(line.productId, line.variantId)];
-                const bounds = entry
-                  ? computeQuantityBounds({
-                      availableStock: entry.availableStock,
-                      maxOrderQty: entry.maxOrderQuantity,
-                      cartQty: 0,
-                    })
-                  : null;
-                const isSoldOut = entry !== undefined && entry.availableStock === 0;
+                const myReserved = getReservation(line.productId, line.variantId)?.quantity ?? 0;
+                const effectiveAvailable = entry ? entry.availableStock + myReserved : undefined;
+                const bounds =
+                  entry && effectiveAvailable !== undefined
+                    ? computeQuantityBounds({
+                        availableStock: effectiveAvailable,
+                        maxOrderQty: entry.maxOrderQuantity,
+                        cartQty: 0,
+                      })
+                    : null;
+                const isSoldOut = effectiveAvailable !== undefined && effectiveAvailable === 0;
                 const isOverQty = bounds !== null && line.qty > bounds.effectiveCap && !isSoldOut;
                 const stepperMax = bounds ? bounds.effectiveCap : 99;
 
@@ -172,7 +180,7 @@ export function CartDrawer() {
                       {isOverQty && (
                         <p className="mt-1 text-[10px] text-amber-700 flex items-center gap-1">
                           <AlertTriangle className="size-2.5 shrink-0" aria-hidden />
-                          Only {entry?.availableStock} available
+                          Only {effectiveAvailable} available
                         </p>
                       )}
                       <div className="mt-1 font-sans font-bold">

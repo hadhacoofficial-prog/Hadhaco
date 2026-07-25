@@ -33,7 +33,7 @@ export const Route = createFileRoute("/cart")({
 
 function CartPage() {
   const { lines, setQty, remove, subtotal } = useCart();
-  const { isReserved } = useActiveReservations();
+  const { isReserved, getReservation } = useActiveReservations();
   const [coupon, setCoupon] = useState("");
   const [discount, setDiscount] = useState(0);
   const [appliedCode, setAppliedCode] = useState<string | null>(null);
@@ -77,24 +77,33 @@ function CartPage() {
   > = {};
   lines.forEach((line, i) => {
     const key = cartLineKey(line.productId, line.variantId);
+    // availableStock already has this shopper's own reservation subtracted
+    // out of it server-side — add it back so a shopper never sees their own
+    // held items read as "sold out" / blocked from checkout on the cart page
+    // (checkout.tsx already does this; the cart page must match it).
+    const myReserved = getReservation(line.productId, line.variantId)?.quantity ?? 0;
     const entry = inventoryEntries[inventoryKey(line.productId, line.variantId)];
     if (entry) {
+      const availableStock = entry.availableStock + myReserved;
       stockMap[key] = {
-        availableStock: entry.availableStock,
+        availableStock,
         maxOrderQty: entry.maxOrderQuantity,
-        status: toCustomerStatus(entry.stockStatus),
+        status: myReserved > 0 ? toCustomerStatus("in_stock") : toCustomerStatus(entry.stockStatus),
       };
       return;
     }
     const polled = stockQueries[i]?.data;
     if (!polled) return;
     const variant = line.variantId ? polled.variants.find((v) => v.id === line.variantId) : null;
-    const availableStock = variant
-      ? (variant.available_stock ?? variant.stock_quantity)
-      : (polled.available_stock ?? polled.stock_quantity);
+    const availableStock =
+      (variant
+        ? (variant.available_stock ?? variant.stock_quantity)
+        : (polled.available_stock ?? polled.stock_quantity)) + myReserved;
     const status =
-      (variant ? variant.inventory_status : polled.inventory_status) ??
-      (availableStock === 0 ? "OUT_OF_STOCK" : "IN_STOCK");
+      myReserved > 0
+        ? "IN_STOCK"
+        : ((variant ? variant.inventory_status : polled.inventory_status) ??
+          (availableStock === 0 ? "OUT_OF_STOCK" : "IN_STOCK"));
     stockMap[key] = { availableStock, maxOrderQty: polled.max_order_quantity ?? 0, status };
   });
 

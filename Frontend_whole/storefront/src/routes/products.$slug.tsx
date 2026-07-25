@@ -204,6 +204,13 @@ function ProductPage() {
     cartQty,
   });
 
+  // hasVariants products start with no selection (currentVariant === null),
+  // which zeroes effectiveStock/bounds.canAdd exactly like a real sold-out
+  // or maxed-out cart line would — needs its own state so the button reads
+  // "Select a Variant" instead of falsely claiming "Max Qty in Cart" before
+  // the shopper has even chosen one.
+  const needsVariantSelection = hasVariants && currentVariant === null;
+
   // Clamp stepper qty whenever the allowed-remaining changes
   useEffect(() => {
     if (bounds.remainingAllowed > 0) {
@@ -626,14 +633,16 @@ function ProductPage() {
                 )}
                 <button
                   onClick={handleAddToCart}
-                  disabled={displayInStock === false || !bounds.canAdd}
+                  disabled={needsVariantSelection || displayInStock === false || !bounds.canAdd}
                   className="flex-1 bg-primary text-primary-foreground text-[11px] uppercase tracking-[0.22em] py-3.5 hover:bg-accent hover:text-accent-foreground transition disabled:opacity-50 disabled:cursor-not-allowed"
                 >
-                  {displayInStock === false
-                    ? "Out of Stock"
-                    : !bounds.canAdd
-                      ? "Max Qty in Cart"
-                      : "Add to Cart"}
+                  {needsVariantSelection
+                    ? "Select a Variant"
+                    : displayInStock === false
+                      ? "Out of Stock"
+                      : !bounds.canAdd
+                        ? "Max Qty in Cart"
+                        : "Add to Cart"}
                 </button>
                 <button
                   onClick={handleWishlistToggle}
@@ -651,7 +660,7 @@ function ProductPage() {
               )}
               <button
                 onClick={handleBuyNow}
-                disabled={displayInStock === false || !bounds.canAdd}
+                disabled={needsVariantSelection || displayInStock === false || !bounds.canAdd}
                 className="mt-3 w-full border border-foreground text-foreground text-[11px] uppercase tracking-[0.22em] py-3.5 hover:bg-foreground hover:text-background transition disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 Buy It Now

@@ -18,9 +18,10 @@ import { useInventoryStore, inventoryKey } from "@/stores/inventory";
  *   Backend/app/core/events.py) — when a product's new number is attached,
  *   it's written straight into the store at "high" confidence, so a product
  *   card / PDP / cart line reflects someone else's reservation the instant
- *   the event arrives, with no refetch round trip. Only entries already
- *   present in the store are touched (nothing to reconcile for a product no
- *   component has loaded yet).
+ *   the event arrives, with no refetch round trip. The entry is created if
+ *   it doesn't exist yet — skipping unhydrated products used to leave their
+ *   badge stuck on the "sold_out" default until the next manual fetch, which
+ *   is exactly the stale-after-expiry symptom this event exists to prevent.
  * - If an event carries productIds but no number for one of them (shouldn't
  *   happen for the events above, but kept as a safe fallback), that entry is
  *   just flagged "medium" confidence so the next fetch reconciles it.
@@ -66,12 +67,12 @@ export function listenInventoryEvents(): () => void {
     }
     const store = useInventoryStore.getState();
     for (const id of productIds) {
-      const baseKey = inventoryKey(id);
-      if (!store.entries[baseKey]) continue; // nothing loaded to reconcile
       const availableStock = availableByProduct?.[id];
       if (availableStock !== undefined) {
         store.upsert(id, { availableStock, source: "sse", confidence: "high" });
       } else {
+        const baseKey = inventoryKey(id);
+        if (!store.entries[baseKey]) continue; // no number to apply, nothing to reconcile
         store.upsert(id, { source: "sse", confidence: "medium" });
       }
     }

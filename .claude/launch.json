@@ -36,14 +36,14 @@
       "name": "storefront-verify",
       "runtimeExecutable": "C:\\Program Files\\nodejs\\node.exe",
       "runtimeArgs": [
-        "Frontend_whole/node_modules/vite/bin/vite.js",
+        "..\\node_modules\\vite\\bin\\vite.js",
         "dev",
-        "Frontend_whole/storefront",
         "--config",
-        "Frontend_whole/storefront/vite.config.ts",
+        "vite.config.testing.ts",
         "--port",
         "8090"
       ],
+      "cwd": "F:\\Work\\Hadha.co\\Project\\Frontend_whole\\storefront",
       "port": 8090
     },
     {

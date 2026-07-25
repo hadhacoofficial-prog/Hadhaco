@@ -20,10 +20,6 @@ import { useWishlist } from "@/stores/wishlist";
 import { useAuthContext } from "@/providers/auth-context";
 import { useNavigationCategories } from "@/hooks/categories/useNavigationCategories";
 import { useHomepage } from "@/hooks/cms/useHomepage";
-import {
-  ReservationHeaderBadge,
-  ReservationHeaderBadgeMini,
-} from "@/components/reservation/ReservationHeaderBadge";
 import type { NavCategoryItem, NavigationCategoriesResponse } from "@/types/public";
 import type { FooterConfig } from "@/types/cms";
 import { NavJewelleryBg } from "./NavJewelleryBg";
@@ -206,7 +202,6 @@ export function Header() {
                 </span>
               )}
             </Link>
-            <ReservationHeaderBadge className="hidden md:flex" />
             <button
               onClick={openCart}
               aria-label="Cart"
@@ -296,9 +291,6 @@ export function Header() {
               >
                 Account
               </Link>
-              <div onClick={() => setMobileOpen(false)}>
-                <ReservationHeaderBadgeMini />
-              </div>
             </div>
             <div className="relative z-10 mt-10 px-6 pb-8 pt-6 border-t border-border flex flex-col items-center gap-2 text-center">
               <img src={logoAsset} alt="Hadha" className="h-16 w-24 opacity-90" />

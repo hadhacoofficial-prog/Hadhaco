@@ -291,7 +291,27 @@ function CheckoutPage() {
   const createPaymentMutation = useMutation({
     mutationFn: async (body: CreatePaymentIntentRequest) => {
       checkoutLog.reserveStart();
-      // Sync local cart to server before reserving
+
+      // create-payment reads the server-side cart table, not the request
+      // body, so it must be synced with whatever this checkout is actually
+      // for first. In Buy-Now mode `lines` is the single buy-now item, NOT
+      // the shopper's real saved cart — wiping the server cart down to just
+      // that item (as a plain "delete then re-add `lines`" would) destroys
+      // their actual cart with no way back. Save it first and restore it
+      // once the buy-now item has done its job.
+      let savedCartItems: { product_id: string; variant_id: string | null; quantity: number }[] =
+        [];
+      if (buyNowActive) {
+        try {
+          const existing = await api.get<{
+            items: { product_id: string; variant_id: string | null; quantity: number }[];
+          }>("/cart");
+          savedCartItems = existing.items;
+        } catch {
+          // No existing cart (or fetch failed) — nothing to restore later
+        }
+      }
+
       await api.delete<void>("/cart");
       await Promise.all(
         lines.map((l) =>
@@ -300,7 +320,27 @@ function CheckoutPage() {
           }),
         ),
       );
-      return api.post<CreatePaymentIntentResponse>("/orders/create-payment", { body });
+
+      try {
+        return await api.post<CreatePaymentIntentResponse>("/orders/create-payment", { body });
+      } finally {
+        if (buyNowActive && savedCartItems.length > 0) {
+          await Promise.all(
+            savedCartItems.map((item) =>
+              api.post<void>("/cart/items", {
+                body: {
+                  product_id: item.product_id,
+                  quantity: item.quantity,
+                  variant_id: item.variant_id,
+                },
+              }),
+            ),
+          ).catch(() => {
+            // Best-effort restore — the shopper's local Zustand cart (the
+            // source of truth for what they see) is untouched either way
+          });
+        }
+      }
     },
     onSuccess: (intent) => {
       currentIntentRef.current = intent;
