@@ -17,6 +17,7 @@ import { Newsletter } from "@/components/site/Newsletter";
 import { Footer } from "@/components/site/Footer";
 import { OrnamentalDivider } from "@/components/common/OrnamentalDivider";
 import { useHomepage } from "@/hooks/cms/useHomepage";
+import { usePublicCompanyConfig } from "@/hooks/company/useCompanyConfig";
 import type {
   AnnouncementConfig,
   FooterConfig,
@@ -36,7 +37,7 @@ export const Route = createFileRoute("/")({
       {
         name: "description",
         content:
-          "Quietly luxurious sterling silver jewellery — bugadi, chains, anklets, nakshi mala and more. Handcrafted in Visakhapatnam.",
+          "Quietly luxurious sterling silver jewellery — bugadi, chains, anklets, nakshi mala and more. Handcrafted.",
       },
       { property: "og:title", content: "Hadha · Handcrafted 92.5 Silver Jewellery" },
       {

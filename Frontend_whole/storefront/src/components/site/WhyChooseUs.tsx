@@ -2,6 +2,7 @@ import { ShieldCheck, Heart, Sparkles, Gem, type LucideIcon } from "lucide-react
 import { motion } from "framer-motion";
 import { staggerContainer, staggerItem } from "@/components/common/Reveal";
 import type { SectionItem, WhyChooseCardConfig } from "@/types/cms";
+import { usePublicCompanyConfig } from "@/hooks/company/useCompanyConfig";
 
 const ICONS: Record<string, LucideIcon> = {
   shield: ShieldCheck,
@@ -10,39 +11,46 @@ const ICONS: Record<string, LucideIcon> = {
   heart: Heart,
 };
 
-const FALLBACK_CARDS: WhyChooseCardConfig[] = [
-  {
-    icon: "shield",
-    title: "92.5 Sterling Silver",
-    text: "BIS-hallmarked. Guaranteed purity in every piece we craft.",
-  },
-  {
-    icon: "gem",
-    title: "Authentic Craftsmanship",
-    text: "Hand-finished by master silversmiths in our Visakhapatnam atelier.",
-  },
-  {
-    icon: "sparkles",
-    title: "Trusted Quality",
-    text: "Anti-tarnish coating and lifetime polish on every Hadha creation.",
-  },
-  {
-    icon: "heart",
-    title: "Made With Love",
-    text: "A family heirloom in the making — gift-wrapped and delivered with care.",
-  },
-];
+function getFallbackCards(city: string, companyName: string): WhyChooseCardConfig[] {
+  return [
+    {
+      icon: "shield",
+      title: "92.5 Sterling Silver",
+      text: "BIS-hallmarked. Guaranteed purity in every piece we craft.",
+    },
+    {
+      icon: "gem",
+      title: "Authentic Craftsmanship",
+      text: `Hand-finished by master silversmiths in our ${city} atelier.`,
+    },
+    {
+      icon: "sparkles",
+      title: "Trusted Quality",
+      text: `Anti-tarnish coating and lifetime polish on every ${companyName} creation.`,
+    },
+    {
+      icon: "heart",
+      title: "Made With Love",
+      text: "A family heirloom in the making — gift-wrapped and delivered with care.",
+    },
+  ];
+}
 
 interface WhyChooseUsProps {
   items?: SectionItem[];
 }
 
 export function WhyChooseUs({ items = [] }: WhyChooseUsProps) {
+  const { data: config } = usePublicCompanyConfig();
+  const city = config?.city || "Visakhapatnam";
+  const companyName = config?.brand_name || config?.name || "Hadha";
+  const fallbackCards = getFallbackCards(city, companyName);
+
   const cmsCards = items
     .filter((i) => i.is_enabled)
     .sort((a, b) => a.sort_order - b.sort_order)
     .map((i) => i.config as unknown as WhyChooseCardConfig);
-  const cards = cmsCards.length > 0 ? cmsCards : FALLBACK_CARDS;
+  const cards = cmsCards.length > 0 ? cmsCards : fallbackCards;
   return (
     <section className="relative px-4 md:px-12 py-20 md:py-28 overflow-hidden">
       {/* Layered premium background */}

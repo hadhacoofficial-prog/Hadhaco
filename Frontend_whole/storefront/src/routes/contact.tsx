@@ -1,8 +1,9 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { createFileRoute } from "@tanstack/react-router";
 import { Mail, Phone, MapPin, MessageCircle, Clock } from "lucide-react";
 import { SiteLayout } from "@/components/site/SiteLayout";
 import { Breadcrumbs } from "@/components/site/Breadcrumbs";
+import { usePublicCompanyConfig } from "@/hooks/company/useCompanyConfig";
 
 export const Route = createFileRoute("/contact")({
   head: () => ({
@@ -10,52 +11,87 @@ export const Route = createFileRoute("/contact")({
       { title: "Contact Us · Hadha" },
       {
         name: "description",
-        content:
-          "Talk to the Hadha team — by phone, email, WhatsApp, or visit our Visakhapatnam atelier.",
+        content: "Get in touch with our team — by phone, email, WhatsApp, or visit us in person.",
       },
     ],
   }),
   component: ContactPage,
 });
 
-const CONTACT_CARDS: { icon: React.ReactNode; t: string; s: string; n: string; href?: string }[] = [
-  {
-    icon: <Phone className="size-5" />,
-    t: "Phone",
-    s: "+91 60941 15885",
-    n: "Mon–Sat, 10am–7pm",
-  },
-  {
-    icon: <Mail className="size-5" />,
-    t: "Email",
-    s: "hello@hadha.co",
-    n: "Replies within 24 hours",
-  },
-  {
-    icon: <MessageCircle className="size-5" />,
-    t: "WhatsApp",
-    s: "+91 60941 15885",
-    n: "Fastest response",
-    href: "https://wa.me/916094115885",
-  },
-  {
-    icon: <MapPin className="size-5" />,
-    t: "Atelier",
-    s: "MVP Sector 1, MVP Colony",
-    n: "Visakhapatnam 530017",
-  },
-  {
-    icon: <Clock className="size-5" />,
-    t: "Store hours",
-    s: "10:00 AM – 8:00 PM",
-    n: "Open all days",
-  },
-];
-
 function ContactPage() {
   const [sent, setSent] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
+  const { data: config } = usePublicCompanyConfig();
+
+  const contactCards = useMemo(() => {
+    if (!config) return [];
+    const cards: {
+      icon: React.ReactNode;
+      t: string;
+      s: string;
+      n: string;
+      href?: string;
+    }[] = [];
+
+    if (config.phone) {
+      cards.push({
+        icon: <Phone className="size-5" />,
+        t: "Phone",
+        s: config.phone,
+        n: config.business_hours || "Mon–Sat, 10am–7pm",
+      });
+    }
+
+    if (config.support_email) {
+      cards.push({
+        icon: <Mail className="size-5" />,
+        t: "Email",
+        s: config.support_email,
+        n: "Replies within 24 hours",
+      });
+    }
+
+    if (config.whatsapp) {
+      const digits = config.whatsapp.replace(/\D/g, "");
+      cards.push({
+        icon: <MessageCircle className="size-5" />,
+        t: "WhatsApp",
+        s: config.phone || config.whatsapp,
+        n: "Fastest response",
+        href: `https://wa.me/${digits}`,
+      });
+    }
+
+    const fullAddress = [
+      config.address_line_1,
+      config.address_line_2,
+      config.city,
+      config.state,
+      config.postal_code,
+    ]
+      .filter(Boolean)
+      .join(", ");
+    if (fullAddress) {
+      cards.push({
+        icon: <MapPin className="size-5" />,
+        t: "Atelier",
+        s: config.address_line_1 || fullAddress,
+        n: [config.city, config.postal_code].filter(Boolean).join(" "),
+      });
+    }
+
+    if (config.business_hours) {
+      cards.push({
+        icon: <Clock className="size-5" />,
+        t: "Store hours",
+        s: config.business_hours,
+        n: "Open all days",
+      });
+    }
+
+    return cards;
+  }, [config]);
 
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -166,7 +202,7 @@ function ContactPage() {
           </form>
 
           <aside className="space-y-4">
-            {CONTACT_CARDS.map((c) => {
+            {contactCards.map((c) => {
               const Wrapper = c.href ? "a" : "div";
               return (
                 <Wrapper

@@ -417,7 +417,7 @@ function ProductPage() {
 
         {/* Info */}
         <div>
-          <p className="text-[11px] uppercase tracking-[0.22em] text-amber-600">Hadha Jewellery</p>
+          <p className="text-[11px] uppercase tracking-[0.22em] text-amber-600">92.5 Silver</p>
           <h1 className="font-display text-3xl md:text-4xl mt-2 leading-tight">{product.name}</h1>
 
           <button

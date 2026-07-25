@@ -4,6 +4,7 @@ import { Breadcrumbs } from "@/components/site/Breadcrumbs";
 import { Sparkles, ShieldCheck, Heart, Award } from "lucide-react";
 import banner from "@/assets/banner.jpg";
 import hero from "@/assets/hero.jpg";
+import { usePublicCompanyConfig } from "@/hooks/company/useCompanyConfig";
 
 export const Route = createFileRoute("/about")({
   head: () => ({
@@ -12,7 +13,7 @@ export const Route = createFileRoute("/about")({
       {
         name: "description",
         content:
-          "Handcrafted 92.5 sterling silver jewellery from our Visakhapatnam atelier — designed for everyday, made to last a lifetime.",
+          "Handcrafted 92.5 sterling silver jewellery — designed for everyday, made to last a lifetime.",
       },
       { property: "og:title", content: "Our Story · Hadha" },
     ],
@@ -21,6 +22,12 @@ export const Route = createFileRoute("/about")({
 });
 
 function AboutPage() {
+  const { data: config } = usePublicCompanyConfig();
+  const companyName = config?.brand_name || config?.name || "Hadha";
+  const city = config?.city || "Visakhapatnam";
+  const country = config?.country === "IN" ? "India" : config?.country || "India";
+  const addressLine1 = config?.address_line_1 || "MVP Colony";
+
   return (
     <SiteLayout>
       <div className="px-4 md:px-8 pt-8">
@@ -32,12 +39,14 @@ function AboutPage() {
       <section className="relative h-[55vh] min-h-[420px] mt-6 overflow-hidden">
         <img
           src={banner}
-          alt="Hadha atelier"
+          alt={`${companyName} atelier`}
           className="absolute inset-0 w-full h-full object-cover"
         />
         <div className="absolute inset-0 bg-foreground/40" />
         <div className="relative h-full flex flex-col items-center justify-center text-center text-background px-4">
-          <p className="text-[11px] uppercase tracking-[0.3em]">Est. Visakhapatnam · India</p>
+          <p className="text-[11px] uppercase tracking-[0.3em]">
+            Est. {city} · {country}
+          </p>
           <h1 className="font-display text-5xl md:text-7xl mt-3">Our Story</h1>
           <p className="mt-4 max-w-xl text-sm md:text-base text-background/85">
             Honest silver, handcrafted with love — designed to be worn every day, and treasured for
@@ -50,10 +59,10 @@ function AboutPage() {
         <p className="text-[11px] uppercase tracking-[0.3em] text-accent">The Beginning</p>
         <h2 className="font-display text-3xl md:text-4xl mt-3">A Promise Cast in Silver</h2>
         <p className="mt-6 text-muted-foreground leading-relaxed">
-          Hadha was born from a simple promise — to make sterling silver jewellery that feels
-          personal, honest and timeless. Every piece is hallmarked, hand-finished and made to live
-          with you. From the temple-inspired bugadi to delicate everyday chains, our pieces are
-          designed in-house and crafted by master karigars at our atelier in Visakhapatnam.
+          {companyName} was born from a simple promise — to make sterling silver jewellery that
+          feels personal, honest and timeless. Every piece is hallmarked, hand-finished and made to
+          live with you. From the temple-inspired bugadi to delicate everyday chains, our pieces are
+          designed in-house and crafted by master karigars at our atelier in {city}.
         </p>
       </section>
 
@@ -68,12 +77,12 @@ function AboutPage() {
         <div>
           <p className="text-[11px] uppercase tracking-[0.3em] text-accent">Craft</p>
           <h2 className="font-display text-3xl md:text-4xl mt-3">
-            Made in Visakhapatnam, Made for India
+            Made in {city}, Made for {country}
           </h2>
           <p className="mt-5 text-muted-foreground leading-relaxed">
             We use only 92.5 sterling silver, BIS-hallmarked and finished with anti-tarnish coating.
             Each piece is checked by hand at every stage — from casting to polish — and presented in
-            a signature Hadha gift box.
+            a signature {companyName} gift box.
           </p>
           <div className="grid grid-cols-2 gap-4 mt-8">
             {[
@@ -87,7 +96,7 @@ function AboutPage() {
               {
                 icon: <Award className="size-5" />,
                 t: "Lifetime Buyback",
-                s: "On every Hadha piece",
+                s: `On every ${companyName} piece`,
               },
             ].map((f) => (
               <div key={f.t} className="border border-border p-4">
@@ -104,8 +113,7 @@ function AboutPage() {
         <p className="text-[11px] uppercase tracking-[0.3em] text-accent">Visit</p>
         <h2 className="font-display text-3xl md:text-4xl mt-3">Come see us in person</h2>
         <p className="mt-4 text-sm text-muted-foreground max-w-md mx-auto">
-          Step into our flagship atelier in MVP Colony, Visakhapatnam — and try on our entire
-          collection.
+          {`Step into our flagship atelier in ${addressLine1}, ${city} — and try on our entire collection.`}
         </p>
         <div className="mt-6 flex justify-center gap-3">
           <Link

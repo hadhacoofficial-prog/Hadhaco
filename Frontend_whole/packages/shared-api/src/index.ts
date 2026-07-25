@@ -77,6 +77,7 @@ export {
   useFulfillmentTimeline,
 } from "./hooks/admin/useFulfillment";
 export { useCompanyConfig, useUpdateCompanyConfig } from "./hooks/admin/useCompanyConfig";
+export { usePublicCompanyConfig } from "./hooks/company/usePublicCompanyConfig";
 export * from "./hooks/admin/useNotificationAdmin";
 export {
   useTwoFactorStatus,

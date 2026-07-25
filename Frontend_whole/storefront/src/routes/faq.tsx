@@ -1,8 +1,9 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { createFileRoute } from "@tanstack/react-router";
 import { ChevronDown } from "lucide-react";
 import { SiteLayout } from "@/components/site/SiteLayout";
 import { Breadcrumbs } from "@/components/site/Breadcrumbs";
+import { usePublicCompanyConfig } from "@/hooks/company/useCompanyConfig";
 
 export const Route = createFileRoute("/faq")({
   head: () => ({
@@ -11,81 +12,88 @@ export const Route = createFileRoute("/faq")({
       {
         name: "description",
         content:
-          "Answers to the most common questions about Hadha silver jewellery — orders, shipping, returns, care and warranty.",
+          "Answers to the most common questions about our silver jewellery — orders, shipping, returns, care and warranty.",
       },
     ],
   }),
   component: FAQPage,
 });
 
-const groups = [
-  {
-    title: "Orders & Payment",
-    items: [
-      {
-        q: "What payment methods do you accept?",
-        a: "We accept all major credit and debit cards, UPI, and net banking via Razorpay.",
-      },
-      {
-        q: "Can I modify or cancel my order?",
-        a: "You can modify or cancel your order within 2 hours of placing it by contacting us. Once dispatched, the order can no longer be cancelled.",
-      },
-    ],
-  },
-  {
-    title: "Shipping & Delivery",
-    items: [
-      {
-        q: "How long does delivery take?",
-        a: "Standard delivery takes 3–5 business days. Express delivery is available at checkout and arrives in 1–2 business days.",
-      },
-      {
-        q: "Do you ship internationally?",
-        a: "Currently we ship across India. International shipping is coming soon.",
-      },
-      {
-        q: "Is shipping free?",
-        a: "Yes — standard shipping is complimentary on all orders above ₹999.",
-      },
-    ],
-  },
-  {
-    title: "Returns & Exchange",
-    items: [
-      {
-        q: "What is your return policy?",
-        a: "Return eligibility depends on the individual product — please check the return information on each product page before ordering. Customised, engraved or pierced items are non-returnable for hygiene reasons.",
-      },
-      {
-        q: "How do I initiate a return?",
-        a: "Email hello@hadha.co with your order ID and reason. Our team will arrange a reverse pickup within 48 hours.",
-      },
-      {
-        q: "When will I receive my refund?",
-        a: "Refunds are processed within 5–7 business days after the returned item is received and quality-checked.",
-      },
-    ],
-  },
-  {
-    title: "Product & Care",
-    items: [
-      {
-        q: "Is your jewellery genuine 92.5 silver?",
-        a: "Yes, every Hadha piece is crafted in 92.5 sterling silver and BIS-hallmarked for purity.",
-      },
-      {
-        q: "How do I care for my silver?",
-        a: "Avoid contact with perfumes, lotions and water. Wipe gently with a soft dry cloth and store in the pouch provided.",
-      },
-      {
-        q: "Do you offer a warranty?",
-        a: "Yes, all Hadha pieces come with a 6-month manufacturing warranty and a lifetime buyback on the silver value.",
-      },
-    ],
-  },
-];
-
 function FAQPage() {
+  const { data: config } = usePublicCompanyConfig();
+  const companyName = config?.brand_name || config?.name || "Hadha";
+  const supportEmail = config?.support_email || "hello@hadha.co";
+
+  const groups = useMemo(
+    () => [
+      {
+        title: "Orders & Payment",
+        items: [
+          {
+            q: "What payment methods do you accept?",
+            a: "We accept all major credit and debit cards, UPI, and net banking via Razorpay.",
+          },
+          {
+            q: "Can I modify or cancel my order?",
+            a: "You can modify or cancel your order within 2 hours of placing it by contacting us. Once dispatched, the order can no longer be cancelled.",
+          },
+        ],
+      },
+      {
+        title: "Shipping & Delivery",
+        items: [
+          {
+            q: "How long does delivery take?",
+            a: "Standard delivery takes 3–5 business days. Express delivery is available at checkout and arrives in 1–2 business days.",
+          },
+          {
+            q: "Do you ship internationally?",
+            a: "Currently we ship across India. International shipping is coming soon.",
+          },
+          {
+            q: "Is shipping free?",
+            a: "Yes — standard shipping is complimentary on all orders above ₹999.",
+          },
+        ],
+      },
+      {
+        title: "Returns & Exchange",
+        items: [
+          {
+            q: "What is your return policy?",
+            a: "Return eligibility depends on the individual product — please check the return information on each product page before ordering. Customised, engraved or pierced items are non-returnable for hygiene reasons.",
+          },
+          {
+            q: "How do I initiate a return?",
+            a: `Email ${supportEmail} with your order ID and reason. Our team will arrange a reverse pickup within 48 hours.`,
+          },
+          {
+            q: "When will I receive my refund?",
+            a: "Refunds are processed within 5–7 business days after the returned item is received and quality-checked.",
+          },
+        ],
+      },
+      {
+        title: "Product & Care",
+        items: [
+          {
+            q: "Is your jewellery genuine 92.5 silver?",
+            a: `Yes, every ${companyName} piece is crafted in 92.5 sterling silver and BIS-hallmarked for purity.`,
+          },
+          {
+            q: "How do I care for my silver?",
+            a: "Avoid contact with perfumes, lotions and water. Wipe gently with a soft dry cloth and store in the pouch provided.",
+          },
+          {
+            q: "Do you offer a warranty?",
+            a: `Yes, all ${companyName} pieces come with a 6-month manufacturing warranty and a lifetime buyback on the silver value.`,
+          },
+        ],
+      },
+    ],
+    [companyName, supportEmail],
+  );
+
   return (
     <SiteLayout>
       <div className="px-4 md:px-8 py-10 max-w-3xl mx-auto">

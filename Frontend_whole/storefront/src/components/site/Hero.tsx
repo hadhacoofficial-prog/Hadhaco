@@ -21,7 +21,7 @@ const FALLBACK_SLIDES: HeroSlideConfig[] = [
     content: {
       eyebrow: "New Season · 92.5 Silver",
       headline: "Quiet luxury,\nhandcrafted for you.",
-      subheading: "Sterling silver pieces shaped by artisans in Visakhapatnam.",
+      subheading: "Sterling silver pieces shaped by skilled artisans.",
       primary_btn_text: "Shop collection",
       primary_btn_url: "/collections",
       secondary_btn_text: "Our story",

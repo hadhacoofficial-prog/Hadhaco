@@ -19,12 +19,12 @@ const FALLBACK_CARDS: WhyChooseCardConfig[] = [
   {
     icon: "gem",
     title: "Authentic Craftsmanship",
-    text: "Hand-finished by master silversmiths in our Visakhapatnam atelier.",
+    text: "Hand-finished by master silversmiths in our atelier.",
   },
   {
     icon: "sparkles",
     title: "Trusted Quality",
-    text: "Anti-tarnish coating and lifetime polish on every Hadha creation.",
+    text: "Anti-tarnish coating and lifetime polish on every creation.",
   },
   {
     icon: "heart",

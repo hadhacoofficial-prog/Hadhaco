@@ -1,7 +1,6 @@
 import { useHomepage } from "@/hooks/cms/useHomepage";
+import { usePublicCompanyConfig } from "@/hooks/company/useCompanyConfig";
 import type { FooterConfig } from "@/types/cms";
-
-const MESSAGE = "Hi Hadha, I'd like to know more about your silver jewellery.";
 
 /**
  * Accepts either a raw phone number (with or without country code / punctuation)
@@ -24,12 +23,15 @@ function buildWhatsAppUrl(rawNumber: string, message: string): string {
 
 export function WhatsAppFab() {
   const { data: homepage } = useHomepage();
+  const { data: config } = usePublicCompanyConfig();
   const footerConfig = homepage?.sections["footer"]?.config as Partial<FooterConfig> | undefined;
-  const whatsappNumber = footerConfig?.whatsapp?.trim();
+  const whatsappNumber = footerConfig?.whatsapp?.trim() ?? config?.whatsapp?.trim();
 
   if (!whatsappNumber) return null;
 
-  const href = buildWhatsAppUrl(whatsappNumber, MESSAGE);
+  const companyName = config?.brand_name || config?.name || "Hadha";
+  const message = `Hi ${companyName}, I'd like to know more about your silver jewellery.`;
+  const href = buildWhatsAppUrl(whatsappNumber, message);
 
   return (
     <a

@@ -3,7 +3,7 @@ import type { AnnouncementConfig, AnnouncementItemConfig, SectionItem } from "@/
 const FALLBACK_MESSAGES = [
   "Certified 92.5 Sterling Silver",
   "Return eligibility depends on the individual product",
-  "Handcrafted in Visakhapatnam",
+  "Handcrafted with care",
 ];
 
 interface AnnouncementBarProps {

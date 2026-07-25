@@ -22,6 +22,7 @@ import { WhatsAppFab } from "../components/common/WhatsAppFab";
 import { MobileBottomNav } from "../components/common/MobileBottomNav";
 import { SearchOverlay } from "../components/common/SearchOverlay";
 import { WelcomeOfferModal } from "../components/common/WelcomeOfferModal";
+import { CompanyMeta } from "../components/common/CompanyMeta";
 import { Toaster } from "../components/ui/sonner";
 import { PageLoader } from "../components/common/PageLoader";
 import { useProfile } from "../hooks/auth/useProfile";
@@ -101,7 +102,7 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
     meta: [
       { charSet: "utf-8" },
       { name: "viewport", content: "width=device-width, initial-scale=1" },
-      { title: "Hadha Silver Jewellery | 92.5 Silver Jewellery Collections" },
+      { title: "Hadha Silver Jewellery" },
       {
         name: "description",
         content:
@@ -110,7 +111,7 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
       { name: "author", content: "Hadha Silver Jewellery" },
       { name: "theme-color", content: "#A8C8E8" },
       { property: "og:site_name", content: "Hadha Silver Jewellery" },
-      { property: "og:title", content: "Hadha Silver Jewellery | 92.5 Silver Jewellery" },
+      { property: "og:title", content: "Hadha Silver Jewellery" },
       {
         property: "og:description",
         content: "Premium 92.5 Silver Jewellery — handcrafted, traditional, timeless.",
@@ -185,6 +186,7 @@ function AppContent() {
   return (
     <>
       <GlobalJewelleryBackground />
+      <CompanyMeta />
       <ProfileSyncer />
       <AuthCleanup />
       <CrossTabSync />

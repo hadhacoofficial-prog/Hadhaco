@@ -7,21 +7,61 @@ import type {
 
 // ── Company config ───────────────────────────────────────────────────────────
 export interface CompanyConfig {
+  // General
   name: string;
+  legal_name: string | null;
+  brand_name: string | null;
   tagline: string | null;
-  gstin: string | null;
+  description: string | null;
+  website: string | null;
+  domain: string | null;
+
+  // Logos
+  logo_url: string | null;
+  favicon_url: string | null;
+  packing_slip_logo_url: string | null;
+  shipping_label_logo_url: string | null;
+
+  // Contact
+  phone: string | null;
+  alternate_phone: string | null;
+  whatsapp: string | null;
+  support_email: string | null;
+  sales_email: string | null;
+
+  // Location
+  address_line_1: string | null;
+  address_line_2: string | null;
   city: string | null;
   state: string | null;
   postal_code: string | null;
   country: string;
-  phone: string | null;
-  support_email: string | null;
-  website: string | null;
-  logo_url: string | null;
-  packing_slip_logo_url: string | null;
-  shipping_label_logo_url: string | null;
+
+  // Maps
+  google_maps_url: string | null;
+  latitude: number | null;
+  longitude: number | null;
+
+  // Business
+  gstin: string | null;
+  cin: string | null;
+  business_hours: string | null;
+
+  // Social
   instagram_url: string | null;
   facebook_url: string | null;
+  youtube_url: string | null;
+  twitter_x_url: string | null;
+  linkedin_url: string | null;
+  pinterest_url: string | null;
+
+  // SEO
+  default_meta_title: string | null;
+  default_meta_description: string | null;
+  organization_description: string | null;
+
+  // Theme
+  theme_color: string | null;
 }
 
 export type CompanyConfigUpdate = Partial<CompanyConfig>;

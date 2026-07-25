@@ -108,6 +108,10 @@ export const queryKeys = {
     page: (slug: string) => ["cms", "page", slug] as const,
   },
 
+  company: {
+    config: ["company", "config"] as const,
+  },
+
   seo: {
     page: (path: string) => ["seo", "page", path] as const,
   },

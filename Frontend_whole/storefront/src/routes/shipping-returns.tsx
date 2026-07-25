@@ -2,6 +2,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { Truck, RefreshCw, ShieldCheck, Package } from "lucide-react";
 import { SiteLayout } from "@/components/site/SiteLayout";
 import { Breadcrumbs } from "@/components/site/Breadcrumbs";
+import { usePublicCompanyConfig } from "@/hooks/company/useCompanyConfig";
 
 export const Route = createFileRoute("/shipping-returns")({
   head: () => ({
@@ -9,7 +10,7 @@ export const Route = createFileRoute("/shipping-returns")({
       { title: "Shipping & Returns · Hadha" },
       {
         name: "description",
-        content: "Shipping, returns and buyback policies for Hadha Silver Jewellery.",
+        content: "Shipping, returns and buyback policies.",
       },
     ],
   }),
@@ -17,6 +18,10 @@ export const Route = createFileRoute("/shipping-returns")({
 });
 
 function Page() {
+  const { data: config } = usePublicCompanyConfig();
+  const companyName = config?.brand_name || config?.name || "Hadha Silver Jewellery";
+  const supportEmail = config?.support_email || "hello@hadha.co";
+
   return (
     <SiteLayout>
       <div className="px-4 md:px-8 py-10 max-w-4xl mx-auto">
@@ -59,8 +64,8 @@ function Page() {
               this threshold for standard delivery; express delivery is ₹199 nationwide.
             </P>
             <P>
-              Every Hadha order is shipped in tamper-proof, insured packaging with end-to-end
-              tracking. You'll receive shipping updates by email and SMS.
+              Every order is shipped in tamper-proof, insured packaging with end-to-end tracking.
+              You'll receive shipping updates by email and SMS.
             </P>
           </Section>
 
@@ -73,8 +78,8 @@ function Page() {
             </P>
             <P>
               For eligible items, email{" "}
-              <a className="text-accent underline" href="mailto:hello@hadha.co">
-                hello@hadha.co
+              <a className="text-accent underline" href={`mailto:${supportEmail}`}>
+                {supportEmail}
               </a>{" "}
               with your order ID and our team will arrange a reverse pickup. Refunds are processed
               within 5–7 business days after the returned item passes quality check.
@@ -91,9 +96,8 @@ function Page() {
 
           <Section title="Lifetime Buyback">
             <P>
-              Every Hadha piece is eligible for lifetime buyback at the prevailing silver rate,
-              minus making charges. Bring your original invoice to our atelier or contact us by
-              email.
+              Every piece is eligible for lifetime buyback at the prevailing silver rate, minus
+              making charges. Bring your original invoice to our atelier or contact us by email.
             </P>
           </Section>
         </article>
