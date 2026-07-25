@@ -34,6 +34,9 @@ vi.mock("lucide-react", () => ({
   MapPin: () => null,
   FileText: () => null,
   Tag: () => null,
+  Share2: () => null,
+  Search: () => null,
+  Palette: () => null,
 }));
 
 // Import after mocks
@@ -43,20 +46,42 @@ const AdminTemplates = (Route as unknown as { options: { component: React.Compon
 
 const mockConfig = {
   name: "Hadha Jewellery",
+  legal_name: "Hadha Silver Jewellery Pvt. Ltd.",
+  brand_name: "Hadha",
   tagline: "The strong Decision",
+  description: "Premium handcrafted 92.5 sterling silver jewellery.",
+  website: "https://hadha.co",
+  domain: "hadha.co",
   gstin: "22AAA0000A1Z5",
+  cin: null,
   city: "Hyderabad",
   state: "Telangana",
   postal_code: "500033",
   country: "IN",
+  address_line_1: "MVP Sector 1",
+  address_line_2: null,
+  google_maps_url: null,
   phone: "+91 98765 43210",
+  alternate_phone: null,
+  whatsapp: null,
   support_email: "info@hadha.com",
-  website: "www.hadha.com",
+  sales_email: null,
+  business_hours: null,
+  website_url: "www.hadha.com",
   logo_url: null,
+  favicon_url: null,
   packing_slip_logo_url: null,
   shipping_label_logo_url: null,
   instagram_url: null,
   facebook_url: null,
+  youtube_url: null,
+  twitter_x_url: null,
+  linkedin_url: null,
+  pinterest_url: null,
+  default_meta_title: null,
+  default_meta_description: null,
+  organization_description: null,
+  theme_color: null,
 };
 
 beforeEach(() => {
@@ -74,14 +99,14 @@ describe("AdminTemplates — loading state", () => {
     render(<AdminTemplates />);
     const skeleton = document.querySelector(".animate-pulse");
     expect(skeleton).not.toBeNull();
-    expect(screen.queryByRole("heading", { name: /template settings/i })).toBeNull();
+    expect(screen.queryByRole("heading", { name: /company settings/i })).toBeNull();
   });
 });
 
 describe("AdminTemplates — rendered structure", () => {
-  it("renders page heading 'Template Settings'", () => {
+  it("renders page heading 'Company Settings'", () => {
     render(<AdminTemplates />);
-    expect(screen.getByRole("heading", { name: /template settings/i })).toBeTruthy();
+    expect(screen.getByRole("heading", { name: /company settings/i })).toBeTruthy();
   });
 
   it("renders Save Changes button", () => {
@@ -96,27 +121,37 @@ describe("AdminTemplates — rendered structure", () => {
 
   it("renders Address section", () => {
     render(<AdminTemplates />);
-    expect(screen.getByText(/^address$/i)).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "Address" })).toBeTruthy();
   });
 
   it("renders Contact section", () => {
     render(<AdminTemplates />);
-    expect(screen.getByText(/^contact$/i)).toBeTruthy();
+    expect(screen.getByText(/contact/i)).toBeTruthy();
   });
 
-  it("renders Document Templates info section", () => {
+  it("renders Social Media section", () => {
     render(<AdminTemplates />);
-    expect(screen.getByText(/document templates/i)).toBeTruthy();
+    expect(screen.getByText(/social media/i)).toBeTruthy();
+  });
+
+  it("renders SEO & Meta section", () => {
+    render(<AdminTemplates />);
+    expect(screen.getByText(/seo & meta/i)).toBeTruthy();
+  });
+
+  it("renders Business & Compliance section", () => {
+    render(<AdminTemplates />);
+    expect(screen.getByText(/business & compliance/i)).toBeTruthy();
   });
 
   it("renders Company Name input", () => {
     render(<AdminTemplates />);
-    expect(screen.getByPlaceholderText(/hadha jewellery/i)).toBeTruthy();
+    expect(screen.getByPlaceholderText("Hadha Silver Jewellery")).toBeTruthy();
   });
 
   it("renders Tagline input", () => {
     render(<AdminTemplates />);
-    expect(screen.getByPlaceholderText(/strong decision/i)).toBeTruthy();
+    expect(screen.getByPlaceholderText("Handcrafted 92.5 Silver Jewellery")).toBeTruthy();
   });
 });
 
@@ -150,7 +185,7 @@ describe("AdminTemplates — Save Changes", () => {
 
   it("Save button enables after user types in a field", () => {
     render(<AdminTemplates />);
-    const nameInput = screen.getByPlaceholderText(/hadha jewellery/i);
+    const nameInput = screen.getByPlaceholderText("Hadha Silver Jewellery");
     fireEvent.change(nameInput, { target: { value: "New Name" } });
     const buttons = screen.getAllByRole("button", { name: /save changes/i });
     buttons.forEach((btn) => expect(btn).not.toBeDisabled());
@@ -159,7 +194,7 @@ describe("AdminTemplates — Save Changes", () => {
   it("calls mutateAsync when save clicked", async () => {
     mockMutateAsync.mockResolvedValue({});
     render(<AdminTemplates />);
-    const nameInput = screen.getByPlaceholderText(/hadha jewellery/i);
+    const nameInput = screen.getByPlaceholderText("Hadha Silver Jewellery");
     fireEvent.change(nameInput, { target: { value: "New Name" } });
     const buttons = screen.getAllByRole("button", { name: /save changes/i });
     fireEvent.click(buttons[0]);
@@ -169,7 +204,7 @@ describe("AdminTemplates — Save Changes", () => {
   it("shows success toast on successful save", async () => {
     mockMutateAsync.mockResolvedValue({});
     render(<AdminTemplates />);
-    const nameInput = screen.getByPlaceholderText(/hadha jewellery/i);
+    const nameInput = screen.getByPlaceholderText("Hadha Silver Jewellery");
     fireEvent.change(nameInput, { target: { value: "New Name" } });
     const buttons = screen.getAllByRole("button", { name: /save changes/i });
     fireEvent.click(buttons[0]);
@@ -179,7 +214,7 @@ describe("AdminTemplates — Save Changes", () => {
   it("shows error toast when save fails", async () => {
     mockMutateAsync.mockRejectedValue(new Error("Network error"));
     render(<AdminTemplates />);
-    const nameInput = screen.getByPlaceholderText(/hadha jewellery/i);
+    const nameInput = screen.getByPlaceholderText("Hadha Silver Jewellery");
     fireEvent.change(nameInput, { target: { value: "New Name" } });
     const buttons = screen.getAllByRole("button", { name: /save changes/i });
     fireEvent.click(buttons[0]);
@@ -203,7 +238,7 @@ describe("AdminTemplates — null config fields become empty strings", () => {
       isLoading: false,
     });
     render(<AdminTemplates />);
-    const taglineInput = screen.getByPlaceholderText(/strong decision/i);
+    const taglineInput = screen.getByPlaceholderText("Handcrafted 92.5 Silver Jewellery");
     expect((taglineInput as HTMLInputElement).value).toBe("");
   });
 
@@ -211,8 +246,7 @@ describe("AdminTemplates — null config fields become empty strings", () => {
     mockMutateAsync.mockResolvedValue({});
     mockUseCompanyConfig.mockReturnValue({ data: mockConfig, isLoading: false });
     render(<AdminTemplates />);
-    // Clear the tagline field to an empty string
-    const taglineInput = screen.getByPlaceholderText(/strong decision/i);
+    const taglineInput = screen.getByPlaceholderText("Handcrafted 92.5 Silver Jewellery");
     fireEvent.change(taglineInput, { target: { value: "" } });
     const buttons = screen.getAllByRole("button", { name: /save changes/i });
     fireEvent.click(buttons[0]);

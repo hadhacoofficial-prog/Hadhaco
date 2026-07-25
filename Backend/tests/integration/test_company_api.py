@@ -15,20 +15,43 @@ import pytest_asyncio
 def _make_company_mock(**overrides):
     c = MagicMock()
     c.name = "Hadha Jewellery"
+    c.legal_name = None
+    c.brand_name = None
     c.tagline = "Timeless Beauty, Trusted Quality"
-    c.gstin = None
+    c.description = None
+    c.website = "www.hadha.com"
+    c.domain = None
+    c.logo_url = None
+    c.favicon_url = None
+    c.packing_slip_logo_url = None
+    c.shipping_label_logo_url = None
+    c.phone = "+91 98765 43210"
+    c.alternate_phone = None
+    c.whatsapp = None
+    c.support_email = "info@hadha.com"
+    c.sales_email = None
+    c.address_line_1 = None
+    c.address_line_2 = None
     c.city = "Hyderabad"
     c.state = "Telangana"
     c.postal_code = "500033"
     c.country = "IN"
-    c.phone = "+91 98765 43210"
-    c.support_email = "info@hadha.com"
-    c.website = "www.hadha.com"
-    c.logo_url = None
-    c.packing_slip_logo_url = None
-    c.shipping_label_logo_url = None
+    c.google_maps_url = None
+    c.latitude = None
+    c.longitude = None
+    c.gstin = None
+    c.cin = None
+    c.business_hours = None
     c.instagram_url = None
     c.facebook_url = None
+    c.youtube_url = None
+    c.twitter_x_url = None
+    c.linkedin_url = None
+    c.pinterest_url = None
+    c.default_meta_title = None
+    c.default_meta_description = None
+    c.organization_description = None
+    c.theme_color = None
     for k, v in overrides.items():
         setattr(c, k, v)
     return c
