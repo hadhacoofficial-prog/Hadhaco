@@ -4,23 +4,20 @@ import { useReservationCountdown } from "@/hooks/reservation/useReservationCount
 import { RESERVATION_TTL_S } from "@/stores/reservation";
 
 /**
- * Checkout grace period in seconds — the server extends the reservation
- * hold from the 2-minute cart TTL to a longer window once Razorpay opens
- * (see RESERVATION_CHECKOUT_GRACE_MINUTES). This constant scales the
- * cosmetic progress bar so it doesn't look empty right after the
- * extension; isExpired/remainingSeconds are always derived from the
- * real expiresAt and gate actual behaviour.
+ * Checkout grace period in seconds — the server resets the reservation's
+ * expires_at to a fresh window once Razorpay opens (see
+ * RESERVATION_CHECKOUT_GRACE_MINUTES), matching the 2-minute cart TTL by
+ * product decision: the hold must never exceed 2 minutes, including during
+ * payment. This constant scales the cosmetic progress bar; isExpired/
+ * remainingSeconds are always derived from the real expiresAt and gate
+ * actual behaviour.
  */
-const CHECKOUT_GRACE_TTL_S = 10 * 60;
+const CHECKOUT_GRACE_TTL_S = 2 * 60;
 
 /**
  * Countdown bar shown during checkout once items are reserved. Derives
  * remaining time from the server's actual `expiresAt` deadline (ISO 8601) —
- * never a client-guessed fixed window, since the server silently extends
- * the hold from the 2-minute cart TTL to a longer checkout grace period
- * once Razorpay opens (see RESERVATION_CHECKOUT_GRACE_MINUTES). A fixed
- * client-side timer would fire a false "expired" state mid-payment while
- * the server is still holding the stock. `onExpired` fires once when the
+ * never a client-guessed fixed window. `onExpired` fires once when the
  * real deadline passes.
  */
 export function ReservationCountdown({

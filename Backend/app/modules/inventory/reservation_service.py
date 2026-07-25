@@ -663,10 +663,10 @@ class ReservationService:
             text(
                 "SELECT id, product_id, variant_id, quantity "
                 "FROM inventory_reservations "
-                "WHERE order_id = :oid AND status IN :statuses "
+                f"WHERE order_id = :oid AND status IN {ACTIVE_OR_CHECKOUT_STATUSES} "  # nosec B608
                 "FOR UPDATE"
             ),
-            {"oid": str(order_id), "statuses": ACTIVE_OR_CHECKOUT_STATUSES},
+            {"oid": str(order_id)},
         )
         rows = result.fetchall()
 
@@ -887,10 +887,10 @@ class ReservationService:
             text(
                 "SELECT id, product_id, variant_id, quantity "
                 "FROM inventory_reservations "
-                "WHERE order_id = :oid AND status IN :statuses "
+                f"WHERE order_id = :oid AND status IN {ACTIVE_OR_CHECKOUT_STATUSES} "  # nosec B608
                 "FOR UPDATE"
             ),
-            {"oid": str(order_id), "statuses": ACTIVE_OR_CHECKOUT_STATUSES},
+            {"oid": str(order_id)},
         )
         rows = result.fetchall()
 
@@ -983,11 +983,10 @@ class ReservationService:
             text(
                 "SELECT id, product_id, variant_id, order_id, quantity, user_id "
                 "FROM inventory_reservations "
-                "WHERE status IN :statuses "
+                f"WHERE status IN {ACTIVE_OR_CHECKOUT_STATUSES} "  # nosec B608
                 "AND expires_at < now() "
                 "LIMIT 500"
             ),
-            {"statuses": ACTIVE_OR_CHECKOUT_STATUSES},
         )
         candidates = result.fetchall()
         if not candidates:

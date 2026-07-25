@@ -102,7 +102,7 @@ function CheckoutPage() {
   // must be added back per line before comparing against cart quantity —
   // otherwise a shopper's own reservation reads as "stock has changed" for
   // the very cart it's holding stock for.
-  const { getReservation } = useActiveReservations();
+  const { items: activeReservationItems, getReservation } = useActiveReservations();
 
   // Live stock check, reactive to the SSE-updated store — surfaces a
   // shopper's stock changing *while they're filling in the form*, not only
@@ -228,6 +228,36 @@ function CheckoutPage() {
     // Only run on mount — eslint-disable is intentional
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Rehydrate the checkout UI after a hard refresh (or a fresh /checkout
+  // mount after the Razorpay modal orphaned the local Zustand state — e.g.
+  // its script failed to load). checkoutStep/reservationExpiresAt are
+  // intentionally NOT persisted to localStorage (see the unmount-cleanup
+  // effect below), so on a real reload they always start at "idle" even
+  // though the server may still be holding an active CHECKOUT_IN_PROGRESS
+  // reservation for this exact cart. Without this, the banner/countdown
+  // disappear and the button reverts to "Place Order" while the customer's
+  // stock hold (and 2-minute clock) is still very much alive server-side.
+  const reservationRehydrated = useRef(false);
+  useEffect(() => {
+    if (reservationRehydrated.current) return;
+    if (checkoutState !== "idle") return;
+    if (lines.length === 0 || activeReservationItems.length === 0) return;
+    // Match by product only, not variant — cart lines don't always carry a
+    // variantId locally (e.g. single-variant products), while the server's
+    // reservation always has a concrete variant_id. Product-level matching
+    // is the right granularity here: this only decides whether to show the
+    // "resume payment" UI, and requestIntentAndOpen/the backend's
+    // duplicate-order guard remain the actual source of truth for reuse.
+    const allLinesReserved = lines.every((line) =>
+      activeReservationItems.some((item) => item.product_id === line.productId),
+    );
+    if (!allLinesReserved) return;
+    reservationRehydrated.current = true;
+    const earliestExpiry = activeReservationItems.map((i) => i.expires_at).sort()[0];
+    setReservationExpiresAt(earliestExpiry);
+    setCheckoutState("payment_open");
+  }, [activeReservationItems, checkoutState, lines, setCheckoutState, setReservationExpiresAt]);
 
   const ship =
     lines.length === 0
@@ -491,6 +521,15 @@ function CheckoutPage() {
       }
     }
 
+    await requestIntentAndOpen(shippingAddressId);
+  };
+
+  // Shared by the first "Place Order" click and by resuming payment after a
+  // refresh (currentIntentRef is empty then, so there's no in-memory intent
+  // to reopen). Safe to call again for the same cart — the backend's
+  // duplicate-order guard in create_payment_intent returns the *same*
+  // razorpay_order_id instead of reserving stock a second time.
+  const requestIntentAndOpen = async (shippingAddressId: string) => {
     const intentBody: CreatePaymentIntentRequest = {
       shipping_address_id: shippingAddressId,
       coupon_code: appliedCoupon?.code || undefined,
@@ -520,7 +559,18 @@ function CheckoutPage() {
   // Retry payment with the same intent (reservation still alive)
   const retryPayment = async () => {
     const intent = currentIntentRef.current;
-    if (!intent) return;
+    if (!intent) {
+      // No in-memory intent — the page was refreshed after a server-side
+      // reservation was already restored (see the rehydration effect below).
+      // Re-request the intent; the backend returns the existing order/
+      // razorpay_order_id rather than creating a duplicate reservation.
+      if (selectedAddressId && selectedAddressId !== "new") {
+        await requestIntentAndOpen(selectedAddressId);
+      } else {
+        toast.error("Select a delivery address to resume payment.");
+      }
+      return;
+    }
     isVerifyingRef.current = false;
     try {
       await loadRazorpayScript();
