@@ -534,7 +534,7 @@ function ProductPage() {
                       disabled={outOfStock}
                       aria-pressed={isSelected}
                       aria-label={`${v.name}${outOfStock ? " — sold out" : vStatus === "LOW_STOCK" ? " — low stock" : ""}`}
-                      className={`relative px-3.5 py-2 text-xs border transition-all ${
+                      className={`px-3.5 py-2 text-xs border transition-all ${
                         isSelected
                           ? "bg-foreground text-background border-foreground"
                           : outOfStock
@@ -552,20 +552,28 @@ function ProductPage() {
                             : `−${formatINR(Math.abs(v.price_adjustment))}`}
                         </span>
                       )}
-                      {outOfStock && (
-                        <span className="absolute -top-2 left-1/2 -translate-x-1/2 text-[9px] uppercase tracking-wide text-destructive">
-                          sold out
-                        </span>
-                      )}
-                      {!outOfStock && vStatus === "LOW_STOCK" && (
-                        <span className="absolute -top-2 left-1/2 -translate-x-1/2 text-[9px] uppercase tracking-wide text-amber-600">
-                          Low Stock
-                        </span>
-                      )}
                     </button>
                   );
                 })}
               </div>
+              {currentVariant && variantStatus === "LOW_STOCK" && (
+                <span
+                  className="mt-2 inline-flex items-center gap-1 rounded-full text-[12px] leading-none px-2.5 py-1"
+                  style={{ backgroundColor: "#FFF7ED", color: "#EA580C" }}
+                  aria-live="polite"
+                >
+                  Low Stock
+                </span>
+              )}
+              {currentVariant && variantStatus === "OUT_OF_STOCK" && (
+                <span
+                  className="mt-2 inline-flex items-center gap-1 rounded-full text-[12px] leading-none px-2.5 py-1"
+                  style={{ backgroundColor: "#FEE2E2", color: "#DC2626" }}
+                  aria-live="polite"
+                >
+                  Out of Stock
+                </span>
+              )}
               {variantError && (
                 <p className="mt-2 text-xs text-destructive" role="alert">
                   Please select a variant to continue.
