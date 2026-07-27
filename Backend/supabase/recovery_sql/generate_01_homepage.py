@@ -208,7 +208,7 @@ def main() -> None:
         + ", ".join(sql_str(entry["section_key"]) for entry in layout)
         + ");"
     )
-    lines.append(f"    IF section_count <> 16 THEN")
+    lines.append("    IF section_count <> 16 THEN")
     lines.append(
         "        RAISE EXCEPTION 'homepage restore validation failed: expected 16 landing_sections rows, found %', section_count;"
     )
