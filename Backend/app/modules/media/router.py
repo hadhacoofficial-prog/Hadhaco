@@ -1,6 +1,8 @@
+import time
 import uuid
 
 import redis.asyncio as aioredis
+import structlog
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -29,6 +31,7 @@ from app.modules.media.validation import ImageValidationError
 router = APIRouter()
 _universal = UniversalImageService()
 _image_repo = ImageRepository()
+_perflog = structlog.get_logger("perf.media")
 
 
 # ─────────────────────────────────────────────────────────────
@@ -52,14 +55,13 @@ async def _bust_cache_for(owner_type: OwnerType, redis: aioredis.Redis) -> None:
     otherwise invalidates — a crop/replace/set-primary/upload/delete here
     used to leave that cache serving a stale thumbnail for up to
     `_PRODUCT_LIST_TTL` seconds after the edit."""
+    _t = time.perf_counter()
     if owner_type == "product":
         await bust_product_list_cache(redis)
     if owner_type == "cms_section_item":
-        # Mirrors app/modules/cms/service.py's _HOMEPAGE_CACHE_KEY — a hero
-        # slide's image lives inside cms_section_items.config, which the
-        # homepage cache snapshots, so cropping/replacing it must invalidate
-        # that cache the same way editing the slide's text fields already does.
         await safe_redis_delete(redis, "cms:homepage")
+    cache_ms = (time.perf_counter() - _t) * 1000
+    _perflog.debug("bust_cache_for", owner_type=owner_type, ms=round(cache_ms, 2))
 
 
 @router.get(
@@ -119,7 +121,15 @@ async def upload_universal_image(
 ):
     from app.common.responses import created
 
+    _t_total = time.perf_counter()
+    _phases: list[tuple[str, float]] = []
+
+    def _mark(label: str) -> None:
+        _phases.append((label, (time.perf_counter() - _t_total) * 1000))
+
     file_bytes = await file.read()
+    _mark("read_file")
+
     try:
         image = await _universal.upload(
             db,
@@ -136,8 +146,20 @@ async def upload_universal_image(
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     except UniversalImageServiceError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
+    _mark("upload_service")
 
     await _bust_cache_for(owner_type, redis)
+    _mark("cache_bust")
+
+    _mark("serialize")
+    _perflog.info(
+        "upload_phases",
+        preset_id=preset_id,
+        owner_type=owner_type,
+        phases=_phases,
+        total_ms=round((time.perf_counter() - _t_total) * 1000, 2),
+    )
+
     return created(
         ImageOut.from_image(image),
         ResponseCode.UNIVERSAL_IMAGE_UPLOADED,
@@ -157,8 +179,16 @@ async def crop_universal_image(
     db: AsyncSession = Depends(get_db),
     redis: aioredis.Redis = Depends(get_redis),
 ):
+    _t_total = time.perf_counter()
+    _phases: list[tuple[str, float]] = []
+
+    def _mark(label: str) -> None:
+        _phases.append((label, (time.perf_counter() - _t_total) * 1000))
+
     image = await _get_image_or_404(db, image_id)
     owner_type = image.owner_type
+    _mark("get_image")
+
     try:
         image = await _universal.crop(db, image=image, payload=payload)
     except (
@@ -166,14 +196,21 @@ async def crop_universal_image(
         ImageValidationError,
         UniversalImageServiceError,
     ) as exc:
-        # Only genuine "this crop request is invalid" cases map to 422 — a
-        # real outage (R2 down, DB error, unexpected exception) must not be
-        # reported to the admin as a validation error, or an on-call
-        # engineer has no signal that anything actually broke (docs audit
-        # HP-3). Anything else propagates and gets the app's normal 500
-        # handling/alerting.
         raise HTTPException(status_code=422, detail=str(exc)) from exc
+    _mark("crop_service")
+
     await _bust_cache_for(owner_type, redis)
+    _mark("cache_bust")
+
+    _mark("serialize")
+    _perflog.info(
+        "crop_phases",
+        image_id=str(image_id),
+        owner_type=owner_type,
+        phases=_phases,
+        total_ms=round((time.perf_counter() - _t_total) * 1000, 2),
+    )
+
     return ok(
         ImageOut.from_image(image),
         ResponseCode.UNIVERSAL_IMAGE_CROPPED,

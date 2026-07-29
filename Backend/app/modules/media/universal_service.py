@@ -18,6 +18,7 @@ import time
 import uuid
 from datetime import UTC, datetime
 
+import structlog
 from PIL import Image as PILImage
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -52,6 +53,7 @@ from app.modules.media.validation import (
 
 _repo = ImageRepository()
 logger = logging.getLogger(__name__)
+_perflog = structlog.get_logger("perf.media.service")
 
 
 class UniversalImageServiceError(Exception):
@@ -177,11 +179,18 @@ class UniversalImageService:
         uploaded_by: uuid.UUID | None,
         skip_initial_generation: bool = False,
     ) -> Image:
+        _t0 = time.perf_counter()
+        _phases: list[tuple[str, float]] = []
+
+        def _mark(label: str) -> None:
+            _phases.append((label, (time.perf_counter() - _t0) * 1000))
+
         preset = get_preset(preset_id)
         try:
             await _validate_upload_off_loop(file_bytes, filename, content_type, preset)
         except ImageValidationError as exc:
             raise UniversalImageServiceError(str(exc)) from exc
+        _mark("validate")
 
         is_svg = content_type == "image/svg+xml"
         if is_svg:
@@ -197,11 +206,13 @@ class UniversalImageService:
             width, height = 0, 0
         else:
             width, height = await _probe_dimensions_off_loop(file_bytes, preset)
+        _mark("probe_dims")
 
         original_key = storage.build_original_key(
             preset.id, owner_type, owner_id, image_id, ext
         )
         await storage.put_original(original_key, file_bytes, ext=ext)
+        _mark("r2_put_original")
 
         focus_point = FocusPointIn()
         crops = _default_crops_for_preset(preset, width or 1, height or 1)
@@ -223,20 +234,22 @@ class UniversalImageService:
             status="pending",
             metadata_=_geometry_metadata(preset, width, height, crops, focus_point),
         )
+        _mark("db_create_image")
 
         if is_svg:
-            # SVG is already vector/scalable — there's nothing to crop or
-            # raster-resize, and no SVG rasterizer is installed (forcing one
-            # through PIL crashes; see docs audit CB-3). Every declared
-            # variant slot just points at the original SVG object.
             image = await self._finalize_svg(db, image, preset)
+            _mark("finalize_svg")
         elif not skip_initial_generation:
-            # Callers that know they'll immediately follow this upload with
-            # a crop() call (the editor's upload-then-crop flow) pass
-            # skip_initial_generation=True so the default centered crop
-            # never gets encoded+uploaded just to be thrown away a moment
-            # later by the real geometry (docs audit HP-5).
             image = await self._enqueue_generation(db, image, preset.breakpoints)
+            _mark("enqueue_generation")
+
+        _mark("done")
+        _perflog.info(
+            "upload_service_phases",
+            preset_id=preset_id,
+            image_id=str(image_id),
+            phases=_phases,
+        )
         return image
 
     async def _finalize_svg(
@@ -271,18 +284,19 @@ class UniversalImageService:
         image: Image,
         payload: CropGeometryIn,
     ) -> Image:
+        _t0 = time.perf_counter()
+        _phases: list[tuple[str, float]] = []
+
+        def _mark(label: str) -> None:
+            _phases.append((label, (time.perf_counter() - _t0) * 1000))
+
         preset = get_preset(image.preset_id)
 
         if image.mime_type == "image/svg+xml":
-            # No raster crop is possible (or meaningful) on a vector
-            # original — a crop request against an SVG is a no-op that just
-            # re-confirms every variant slot still points at the original.
             return await self._finalize_svg(db, image, preset)
 
         stored_crops = background.parse_stored_crops(image)
         if not stored_crops:
-            # Defensive fallback only — upload() always seeds metadata_.crops,
-            # so a live image should never actually reach this branch.
             stored_crops = _default_crops_for_preset(
                 preset, image.original_width or 1, image.original_height or 1
             )
@@ -297,15 +311,8 @@ class UniversalImageService:
             if bp.value not in ready_breakpoints
             or not _crops_equal(geom, stored_crops.get(bp))
         ]
+        _mark("compute_diff")
 
-        # Validate geometry synchronously, before persisting or enqueueing —
-        # generation itself now runs in the background (docs audit CB-1
-        # Phase 2), so this is the only remaining place a genuinely invalid
-        # crop request (disallowed rotation, out-of-bounds box on a
-        # strict_bounds preset) can still surface as an immediate 422
-        # (docs audit HP-3) instead of only failing minutes later in a
-        # worker with no request left to report it to. Uses the original's
-        # already-stored dimensions — no R2 fetch needed for this check.
         for bp in changed_breakpoints:
             crop_in = merged_crops[bp]
             validate_crop_request(
@@ -320,6 +327,7 @@ class UniversalImageService:
                 ),
                 crop_in.rotation,
             )
+        _mark("validate_geometry")
 
         image = await _repo.update_metadata(
             db,
@@ -332,9 +340,19 @@ class UniversalImageService:
                 payload.focus_point,
             ),
         )
+        _mark("db_update_metadata")
 
         if changed_breakpoints:
             image = await self._enqueue_generation(db, image, changed_breakpoints)
+            _mark("enqueue_generation")
+
+        _mark("done")
+        _perflog.info(
+            "crop_service_phases",
+            image_id=str(image.id),
+            changed_bps=[bp.value for bp in changed_breakpoints],
+            phases=_phases,
+        )
         return image
 
     async def replace(
@@ -469,6 +487,8 @@ class UniversalImageService:
         """
         from app.workers import media_generation
 
+        _t0 = time.perf_counter()
+
         generation = dict(image.metadata_.get("generation") or {})
         generation["pending_breakpoints"] = [bp.value for bp in breakpoints]
         generation["queued_at"] = datetime.now(UTC).isoformat()
@@ -480,5 +500,16 @@ class UniversalImageService:
                 "metadata_": {**image.metadata_, "generation": generation},
             },
         )
+        _mark_db = (time.perf_counter() - _t0) * 1000
+
         media_generation.enqueue(image.id)
+        _mark_enqueue = (time.perf_counter() - _t0) * 1000 - _mark_db
+
+        _perflog.debug(
+            "enqueue_generation",
+            image_id=str(image.id),
+            breakpoints=[bp.value for bp in breakpoints],
+            update_fields_ms=round(_mark_db, 2),
+            enqueue_ms=round(_mark_enqueue, 2),
+        )
         return image

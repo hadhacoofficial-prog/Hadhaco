@@ -388,6 +388,39 @@ class Profiler:
             self._global.cache_compressed_writes += 1
             self._global.cache_bytes_saved_by_compression += bytes_saved
 
+    # ── DB session lifecycle tracking ─────────────────────────────────────
+
+    def record_db_commit(self, duration_ms: float) -> None:
+        """Record the time spent in session.commit() after the route returns."""
+        stats: _PerRequestStats | None = getattr(self._local, "stats", None)
+        if stats is not None:
+            stats.query_total_ms += duration_ms
+            stats.query_count += 1
+
+    def record_db_session_lifecycle(self, checkout_ms: float, commit_ms: float) -> None:
+        """Log slow DB session checkout or commit (>10ms each)."""
+        log.warning(
+            "slow_db_session_lifecycle",
+            checkout_ms=round(checkout_ms, 2),
+            commit_ms=round(commit_ms, 2),
+        )
+
+    # ── Product list cache bust tracking ──────────────────────────────────
+
+    def record_bust_product_list_cache(
+        self, key_count: int, scan_ms: float, keys_ms: float
+    ) -> None:
+        """Record the cost of busting the product list cache."""
+        total_ms = scan_ms + keys_ms
+        if total_ms > 50:
+            log.warning(
+                "slow_product_list_cache_bust",
+                key_count=key_count,
+                scan_ms=round(scan_ms, 2),
+                keys_ms=round(keys_ms, 2),
+                total_ms=round(total_ms, 2),
+            )
+
     # ── Snapshot ──────────────────────────────────────────────────────────
 
     def snapshot(self) -> dict[str, Any]:

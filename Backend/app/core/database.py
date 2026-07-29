@@ -150,10 +150,21 @@ async def get_db() -> AsyncGenerator[AsyncSession, None]:
     the connection is invalidated rather than leaking back into the pool.
     """
     _checkout_start_tls._checkout_start = _time.monotonic()  # type: ignore[attr-defined]
+    _t_session = _time.perf_counter()
     session = AsyncSessionLocal()
+    checkout_ms = (_time.perf_counter() - _t_session) * 1000
     try:
         yield session
+        _t_commit = _time.perf_counter()
         await session.commit()
+        commit_ms = (_time.perf_counter() - _t_commit) * 1000
+        from app.core.profiling import profiler
+
+        profiler.record_db_commit(commit_ms)
+        if checkout_ms > 10 or commit_ms > 10:
+            from app.core.profiling import profiler as _p
+
+            _p.record_db_session_lifecycle(checkout_ms, commit_ms)
     except Exception:
         try:
             await session.rollback()

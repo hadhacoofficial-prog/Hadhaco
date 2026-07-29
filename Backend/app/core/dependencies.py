@@ -24,6 +24,7 @@ this reuses the existing AdminSession architecture end to end.
 """
 
 import json
+import time
 import types
 import uuid
 from datetime import datetime
@@ -46,6 +47,8 @@ _profile_repository = None
 # Cached profiles expire after 60 s. Short enough that role/status changes
 # propagate quickly; long enough to absorb repeated auth DB hits.
 _PROFILE_CACHE_TTL = 60
+
+_perflog = structlog.get_logger("perf.auth")
 
 
 def _get_profile_repository():
@@ -124,14 +127,28 @@ async def _load_profile(user_id: str, db: AsyncSession, redis: aioredis.Redis):
     Cache miss → hits the DB, populates the cache, returns the ORM Profile.
     Redis down → circuit breaker skips Redis entirely after the first failure.
     """
+    _t = time.perf_counter()
     raw = await safe_redis_get(redis, profile_cache_key(user_id))
+    redis_ms = (time.perf_counter() - _t) * 1000
     if raw:
+        _perflog.debug(
+            "load_profile", source="redis", redis_ms=round(redis_ms, 2), user_id=user_id
+        )
         return _parse_profile_from_cache(json.loads(raw))
 
     repo = _get_profile_repository()
     profile = await repo.get_by_id(db, user_id)
+    db_ms = (time.perf_counter() - _t - redis_ms / 1000) * 1000
     if profile:
         await _cache_profile(redis, profile)
+    _perflog.debug(
+        "load_profile",
+        source="db",
+        redis_ms=round(redis_ms, 2),
+        db_ms=round(db_ms, 2),
+        hit=profile is not None,
+        user_id=user_id,
+    )
     return profile
 
 
@@ -250,8 +267,11 @@ async def _ensure_2fa_session(
     """
     from app.modules.auth.service import AuthService
 
+    _t_total = time.perf_counter()
+
     svc = AuthService()
     has_2fa = await svc.has_active_2fa(db, str(current_user.id))
+    t_has_2fa = (time.perf_counter() - _t_total) * 1000
     if not has_2fa:
         if required:
             raise AuthorizationError(
@@ -259,14 +279,22 @@ async def _ensure_2fa_session(
                 code="2FA_REQUIRED",
                 data={"setup_required": True, "setup_url": "/admin/settings/security"},
             )
+        _perflog.debug(
+            "ensure_2fa",
+            has_2fa=False,
+            total_ms=round(t_has_2fa, 2),
+        )
         return current_user
 
+    _t_verify = time.perf_counter()
     verified = (
         payload.session_id is not None
         and await svc.is_admin_session_2fa_verified(
             db, str(current_user.id), payload.session_id
         )
     )
+    t_verify = (time.perf_counter() - _t_verify) * 1000
+
     if not verified:
         raise AuthorizationError(
             "Two-factor verification is required for this session",
@@ -278,6 +306,7 @@ async def _ensure_2fa_session(
     # never blocks the request if it fails.
     assert payload.session_id is not None  # `verified` is only True when set
     try:
+        _t_touch = time.perf_counter()
         await svc.touch_admin_session_activity(
             db,
             str(current_user.id),
@@ -285,8 +314,20 @@ async def _ensure_2fa_session(
             get_client_ip(request),
             request.headers.get("user-agent"),
         )
+        t_touch = (time.perf_counter() - _t_touch) * 1000
     except Exception:
-        pass
+        t_touch = 0.0
+
+    total_ms = (time.perf_counter() - _t_total) * 1000
+    _perflog.debug(
+        "ensure_2fa",
+        has_2fa=True,
+        verified=True,
+        has_2fa_ms=round(t_has_2fa, 2),
+        verify_ms=round(t_verify, 2),
+        touch_ms=round(t_touch, 2),
+        total_ms=round(total_ms, 2),
+    )
 
     return current_user
 

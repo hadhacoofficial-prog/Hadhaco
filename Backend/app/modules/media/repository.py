@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+import time
 import uuid
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
+import structlog
 from sqlalchemy import func, select, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -11,14 +13,29 @@ from sqlalchemy.orm import selectinload
 
 from app.modules.media.models import Image, ImageVariant
 
+_perflog = structlog.get_logger("perf.media.repo")
+
 
 class ImageRepository:
     async def create_image(self, db: AsyncSession, **kwargs: Any) -> Image:
         image = Image(**kwargs)
         db.add(image)
+        _t = time.perf_counter()
         await db.flush()
+        flush_ms = (time.perf_counter() - _t) * 1000
+        _t2 = time.perf_counter()
         await db.refresh(image)
+        refresh_ms = (time.perf_counter() - _t2) * 1000
+        _t3 = time.perf_counter()
         await db.refresh(image, attribute_names=["variants"])
+        refresh_var_ms = (time.perf_counter() - _t3) * 1000
+        _perflog.debug(
+            "create_image_db",
+            flush_ms=round(flush_ms, 2),
+            refresh_ms=round(refresh_ms, 2),
+            refresh_variants_ms=round(refresh_var_ms, 2),
+            image_id=str(image.id),
+        )
         return image
 
     async def get_image(self, db: AsyncSession, image_id: uuid.UUID) -> Image | None:
@@ -50,9 +67,22 @@ class ImageRepository:
         image.metadata_ = metadata
         image.version += 1
         db.add(image)
+        _t = time.perf_counter()
         await db.flush()
+        flush_ms = (time.perf_counter() - _t) * 1000
+        _t2 = time.perf_counter()
         await db.refresh(image)
+        refresh_ms = (time.perf_counter() - _t2) * 1000
+        _t3 = time.perf_counter()
         await db.refresh(image, attribute_names=["variants"])
+        refresh_var_ms = (time.perf_counter() - _t3) * 1000
+        _perflog.debug(
+            "update_metadata_db",
+            image_id=str(image.id),
+            flush_ms=round(flush_ms, 2),
+            refresh_ms=round(refresh_ms, 2),
+            refresh_variants_ms=round(refresh_var_ms, 2),
+        )
         return image
 
     async def update_fields(
@@ -61,9 +91,23 @@ class ImageRepository:
         for k, v in data.items():
             setattr(image, k, v)
         db.add(image)
+        _t = time.perf_counter()
         await db.flush()
+        flush_ms = (time.perf_counter() - _t) * 1000
+        _t2 = time.perf_counter()
         await db.refresh(image)
+        refresh_ms = (time.perf_counter() - _t2) * 1000
+        _t3 = time.perf_counter()
         await db.refresh(image, attribute_names=["variants"])
+        refresh_var_ms = (time.perf_counter() - _t3) * 1000
+        _perflog.debug(
+            "update_fields_db",
+            image_id=str(image.id),
+            fields=list(data.keys()),
+            flush_ms=round(flush_ms, 2),
+            refresh_ms=round(refresh_ms, 2),
+            refresh_variants_ms=round(refresh_var_ms, 2),
+        )
         return image
 
     # ── Background generation queue (CB-1 Phase 2) ──────────────────────

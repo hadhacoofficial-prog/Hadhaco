@@ -245,6 +245,9 @@ async def bust_product_list_cache(redis: aioredis.Redis) -> None:
     """
     if not redis_available():
         return
+    import time as _time
+
+    _t_bust = _time.perf_counter()
     try:
 
         async def _collect() -> list[str]:
@@ -254,10 +257,16 @@ async def bust_product_list_cache(redis: aioredis.Redis) -> None:
             ]
 
         keys = await asyncio.wait_for(_collect(), timeout=1.0)
+        scan_ms = (_time.perf_counter() - _t_bust) * 1000
+        _t_keys = _time.perf_counter()
         for key in keys:
             await _soft_expire_swr_entry(
                 redis, key, ttl_seconds=_PRODUCT_LIST_SWR_TTL_SECONDS
             )
+        keys_ms = (_time.perf_counter() - _t_keys) * 1000
+        from app.core.profiling import profiler
+
+        profiler.record_bust_product_list_cache(len(keys), scan_ms, keys_ms)
     except Exception:
         mark_redis_error()
 
