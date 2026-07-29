@@ -1,10 +1,11 @@
-import { useState, useMemo, useEffect } from "react";
+import { useState, useMemo, useEffect, useRef } from "react";
 import { createFileRoute, Link, notFound } from "@tanstack/react-router";
 import { useQuery, keepPreviousData } from "@tanstack/react-query";
 import { SlidersHorizontal, X } from "lucide-react";
 import { SiteLayout } from "@/components/site/SiteLayout";
 import { Breadcrumbs } from "@/components/site/Breadcrumbs";
 import { ProductGrid } from "@/components/site/ProductGrid";
+import { PaginationBar } from "@/components/site/PaginationBar";
 import { FilterPanel, type FilterValues } from "@/components/site/FilterPanel";
 import { EmptyState } from "@/components/site/EmptyState";
 import { ProductGridSkeleton } from "@/components/loading/ProductGridSkeleton";
@@ -57,10 +58,22 @@ function CollectionPage() {
   const [filters, setFilters] = useState<FilterValues>({});
   const [sort, setSort] = useState<"featured" | "price-asc" | "price-desc" | "newest">("newest");
   const [mobileFilterOpen, setMobileFilterOpen] = useState(false);
+  const [page, setPage] = useState(1);
+
+  const prevFilterKey = useRef({ filters, sort });
+
+  useEffect(() => {
+    const prev = prevFilterKey.current;
+    if (prev.filters !== filters || prev.sort !== sort) {
+      setPage(1);
+    }
+    prevFilterKey.current = { filters, sort };
+  }, [filters, sort]);
 
   const apiParams = useMemo(
     () => ({
       collection_slug: collection.slug,
+      page,
       page_size: 24,
       is_featured: sort === "featured" ? true : undefined,
       is_new_arrival: filters.isNew || undefined,
@@ -73,7 +86,7 @@ function CollectionPage() {
           : ("created_at" as const),
       sort_dir: sort === "price-asc" ? ("asc" as const) : ("desc" as const),
     }),
-    [collection.slug, filters, sort],
+    [collection.slug, filters, sort, page],
   );
 
   const { data, isLoading } = useQuery({
@@ -89,6 +102,12 @@ function CollectionPage() {
 
   const products = useMemo(() => (data?.items ?? []).map(toProduct), [data]);
   const total = data?.total ?? 0;
+  const totalPages = data?.total_pages ?? 0;
+
+  const onPageChange = (p: number) => {
+    setPage(p);
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  };
 
   const activeChips = useMemo(() => {
     const chips: { key: keyof FilterValues; label: string }[] = [];
@@ -197,7 +216,10 @@ function CollectionPage() {
               description="Try widening your selection or clearing filters."
             />
           ) : (
-            <ProductGrid products={products} />
+            <>
+              <ProductGrid products={products} />
+              <PaginationBar page={page} totalPages={totalPages} onPageChange={onPageChange} />
+            </>
           )}
         </div>
       </div>

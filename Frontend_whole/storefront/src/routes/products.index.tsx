@@ -6,6 +6,7 @@ import { Package } from "lucide-react";
 
 import { SiteLayout } from "@/components/site/SiteLayout";
 import { ProductGrid } from "@/components/site/ProductGrid";
+import { PaginationBar } from "@/components/site/PaginationBar";
 import { EmptyState } from "@/components/site/EmptyState";
 import { ProductGridSkeleton } from "@/components/loading/ProductGridSkeleton";
 import { api } from "@/lib/api/client";
@@ -67,6 +68,7 @@ export const Route = createFileRoute("/products/")({
 function ProductsPage() {
   const search = Route.useSearch();
   const { gender, category, deals, sort, q } = search;
+  const navigate = Route.useNavigate();
 
   const apiParams = useMemo(() => buildProductsApiParams(search), [search]);
 
@@ -82,8 +84,15 @@ function ProductsPage() {
   }, [data]);
 
   const products = useMemo(() => (data?.items ?? []).map(toProduct), [data]);
+  const total = data?.total ?? 0;
+  const totalPages = data?.total_pages ?? 0;
 
   const title = buildTitle({ gender, category, deals, sort, q });
+
+  const onPageChange = (page: number) => {
+    navigate({ search: (prev) => ({ ...prev, page: page > 1 ? page : undefined }) });
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  };
 
   return (
     <SiteLayout>
@@ -92,7 +101,7 @@ function ProductsPage() {
           <h1 className="font-display text-3xl md:text-4xl tracking-wide capitalize">{title}</h1>
           {data?.total != null && (
             <p className="mt-1 text-sm text-muted-foreground">
-              {data.total} {data.total === 1 ? "product" : "products"}
+              {total} {total === 1 ? "product" : "products"}
             </p>
           )}
         </header>
@@ -106,7 +115,10 @@ function ProductsPage() {
             description="Try a different category or check back soon."
           />
         ) : (
-          <ProductGrid products={products} />
+          <>
+            <ProductGrid products={products} />
+            <PaginationBar page={data!.page} totalPages={totalPages} onPageChange={onPageChange} />
+          </>
         )}
       </div>
     </SiteLayout>

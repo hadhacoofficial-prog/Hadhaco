@@ -5,6 +5,7 @@ import { z } from "zod";
 import { Search as SearchIcon, X } from "lucide-react";
 import { SiteLayout } from "@/components/site/SiteLayout";
 import { ProductGrid } from "@/components/site/ProductGrid";
+import { PaginationBar } from "@/components/site/PaginationBar";
 import { EmptyState } from "@/components/site/EmptyState";
 import { ProductGridSkeleton } from "@/components/loading/ProductGridSkeleton";
 import { useRecentSearches } from "@/stores/search";
@@ -19,18 +20,20 @@ const searchSchema = z.object({
   cat: z.string().optional(),
   gender: z.enum(["men", "women", "kids", "unisex", "all"]).optional(),
   filter: z.enum(["new", "bestseller", "deals"]).optional(),
+  page: z.coerce.number().min(1).optional(),
 });
 
 type SearchSearch = z.infer<typeof searchSchema>;
 
 /** Shared between the loader and the component so both hit the identical query key. */
-function buildSearchApiParams({ q, cat, gender, filter }: SearchSearch) {
+function buildSearchApiParams({ q, cat, gender, filter, page = 1 }: SearchSearch) {
   return {
     search: q || undefined,
     collection_slug: cat || undefined,
     gender: gender && gender !== "all" ? gender : undefined,
     is_new_arrival: filter === "new" ? true : undefined,
     is_best_seller: filter === "bestseller" ? true : undefined,
+    page,
     page_size: 24,
   };
 }
@@ -86,6 +89,7 @@ function SearchPage() {
 
   const results = useMemo(() => (data?.items ?? []).map(toProduct), [data]);
   const total = data?.total ?? 0;
+  const totalPages = data?.total_pages ?? 0;
 
   const headline =
     filter === "new"
@@ -105,6 +109,11 @@ function SearchPage() {
   const onSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     navigate({ search: { q: input.trim() || undefined } });
+  };
+
+  const onPageChange = (page: number) => {
+    navigate({ search: (prev) => ({ ...prev, page: page > 1 ? page : undefined }) });
+    window.scrollTo({ top: 0, behavior: "smooth" });
   };
 
   return (
@@ -194,7 +203,14 @@ function SearchPage() {
                     description="We couldn't find anything matching these filters. Try something else."
                   />
                 ) : (
-                  <ProductGrid products={results} />
+                  <>
+                    <ProductGrid products={results} />
+                    <PaginationBar
+                      page={data!.page}
+                      totalPages={totalPages}
+                      onPageChange={onPageChange}
+                    />
+                  </>
                 )}
               </>
             )}

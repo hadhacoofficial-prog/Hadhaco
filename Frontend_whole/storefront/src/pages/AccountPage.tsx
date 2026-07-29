@@ -30,6 +30,7 @@ import { SiteLayout } from "@/components/site/SiteLayout";
 import { PageLoader } from "@/components/common/PageLoader";
 import { OrderTrackingSection } from "@/components/customer/OrderTrackingSection";
 import { Breadcrumbs } from "@/components/site/Breadcrumbs";
+import { PaginationBar } from "@/components/site/PaginationBar";
 import { WriteReviewModal } from "@/components/site/WriteReviewModal";
 import { Sheet, SheetContent, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -906,10 +907,11 @@ function OrderCard({
 
 function OrdersTab() {
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [page, setPage] = useState(1);
 
   const { data, isLoading } = useQuery({
-    queryKey: queryKeys.orders.list({}),
-    queryFn: () => api.get<OrderListResponse>("/orders", { params: { page: 1, page_size: 20 } }),
+    queryKey: queryKeys.orders.list({ page }),
+    queryFn: () => api.get<OrderListResponse>("/orders", { params: { page, page_size: 20 } }),
   });
 
   if (isLoading) {
@@ -931,6 +933,13 @@ function OrdersTab() {
   }
 
   const orders = data?.items ?? [];
+  const totalPages = data?.total_pages ?? 0;
+
+  const onPageChange = (p: number) => {
+    setPage(p);
+    setExpandedId(null);
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  };
 
   if (orders.length === 0) {
     return (
@@ -966,6 +975,7 @@ function OrdersTab() {
           onToggle={() => setExpandedId(expandedId === o.id ? null : o.id)}
         />
       ))}
+      <PaginationBar page={page} totalPages={totalPages} onPageChange={onPageChange} />
     </div>
   );
 }
