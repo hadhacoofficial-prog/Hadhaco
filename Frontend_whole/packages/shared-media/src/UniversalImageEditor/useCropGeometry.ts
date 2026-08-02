@@ -1,6 +1,11 @@
 import { useCallback, useRef, useState } from "react";
 import type { Breakpoint, BreakpointCropGeometry, CropGeometry, CropPreset } from "@hadha/shared-types";
-import { computeSyncedCropBox, defaultCropBox, focusPointFromBox } from "../cropMath";
+import {
+  computeSyncedCropBox,
+  defaultCropBox,
+  focusPointFromBox,
+  validateAndClampCropBox,
+} from "../cropMath";
 
 const MAX_HISTORY = 50;
 // No explicit "drag start"/"drag end" pair exists for every input (mouse
@@ -217,6 +222,14 @@ export function useCropGeometry(preset: CropPreset) {
       checkpoint();
 
       const { width, height } = imageSizeRef.current;
+
+      // react-easy-crop clamps against its own measured natural size of the
+      // <img> it renders, which can drift from the server's stored
+      // original_width/original_height (e.g. a resized preview). Re-clamp
+      // here — the same bounds check the backend enforces — so a drifted
+      // box never reaches the crop payload, and never poisons the shared
+      // focus point derived from it below.
+      next = { ...next, box: validateAndClampCropBox(next.box, width, height, false) };
 
       if (viewingAll) {
         const nextFraming: SyncFraming = {

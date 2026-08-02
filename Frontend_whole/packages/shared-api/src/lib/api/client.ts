@@ -110,15 +110,19 @@ async function parseEnvelope<T>(
   }
 
   if (!res.ok) {
-    // FastAPI may return { detail: { message, errors, warnings } } instead of our envelope.
+    // FastAPI returns either { detail: "message" } (the common case — e.g.
+    // HTTPException(status_code=422, detail=str(exc))) or
+    // { detail: { message, errors, warnings } }, instead of our envelope.
     const fastapiDetail =
       payload && typeof payload === "object" && "detail" in payload
         ? (payload as Record<string, unknown>).detail
         : undefined;
     const fastapiMsg =
-      fastapiDetail && typeof fastapiDetail === "object"
-        ? (fastapiDetail as Record<string, unknown>).message
-        : undefined;
+      typeof fastapiDetail === "string"
+        ? fastapiDetail
+        : fastapiDetail && typeof fastapiDetail === "object"
+          ? (fastapiDetail as Record<string, unknown>).message
+          : undefined;
 
     throw new ApiError(
       (fastapiMsg as string) ||
