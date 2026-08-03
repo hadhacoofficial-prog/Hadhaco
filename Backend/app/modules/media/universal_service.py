@@ -20,6 +20,7 @@ from datetime import UTC, datetime
 
 import structlog
 from PIL import Image as PILImage
+from PIL import ImageOps
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.cpu_executor import run_cpu_bound
@@ -65,6 +66,50 @@ def _probe_dimensions(file_bytes: bytes) -> tuple[int, int]:
     run_cpu_bound: no I/O, no db, no await."""
     probe = PILImage.open(io.BytesIO(file_bytes))
     return probe.size
+
+
+def _normalize_orientation(file_bytes: bytes) -> bytes:
+    """Bakes in the EXIF Orientation tag (if any) and strips it, so every
+    later consumer of these bytes — this module's own dimension probe, the
+    crop/generate pipeline in background.py, and the browser's <img>
+    naturalWidth/naturalHeight used by the crop editor — agree on which axis
+    is width and which is height. Plain `Image.open(...).size` ignores EXIF
+    orientation, but browsers auto-rotate for display; without normalizing
+    up front, a portrait photo stored with a rotate-90 tag probes as
+    landscape server-side while the client computes crop boxes against the
+    portrait dimensions it actually renders, and PATCH .../crop rejects an
+    otherwise-valid box as out of bounds. A no-op for images with no
+    orientation tag, or that PIL can't decode at all — the latter is left
+    for validate_upload's own decode to raise a proper ImageValidationError
+    instead of surfacing an unhandled PIL exception here."""
+    try:
+        image = PILImage.open(io.BytesIO(file_bytes))
+        if image.getexif().get(0x0112, 1) == 1:
+            return file_bytes
+    except Exception:
+        return file_bytes
+
+    transposed = ImageOps.exif_transpose(image)
+    if transposed is None:
+        return file_bytes
+
+    buffer = io.BytesIO()
+    fmt = image.format or "JPEG"
+    save_kwargs = {"quality": 95} if fmt == "JPEG" else {}
+    transposed.save(buffer, format=fmt, **save_kwargs)
+    return buffer.getvalue()
+
+
+async def _normalize_orientation_off_loop(
+    file_bytes: bytes, preset: CropPreset
+) -> bytes:
+    cpu_start = time.perf_counter()
+    try:
+        return await run_cpu_bound(lambda: _normalize_orientation(file_bytes))
+    finally:
+        image_processing_duration_seconds.labels(
+            preset=preset.id, stage="normalize_orientation"
+        ).observe(time.perf_counter() - cpu_start)
 
 
 async def _validate_upload_off_loop(
@@ -186,13 +231,17 @@ class UniversalImageService:
             _phases.append((label, (time.perf_counter() - _t0) * 1000))
 
         preset = get_preset(preset_id)
+        is_svg = content_type == "image/svg+xml"
+        if not is_svg:
+            file_bytes = await _normalize_orientation_off_loop(file_bytes, preset)
+            _mark("normalize_orientation")
+
         try:
             await _validate_upload_off_loop(file_bytes, filename, content_type, preset)
         except ImageValidationError as exc:
             raise UniversalImageServiceError(str(exc)) from exc
         _mark("validate")
 
-        is_svg = content_type == "image/svg+xml"
         if is_svg:
             try:
                 file_bytes = sanitize_svg(file_bytes)
@@ -365,12 +414,15 @@ class UniversalImageService:
         content_type: str,
     ) -> Image:
         preset = get_preset(image.preset_id)
+        is_svg = content_type == "image/svg+xml"
+        if not is_svg:
+            file_bytes = await _normalize_orientation_off_loop(file_bytes, preset)
+
         try:
             await _validate_upload_off_loop(file_bytes, filename, content_type, preset)
         except ImageValidationError as exc:
             raise UniversalImageServiceError(str(exc)) from exc
 
-        is_svg = content_type == "image/svg+xml"
         if is_svg:
             try:
                 file_bytes = sanitize_svg(file_bytes)
