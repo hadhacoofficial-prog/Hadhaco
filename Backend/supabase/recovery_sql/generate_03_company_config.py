@@ -26,15 +26,43 @@ OUT_SQL = Path(
 
 # Recovered field -> column (identical names for every field in this cache).
 FIELDS = [
-    "name", "legal_name", "brand_name", "tagline", "description", "website", "domain",
-    "logo_url", "favicon_url", "packing_slip_logo_url", "shipping_label_logo_url",
-    "phone", "alternate_phone", "whatsapp", "support_email", "sales_email",
-    "address_line_1", "address_line_2", "city", "state", "postal_code", "country",
-    "google_maps_url", "latitude", "longitude",
-    "gstin", "cin", "business_hours",
-    "instagram_url", "facebook_url", "youtube_url", "twitter_x_url", "linkedin_url",
+    "name",
+    "legal_name",
+    "brand_name",
+    "tagline",
+    "description",
+    "website",
+    "domain",
+    "logo_url",
+    "favicon_url",
+    "packing_slip_logo_url",
+    "shipping_label_logo_url",
+    "phone",
+    "alternate_phone",
+    "whatsapp",
+    "support_email",
+    "sales_email",
+    "address_line_1",
+    "address_line_2",
+    "city",
+    "state",
+    "postal_code",
+    "country",
+    "google_maps_url",
+    "latitude",
+    "longitude",
+    "gstin",
+    "cin",
+    "business_hours",
+    "instagram_url",
+    "facebook_url",
+    "youtube_url",
+    "twitter_x_url",
+    "linkedin_url",
     "pinterest_url",
-    "default_meta_title", "default_meta_description", "organization_description",
+    "default_meta_title",
+    "default_meta_description",
+    "organization_description",
     "theme_color",
 ]
 
@@ -84,7 +112,9 @@ def main() -> None:
     )
     lines.append("-- is left untouched rather than being wiped to NULL.")
     lines.append("--")
-    lines.append("-- Idempotent: INSERT ... ON CONFLICT (id) DO UPDATE. No DELETE/TRUNCATE.")
+    lines.append(
+        "-- Idempotent: INSERT ... ON CONFLICT (id) DO UPDATE. No DELETE/TRUNCATE."
+    )
     lines.append("-- ============================================================")
     lines.append("")
     lines.append("BEGIN;")
@@ -103,7 +133,9 @@ def main() -> None:
         lines.append(f"    {f} = EXCLUDED.{f}{comma}")
     lines.append(";")
     lines.append("")
-    lines.append("-- ── Validation ───────────────────────────────────────────────────────────")
+    lines.append(
+        "-- ── Validation ───────────────────────────────────────────────────────────"
+    )
     lines.append("DO $$")
     lines.append("DECLARE")
     lines.append("    cfg_name TEXT;")
@@ -114,9 +146,7 @@ def main() -> None:
         "        RAISE EXCEPTION 'company_config restore validation failed: no row with id=1 after restore';"
     )
     lines.append("    END IF;")
-    lines.append(
-        f"    IF cfg_name <> {sql_value(data['name'])} THEN"
-    )
+    lines.append(f"    IF cfg_name <> {sql_value(data['name'])} THEN")
     lines.append(
         f"        RAISE EXCEPTION 'company_config restore validation failed: expected name %, found %', {sql_value(data['name'])}, cfg_name;"
     )

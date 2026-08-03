@@ -77,22 +77,34 @@ def main() -> None:
     lines.append("-- ============================================================")
     lines.append("-- 01_homepage.sql")
     lines.append("-- Homepage CMS restoration, recovered from the Redis cache key")
-    lines.append("-- `cms:homepage` (decoded payload: recovery-backup/Json data/cms_homepage.json).")
-    lines.append(f"-- Cache write timestamp (epoch, from the cache_swr wrapper's \"t\" field): {cache_written_at}")
+    lines.append(
+        "-- `cms:homepage` (decoded payload: recovery-backup/Json data/cms_homepage.json)."
+    )
+    lines.append(
+        f'-- Cache write timestamp (epoch, from the cache_swr wrapper\'s "t" field): {cache_written_at}'
+    )
     lines.append("--")
     lines.append("-- SCOPE: Homepage CMS only -> landing_sections + cms_section_items.")
-    lines.append("-- Categories, Products, Collections, Navigation and Company Config are")
+    lines.append(
+        "-- Categories, Products, Collections, Navigation and Company Config are"
+    )
     lines.append("-- OUT OF SCOPE for this script and are not touched.")
     lines.append("--")
     lines.append("-- Idempotent: every statement is INSERT ... ON CONFLICT DO UPDATE.")
     lines.append("-- No DELETE, no TRUNCATE. Safe to run multiple times.")
-    lines.append("-- See Backend/supabase/recovery_reports/01_homepage_recovery.md for the")
-    lines.append("-- full schema mapping, per-section confidence levels and unresolved fields.")
+    lines.append(
+        "-- See Backend/supabase/recovery_reports/01_homepage_recovery.md for the"
+    )
+    lines.append(
+        "-- full schema mapping, per-section confidence levels and unresolved fields."
+    )
     lines.append("-- ============================================================")
     lines.append("")
     lines.append("BEGIN;")
     lines.append("")
-    lines.append("-- ── 1. landing_sections (16 rows = full homepage layout) ──────────────────")
+    lines.append(
+        "-- ── 1. landing_sections (16 rows = full homepage layout) ──────────────────"
+    )
     lines.append("")
 
     for entry in layout:
@@ -151,14 +163,28 @@ def main() -> None:
         lines.append("    updated_at = NOW();")
         lines.append("")
 
-    lines.append("-- ── 2. cms_section_items (recovered items for the 4 sections that had any) ─")
+    lines.append(
+        "-- ── 2. cms_section_items (recovered items for the 4 sections that had any) ─"
+    )
     lines.append("--")
-    lines.append("-- NOTE (why_choose_us anomaly, preserved verbatim, not deduplicated):")
-    lines.append("-- the cache contains 8 items for 4 distinct cards - each card appears twice")
-    lines.append("-- under two different UUIDs with two different created_at/updated_at pairs")
-    lines.append("-- but otherwise byte-identical config. This looks like a duplicate-publish")
-    lines.append("-- artifact in the source system, not a decoding error. Per the 'never invent,")
-    lines.append("-- never silently alter recovered data' rule, all 8 rows are restored exactly")
+    lines.append(
+        "-- NOTE (why_choose_us anomaly, preserved verbatim, not deduplicated):"
+    )
+    lines.append(
+        "-- the cache contains 8 items for 4 distinct cards - each card appears twice"
+    )
+    lines.append(
+        "-- under two different UUIDs with two different created_at/updated_at pairs"
+    )
+    lines.append(
+        "-- but otherwise byte-identical config. This looks like a duplicate-publish"
+    )
+    lines.append(
+        "-- artifact in the source system, not a decoding error. Per the 'never invent,"
+    )
+    lines.append(
+        "-- never silently alter recovered data' rule, all 8 rows are restored exactly"
+    )
     lines.append("-- as cached. See the recovery report for the flagged anomaly.")
     lines.append("")
 
@@ -192,9 +218,15 @@ def main() -> None:
             lines.append("    updated_at = EXCLUDED.updated_at;")
             lines.append("")
 
-    lines.append("-- ── 3. In-transaction validation ─────────────────────────────────────────")
-    lines.append("-- Aborts the whole restore (ROLLBACK) if the row counts don't match what was")
-    lines.append("-- recovered from the cache, instead of committing a partial/mismatched state.")
+    lines.append(
+        "-- ── 3. In-transaction validation ─────────────────────────────────────────"
+    )
+    lines.append(
+        "-- Aborts the whole restore (ROLLBACK) if the row counts don't match what was"
+    )
+    lines.append(
+        "-- recovered from the cache, instead of committing a partial/mismatched state."
+    )
     lines.append("DO $$")
     lines.append("DECLARE")
     lines.append("    section_count INTEGER;")
@@ -204,9 +236,7 @@ def main() -> None:
         "    SELECT COUNT(*) INTO section_count FROM landing_sections WHERE section_key IN ("
     )
     lines.append(
-        "        "
-        + ", ".join(sql_str(entry["section_key"]) for entry in layout)
-        + ");"
+        "        " + ", ".join(sql_str(entry["section_key"]) for entry in layout) + ");"
     )
     lines.append("    IF section_count <> 16 THEN")
     lines.append(
@@ -218,9 +248,7 @@ def main() -> None:
         "    SELECT COUNT(*) INTO item_count FROM cms_section_items WHERE section_id IN ("
     )
     lines.append(
-        "        "
-        + ", ".join(sql_str(v) for v in KNOWN_SECTION_IDS.values())
-        + ");"
+        "        " + ", ".join(sql_str(v) for v in KNOWN_SECTION_IDS.values()) + ");"
     )
     lines.append(f"    IF item_count < {item_count} THEN")
     lines.append(

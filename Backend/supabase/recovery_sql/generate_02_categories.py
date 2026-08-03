@@ -82,18 +82,18 @@ def main() -> None:
     )
     lines.append("-- the correct, non-fabricated upsert target throughout.")
     lines.append("--")
-    lines.append(
-        "-- NOT restored: image_url (not a categories column - resolved via a"
-    )
+    lines.append("-- NOT restored: image_url (not a categories column - resolved via a")
     lines.append(
         "-- polymorphic join to images/image_variants at read time; those tables'"
     )
+    lines.append("-- required NOT NULL fields did not survive in the cache - see the")
     lines.append(
-        "-- required NOT NULL fields did not survive in the cache - see the"
+        "-- recovery report). product_count is also not a column (computed live)."
     )
-    lines.append("-- recovery report). product_count is also not a column (computed live).")
     lines.append("--")
-    lines.append("-- Idempotent: INSERT ... ON CONFLICT DO UPDATE only. No DELETE/TRUNCATE.")
+    lines.append(
+        "-- Idempotent: INSERT ... ON CONFLICT DO UPDATE only. No DELETE/TRUNCATE."
+    )
     lines.append("-- Rows are ordered parent-before-child so the self-referencing")
     lines.append("-- categories.parent_id FK never fails mid-script.")
     lines.append("-- ============================================================")
@@ -109,7 +109,9 @@ def main() -> None:
         sort_order = node["sort_order"]
         parent_sql = sql_str(parent_id) if parent_id else "NULL"
 
-        lines.append(f"-- {slug}  (id = {cid}{', parent = ' + parent_id if parent_id else ' - top-level'})")
+        lines.append(
+            f"-- {slug}  (id = {cid}{', parent = ' + parent_id if parent_id else ' - top-level'})"
+        )
         lines.append("INSERT INTO categories")
         lines.append(
             "    (id, parent_id, name, slug, sort_order, is_active, created_at, updated_at)"
@@ -127,15 +129,15 @@ def main() -> None:
         lines.append("    updated_at = NOW();")
         lines.append("")
 
-    lines.append("-- ── Validation ───────────────────────────────────────────────────────────")
+    lines.append(
+        "-- ── Validation ───────────────────────────────────────────────────────────"
+    )
     lines.append("DO $$")
     lines.append("DECLARE")
     lines.append("    cat_count INTEGER;")
     lines.append("BEGIN")
     lines.append("    SELECT COUNT(*) INTO cat_count FROM categories WHERE id IN (")
-    lines.append(
-        "        " + ", ".join(sql_str(n["id"]) for n in flat) + ");"
-    )
+    lines.append("        " + ", ".join(sql_str(n["id"]) for n in flat) + ");")
     lines.append(f"    IF cat_count <> {len(flat)} THEN")
     lines.append(
         f"        RAISE EXCEPTION 'category restore validation failed: expected {len(flat)} rows, found %', cat_count;"
