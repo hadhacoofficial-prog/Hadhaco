@@ -21,25 +21,13 @@ from sqlalchemy import create_engine, pool
 from alembic import context
 from app.core.config import settings
 from app.core.database import Base
+from app.core.model_registry import import_all_models
 
 # ── Model discovery ───────────────────────────────────────────────────────────
-
-
-def _import_all_models() -> None:
-    """Import every modules/*/models.py so autogenerate sees the full schema."""
-    import importlib
-    import pkgutil
-
-    import app.modules as modules_pkg
-
-    for mod in pkgutil.iter_modules(modules_pkg.__path__):
-        try:
-            importlib.import_module(f"app.modules.{mod.name}.models")
-        except ModuleNotFoundError:
-            continue
-
-
-_import_all_models()
+# Autogenerate needs the full schema in Base.metadata before target_metadata
+# is read below — see app/core/model_registry.py for why this is now a
+# shared helper rather than a private copy.
+import_all_models()
 
 config = context.config
 

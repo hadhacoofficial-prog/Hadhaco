@@ -162,6 +162,16 @@ services:
       ]
     networks:
       - hadha
+    # Explicitly disabled rather than omitted: Backend/docker/Dockerfile
+    # bakes in `HEALTHCHECK CMD python -c "httpx.get('http://localhost:8000/health')..."`,
+    # inherited by every container built from this image unless a compose
+    # service overrides or disables it. Beat runs no HTTP server, so that
+    # inherited check can only ever fail — confirmed live: without this,
+    # hadha-celery-beat sat at Docker health "starting"/eventually unhealthy
+    # despite running correctly, tripping verify.sh's CRITICAL_CONTAINERS
+    # check for a container that was actually fine.
+    healthcheck:
+      disable: true
     deploy:
       resources:
         limits:

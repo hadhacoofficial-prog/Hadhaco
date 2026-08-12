@@ -28,6 +28,23 @@ from celery.schedules import crontab
 from celery.signals import worker_process_init
 
 from app.core.config import settings
+from app.core.model_registry import import_all_models
+
+# Register every app.modules.*.models table into Base.metadata before any
+# task body can run. Celery's `include=["app.tasks"]` only imports what the
+# task modules transitively need — e.g. app.workers.media_generation imports
+# app.modules.media.repository but never app.modules.profiles.models — so a
+# flush on a model with a cross-module ForeignKey (images.uploaded_by ->
+# profiles.id) failed with NoReferencedTableError in production because
+# profiles' Table object didn't exist yet in this process. FastAPI's
+# app.main gets this for free (every router import cascades into every
+# models.py); Celery needs it done explicitly. Runs once here, in the
+# parent process, before Celery's prefork pool forks worker children — the
+# children inherit the already-populated Base.metadata via fork's
+# copy-on-write, so this never needs to repeat per child (unlike the DB
+# engine/event loop below, which must be re-initialized per child since
+# connections and event loops do NOT survive a fork safely).
+import_all_models()
 
 
 def _default_broker_url() -> str:
