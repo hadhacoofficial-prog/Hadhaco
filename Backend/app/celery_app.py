@@ -19,6 +19,7 @@ Redis write load with zero consumers.
 
 from __future__ import annotations
 
+import asyncio
 from datetime import timedelta
 from urllib.parse import urlsplit, urlunsplit
 
@@ -130,7 +131,48 @@ def _reinit_db_engine_after_fork(**kwargs: object) -> None:
     without attempting to close those connections (they don't belong to this
     process's event loop) and lets the pool open fresh connections on first
     use in the child — the standard SQLAlchemy fork-safety pattern.
+
+    Also (re)creates this process's persistent event loop — see
+    ``get_worker_loop`` below for why one loop must be reused for the whole
+    process lifetime rather than created per task.
     """
     from app.core.database import engine
 
     engine.sync_engine.dispose(close=False)
+
+    global _worker_loop
+    if _worker_loop is not None and not _worker_loop.is_closed():
+        _worker_loop.close()
+    _worker_loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(_worker_loop)
+
+
+# ── Per-process persistent event loop ───────────────────────────────────────
+# app/tasks/_common.py::run_async used to call asyncio.run(coro_fn()) on every
+# task invocation. asyncio.run() creates a new event loop and destroys it when
+# the coroutine returns — but app/core/database.py's engine (and its pooled
+# asyncpg connections) is created once per *process* and is reused across
+# many task invocations within that process. asyncpg connections are bound to
+# the event loop that opened them, so the second task's fresh loop would try
+# to reuse a connection still attached to the first task's already-destroyed
+# loop, producing exactly the failure this fixes:
+#   RuntimeError: Task ... got Future ... attached to a different loop
+#   asyncpg.exceptions.InterfaceError: cannot perform operation: another
+#   operation is in progress
+# (confirmed against real worker logs — reservation_expiry, cms_publish, and
+# notification_retry all failed this way on the second+ tick in the same
+# worker process). The fix: one event loop per process, created once at fork
+# (worker_process_init, alongside the engine reinit above) and reused for
+# every task via loop.run_until_complete() instead of asyncio.run().
+_worker_loop: asyncio.AbstractEventLoop | None = None
+
+
+def get_worker_loop() -> asyncio.AbstractEventLoop:
+    """Return this process's persistent event loop, creating one if the
+    worker_process_init signal never fired (e.g. calling a task function
+    directly outside a real Celery worker, as the test suite does)."""
+    global _worker_loop
+    if _worker_loop is None or _worker_loop.is_closed():
+        _worker_loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(_worker_loop)
+    return _worker_loop

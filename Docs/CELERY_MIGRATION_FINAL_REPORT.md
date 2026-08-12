@@ -1,9 +1,30 @@
 # Celery Migration — Final Report
 
-**Status:** Implementation complete, unit-tested, **not yet live-deployed or performance-validated**.
+**Status:** Implementation complete, unit-tested, **not yet re-verified live after a critical post-deploy fix** (see §0).
 **Companion doc:** `Docs/CELERY_MIGRATION_PLAN.md` (Phase A analysis + design — read that first for rationale; this report records what was actually built and what remains to prove live).
 
 This report follows item 30's required structure. Section 14 ("Performance BEFORE/AFTER") is the one section that cannot be filled in from this session — see that section for why, and what it takes to close it.
+
+---
+
+## 0. Critical Post-Deploy Fix — Event Loop Per Task (found via real production logs)
+
+After this migration was deployed, production logs showed every periodic task failing on its second-or-later tick within the same worker process:
+
+```
+RuntimeError: Task ... got Future ... attached to a different loop
+asyncpg.exceptions.InterfaceError: cannot perform operation: another operation is in progress
+```
+
+Affected: `reservation_expiry`, `cms_publish`, `notification_retry` (all logged `worker_failed`/tracebacks), and `media.generate_variants` (surfaced in the UI as "Timed out waiting for variant generation").
+
+**Root cause:** `app/tasks/_common.py::run_async()` called `asyncio.run(coro_fn())` on every task invocation. `asyncio.run()` creates a new event loop and destroys it when the coroutine returns. But `app/core/database.py`'s engine — and its pooled asyncpg connections — is created once per **process**, not once per task, and is reused across every task invocation in that process. asyncpg connections are bound to the event loop that opened them, so a task's second (or later) invocation, running on a freshly-created loop, tried to reuse a connection still attached to the *first* invocation's already-destroyed loop. This also explains the `EMAXCONNSESSION` (Supabase pooler exhaustion) observed during this session's own Docker validation attempt (§ Phase C, aborted) — connections orphaned by a torn-down loop can't close cleanly and leak on the Postgres side until TCP timeout.
+
+**Fix:** one persistent event loop per worker *process*, created once at fork (`app/celery_app.py`'s `worker_process_init` handler, alongside the existing DB-engine-fork-safety reinit) and reused for every task via `loop.run_until_complete()` instead of tearing a loop down each call. `app/celery_app.py::get_worker_loop()` exposes it; `run_async()` now uses that instead of `asyncio.run()`.
+
+**Verification:** `tests/unit/test_celery_worker_loop.py` (5 tests) — proves, via loop object identity and `.is_closed()` state (not `id()`, which can alias across sequential garbage-collected objects and would give a false pass), that: sequential `run_async()` calls share the same loop and it stays open; `get_worker_loop()` creates lazily and is idempotent; the fork hook closes the old loop and creates a fresh one. Manually confirmed the test fails against the old `asyncio.run()`-per-call code and passes against the fix (shown inline in the test's docstring/session transcript).
+
+**Status: fixed and unit-tested, not yet re-deployed or re-verified against the live environment that produced these logs.** The container images must be rebuilt and redeployed before this fix takes effect — the currently-running production workers still have the bug until that happens.
 
 ---
 
@@ -119,16 +140,26 @@ No new secrets. `CELERY_BROKER_URL` (optional, `app/core/config.py`) defaults to
 
 ## 13. Tests
 
-38 new unit tests, all passing alongside the full existing 1255 (1293 total):
+49 new unit tests, all passing alongside the full existing suite (1396 total):
 
 - `tests/unit/test_database_session.py` (6 tests) — the DB session bug fix, using a real in-memory SQLite `Session` to exercise actual SQLAlchemy transaction internals rather than mocking them away.
 - `tests/unit/test_celery_app.py` (14 tests) — broker/serialization/routing config, Beat schedule completeness against the exact former APScheduler cadences, and an explicit assertion that `main.py`/`requirements.txt` no longer reference APScheduler/WorkerLeader.
 - `tests/unit/test_tasks_{admin,cms,maintenance,inventory,media,notifications}.py` (18 tests) — success path, transient-error → `self.retry()` invocation (verified via a `Task.retry` stand-in rather than relying on Celery's eager-vs-worker retry-dispatch nuances), non-transient-error propagation without retry, plus media's claim-race-is-a-safe-no-op case and notifications' full single-flight-lock behavior (acquired/not-acquired/fail-open/released-on-exception).
+- `tests/unit/test_celery_worker_loop.py` (5 tests) — the §0 event-loop fix: proves via loop object identity (not `id()`) that sequential task invocations share one open loop, `get_worker_loop()` is idempotent, and the fork hook correctly closes the old loop and opens a fresh one.
+- `tests/unit/test_cache_full_bust_background.py` (4 tests) + `tests/unit/test_profiling.py` (2 new tests) — the SQL-root-cause-analysis fixes: catalog admin writes' cache bust moved off the response path, and worker-context SQL no longer silently dropped from `sql.total_queries`.
 - Existing `tests/unit/test_media_universal_service.py` and `test_media_generation_worker.py` updated in place (dispatch mechanism changed from `asyncio.create_task` to `.delay()`; the now-removed `enqueue()`/semaphore concurrency test deleted) rather than duplicated.
 
-Full CI gate run this session: **Black — all files unchanged (formatted). Ruff — all checks passed. Mypy — Success: no issues found in 254 source files. Pytest — 1293 passed (unit) + 82 passed (integration) + 10 passed (scripts).**
+Full CI gate, most recent run (after the §0 event-loop fix): **Black — all files unchanged (formatted). Ruff — all checks passed. Mypy — Success: no issues found in 254 source files. Pytest — 1396 passed.**
 
-**Not tested this session** (would require a running Postgres/Redis, i.e. `docker compose up`, which was not exercised): actual Celery worker process startup, Beat actually enqueuing to Redis and a worker consuming it, the `worker_process_init` fork-safety handler under a real prefork pool, and the reservation-expiry/notification-retry concurrency scenarios described in plan §11's "extra scrutiny" list (those need two real concurrent DB sessions racing on the same row, not mocks).
+**Not tested with a real broker/DB this session**, beyond the partial live attempt in §Phase C below: Beat actually enqueuing to Redis and a worker consuming it end-to-end against production, the `worker_process_init` fork-safety + event-loop-reuse fix under a real prefork pool over many hours, and the reservation-expiry/notification-retry concurrency scenarios described in plan §11's "extra scrutiny" list (those need two real concurrent DB sessions racing on the same row, not mocks).
+
+### Phase C — attempted live validation (halted, then superseded by a real production incident)
+
+A live-validation pass was started against this project's actual dev/staging Docker stack — build succeeded, all 5 containers (`hadha-redis`, `hadha-backend`, `celery-worker-media`, `celery-worker-general`, `celery-beat`) came up, and static checks passed live: no APScheduler references in backend logs, `celery inspect active_queues` confirmed `media@...` consumes only `media` and `general@...` consumes exactly `inventory,notifications,cms,maintenance`, and a genuine deployment bug was found and fixed in the process — `celery beat` does not accept the `-n`/`--hostname` flag (worker-only), which was crash-looping the Beat container; removed from both `docker-compose.yml` and `Infra/application/docker-compose.application.yml`.
+
+The pass was halted immediately on being told the target database was production — no test data was created, and grepping the logs confirmed zero business-logic writes occurred (every attempted task failed cleanly at the connection layer, caught by existing error handling, before reaching any UPDATE/DELETE/INSERT); the one write that did happen, `sync_notification_rules`'s upsert, is the same idempotent operation that already runs on every normal backend startup. All containers were stopped and removed, and the local-only Redis port workaround was reverted.
+
+Independently, the user then shared real production worker logs showing the exact `EMAXCONNSESSION`/"another operation is in progress" failure mode this Docker attempt had also hit — which led directly to finding and fixing the §0 event-loop bug. So while the structured 20-step Phase C checklist was not completed, the attempt was not wasted: it's what first surfaced the connection-pool pressure that turned out to share a root cause with the production incident.
 
 ## 14. Performance BEFORE/AFTER
 
@@ -153,7 +184,8 @@ Per plan §15: APScheduler removal and Celery addition were deployed as one atom
 
 ## 17. Remaining Risks
 
-1. **No live validation yet** (§13/§14) — the single largest open item. Acceptance criteria in the brief ("the migration is successful only when the actual business jobs have been demonstrated end-to-end") is not yet met; this report covers implementation-complete + unit-tested, not live-verified.
+0. **Production is currently running the buggy pre-§0 build.** The event-loop fix is code-complete and unit-tested but has not been redeployed. Until a new image is built and deployed, the live symptoms reported (task failures on second+ tick, "Timed out waiting for variant generation") will continue. This is the single highest-priority action item from this session.
+1. **No full live validation yet** (§13/§14) — Acceptance criteria in the brief ("the migration is successful only when the actual business jobs have been demonstrated end-to-end") is not yet met; this report covers implementation-complete + unit-tested + a partial/halted live pass (Phase C above), not a full live-verified pass. Re-running live validation after the §0 fix is deployed is now more important than before, not less — the fix needs to be proven under the same sustained multi-tick load that exposed the original bug, not just unit tests.
 2. **Notification immediate-dispatch durability gap** (plan §8) — `send_email`/`send_whatsapp` commit a `status='pending'` log row before the outbound HTTP call; a process death in that exact window orphans the row (the retry sweep only picks up `status='retrying'`). Found during analysis, deliberately not fixed here — it's not in the APScheduler job inventory this migration targets and touches the customer-facing order-confirmation path; flagged as a scoped follow-up.
 3. **Connection budget arithmetic is untested under real load** — the `DATABASE_POOL_SIZE=1`/`MAX_OVERFLOW=1` values for Celery workers are a reasoned estimate (plan §13), not something validated against Supabase's actual pooler behavior under concurrent production traffic.
 4. **`cms_publish` has no row-level locking** (unchanged from before) — harmless today because publishing twice is a no-op, but would need revisiting if `celery-worker-general` concurrency is ever raised significantly.

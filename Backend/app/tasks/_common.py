@@ -12,7 +12,6 @@ job, without each task module re-implementing it.
 
 from __future__ import annotations
 
-import asyncio
 import random
 import time
 from collections.abc import Callable, Coroutine
@@ -51,12 +50,28 @@ def run_async[T](coro_fn: Callable[[], Coroutine[Any, Any, T]]) -> T:
     """Run an async function to completion from a sync Celery task body.
 
     Celery's prefork pool executes task functions synchronously; every task
-    body here wraps its actual (async) work with this helper. A fresh event
-    loop per invocation (via ``asyncio.run``) is deliberate — task
-    invocations in the same worker process must not share loop state across
-    calls, matching how each APScheduler tick previously ran independently.
+    body here wraps its actual (async) work with this helper.
+
+    Uses this process's single persistent event loop (app.celery_app.
+    get_worker_loop), NOT asyncio.run() per call. asyncio.run() creates a new
+    loop and destroys it when the coroutine returns — but app.core.database's
+    engine (and its pooled asyncpg connections) is created once per process
+    and reused across every task invocation in that process. asyncpg
+    connections are bound to the event loop that opened them, so a second
+    task's fresh asyncio.run() loop would try to reuse a connection still
+    attached to the first task's already-destroyed loop. Confirmed against
+    real worker logs this produced exactly:
+        RuntimeError: Task ... got Future ... attached to a different loop
+        asyncpg.exceptions.InterfaceError: cannot perform operation:
+        another operation is in progress
+    on the second+ tick of reservation_expiry/cms_publish/notification_retry
+    in the same worker process. One loop per process, reused for the
+    process's lifetime, is the fix — see app.celery_app's module docstring
+    for the full explanation.
     """
-    return asyncio.run(coro_fn())
+    from app.celery_app import get_worker_loop
+
+    return get_worker_loop().run_until_complete(coro_fn())
 
 
 @contextmanager
