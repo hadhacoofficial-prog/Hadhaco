@@ -60,12 +60,34 @@ POLL_BATCH_LIMIT = 20
 
 
 async def run() -> None:
-    """Periodic entry point — registered in app/workers/queue.py."""
+    """Periodic entry point — registered in app/celery_app.py's Beat schedule
+    as `media.sweep_pending`.
+
+    Reclaim and pending-discovery share one AsyncSession/transaction (one
+    UPDATE, one SELECT, one COMMIT) instead of two separate sessions each
+    with their own commit/rollback lifecycle — each session checkout was
+    previously paying for its own connect + transaction-boundary round
+    trips even though nothing here needs them isolated: `list_pending_images`
+    is a plain read with no locking implications, and the only invariant
+    that matters — no image is ever claimed twice — is enforced downstream
+    by `try_claim_pending`'s own atomic `UPDATE ... WHERE status='pending'`
+    in `process_one()`, not by session boundaries here.
+
+    If the transaction fails after the UPDATE succeeds but before COMMIT,
+    that reclaim rolls back too — this is not a correctness loss: a
+    still-'processing'-with-stale-updated_at row is exactly what
+    `reclaim_stale_processing`'s own WHERE clause is built to catch, so an
+    aborted attempt is simply reclaimed again on the next tick (same
+    self-healing property the retry logic already relies on elsewhere).
+    """
+    pending_ids: list[uuid.UUID] = []
     async with AsyncSessionLocal() as db:
         try:
             reclaimed = await _repo.reclaim_stale_processing(
                 db, stale_after_seconds=STALE_AFTER_SECONDS
             )
+            pending = await _repo.list_pending_images(db, limit=POLL_BATCH_LIMIT)
+            pending_ids = [image.id for image in pending]
             await db.commit()
             if reclaimed:
                 log.warning("media_generation_reclaimed_stale", count=reclaimed)
@@ -77,14 +99,6 @@ async def run() -> None:
             await db.rollback()
             log.exception("media_generation_reclaim_failed")
             return
-
-    try:
-        async with AsyncSessionLocal() as db:
-            pending = await _repo.list_pending_images(db, limit=POLL_BATCH_LIMIT)
-            pending_ids = [image.id for image in pending]
-    except _TRANSIENT_DB_ERRORS as exc:
-        log.warning("media_generation_db_unavailable", error=str(exc))
-        return
 
     for image_id in pending_ids:
         await process_one(image_id)

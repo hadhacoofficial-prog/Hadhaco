@@ -1,7 +1,9 @@
 """Tests for app.celery_app — configuration, routing, and Beat schedule
 completeness. Verifies every former APScheduler job (app/workers/queue.py,
 deleted by this migration) has exactly one Celery Beat entry at the same
-cadence, per Docs/CELERY_MIGRATION_PLAN.md §5."""
+cadence, per Docs/CELERY_MIGRATION_PLAN.md §5 — except media-sweep-pending,
+deliberately widened post-migration from 5s to 15s
+(Docs/MEDIA_SWEEP_OPTIMIZATION_REPORT.md)."""
 
 from __future__ import annotations
 
@@ -69,10 +71,15 @@ class TestTaskRouting:
 
 # (Beat cadence, in seconds) — mirrors app/workers/queue.py::build_queue,
 # deleted by this migration. Cron entries are asserted separately below.
+#
+# media-sweep-pending is a deliberate exception: widened from the original
+# 5s to 15s post-migration (Docs/MEDIA_SWEEP_OPTIMIZATION_REPORT.md) — the
+# 5s figure predates this migration and was never re-justified against the
+# actual 120s stale-'processing' threshold once ported over verbatim here.
 EXPECTED_INTERVAL_SCHEDULES = {
     "reservation-expiry": ("inventory.expire_reservations", 15),
     "cms-publish": ("cms.publish_scheduled", 60),
-    "media-sweep-pending": ("media.sweep_pending", 5),
+    "media-sweep-pending": ("media.sweep_pending", 15),
     "notification-retry": ("notifications.retry_failed", 30),
     "admin-session-cleanup": ("admin.cleanup_sessions", 3600),
 }

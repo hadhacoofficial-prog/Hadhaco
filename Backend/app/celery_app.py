@@ -103,7 +103,14 @@ celery_app.conf.update(
     # (which no worker in this deployment consumes) is a loud signal that a
     # new task was added without a route, not a silent misroute.
     # ── Beat schedule ─────────────────────────────────────────────────────
-    # Cadences match app/workers/queue.py::build_queue exactly (see plan §5).
+    # Cadences match app/workers/queue.py::build_queue (see plan §5), with
+    # one deliberate deviation: media-sweep-pending was widened from the
+    # original 5s to 15s (Docs/MEDIA_SWEEP_OPTIMIZATION_REPORT.md) — the
+    # original 5s predates this migration and was chosen so an admin
+    # watching "Generating…" isn't stuck long if the fast-path dispatch was
+    # ever lost entirely, not primarily to bound the 120s stale-'processing'
+    # reclaim window. At 15s the worst-case added wait (~10-13s) is still
+    # well inside the frontend's 30s pollImageUntilReady timeout.
     beat_schedule={
         "reservation-expiry": {
             "task": "inventory.expire_reservations",
@@ -115,7 +122,7 @@ celery_app.conf.update(
         },
         "media-sweep-pending": {
             "task": "media.sweep_pending",
-            "schedule": timedelta(seconds=5),
+            "schedule": timedelta(seconds=15),
         },
         "notification-retry": {
             "task": "notifications.retry_failed",

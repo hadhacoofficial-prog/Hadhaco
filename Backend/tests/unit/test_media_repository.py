@@ -6,6 +6,7 @@ Mocked AsyncSession, no real DB required — mirrors tests/unit/test_repositorie
 style (`db.execute` side_effect returns canned per-call results)."""
 
 import uuid
+from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -109,6 +110,42 @@ class TestReclaimStaleProcessing:
 
         assert count == 0
 
+    async def test_query_shape_only_matches_stale_processing_rows(self):
+        """No live DB in this suite (see tests/conftest.py), so this proves
+        the built statement's WHERE/SET clauses are structurally correct —
+        the actual row-filtering is then a property of Postgres executing
+        that (proven-correct) SQL, not something a mocked db.execute can
+        exercise directly.
+
+        Specifically proves:
+        - a 'ready'/'pending'/'failed' row can never match (WHERE binds
+          status == 'processing' only) — covers "completed image untouched"
+        - a 'processing' row whose updated_at is *at or after* the cutoff
+          can never match (WHERE binds updated_at < cutoff, cutoff computed
+          from stale_after_seconds at call time) — covers "fresh processing
+          image untouched"
+        - matched rows are set back to 'pending', not any other status
+        """
+        db = _db(_scalars_result([]))
+        before_call = datetime.now(UTC)
+
+        await self.repo.reclaim_stale_processing(db, stale_after_seconds=120)
+
+        after_call = datetime.now(UTC)
+        stmt = db.execute.call_args.args[0]
+        params = stmt.compile().params
+
+        assert params["status_1"] == "processing"
+        assert params["status"] == "pending"
+        # cutoff must be ~120s before "now" at call time, not e.g. 120s in
+        # the future or unrelated to stale_after_seconds entirely.
+        cutoff = params["updated_at_1"]
+        assert (
+            before_call - timedelta(seconds=121)
+            <= cutoff
+            <= after_call - timedelta(seconds=119)
+        )
+
 
 class TestListPendingImages:
     def setup_method(self):
@@ -121,6 +158,41 @@ class TestListPendingImages:
         result = await self.repo.list_pending_images(db, limit=20)
 
         assert result == images
+
+    async def test_query_shape_excludes_non_pending_and_deleted_rows(self):
+        """Statement-shape check (see docstring above) — proves 'ready'/
+        'processing'/'failed' rows (WHERE binds status == 'pending' only)
+        and soft-deleted rows (WHERE includes deleted_at IS NULL) can never
+        match, structurally."""
+        db = _db(_scalars_result([]))
+
+        await self.repo.list_pending_images(db, limit=20)
+
+        stmt = db.execute.call_args.args[0]
+        assert stmt.compile().params["status_1"] == "pending"
+        assert "deleted_at IS NULL" in str(stmt)
+
+
+class TestSoftDeleteNeverLeavesAProcessingStatus:
+    """reclaim_stale_processing's WHERE clause doesn't filter on deleted_at
+    at all — it doesn't need to, because soft_delete unconditionally flips
+    status away from 'processing' in the same write. Proves that invariant
+    directly, since it's what actually keeps a deleted image safe from
+    being reclaimed, not a filter in the reclaim query itself."""
+
+    def setup_method(self):
+        self.repo = ImageRepository()
+
+    async def test_soft_delete_sets_status_to_archived_not_processing(self):
+        image = MagicMock()
+        image.status = "processing"
+        db = AsyncMock()
+        db.add = MagicMock()
+
+        await self.repo.soft_delete(db, image)
+
+        assert image.status == "archived"
+        assert image.deleted_at is not None
 
 
 class TestMarkGenerationFailed:
