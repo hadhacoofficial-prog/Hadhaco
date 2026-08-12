@@ -27,8 +27,9 @@ email-validator==2.2.0
 # ── Authentication ───────────────────────────────────────────────────────────
 # PYSEC-2026-120/175/176/177/178/179 — fix: 2.13.0
 PyJWT==2.13.0
-# CVE-2024-12797, CVE-2026-26007, PYSEC-2026-35, GHSA-537c-gmf6-5ccf — fix: 48.0.1
-cryptography==48.0.1
+# CVE-2024-12797, CVE-2026-26007, PYSEC-2026-35, GHSA-537c-gmf6-5ccf (48.0.1),
+# PYSEC-2026-3552/3553/3554 — fix: 50.0.0
+cryptography==50.0.0
 pyotp==2.9.0
 bcrypt==4.2.1
 

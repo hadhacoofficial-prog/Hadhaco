@@ -24,9 +24,7 @@ type LoaderCtx = {
   params: { slug: string };
 };
 type LoaderResult = { product: ProductDetail };
-const loadRoute = Route.options.loader as unknown as (
-  ctx: LoaderCtx,
-) => Promise<LoaderResult>;
+const loadRoute = Route.options.loader as unknown as (ctx: LoaderCtx) => Promise<LoaderResult>;
 
 function makeDetail(slug: string): ProductDetail {
   return {
