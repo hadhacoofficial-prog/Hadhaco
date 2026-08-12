@@ -172,9 +172,20 @@ class _GlobalStats:
         self.pool_peak_checked_out: int = 0
         self.pool_peak_capacity: int = 0
         # ── SQL ───────────────────────────────────────────────────────────
+        # request_* fields are aggregated once per request in end_request()
+        # from per-request stats; worker_* fields are queries recorded with
+        # no active request context (background workers, lifespan startup —
+        # e.g. cache warming, notification_rules sync). sql_histogram and
+        # slow_queries already covered both scopes; these split counters
+        # close the gap where sql.total_queries previously only reflected
+        # request-path SQL while claiming to be a total (see
+        # Docs/CURRENT_SLOW_SQL_ROOT_CAUSE_ANALYSIS.md §8/§9 RC-9).
         self.sql_queries_total: int = 0
         self.sql_slow_total: int = 0
         self.sql_total_ms: float = 0.0
+        self.sql_queries_worker_total: int = 0
+        self.sql_worker_total_ms: float = 0.0
+        self.sql_slow_worker_total: int = 0
         # ── Redis ─────────────────────────────────────────────────────────
         self.redis_total_calls: int = 0
         self.redis_total_ms: float = 0.0
@@ -207,9 +218,9 @@ class _GlobalStats:
             if self.pool_checkout_waits_total
             else 0
         )
-        avg_query = (
-            self.sql_total_ms / self.sql_queries_total if self.sql_queries_total else 0
-        )
+        sql_total_queries = self.sql_queries_total + self.sql_queries_worker_total
+        sql_total_ms = self.sql_total_ms + self.sql_worker_total_ms
+        avg_query = sql_total_ms / sql_total_queries if sql_total_queries else 0
         avg_redis = (
             self.redis_total_ms / self.redis_total_calls
             if self.redis_total_calls
@@ -237,10 +248,17 @@ class _GlobalStats:
                 "avg_wait_ms": round(avg_wait, 1),
             },
             "sql": {
-                "total_queries": self.sql_queries_total,
-                "total_ms": round(self.sql_total_ms, 1),
+                # Combined request-path + worker/startup total — matches
+                # sql_histogram's count. Use request_queries/worker_queries
+                # below to see the split.
+                "total_queries": sql_total_queries,
+                "total_ms": round(sql_total_ms, 1),
                 "avg_ms": round(avg_query, 1),
-                "slow_queries": self.sql_slow_total,
+                "slow_queries": self.sql_slow_total + self.sql_slow_worker_total,
+                "request_queries": self.sql_queries_total,
+                "request_ms": round(self.sql_total_ms, 1),
+                "worker_queries": self.sql_queries_worker_total,
+                "worker_ms": round(self.sql_worker_total_ms, 1),
             },
             "redis": {
                 "total_calls": self.redis_total_calls,
@@ -365,6 +383,16 @@ class Profiler:
                         "query": truncated,
                     }
                 )
+        else:
+            # No active request context — this is a worker/lifespan-startup
+            # query (Celery task, cache warmer, notification_rules sync).
+            # end_request() never runs for these, so they must be counted
+            # here directly or sql.total_queries silently drops them.
+            with _lock:
+                self._global.sql_queries_worker_total += 1
+                self._global.sql_worker_total_ms += duration_ms
+                if is_slow:
+                    self._global.sql_slow_worker_total += 1
 
     # ── Redis call tracking ───────────────────────────────────────────────
 

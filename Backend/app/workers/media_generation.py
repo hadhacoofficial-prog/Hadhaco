@@ -11,17 +11,17 @@ Two things race to process a given image, and `ImageRepository.try_claim_pending
 atomic UPDATE ... WHERE status='pending' ... RETURNING is what makes that
 race safe:
 
-1. `enqueue()` fires an `asyncio.create_task` right when the image is
-   queued — the fast path, usually finishing in roughly one generation's
-   worth of R2 time, just off the request.
-2. `run()` is the periodic APScheduler job (registered in queue.py,
+1. `app.tasks.media.generate_variants` is dispatched as a Celery task right
+   when the image is queued (from `universal_service._enqueue_generation`)
+   — the fast path, usually finishing in roughly one generation's worth of
+   R2 time, just off the request. It calls `process_one()` below directly.
+2. `run()` is the periodic Celery Beat task (`app.tasks.media.sweep_pending`,
    mirroring reservation_expiry.py's pattern): it first reclaims any image
    stuck in 'processing' longer than STALE_AFTER_SECONDS (a worker process
-   died mid-run — the fast-path task has no durability of its own) back to
-   'pending', then processes whatever's pending. This is also the *only*
-   path that runs generation in a multi-process deployment, since the
-   process that received the original HTTP request isn't guaranteed to be
-   the one still alive when `enqueue()`'s task would otherwise finish.
+   died mid-run) back to 'pending', then processes whatever's pending. This
+   is also the *only* path that runs generation in a multi-process
+   deployment, since the worker process that dispatched the fast-path task
+   isn't guaranteed to be the one that picks it up.
 
 Each image is processed in its own DB session/transaction so one image's
 failure can't roll back another's successful generation in the same batch.
@@ -29,14 +29,13 @@ failure can't roll back another's successful generation in the same batch.
 
 from __future__ import annotations
 
-import asyncio
 import uuid
 
 import asyncpg
 import structlog
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.database import AsyncSessionLocal, get_worker_semaphore
+from app.core.database import AsyncSessionLocal
 from app.modules.media import background, storage
 from app.modules.media.preset_registry import Breakpoint, get_preset
 from app.modules.media.repository import ImageRepository
@@ -58,31 +57,6 @@ MAX_ATTEMPTS = 3
 # it — anything older than this is assumed abandoned and requeued.
 STALE_AFTER_SECONDS = 120
 POLL_BATCH_LIMIT = 20
-
-# Strong references to in-flight fast-path tasks — asyncio only holds a
-# weak reference to a task once nothing else does, so a task with no
-# retained reference can be garbage-collected mid-run. Discarded once done.
-_inflight_tasks: set[asyncio.Task[None]] = set()
-
-
-def enqueue(image_id: uuid.UUID) -> None:
-    """Fire-and-forget fast path: process this one image now, off the
-    request. Safe to call unconditionally — if the periodic worker (or
-    another `enqueue()` call, e.g. a rapid double-save) gets to it first,
-    `try_claim_pending` makes this a no-op.
-
-    Bounded by the worker semaphore so bursts of image mutations cannot
-    exhaust the shared connection pool."""
-    task = asyncio.create_task(_bounded_process(image_id))
-    _inflight_tasks.add(task)
-    task.add_done_callback(_inflight_tasks.discard)
-
-
-async def _bounded_process(image_id: uuid.UUID) -> None:
-    """Wrap process_one with the worker semaphore for bounded concurrency."""
-    sem = get_worker_semaphore()
-    async with sem:
-        await process_one(image_id)
 
 
 async def run() -> None:

@@ -1,4 +1,3 @@
-import asyncio
 import re
 import threading
 import time as _time
@@ -17,14 +16,25 @@ from app.core.config import settings
 
 _pool_log = structlog.get_logger("db.pool")
 
-# ── Single shared engine (all components) ─────────────────────────────────────
-# One engine serves API requests, background workers, event listeners, cache
-# warming, and health checks.  With pool_size=2 and max_overflow=1 the engine
-# holds at most 3 persistent TCP connections per uvicorn worker process.
+# ── Single shared engine (per process) ─────────────────────────────────────────
+# This module is imported by every process type that talks to the database:
+# the API (uvicorn worker processes) and the Celery worker/beat processes.
+# Each OS process gets its own engine/pool instance — SQLAlchemy async engines
+# are not fork/process-shareable (see app/celery_app.py's worker_process_init
+# handler, which disposes inherited connections after Celery's prefork fork).
+# With pool_size=2 and max_overflow=1 the engine holds at most 3 persistent
+# TCP connections per process using the default settings.
 #
-# Budget (2 workers): (2 + 1) × 2 = 6 persistent connections.
-# Remaining: 15 − 6 = 9 headroom for Alembic, transient spikes, and
-# occasional direct connections (psql, admin tools).
+# Budget against Supabase's session-pooler cap (15 on the default plan):
+#   API:              2 uvicorn workers  × 3 = 6
+#   celery-worker-media:   pool tuned down to 1+1=2 via env override × 1 = 2
+#   celery-worker-general: pool tuned down to 1+1=2 via env override × 1 = 2
+#   celery-beat:            enqueues only, opens no DB connection      = 0
+#   Total: 10, leaving 5 headroom for Alembic, transient spikes, and
+#   occasional direct connections (psql, admin tools). See
+#   Docs/CELERY_MIGRATION_PLAN.md §13 for the full connection-budget
+#   rationale and the DATABASE_POOL_SIZE/DATABASE_MAX_OVERFLOW env overrides
+#   applied to the Celery worker services in docker-compose.
 #
 # pool_pre_ping is deliberately OFF.  Supabase's session-mode PgBouncer can
 # leave connections in an intermediate transaction state after reassigning them.
@@ -117,22 +127,6 @@ class Base(DeclarativeBase):
     """Shared declarative base for all SQLAlchemy models."""
 
 
-# ── Worker concurrency limiter ────────────────────────────────────────────────
-# Bounded concurrency for background tasks that open database sessions.
-# Prevents bursts of asyncio.create_task() (e.g. media generation fast-path)
-# from exhausting the pool.  Allows up to 2 concurrent worker sessions across
-# the entire process — enough for parallelism without starving the API pool.
-_worker_semaphore: asyncio.Semaphore | None = None
-
-
-def get_worker_semaphore() -> asyncio.Semaphore:
-    """Return (and lazily create) the shared worker concurrency semaphore."""
-    global _worker_semaphore
-    if _worker_semaphore is None:
-        _worker_semaphore = asyncio.Semaphore(2)
-    return _worker_semaphore
-
-
 async def get_db() -> AsyncGenerator[AsyncSession, None]:
     """FastAPI dependency — yields a database session per request.
 
@@ -194,13 +188,21 @@ def _session_has_writes(session: AsyncSession) -> bool:
     connection when any INSERT/UPDATE/DELETE/MERGE ran. The connection is only
     consulted if the session actually opened one (i.e. executed a query), so
     a request that never touched the DB stays a pure no-op.
+
+    ``SessionTransaction.connection`` is a *method* (it lazily opens a bind if
+    none exists yet), not an attribute — reading it via ``getattr`` returns
+    the bound method object itself, not a ``Connection``, and calling it would
+    force a connection open for read-only requests, defeating the point of
+    this check. ``SessionTransaction._connections`` holds the connection(s)
+    already opened for this transaction, if any, with no side effects.
     """
     sync = session.sync_session
     if sync.new or sync.dirty or sync.deleted:
         return True
     txn = sync.get_transaction()
-    conn = getattr(txn, "connection", None) if txn is not None else None
-    return bool(conn is not None and conn.info.get("hadha_write"))
+    if txn is None:
+        return False
+    return any(conn.info.get("hadha_write") for conn, *_ in txn._connections.values())
 
 
 # ── SQL query profiling ───────────────────────────────────────────────────────

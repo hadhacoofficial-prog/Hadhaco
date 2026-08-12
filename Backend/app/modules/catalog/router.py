@@ -332,9 +332,9 @@ async def create_product(
     from app.common.responses import created
 
     result = await _service.create(db, payload)
-    from app.core.cache import bust_all_product_caches
+    from app.core.cache import schedule_all_product_caches_bust
 
-    await bust_all_product_caches(redis)
+    schedule_all_product_caches_bust(redis)
     return created(result, ResponseCode.PRODUCT_CREATED, "Product created successfully")
 
 
@@ -383,9 +383,9 @@ async def update_product(
     redis: aioredis.Redis = Depends(get_redis),
 ):
     result = await _service.update(db, product_id, payload)
-    from app.core.cache import bust_all_product_caches
+    from app.core.cache import schedule_all_product_caches_bust
 
-    await bust_all_product_caches(redis)
+    schedule_all_product_caches_bust(redis)
     return ok(result, ResponseCode.PRODUCT_UPDATED, "Product updated successfully")
 
 
@@ -401,9 +401,9 @@ async def delete_product(
     redis: aioredis.Redis = Depends(get_redis),
 ):
     await _service.delete(db, product_id)
-    from app.core.cache import bust_all_product_caches
+    from app.core.cache import schedule_all_product_caches_bust
 
-    await bust_all_product_caches(redis)
+    schedule_all_product_caches_bust(redis)
     return deleted(ResponseCode.PRODUCT_DELETED, "Product deleted successfully")
 
 
@@ -425,9 +425,9 @@ async def add_variant(
     from app.common.responses import created
 
     variant = await _service.add_variant(db, product_id, payload)
-    from app.core.cache import bust_all_product_caches
+    from app.core.cache import schedule_all_product_caches_bust
 
-    await bust_all_product_caches(redis)
+    schedule_all_product_caches_bust(redis)
     return created(
         ProductVariantResponse.model_validate(variant),
         ResponseCode.PRODUCT_VARIANT_CREATED,
@@ -447,9 +447,9 @@ async def update_variant(
     redis: aioredis.Redis = Depends(get_redis),
 ):
     variant = await _service.update_variant(db, variant_id, payload)
-    from app.core.cache import bust_all_product_caches
+    from app.core.cache import schedule_all_product_caches_bust
 
-    await bust_all_product_caches(redis)
+    schedule_all_product_caches_bust(redis)
     return ok(
         ProductVariantResponse.model_validate(variant),
         ResponseCode.PRODUCT_VARIANT_UPDATED,
@@ -473,9 +473,9 @@ async def delete_variant(
     product_id = await _service.delete_variant(db, variant_id)
     if product_id is None:
         raise NotFoundError("Variant not found")
-    from app.core.cache import bust_all_product_caches
+    from app.core.cache import schedule_all_product_caches_bust
 
-    await bust_all_product_caches(redis)
+    schedule_all_product_caches_bust(redis)
     return deleted(ResponseCode.PRODUCT_VARIANT_DELETED, "Variant deleted successfully")
 
 
@@ -495,9 +495,9 @@ async def upsert_attribute(
     redis: aioredis.Redis = Depends(get_redis),
 ):
     await _service.upsert_attribute(db, product_id, payload)
-    from app.core.cache import bust_all_product_caches
+    from app.core.cache import schedule_all_product_caches_bust
 
-    await bust_all_product_caches(redis)
+    schedule_all_product_caches_bust(redis)
     return ok(
         None, ResponseCode.PRODUCT_ATTRIBUTE_UPSERTED, "Attribute upserted successfully"
     )
@@ -516,9 +516,9 @@ async def delete_attribute(
     redis: aioredis.Redis = Depends(get_redis),
 ):
     await _service.delete_attribute(db, product_id, attr_name)
-    from app.core.cache import bust_all_product_caches
+    from app.core.cache import schedule_all_product_caches_bust
 
-    await bust_all_product_caches(redis)
+    schedule_all_product_caches_bust(redis)
     return deleted(
         ResponseCode.PRODUCT_ATTRIBUTE_DELETED, "Attribute deleted successfully"
     )
@@ -575,9 +575,9 @@ async def adjust_stock(
         performed_by=current_user.id,
         request_id=getattr(request.state, "request_id", None),
     )
-    from app.core.cache import bust_all_product_caches
+    from app.core.cache import schedule_all_product_caches_bust
 
-    await bust_all_product_caches(redis)
+    schedule_all_product_caches_bust(redis)
     return ok(
         {"stock_quantity": new_qty},
         ResponseCode.PRODUCT_STOCK_ADJUSTED,

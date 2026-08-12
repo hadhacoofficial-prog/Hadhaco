@@ -11,7 +11,6 @@ Proves:
     3. In _retry_log: db.commit() comes BEFORE any dispatcher call (both branches)
     4. No provider or dispatcher method accepts an AsyncSession parameter
     5. Connection pool budget math is correct
-    6. Worker semaphore bounds concurrency to 2
 """
 
 from __future__ import annotations
@@ -202,13 +201,6 @@ class TestConnectionPoolBudget:
         assert persistent == 6
         assert headroom == 9
         assert persistent < supabase_limit
-
-    def test_worker_semaphore_value(self):
-        """Worker semaphore limits concurrency to 2."""
-        db_path = _SERVICE_PATH.parent.parent.parent / "core" / "database.py"
-        content = db_path.read_text(encoding="utf-8")
-        assert "asyncio.Semaphore(2)" in content
-        assert "get_worker_semaphore" in content
 
     def test_database_pool_config(self):
         """Pool size and max overflow in config match the budget."""

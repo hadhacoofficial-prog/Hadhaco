@@ -529,15 +529,17 @@ class UniversalImageService:
         `background.generate_variants_for_breakpoints` parallel-upload fix
         is unchanged and is exactly what the worker calls).
 
-        `app.workers.media_generation.enqueue()` fires an
-        `asyncio.create_task` fast path for near-immediate processing in
-        the common case; the periodic `media_generation` worker job is the
-        crash-recovery/retry net (and the only path at all in a
-        multi-process deployment, where the process that received this
-        request may not be the one still running once R2 generation
-        finishes).
+        `app.tasks.media.generate_variants` is dispatched as a Celery task
+        for near-immediate processing in the common case; the periodic
+        `media.sweep_pending` Beat task is the crash-recovery/retry net (and
+        the only path at all in a multi-process deployment, where the
+        process that received this request may not be the one still running
+        once R2 generation finishes). Dispatch is fire-and-forget — the two
+        can race on the same image exactly as before (module docstring of
+        app.workers.media_generation), and `try_claim_pending`'s atomic
+        claim is what makes that race safe regardless of which one wins.
         """
-        from app.workers import media_generation
+        from app.tasks.media import generate_variants
 
         _t0 = time.perf_counter()
 
@@ -554,7 +556,7 @@ class UniversalImageService:
         )
         _mark_db = (time.perf_counter() - _t0) * 1000
 
-        media_generation.enqueue(image.id)
+        generate_variants.delay(str(image.id))
         _mark_enqueue = (time.perf_counter() - _t0) * 1000 - _mark_db
 
         _perflog.debug(

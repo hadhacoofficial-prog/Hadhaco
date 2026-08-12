@@ -5,7 +5,7 @@ One place that owns every logging decision:
   - structlog is the single formatter — no duplicate handlers, no double printing
   - uvicorn's own handlers are stripped and replaced with ours at startup
   - SQL echo is off by default; set LOG_SQL=true to re-enable for local debugging
-  - APScheduler, httpx, boto3, and other chatty libraries are silenced to WARNING
+  - Celery, httpx, boto3, and other chatty libraries are silenced to WARNING
   - Request-level context (request_id, user_id, ip) is injected by middleware;
     every log line inside a request automatically carries those fields
 
@@ -31,10 +31,6 @@ _SILENCE: dict[str, int] = {
     "sqlalchemy.pool": logging.WARNING,
     "sqlalchemy.dialects": logging.WARNING,
     "sqlalchemy.orm": logging.WARNING,
-    # APScheduler fires INFO on every tick ("Looking for jobs", "Next wakeup")
-    "apscheduler.scheduler": logging.WARNING,
-    "apscheduler.executors.default": logging.WARNING,
-    "apscheduler.jobstores": logging.WARNING,
     # HTTP client internals
     "httpx": logging.WARNING,
     "httpcore": logging.WARNING,

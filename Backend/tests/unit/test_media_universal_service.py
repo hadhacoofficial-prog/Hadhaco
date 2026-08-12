@@ -151,7 +151,7 @@ class TestUpload:
                 "app.modules.media.universal_service.storage.build_original_key"
             ) as build_key,
             patch("app.modules.media.universal_service.storage.put_original"),
-            patch("app.workers.media_generation.enqueue") as enqueue,
+            patch("app.tasks.media.generate_variants.delay") as enqueue,
         ):
             build_key.return_value = "images/hero/banner/none/some-id/original.jpg"
             content = _jpeg_bytes(2000, 800)
@@ -167,7 +167,7 @@ class TestUpload:
                 uploaded_by=None,
             )
 
-        enqueue.assert_called_once_with(image.id)
+        enqueue.assert_called_once_with(str(image.id))
         assert image.preset_id == "hero_desktop"
         assert image.status == "pending"
         assert set(image.metadata_["generation"]["pending_breakpoints"]) == {
@@ -211,7 +211,7 @@ class TestCrop:
                 "app.modules.media.universal_service._repo.update_metadata",
                 new=AsyncMock(return_value=image),
             ) as update_meta,
-            patch("app.workers.media_generation.enqueue") as enqueue,
+            patch("app.tasks.media.generate_variants.delay") as enqueue,
         ):
             result = await svc.crop(db, image=image, payload=payload)
 
@@ -228,7 +228,7 @@ class TestCrop:
         # all three — and this now holds regardless of preset/artifact
         # count, since it's just which breakpoints get enqueued, not a
         # size-based dispatch decision.
-        enqueue.assert_called_once_with(result.id)
+        enqueue.assert_called_once_with(str(result.id))
         assert result.metadata_["generation"]["pending_breakpoints"] == ["desktop"]
 
     async def test_product_single_breakpoint_crop_still_enqueues_generation(self):
@@ -252,7 +252,7 @@ class TestCrop:
                 "app.modules.media.universal_service._repo.update_metadata",
                 new=AsyncMock(return_value=image),
             ),
-            patch("app.workers.media_generation.enqueue") as enqueue,
+            patch("app.tasks.media.generate_variants.delay") as enqueue,
         ):
             await svc.crop(db, image=image, payload=payload)
 
@@ -280,7 +280,7 @@ class TestCrop:
                 "app.modules.media.universal_service._repo.update_metadata",
                 new=AsyncMock(return_value=image),
             ),
-            patch("app.workers.media_generation.enqueue") as enqueue,
+            patch("app.tasks.media.generate_variants.delay") as enqueue,
         ):
             await svc.crop(db, image=image, payload=payload)
 
@@ -310,7 +310,7 @@ class TestCrop:
                 "app.modules.media.universal_service._repo.update_metadata",
                 new=AsyncMock(return_value=image),
             ) as update_meta,
-            patch("app.workers.media_generation.enqueue"),
+            patch("app.tasks.media.generate_variants.delay"),
         ):
             await svc.crop(db, image=image, payload=payload)
 
@@ -349,7 +349,7 @@ class TestCrop:
                 "app.modules.media.universal_service._repo.update_metadata",
                 new=AsyncMock(),
             ) as update_meta,
-            patch("app.workers.media_generation.enqueue") as enqueue,
+            patch("app.tasks.media.generate_variants.delay") as enqueue,
         ):
             with pytest.raises(CropGeometryError):
                 await svc.crop(db, image=image, payload=payload)
@@ -384,12 +384,12 @@ class TestCrop:
                 "app.modules.media.universal_service._repo.update_metadata",
                 new=AsyncMock(return_value=image),
             ) as update_meta,
-            patch("app.workers.media_generation.enqueue") as enqueue,
+            patch("app.tasks.media.generate_variants.delay") as enqueue,
         ):
             result = await svc.crop(db, image=image, payload=payload)
 
         update_meta.assert_awaited_once()
-        enqueue.assert_called_once_with(result.id)
+        enqueue.assert_called_once_with(str(result.id))
 
 
 class TestSvgUpload:
@@ -415,7 +415,7 @@ class TestSvgUpload:
                 "app.modules.media.universal_service.storage.public_url",
                 return_value="https://cdn.example/original.svg",
             ),
-            patch("app.workers.media_generation.enqueue") as enqueue,
+            patch("app.tasks.media.generate_variants.delay") as enqueue,
             patch(
                 "app.modules.media.universal_service._repo.replace_variants",
                 new=AsyncMock(),
@@ -547,7 +547,7 @@ class TestSkipInitialGeneration:
                 "app.modules.media.universal_service.storage.put_original",
                 new=AsyncMock(),
             ),
-            patch("app.workers.media_generation.enqueue") as enqueue,
+            patch("app.tasks.media.generate_variants.delay") as enqueue,
         ):
             image = await svc.upload(
                 db,
@@ -581,7 +581,7 @@ class TestSkipInitialGeneration:
                 "app.modules.media.universal_service.storage.put_original",
                 new=AsyncMock(),
             ),
-            patch("app.workers.media_generation.enqueue") as enqueue,
+            patch("app.tasks.media.generate_variants.delay") as enqueue,
         ):
             await svc.upload(
                 db,

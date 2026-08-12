@@ -54,6 +54,107 @@ services:
       retries: 3
       start_period: 20s
 
+  # ── Celery worker — media queue (image variant generation) ───────────────────
+  celery-worker-media:
+    build:
+      context: ./Backend
+      dockerfile: Dockerfile
+      target: development
+    container_name: hadha-celery-worker-media
+    restart: unless-stopped
+    env_file: ./Backend/.env
+    environment:
+      REDIS_URL: "redis://:${REDIS_PASSWORD:-}@hadha-redis:6379/0"
+      # Smaller per-process pool than the API — each Celery worker slot holds
+      # one DB session at a time, not one per HTTP request (plan §13).
+      DATABASE_POOL_SIZE: "1"
+      DATABASE_MAX_OVERFLOW: "1"
+    command:
+      [
+        "celery", "-A", "app.celery_app", "worker",
+        "-Q", "media",
+        "--concurrency=2",
+        "--max-tasks-per-child=50",
+        "-n", "media@%h",
+        "--loglevel=info",
+      ]
+    volumes:
+      - ./Backend:/app
+    depends_on:
+      hadha-redis:
+        condition: service_healthy
+    networks:
+      - hadha-network
+    healthcheck:
+      test: ["CMD-SHELL", "celery -A app.celery_app inspect ping --timeout=5 | grep -q pong"]
+      interval: 30s
+      timeout: 15s
+      retries: 3
+      start_period: 20s
+
+  # ── Celery worker — inventory/notifications/cms/maintenance queues ───────────
+  celery-worker-general:
+    build:
+      context: ./Backend
+      dockerfile: Dockerfile
+      target: development
+    container_name: hadha-celery-worker-general
+    restart: unless-stopped
+    env_file: ./Backend/.env
+    environment:
+      REDIS_URL: "redis://:${REDIS_PASSWORD:-}@hadha-redis:6379/0"
+      DATABASE_POOL_SIZE: "1"
+      DATABASE_MAX_OVERFLOW: "1"
+    command:
+      [
+        "celery", "-A", "app.celery_app", "worker",
+        "-Q", "inventory,notifications,cms,maintenance",
+        "--concurrency=4",
+        "-n", "general@%h",
+        "--loglevel=info",
+      ]
+    volumes:
+      - ./Backend:/app
+    depends_on:
+      hadha-redis:
+        condition: service_healthy
+    networks:
+      - hadha-network
+    healthcheck:
+      test: ["CMD-SHELL", "celery -A app.celery_app inspect ping --timeout=5 | grep -q pong"]
+      interval: 30s
+      timeout: 15s
+      retries: 3
+      start_period: 20s
+
+  # ── Celery Beat — single dedicated scheduler, enqueues only ──────────────────
+  celery-beat:
+    build:
+      context: ./Backend
+      dockerfile: Dockerfile
+      target: development
+    container_name: hadha-celery-beat
+    restart: unless-stopped
+    env_file: ./Backend/.env
+    environment:
+      REDIS_URL: "redis://:${REDIS_PASSWORD:-}@hadha-redis:6379/0"
+    command:
+      [
+        "celery", "-A", "app.celery_app", "beat",
+        "--schedule=/tmp/celerybeat-schedule",
+        "--loglevel=info",
+      ]
+    volumes:
+      - ./Backend:/app
+    depends_on:
+      hadha-redis:
+        condition: service_healthy
+    networks:
+      - hadha-network
+    # No meaningful liveness probe beyond "process is running" — Beat has no
+    # broker connection to ping the way a worker does (item 21 of the
+    # migration brief; Docker's restart policy covers crash recovery).
+
   # ── Storefront — customer-facing (localhost:8080) ────────────────────────────
   storefront:
     build:

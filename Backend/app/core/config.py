@@ -151,6 +151,13 @@ class Settings(BaseSettings):
     REDIS_CACHE_TTL: int = 300
     REDIS_RATE_LIMIT_TTL: int = 60
 
+    # ── Celery ─────────────────────────────────────────────────────────────────
+    # Defaults to REDIS_URL with the logical DB index swapped to /2 (DB 0 is the
+    # app cache, DB 1 is GlitchTip's Valkey — see docker-compose.yml) so the
+    # broker gets its own keyspace. Override only if broker/cache need to be on
+    # physically separate Redis instances.
+    CELERY_BROKER_URL: str | None = None
+
     # ── Cloudflare R2 ──────────────────────────────────────────────────────────
     CLOUDFLARE_ACCOUNT_ID: str
     CLOUDFLARE_R2_BUCKET: str

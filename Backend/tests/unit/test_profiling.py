@@ -62,3 +62,44 @@ def test_drain_metrics_emits_snapshot_info_line():
         assert kwargs["requests_total"] == 1
         assert kwargs["sql"]["total_queries"] == 1
     profiler.reset()
+
+
+def test_worker_context_queries_are_not_dropped_from_total():
+    """Regression for RC-9 (Docs/CURRENT_SLOW_SQL_ROOT_CAUSE_ANALYSIS.md §8):
+    a query recorded with no active request context (background worker,
+    lifespan startup) used to vanish from sql.total_queries/total_ms even
+    though sql_histogram counted it — total_queries must match the
+    histogram's count, request-path SQL plus worker-context SQL."""
+    profiler.reset()
+    with patch("app.core.profiling._slow_sql_log.warning"):
+        # No begin_request() — this is exactly the worker/startup shape.
+        profiler.record_query(40.0, "SELECT worker_query")
+        profiler.record_query(
+            260.0, "SELECT worker_slow_query", slow_threshold_ms=200.0
+        )
+
+    snapshot = profiler.snapshot()
+    assert snapshot["sql"]["worker_queries"] == 2
+    assert snapshot["sql"]["request_queries"] == 0
+    assert snapshot["sql"]["total_queries"] == 2
+    assert snapshot["sql"]["total_ms"] == 300.0
+    assert snapshot["sql"]["slow_queries"] == 1
+    # The histogram already counted both — total_queries must now agree.
+    assert snapshot["sql_latency"]["count"] == snapshot["sql"]["total_queries"]
+    profiler.reset()
+
+
+def test_request_and_worker_queries_both_counted_in_total():
+    profiler.reset()
+    profiler.begin_request()
+    profiler.record_query(10.0, "SELECT request_query")
+    profiler.end_request(path="/products", duration_ms=10.0)
+
+    with patch("app.core.profiling._slow_sql_log.warning"):
+        profiler.record_query(15.0, "SELECT worker_query")
+
+    snapshot = profiler.snapshot()
+    assert snapshot["sql"]["request_queries"] == 1
+    assert snapshot["sql"]["worker_queries"] == 1
+    assert snapshot["sql"]["total_queries"] == 2
+    profiler.reset()

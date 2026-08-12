@@ -272,6 +272,74 @@ async def bust_all_product_caches(redis: aioredis.Redis) -> None:
     await bust_search_cache(redis)
 
 
+# ── Fire-and-forget full product-cache bust ─────────────────────────────────
+# Every catalog admin write (create/update/delete/restore/etc., catalog/
+# router.py) used to `await bust_all_product_caches(redis)` inline — a chain
+# of SCAN + per-key soft-expire + detail-key SCAN/DELETE + sitemap + search
+# busts, blocking the admin's response on however many Redis round-trips that
+# takes. The media module already solved this exact problem for the
+# product-list piece alone (see redis.py's schedule_product_list_bust /
+# P0-1); this extends the same tracked-background-task, request-coalescing
+# pattern to the full bust set so catalog writes get the same fix. Cache
+# correctness is unchanged — the bust still runs to completion, just off the
+# response path, exactly as media's already does.
+_full_bust_tasks: set[asyncio.Task[Any]] = set()
+_full_bust_in_flight: bool = False
+_full_bust_requested: bool = False
+
+
+def _run_full_bust_in_background(redis: aioredis.Redis) -> None:
+    global _full_bust_in_flight, _full_bust_requested
+
+    async def _loop() -> None:
+        global _full_bust_in_flight, _full_bust_requested
+        try:
+            while True:
+                await bust_all_product_caches(redis)
+                # Drain any busts requested while this one ran, same
+                # coalescing discipline as schedule_product_list_bust: the
+                # flag is checked and cleared with no await in between, so a
+                # concurrent schedule cannot slip in and be lost.
+                if not _full_bust_requested:
+                    break
+                _full_bust_requested = False
+        finally:
+            _full_bust_in_flight = False
+            _full_bust_tasks.discard(asyncio.current_task())
+
+    _full_bust_in_flight = True
+    task = asyncio.create_task(_loop())
+    _full_bust_tasks.add(task)
+    task.add_done_callback(_full_bust_tasks.discard)
+
+
+def schedule_all_product_caches_bust(redis: aioredis.Redis) -> None:
+    """Fire-and-forget the full product-cache bust (list + detail + sitemap
+    + search). Safe to call from the request path: returns immediately,
+    never raises. While a bust is already running, later calls set
+    ``_full_bust_requested`` so the running loop drains them before exiting
+    (no lost invalidations)."""
+    global _full_bust_requested
+    if _full_bust_in_flight:
+        _full_bust_requested = True
+        return
+    _run_full_bust_in_background(redis)
+
+
+def cancel_pending_full_busts() -> None:
+    """Cancel any in-flight full-bust tasks (called during app shutdown).
+
+    Mirrors app.core.redis.cancel_pending_busts — interrupted mid-way is
+    safe: keys busted so far stay busted; keys not yet reached keep serving
+    until the next write triggers another bust.
+    """
+    global _full_bust_in_flight, _full_bust_requested
+    for task in list(_full_bust_tasks):
+        task.cancel()
+    _full_bust_in_flight = False
+    _full_bust_requested = False
+
+
 async def bust_all_caches(redis: aioredis.Redis) -> None:
     """Full cache invalidation — use sparingly (e.g. admin "purge all")."""
     if not redis_available():

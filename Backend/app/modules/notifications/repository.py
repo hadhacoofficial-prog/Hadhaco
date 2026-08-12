@@ -358,11 +358,30 @@ class NotificationRepository:
         await db.flush()
 
     async def get_pending_retries(self, db: AsyncSession) -> list[NotificationLog]:
+        """Select rows due for retry, locking them against a concurrent
+        selector via ``FOR UPDATE SKIP LOCKED``.
+
+        Under Celery (unlike the single-leader APScheduler queue this
+        replaced), it's possible for two invocations of
+        ``notifications.retry_failed`` to overlap — e.g. a slow tick still
+        running when the next Beat-scheduled one starts. Without a lock, both
+        would see the identical candidate list and could send the same
+        customer notification twice. ``SKIP LOCKED`` closes the race at
+        SELECT time: a concurrent selector never sees a row this transaction
+        already holds. (`NotificationService._retry_log` commits after each
+        row to release the DB connection before its HTTP call, so this lock
+        does not stay held for the whole batch — the task-level single-flight
+        lock in `app.tasks.notifications.retry_failed` is what fully
+        prevents overlapping runs; this is defense in depth for the
+        SELECT-time race specifically, not the sole guard.)
+        """
         result = await db.execute(
-            select(NotificationLog).where(
+            select(NotificationLog)
+            .where(
                 NotificationLog.status == "retrying",
                 NotificationLog.next_retry_at <= datetime.now(UTC),
             )
+            .with_for_update(skip_locked=True)
         )
         return list(result.scalars().all())
 

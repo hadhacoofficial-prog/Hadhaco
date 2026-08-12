@@ -1,8 +1,8 @@
 """Automatic retry worker for failed notifications.
 
-Runs periodically via APScheduler to pick up notifications in 'retrying'
-status whose next_retry_at has passed, and re-attempts delivery through
-the appropriate provider (email or whatsapp).
+Invoked periodically by the Celery Beat task app.tasks.notifications.retry_failed
+to pick up notifications in 'retrying' status whose next_retry_at has passed,
+and re-attempts delivery through the appropriate provider (email or whatsapp).
 """
 
 from __future__ import annotations

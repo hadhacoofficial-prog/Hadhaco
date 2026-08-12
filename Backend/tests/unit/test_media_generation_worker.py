@@ -1,9 +1,9 @@
 """Tests for app.workers.media_generation — the background variant-
-generation worker (CB-1 Phase 2): claim-and-generate, retry-on-failure,
-crash recovery (reclaim_stale_processing), and the asyncio.create_task
-fast path (enqueue)."""
+generation worker (CB-1 Phase 2): claim-and-generate, retry-on-failure, and
+crash recovery (reclaim_stale_processing). The Celery-dispatched fast path
+(app.tasks.media.generate_variants) is a thin wrapper around process_one()
+and is tested in tests/unit/test_tasks_media.py."""
 
-import asyncio
 import uuid
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -196,32 +196,6 @@ class TestProcessOneFailure:
 
         mark_failed.assert_awaited_once_with(db, refetched, "corrupt original")
         update_fields.assert_not_awaited()
-
-
-class TestEnqueue:
-    async def test_fires_task_and_tracks_strong_reference(self):
-        """asyncio only weakly references a bare task — enqueue() must keep
-        a strong reference until it completes, or the task can be
-        garbage-collected mid-run."""
-        from app.workers import media_generation
-
-        image_id = uuid.uuid4()
-        with (
-            patch(
-                "app.workers.media_generation.get_worker_semaphore",
-                return_value=asyncio.Semaphore(5),
-            ),
-            patch(
-                "app.workers.media_generation.process_one", new=AsyncMock()
-            ) as process_one,
-        ):
-            media_generation.enqueue(image_id)
-            assert len(media_generation._inflight_tasks) == 1
-            await asyncio.sleep(0)  # let the task run to completion
-            await asyncio.sleep(0)  # let the done-callback fire
-
-        process_one.assert_awaited_once_with(image_id)
-        assert len(media_generation._inflight_tasks) == 0
 
 
 class TestRun:

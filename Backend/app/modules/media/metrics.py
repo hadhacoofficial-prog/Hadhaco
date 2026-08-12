@@ -10,8 +10,8 @@ Metric semantics:
     PILImage.open(...).size call), or "generate" (background.py's full
     decode->rotate->crop->mask->resize->encode pass for one image across
     all its breakpoints).
-    (scheduler-wide job duration lives in app/core/scheduler_metrics.py,
-    since it's not media-specific — every registered job gets it.)
+    (task-wide duration/outcome logging for every Celery task lives in
+    app/tasks/_common.py::task_run_log, since it's not media-specific.)
 """
 
 from __future__ import annotations

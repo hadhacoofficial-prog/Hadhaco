@@ -51,6 +51,9 @@ CRITICAL_CONTAINERS=(
   "hadha-glitchtip"
   "hadha-glitchtip-worker"
   "hadha-glitchtip-db"
+  "hadha-celery-worker-media"
+  "hadha-celery-worker-general"
+  "hadha-celery-beat"
 )
 
 # MONITORING: warned but do NOT block deployment
@@ -159,6 +162,36 @@ if [[ "${REDIS_PONG}" == "PONG" ]]; then
   check_pass "Redis" "PONG"
 else
   check_fail "Redis" "Ping failed"
+fi
+
+# ── Celery workers / beat ─────────────────────────────────────────────────────
+# Container-running checks above only prove the process didn't crash on
+# startup — this proves the worker actually holds a live broker connection
+# and would accept work, which "docker inspect: running" alone cannot show
+# (item 21 of the migration brief: no simplistic process-alive-only check).
+log ""
+log "Checking Celery workers..."
+
+for worker in "hadha-celery-worker-media" "hadha-celery-worker-general"; do
+  PING=$(docker exec "${worker}" celery -A app.celery_app inspect ping --timeout=5 2>&1 || echo "FAIL")
+  if echo "${PING}" | grep -q "pong"; then
+    check_pass "${worker}" "Broker reachable (pong)"
+  else
+    check_fail "${worker}" "No pong from broker: $(echo "${PING}" | tail -1)"
+  fi
+done
+
+log ""
+log "Checking Celery Beat..."
+BEAT_LOG_TAIL=$(docker logs --tail 20 hadha-celery-beat 2>&1 || echo "")
+if echo "${BEAT_LOG_TAIL}" | grep -qi "beat: starting\|Scheduler: Sending due task"; then
+  check_pass "hadha-celery-beat" "Scheduler active"
+else
+  # Not necessarily a failure — a freshly-started beat may not have logged a
+  # "Sending due task" line yet if no schedule has come due within the last
+  # 20 log lines. The container-running check above already gates hard
+  # failure; this is corroborating evidence only.
+  check_warn "hadha-celery-beat" "No recent scheduler activity in logs (may be newly started)"
 fi
 
 # ── Nginx config test ────────────────────────────────────────────────────────

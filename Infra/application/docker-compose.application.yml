@@ -52,6 +52,129 @@ services:
     security_opt:
       - no-new-privileges:true
 
+  # ── Celery worker — media queue (image variant generation) ───────────────────
+  celery-worker-media:
+    image: ${BACKEND_IMAGE:?BACKEND_IMAGE is required — pass via --env-file}
+    container_name: hadha-celery-worker-media
+    restart: unless-stopped
+    env_file: /opt/hadha/.env.production
+    environment:
+      APP_ENV: production
+      REDIS_URL: "redis://:${REDIS_PASSWORD}@hadha-redis:6379/0"
+      SENTRY_DSN: "${GLITCHTIP_DSN:-}"
+      SENTRY_TRACES_SAMPLE_RATE: "0.1"
+      # Smaller per-process pool than the API — each Celery worker slot holds
+      # one DB session at a time, not one per HTTP request. See
+      # Backend/app/core/database.py's connection-budget comment and
+      # Docs/CELERY_MIGRATION_PLAN.md §13.
+      DATABASE_POOL_SIZE: "1"
+      DATABASE_MAX_OVERFLOW: "1"
+    command:
+      [
+        "celery", "-A", "app.celery_app", "worker",
+        "-Q", "media",
+        "--concurrency=2",
+        "--max-tasks-per-child=50",
+        "-n", "media@%h",
+        "--loglevel=info",
+      ]
+    networks:
+      - hadha
+    healthcheck:
+      test: ["CMD-SHELL", "celery -A app.celery_app inspect ping --timeout=5 | grep -q pong"]
+      interval: 30s
+      timeout: 15s
+      retries: 3
+      start_period: 30s
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+          cpus: "1.0"
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "50m"
+        max-file: "5"
+    security_opt:
+      - no-new-privileges:true
+
+  # ── Celery worker — inventory/notifications/cms/maintenance queues ───────────
+  celery-worker-general:
+    image: ${BACKEND_IMAGE:?BACKEND_IMAGE is required — pass via --env-file}
+    container_name: hadha-celery-worker-general
+    restart: unless-stopped
+    env_file: /opt/hadha/.env.production
+    environment:
+      APP_ENV: production
+      REDIS_URL: "redis://:${REDIS_PASSWORD}@hadha-redis:6379/0"
+      SENTRY_DSN: "${GLITCHTIP_DSN:-}"
+      SENTRY_TRACES_SAMPLE_RATE: "0.1"
+      DATABASE_POOL_SIZE: "1"
+      DATABASE_MAX_OVERFLOW: "1"
+    command:
+      [
+        "celery", "-A", "app.celery_app", "worker",
+        "-Q", "inventory,notifications,cms,maintenance",
+        "--concurrency=4",
+        "-n", "general@%h",
+        "--loglevel=info",
+      ]
+    networks:
+      - hadha
+    healthcheck:
+      test: ["CMD-SHELL", "celery -A app.celery_app inspect ping --timeout=5 | grep -q pong"]
+      interval: 30s
+      timeout: 15s
+      retries: 3
+      start_period: 30s
+    deploy:
+      resources:
+        limits:
+          memory: 384M
+          cpus: "0.5"
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "50m"
+        max-file: "5"
+    security_opt:
+      - no-new-privileges:true
+
+  # ── Celery Beat — single dedicated scheduler, enqueues only ──────────────────
+  # Exactly one instance: no deploy.replicas override, never started with a
+  # worker role in the same process. See Docs/CELERY_MIGRATION_PLAN.md §12.
+  celery-beat:
+    image: ${BACKEND_IMAGE:?BACKEND_IMAGE is required — pass via --env-file}
+    container_name: hadha-celery-beat
+    restart: unless-stopped
+    env_file: /opt/hadha/.env.production
+    environment:
+      APP_ENV: production
+      REDIS_URL: "redis://:${REDIS_PASSWORD}@hadha-redis:6379/0"
+      SENTRY_DSN: "${GLITCHTIP_DSN:-}"
+      SENTRY_TRACES_SAMPLE_RATE: "0.1"
+    command:
+      [
+        "celery", "-A", "app.celery_app", "beat",
+        "--schedule=/tmp/celerybeat-schedule",
+        "--loglevel=info",
+      ]
+    networks:
+      - hadha
+    deploy:
+      resources:
+        limits:
+          memory: 128M
+          cpus: "0.25"
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "50m"
+        max-file: "5"
+    security_opt:
+      - no-new-privileges:true
+
   # ── Storefront — customer-facing (hadha.co) ─────────────────────────────────
   storefront:
     image: ${STOREFRONT_IMAGE:?STOREFRONT_IMAGE is required — pass via --env-file}
