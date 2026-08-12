@@ -19,10 +19,10 @@ from sqlalchemy.dialects.postgresql import TSVECTOR, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.database import Base
+from app.modules.media.models import Image
 
 if TYPE_CHECKING:
     from app.modules.categories.models import Category
-    from app.modules.media.models import Image
 
 
 class Product(Base):

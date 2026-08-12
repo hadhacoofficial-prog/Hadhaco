@@ -1,0 +1,4 @@
+# Generated measurement artifacts — regenerate with:
+#   ./hadha/Scripts/python.exe -m pytest tests/measurement -q --no-header
+# Never commit machine-generated JSONL evidence; only the harness code.
+results/

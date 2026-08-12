@@ -124,9 +124,9 @@ class ProductRepository:
         Uses COUNT(*) OVER() window function so count + data are fetched in a
         single round-trip (saves one DB round-trip vs the previous separate
         count query).  Relationship eager-loads (images / variants) are NOT
-        applied here — call ``get_images_for_products`` and
-        ``get_image_variants_for_images`` for list-view image hydration, which
-        fetches only the 2 images per product that the UI actually renders.
+        applied here — call ``get_images_for_products`` for list-view image
+        hydration, which fetches only the 2 images per product that the UI
+        actually renders (with their ``Image.variants`` selectinloaded).
         """
         filters: list[ColumnElement[bool]] = []
         if not include_deleted:
@@ -201,8 +201,8 @@ class ProductRepository:
     #  List-view image hydration — replaces heavy selectinload(Product.images
     #  ).selectinload(Image.variants) which loaded ALL images for ALL products.
     #  Instead, we fetch exactly 2 images per product (primary + first
-    #  secondary) in a single batch query, then fetch image_variants only for
-    #  the primary images.
+    #  secondary) in a single batch query, with Image.variants selectinloaded
+    #  for those images only.
     # ------------------------------------------------------------------ #
 
     async def get_images_for_products(
@@ -275,26 +275,6 @@ class ProductRepository:
         # Sort each product's images by the CTE row number
         for pid in mapping:
             mapping[pid].sort(key=lambda i: id_order.get(i.id, 999))
-        return mapping
-
-    async def get_image_variants_for_images(
-        self, db: AsyncSession, image_ids: list[uuid.UUID]
-    ) -> dict[uuid.UUID, list]:
-        """Fetch ImageVariant rows for the given image IDs.
-
-        Returns ``{image_id: [ImageVariant, ...]}``.
-        """
-        if not image_ids:
-            return {}
-
-        from app.modules.media.models import ImageVariant
-
-        result = await db.execute(
-            select(ImageVariant).where(ImageVariant.image_id.in_(image_ids))
-        )
-        mapping: dict[uuid.UUID, list] = {}
-        for iv in result.scalars().all():
-            mapping.setdefault(iv.image_id, []).append(iv)
         return mapping
 
     async def create(self, db: AsyncSession, data: dict[str, Any]) -> Product:
@@ -386,15 +366,15 @@ class ProductRepository:
     async def update_variant(
         self, db: AsyncSession, variant_id: uuid.UUID, data: dict[str, Any]
     ) -> ProductVariant | None:
-        await db.execute(
-            update(ProductVariant).where(ProductVariant.id == variant_id).values(**data)
+        # UPDATE ... RETURNING returns the fresh row in one round-trip
+        # (previously: UPDATE, then re-read via db.get + expire + SELECT).
+        result = await db.execute(
+            update(ProductVariant)
+            .where(ProductVariant.id == variant_id)
+            .values(**data)
+            .returning(ProductVariant)
         )
-        # The raw UPDATE bypasses the ORM identity map so the cached
-        # instance is stale.  Expire it so the re-fetch hits the DB.
-        instance = await db.get(ProductVariant, variant_id)
-        if instance is not None:
-            db.expire(instance)
-        return await self.get_variant(db, variant_id)
+        return result.scalar_one_or_none()
 
     async def delete_variant(self, db: AsyncSession, variant_id: uuid.UUID) -> bool:
         result = await db.execute(

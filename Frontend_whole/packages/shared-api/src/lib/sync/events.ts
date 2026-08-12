@@ -63,9 +63,20 @@ export interface SyncEventPayloads {
      * refetching to learn the same number. */
     availableByProduct?: Record<string, number>;
   };
-  [SyncEventType.ORDER_CREATED]: { orderId: string; orderNumber: string };
+  [SyncEventType.ORDER_CREATED]: {
+    orderId: string;
+    orderNumber: string;
+    /** Supabase user id of the order owner (present on SSE-delivered events). */
+    userId?: string;
+  };
   [SyncEventType.ORDER_CANCELLED]: { orderId: string };
-  [SyncEventType.ORDER_STATUS_CHANGED]: { orderId: string; oldStatus: string; newStatus: string };
+  [SyncEventType.ORDER_STATUS_CHANGED]: {
+    orderId: string;
+    oldStatus: string;
+    newStatus: string;
+    /** Supabase user id of the order owner (present on SSE-delivered events). */
+    userId?: string;
+  };
   [SyncEventType.RESERVATION_CREATED]: {
     reservationId: string;
     userId?: string;

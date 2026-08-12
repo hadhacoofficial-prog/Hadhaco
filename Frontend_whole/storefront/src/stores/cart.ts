@@ -26,20 +26,7 @@ export const cartLineKey = (productId: string, variantId?: string) =>
 
 const lineKey = cartLineKey;
 
-/** Broadcast cart changes to other tabs via BroadcastChannel. */
-let _cartChannel: BroadcastChannel | null = null;
-function broadcastCartCrossTab(): void {
-  try {
-    if (!_cartChannel) {
-      _cartChannel = new BroadcastChannel("hadha:sync");
-    }
-    _cartChannel.postMessage("cart-changed");
-  } catch {
-    // BroadcastChannel unavailable — graceful degradation
-  }
-}
-
-/** Emit CART_CHANGED via SyncBus for local listeners (inventory sync, etc.). */
+/** Emit CART_CHANGED via SyncBus (dispatches locally AND cross-tab). */
 function emitCartChanged(): void {
   try {
     const bus = getBus();
@@ -49,10 +36,9 @@ function emitCartChanged(): void {
   }
 }
 
-/** Notify all listeners (SyncBus + cross-tab) after a cart mutation. */
+/** Notify all listeners after a cart mutation. SyncBus handles cross-tab. */
 function notifyCartChange(): void {
   emitCartChanged();
-  broadcastCartCrossTab();
 }
 
 interface CartState {
@@ -165,28 +151,3 @@ export const useCart = create<CartState>()(
     { name: "hadha-cart" },
   ),
 );
-
-/**
- * Listen for cross-tab cart changes and re-emit via SyncBus so local
- * listeners (inventory sync, etc.) react to remote tab mutations.
- */
-function setupCrossTabListener(): void {
-  try {
-    if (typeof BroadcastChannel === "undefined") return;
-    if (!_cartChannel) {
-      _cartChannel = new BroadcastChannel("hadha:sync");
-    }
-    _cartChannel.onmessage = (event) => {
-      if (event.data === "cart-changed") {
-        // Another tab changed the cart — re-read from localStorage (persist middleware)
-        // and emit SyncBus event so local listeners react
-        emitCartChanged();
-      }
-    };
-  } catch {
-    // BroadcastChannel unavailable
-  }
-}
-
-// Set up cross-tab listener on module load
-setupCrossTabListener();

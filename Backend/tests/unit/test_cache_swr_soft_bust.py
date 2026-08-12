@@ -24,7 +24,13 @@ import time
 import pytest
 
 from app.core.cache import cache_swr
-from app.core.redis import bust_product_list_cache, safe_redis_get, safe_redis_setex
+from app.core.redis import (
+    bust_product_list_cache,
+    cancel_pending_busts,
+    safe_redis_get,
+    safe_redis_setex,
+    schedule_product_list_bust,
+)
 
 pytestmark = pytest.mark.asyncio
 
@@ -477,3 +483,138 @@ async def test_concurrent_image_edits_do_not_corrupt_cache():
         wrapper = json.loads(raw)  # must still be valid JSON, not torn/corrupted
         assert "d" in wrapper and "t" in wrapper
         assert time.time() - wrapper["t"] >= 300
+
+
+# ── 4. P0-1: fire-and-forget product-list bust ─────────────────────────────
+
+
+@pytest.fixture(autouse=True)
+def _reset_bust_task_registry(monkeypatch):
+    """P0-1's background bust registry is module-global state. Reset it
+    between tests and keep the background loop from touching the real DB via
+    rewarm_after_invalidation (AsyncSessionLocal is not available in unit
+    tests)."""
+    from unittest.mock import AsyncMock
+
+    import app.core.cache_warmer as warmer
+    import app.core.redis as redis_module
+
+    redis_module._bust_tasks.clear()
+    redis_module._bust_in_flight = False
+    redis_module._bust_requested = False
+    monkeypatch.setattr(warmer, "rewarm_after_invalidation", AsyncMock())
+    yield
+    for task in list(redis_module._bust_tasks):
+        task.cancel()
+    redis_module._bust_tasks.clear()
+    redis_module._bust_in_flight = False
+    redis_module._bust_requested = False
+
+
+async def _await_bust_idle(timeout: float = 2.0) -> None:
+    import app.core.redis as redis_module
+
+    deadline = asyncio.get_event_loop().time() + timeout
+    while redis_module._bust_in_flight or redis_module._bust_tasks:
+        if asyncio.get_event_loop().time() > deadline:
+            state = [
+                f"{t!r} done={t.done()} cancelled={t.cancelled()}"
+                for t in list(redis_module._bust_tasks)
+            ]
+            raise AssertionError(
+                f"background bust task did not finish in time "
+                f"(in_flight={redis_module._bust_in_flight} "
+                f"requested={redis_module._bust_requested} tasks={state})"
+            )
+        await asyncio.sleep(0.01)
+
+
+async def test_schedule_returns_immediately_and_bust_runs_in_background():
+    """The P0-1 core regression: schedule_product_list_bust must NOT block the
+    media write on the SCAN + per-key soft-expire — the key is untouched the
+    instant schedule returns, and the background task soft-expires it after."""
+    redis = _FakeRedis()
+    await safe_redis_setex(redis, TEST_KEY, 600, _wrapper({"page": 1}))
+
+    schedule_product_list_bust(redis)
+
+    # Synchronous read of the store — no await between schedule and this, so
+    # the background task has not had an event-loop turn yet. If the bust ran
+    # inline (the bug), the timestamp would already be rewritten here.
+    raw = redis._store[TEST_KEY]
+    assert time.time() - json.loads(raw)["t"] < 300, (
+        "schedule_product_list_bust blocked on the bust — the media write "
+        "path must return immediately"
+    )
+
+    await _await_bust_idle()
+
+    raw = await safe_redis_get(redis, TEST_KEY)
+    assert (
+        time.time() - json.loads(raw)["t"] >= 300
+    ), "background bust must eventually soft-expire the key"
+
+
+async def test_schedule_collapses_concurrent_busts_and_drains_pending(monkeypatch):
+    """Rapid successive media ops (upload then crop) must not stack background
+    tasks: while one bust runs, later schedules are flagged and drained by the
+    running loop, so no invalidation is lost but only one task exists."""
+    from unittest.mock import AsyncMock
+
+    import app.core.redis as redis_module
+
+    bust = AsyncMock()
+    monkeypatch.setattr(redis_module, "bust_product_list_cache", bust)
+    redis = _FakeRedis()
+
+    schedule_product_list_bust(redis)  # starts the single background task
+    schedule_product_list_bust(redis)  # must NOT start a second task
+    schedule_product_list_bust(redis)  # still no second task
+
+    assert (
+        len(redis_module._bust_tasks) == 1
+    ), "concurrent schedules must collapse into a single in-flight task"
+
+    await _await_bust_idle()
+
+    assert bust.await_count == 2, (
+        f"pending busts must be drained by the running loop, got {bust.await_count} "
+        f"busts (expected initial + one drain)"
+    )
+
+
+async def test_cancel_pending_busts_stops_in_flight_task():
+    import app.core.redis as redis_module
+
+    redis = _FakeRedis()
+    await safe_redis_setex(redis, TEST_KEY, 600, _wrapper({"page": 1}))
+
+    schedule_product_list_bust(redis)
+    assert redis_module._bust_in_flight is True
+
+    cancel_pending_busts()
+    await _await_bust_idle()
+
+    assert (
+        redis_module._bust_in_flight is False
+    ), "cancelled bust must release the single-flight flag"
+    assert redis_module._bust_tasks == set()
+
+
+async def test_schedule_triggers_rewarm_after_bust(monkeypatch):
+    """Option C of the approved plan: after soft-expiring, the background loop
+    calls rewarm_after_invalidation(["products"]) so the next visitor finds a
+    fresh first page."""
+    from unittest.mock import AsyncMock
+
+    import app.core.cache_warmer as warmer
+
+    rewarm = AsyncMock(return_value={"ok": 0})
+    monkeypatch.setattr(warmer, "rewarm_after_invalidation", rewarm)
+    redis = _FakeRedis()
+    await safe_redis_setex(redis, TEST_KEY, 600, _wrapper({"page": 1}))
+
+    schedule_product_list_bust(redis)
+    await _await_bust_idle()
+
+    rewarm.assert_awaited_once_with(["products"])

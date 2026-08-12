@@ -34,6 +34,8 @@ from typing import Any
 import structlog
 
 log = structlog.get_logger("profiling")
+_slow_sql_log = structlog.get_logger("perf.sql")
+_metrics_log = structlog.get_logger("perf.metrics")
 
 _lock = threading.Lock()
 
@@ -332,25 +334,37 @@ class Profiler:
         # Global histogram (always, regardless of per-request state)
         with _lock:
             self._global.sql_histogram.record(duration_ms)
+        is_slow = duration_ms >= slow_threshold_ms
+        if is_slow:
+            truncated = query_text[:200] if query_text else ""
+            # Record into the global slow-query deque (request AND worker
+            # contexts) so /health/metrics shows every offender, not just
+            # request-path SQL.
+            with _lock:
+                self._global.slow_queries.append(
+                    _SlowQueryEntry(duration_ms, truncated)
+                )
+            # Structured WARN log line so slow SQL lands in the perf log
+            # without requiring /health/metrics to be scraped (P0-0).
+            _slow_sql_log.warning(
+                "slow_sql",
+                duration_ms=round(duration_ms, 1),
+                threshold_ms=slow_threshold_ms,
+                query=truncated,
+            )
         stats: _PerRequestStats | None = getattr(self._local, "stats", None)
         if stats is not None:
             stats.query_count += 1
             stats.query_total_ms += duration_ms
             if duration_ms > stats.query_max_ms:
                 stats.query_max_ms = duration_ms
-            if duration_ms >= slow_threshold_ms:
-                truncated = query_text[:200] if query_text else ""
+            if is_slow:
                 stats.slow_queries.append(
                     {
                         "duration_ms": round(duration_ms, 1),
                         "query": truncated,
                     }
                 )
-                # Also record into the global slow-query deque
-                with _lock:
-                    self._global.slow_queries.append(
-                        _SlowQueryEntry(duration_ms, truncated)
-                    )
 
     # ── Redis call tracking ───────────────────────────────────────────────
 
@@ -422,6 +436,17 @@ class Profiler:
             )
 
     # ── Snapshot ──────────────────────────────────────────────────────────
+
+    def drain_metrics(self) -> None:
+        """Emit the current metrics snapshot as a single structured log line.
+
+        Called by the periodic drain task in ``app.main`` (every
+        ``PERF_DRAIN_INTERVAL_SECONDS``) so a baseline is captured on disk even
+        when nothing scrapes ``/health/metrics``. Non-destructive — counters
+        continue accumulating across drains.
+        """
+        data = self.snapshot()
+        _metrics_log.info("metrics_drain", **data)
 
     def snapshot(self) -> dict[str, Any]:
         """Return current metrics snapshot (non-destructive)."""

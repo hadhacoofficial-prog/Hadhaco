@@ -34,6 +34,11 @@ class Settings(BaseSettings):
     APP_VERSION: str = "1.0.0"
     ENABLE_DEV_AUTH: bool = False
     PROFILING_ENABLED: bool = True
+    # Slow-operation thresholds for the structured perf log (P0-0 measurement).
+    PERF_SLOW_SQL_THRESHOLD_MS: float = 200.0  # WARN when a single query exceeds this
+    # Interval for draining the in-memory profiler snapshot to the perf log.
+    # 0 disables the periodic drain (the /health/metrics endpoint still works).
+    PERF_DRAIN_INTERVAL_SECONDS: int = 60
 
     # ── API ────────────────────────────────────────────────────────────────────
     API_HOST: str = (

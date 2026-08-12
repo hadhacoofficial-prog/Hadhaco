@@ -119,21 +119,9 @@ class CatalogService:
 
         # Batch-load exactly 2 images per product (primary + secondary)
         # instead of selectinload which loaded ALL images for ALL products.
+        # get_images_for_products also selectinloads Image.variants for those
+        # 2 images, so no separate image_variants fetch is needed here.
         images_map = await _repo.get_images_for_products(db, product_ids)
-
-        # Collect ALL image IDs (both primary + secondary) for variant loading
-        all_image_ids: list[uuid.UUID] = []
-        for imgs in images_map.values():
-            all_image_ids.extend(img.id for img in imgs)
-
-        # Batch-load image variants only for the fetched images (not ALL
-        # images for ALL products as selectinload did before).
-        variants_map = await _repo.get_image_variants_for_images(db, all_image_ids)
-
-        # Attach variants to images in-memory
-        for imgs in images_map.values():
-            for img in imgs:
-                img.variants = variants_map.get(img.id, [])
 
         # Skip the collections join entirely for callers that never render
         # collection badges (e.g. homepage rails) — pass

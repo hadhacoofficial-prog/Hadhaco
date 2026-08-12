@@ -25,17 +25,18 @@ logger = logging.getLogger(__name__)
 ORIGINAL_CACHE_CONTROL = "private, max-age=0, must-revalidate"
 VARIANT_CACHE_CONTROL = "public, max-age=31536000, immutable"
 
-# Variant generation runs synchronously in-request (see universal_service.py
-# module docstring for why) and every put/get is offloaded via
-# asyncio.to_thread onto the process-wide default ThreadPoolExecutor
-# (min(32, cpu+4) workers, shared with every other blocking call in the
-# app). A handful of concurrent large-preset uploads (product = 18 R2 calls
-# each) can fill that pool and stall unrelated request I/O that also uses
-# to_thread. This semaphore caps how many R2 calls THIS module will run at
-# once — it doesn't fix the synchronous-in-request architecture (that needs
-# a real task queue, tracked as a follow-up), but it puts a hard ceiling on
-# the blast radius of a burst of uploads instead of letting them exhaust
-# the shared pool. Docs audit CB-1.
+# Variant generation runs in the background worker
+# (app.workers.media_generation): universal_service._enqueue_generation
+# persists "pending" + which breakpoints need regenerating and returns
+# immediately, and the worker does the crop -> encode -> R2-upload work off
+# the request. Every put/get here is offloaded via asyncio.to_thread onto
+# the process-wide default ThreadPoolExecutor (min(32, cpu+4) workers,
+# shared with every other blocking call in the app). A concurrent batch of
+# variant generation (product = 18 R2 calls each) can fill that pool and
+# stall unrelated request I/O that also uses to_thread. This semaphore caps
+# how many R2 calls THIS module will run at once — putting a hard ceiling on
+# the blast radius of a burst of uploads or worker batches instead of
+# letting them exhaust the shared pool.
 _R2_CONCURRENCY = asyncio.Semaphore(8)
 
 

@@ -49,7 +49,11 @@ class CollectionRepository:
         sort_by: str = "sort_order",
         sort_dir: str = "asc",
     ) -> tuple[list[dict[str, Any]], int]:
-        """Return paginated list with product_count."""
+        """Return paginated list with product_count.
+
+        Uses COUNT(*) OVER() window function so the total and the page data
+        are fetched in a single round-trip.
+        """
 
         pc_subq = (
             select(
@@ -83,13 +87,11 @@ class CollectionRepository:
         order_col = col_map.get(sort_by, Collection.sort_order)
         order_expr = order_col.asc() if sort_dir == "asc" else order_col.desc()
 
-        count_q = select(func.count()).select_from(Collection).where(*filters)
-        total = (await db.execute(count_q)).scalar_one()
-
         q = (
             select(
                 Collection,
                 func.coalesce(pc_subq.c.cnt, 0).label("product_count"),
+                func.count().over().label("total"),
             )
             .outerjoin(pc_subq, pc_subq.c.collection_id == Collection.id)
             .where(*filters)
@@ -98,6 +100,7 @@ class CollectionRepository:
             .limit(page_size)
         )
         rows = (await db.execute(q)).all()
+        total = rows[0].total if rows else 0
         return (
             [
                 {

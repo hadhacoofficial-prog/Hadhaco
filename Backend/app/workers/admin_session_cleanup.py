@@ -2,8 +2,8 @@
 Admin session cleanup worker — runs hourly.
 
 Batch-deletes AdminSession rows whose 2FA verification expired more than an
-hour ago. Expired sessions are already rejected at request time by
-AuthService.is_admin_session_2fa_verified (expires_at check) — this worker
+hour ago. Expired sessions are already rejected at request time by the 2FA
+gate (AuthService.get_2fa_gate_state's expires_at check) — this worker
 is pure operational hygiene, keeping the table from growing unbounded.
 
 A single DELETE by indexed expires_at, no per-row locking beyond what

@@ -1,0 +1,352 @@
+{
+    "root_group": {
+        "groups": {
+            "setup": {
+                "name": "setup",
+                "path": "::setup",
+                "id": "5c0f8025f7e0b6654089e5b00e950f1a",
+                "groups": {},
+                "checks": {
+                        "setup_products — HTTP 2xx": {
+                            "name": "setup_products — HTTP 2xx",
+                            "path": "::setup::setup_products — HTTP 2xx",
+                            "id": "638d53887f51c2237931afe9e48e06be",
+                            "passes": 1,
+                            "fails": 0
+                        }
+                    }
+            },
+            "Product List": {
+                "groups": {},
+                "checks": {
+                        "list — HTTP 2xx": {
+                            "name": "list — HTTP 2xx",
+                            "path": "::Product List::list — HTTP 2xx",
+                            "id": "cbf4c6bfe79ca862c8983eb2544f6d5a",
+                            "passes": 11,
+                            "fails": 1
+                        },
+                        "list — success": {
+                            "path": "::Product List::list — success",
+                            "id": "e03cb73ace567f426e8db080743e53b7",
+                            "passes": 11,
+                            "fails": 1,
+                            "name": "list — success"
+                        },
+                        "list — has items": {
+                            "name": "list — has items",
+                            "path": "::Product List::list — has items",
+                            "id": "bb3cb6d898f4f736883789c442133bd0",
+                            "passes": 11,
+                            "fails": 1
+                        }
+                    },
+                "name": "Product List",
+                "path": "::Product List",
+                "id": "911edb41b80c5164ce3e91b59657465a"
+            },
+            "Product Detail (PDP)": {
+                "name": "Product Detail (PDP)",
+                "path": "::Product Detail (PDP)",
+                "id": "e1993f6d7937c2dd04bf1ef0dfdacc68",
+                "groups": {},
+                "checks": {
+                        "detail — HTTP 2xx": {
+                            "id": "39b781694257ada9086a529fba088f7c",
+                            "passes": 12,
+                            "fails": 0,
+                            "name": "detail — HTTP 2xx",
+                            "path": "::Product Detail (PDP)::detail — HTTP 2xx"
+                        },
+                        "detail — HTTP 200": {
+                            "fails": 0,
+                            "name": "detail — HTTP 200",
+                            "path": "::Product Detail (PDP)::detail — HTTP 200",
+                            "id": "d6003f0c6357f3f5ec87cc028cbb6ea9",
+                            "passes": 12
+                        },
+                        "detail — success": {
+                            "name": "detail — success",
+                            "path": "::Product Detail (PDP)::detail — success",
+                            "id": "be611aa3da8aa1f87fc4583239ce3b34",
+                            "passes": 12,
+                            "fails": 0
+                        },
+                        "detail — has product": {
+                            "passes": 12,
+                            "fails": 0,
+                            "name": "detail — has product",
+                            "path": "::Product Detail (PDP)::detail — has product",
+                            "id": "028cbd08432a9b146c26dd881a2179d9"
+                        }
+                    }
+            },
+            "Collections": {
+                "path": "::Collections",
+                "id": "68577249eea9db11f2bd2a874f314f7a",
+                "groups": {},
+                "checks": {
+                        "collections — HTTP 2xx": {
+                            "path": "::Collections::collections — HTTP 2xx",
+                            "id": "992fb051d4bc3101efb6087535d315d7",
+                            "passes": 12,
+                            "fails": 0,
+                            "name": "collections — HTTP 2xx"
+                        },
+                        "collections — success": {
+                            "name": "collections — success",
+                            "path": "::Collections::collections — success",
+                            "id": "8c8a57315d320b2fc792565b498074a4",
+                            "passes": 12,
+                            "fails": 0
+                        }
+                    },
+                "name": "Collections"
+            },
+            "Categories": {
+                "name": "Categories",
+                "path": "::Categories",
+                "id": "de177901cdf40f97fe929818298c9e98",
+                "groups": {},
+                "checks": {
+                        "categories — HTTP 2xx": {
+                            "passes": 12,
+                            "fails": 0,
+                            "name": "categories — HTTP 2xx",
+                            "path": "::Categories::categories — HTTP 2xx",
+                            "id": "1fe7e89ca405222334763cda6283959b"
+                        },
+                        "categories — success": {
+                            "path": "::Categories::categories — success",
+                            "id": "be6e8ad4a98988bdef94406dcc5dffb7",
+                            "passes": 12,
+                            "fails": 0,
+                            "name": "categories — success"
+                        }
+                    }
+            },
+            "Homepage": {
+                "checks": {
+                    "homepage — HTTP 2xx": {
+                        "passes": 12,
+                        "fails": 0,
+                        "name": "homepage — HTTP 2xx",
+                        "path": "::Homepage::homepage — HTTP 2xx",
+                        "id": "72aa7eb2eca75eafde2f8d6c133fce63"
+                    },
+                    "homepage — success": {
+                        "path": "::Homepage::homepage — success",
+                        "id": "c81c050308702ad597caef619eb44527",
+                        "passes": 12,
+                        "fails": 0,
+                        "name": "homepage — success"
+                    }
+                },
+                "name": "Homepage",
+                "path": "::Homepage",
+                "id": "cded41459867b5c9224144a4d6f189c4",
+                "groups": {}
+            }
+        },
+        "checks": {},
+        "name": "",
+        "path": "",
+        "id": "d41d8cd98f00b204e9800998ecf8427e"
+    },
+    "metrics": {
+        "http_req_duration": {
+            "avg": 636.1083327868854,
+            "min": 129.5292,
+            "med": 155.5041,
+            "max": 7316.6589,
+            "p(90)": 2091.4346,
+            "p(95)": 2391.2307
+        },
+        "vus": {
+            "value": 1,
+            "min": 0,
+            "max": 2
+        },
+        "data_received": {
+            "count": 2541484,
+            "rate": 81929.20439178632
+        },
+        "vus_max": {
+            "max": 2,
+            "value": 2,
+            "min": 2
+        },
+        "http_req_tls_handshaking": {
+            "p(95)": 0,
+            "avg": 7.9411163934426225,
+            "min": 0,
+            "med": 0,
+            "max": 324.7247,
+            "p(90)": 0
+        },
+        "api_errors": {
+            "count": 1,
+            "rate": 0.03223675789097485
+        },
+        "http_req_duration{name:list}": {
+            "max": 7316.6589,
+            "p(90)": 2629.2599100000007,
+            "p(95)": 4878.783679999997,
+            "avg": 1082.0392333333334,
+            "min": 242.4815,
+            "med": 283.7626,
+            "thresholds": {
+                "p(95)<1000": true
+            }
+        },
+        "http_req_waiting": {
+            "avg": 620.4382147540983,
+            "min": 126.2576,
+            "med": 152.2575,
+            "max": 7316.6589,
+            "p(90)": 2083.4225,
+            "p(95)": 2386.3443
+        },
+        "api_success_rate": {
+            "passes": 60,
+            "fails": 1,
+            "value": 0.9836065573770492
+        },
+        "http_req_duration{name:collections}": {
+            "avg": 163.16119166666667,
+            "min": 129.5292,
+            "med": 149.34629999999999,
+            "max": 351.204,
+            "p(90)": 155.44561,
+            "p(95)": 243.56905499999988,
+            "thresholds": {
+                "p(95)<1000": false
+            }
+        },
+        "http_reqs": {
+            "count": 61,
+            "rate": 1.9664422313494656
+        },
+        "http_req_receiving": {
+            "avg": 15.425222950819672,
+            "min": 0,
+            "med": 2.5483,
+            "max": 302.857,
+            "p(90)": 29.8139,
+            "p(95)": 38.8962
+        },
+        "data_sent": {
+            "count": 19620,
+            "rate": 632.4851898209265
+        },
+        "iteration_duration": {
+            "p(90)": 6866.076720000001,
+            "p(95)": 9182.661819999998,
+            "avg": 4369.907833333333,
+            "min": 2283.5969,
+            "med": 3937.48075,
+            "max": 11679.666
+        },
+        "http_req_blocked": {
+            "p(90)": 0,
+            "p(95)": 0,
+            "avg": 14.840460655737704,
+            "min": 0,
+            "med": 0,
+            "max": 619.8666
+        },
+        "checks": {
+            "passes": 154,
+            "fails": 3,
+            "value": 0.9808917197452229
+        },
+        "http_req_connecting": {
+            "avg": 6.677601639344263,
+            "min": 0,
+            "med": 0,
+            "max": 282.3731,
+            "p(90)": 0,
+            "p(95)": 0
+        },
+        "http_req_duration{name:homepage}": {
+            "avg": 246.5902666666667,
+            "min": 131.6082,
+            "med": 149.98835000000003,
+            "max": 1049.0019,
+            "p(90)": 427.4231000000001,
+            "p(95)": 723.5430849999996,
+            "thresholds": {
+                "p(95)<1000": false
+            }
+        },
+        "http_req_failed": {
+            "passes": 1,
+            "fails": 60,
+            "thresholds": {
+                "rate<0.02": false
+            },
+            "value": 0.01639344262295082
+        },
+        "http_req_duration{expected_response:true}": {
+            "avg": 524.7658233333334,
+            "min": 129.5292,
+            "med": 155.21165,
+            "max": 3766.7815,
+            "p(90)": 1931.1799700000004,
+            "p(95)": 2259.3966349999996
+        },
+        "http_req_sending": {
+            "min": 0,
+            "med": 0.3023,
+            "max": 0.8839,
+            "p(90)": 0.6223,
+            "p(95)": 0.6826,
+            "avg": 0.24489508196721313
+        },
+        "api_latency": {
+            "max": 7316.6589,
+            "p(90)": 2091.4346,
+            "p(95)": 2391.2307,
+            "avg": 636.1083327868854,
+            "min": 129.5292,
+            "med": 155.5041
+        },
+        "iterations": {
+            "rate": 0.38684109469169814,
+            "count": 12
+        },
+        "http_req_duration{name:detail}": {
+            "avg": 1257.0423,
+            "min": 137.5114,
+            "med": 1759.13925,
+            "max": 2391.2307,
+            "p(90)": 2238.9315300000003,
+            "p(95)": 2314.905715,
+            "thresholds": {
+                "p(95)<800": true
+            }
+        },
+        "group_duration": {
+            "min": 132.122,
+            "med": 382.73855000000003,
+            "max": 7999.981,
+            "p(90)": 2478.87986,
+            "p(95)": 2806.2865349999997,
+            "avg": 873.9706216666665
+        }
+    },
+    "setup_data": {
+        "slugs": [
+            "925-silver-nautical-wheel-rakhi-premium-brown-cord-black-stone",
+            "new-divine-om-925-sterling-silver-rakhi-elegant-spiritual-raksha-bandhan-gift",
+            "hadha-925-silver-om-ganesh-rakhi-divine-elegant-designer-rakhi",
+            "celestial-crescent-925-silver-diamond-ring",
+            "eternal-link-925-silver-designer-ring-elegant-crystal-accent-band",
+            "bugati-925-sterling-silver-marquise-cz-drop-earrings-elegant-luxury-sparkle-for-women",
+            "hadha-925-sterling-silver-bugati-butterfly-drop-earrings-premium-sparkling-designer-earrings-for-women",
+            "karungali-925-sterling-silver-mens-bracelet-premium-matte-anticblack-bead-bracelet-for-men",
+            "premium-925-sterling-silver-mens-oval-link-bracelet-modern-luxury-chain-bracelet-for-men",
+            "hadha-premium-925-sterling-silver-mens-interlock-curb-link-bracelet"
+        ]
+    }
+}

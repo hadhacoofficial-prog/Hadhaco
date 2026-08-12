@@ -273,11 +273,17 @@ class TestProductRepository:
         result = await self.repo.get_variant(db, uuid.uuid4())
         assert result is mock_var
 
-    async def test_update_variant_executes_and_refetches(self):
+    async def test_update_variant_returns_via_returning(self):
         mock_var = MagicMock()
-        db = _db(MagicMock(), _scalar_one_or_none(mock_var))
+        db = _db(_scalar_one_or_none(mock_var))
         result = await self.repo.update_variant(db, uuid.uuid4(), {"name": "XL"})
         assert result is mock_var
+        db.execute.assert_awaited_once()
+
+    async def test_update_variant_returns_none_when_missing(self):
+        db = _db(_scalar_one_or_none(None))
+        result = await self.repo.update_variant(db, uuid.uuid4(), {"name": "XL"})
+        assert result is None
 
     async def test_delete_variant_returns_false_when_not_found(self):
         db = _db(_scalar_one_or_none(None))
@@ -609,6 +615,26 @@ class TestCollectionRepository:
         db = _db(_scalars_result([mock_col]))
         result = await self.repo.list_active(db)
         assert result == [mock_col]
+
+    async def test_list_admin_uses_windowed_total(self):
+        mock_col = MagicMock()
+        mock_col.id = uuid.uuid4()
+        row = MagicMock()
+        row.Collection = mock_col
+        row.product_count = 3
+        row.total = 12
+        db = _db(_all_result([row]))
+        rows, total = await self.repo.list_admin(db, page=1, page_size=20)
+        assert total == 12
+        assert len(rows) == 1
+        assert rows[0]["product_count"] == 3
+        assert rows[0]["id"] == mock_col.id
+
+    async def test_list_admin_empty_returns_zero_total(self):
+        db = _db(_all_result([]))
+        rows, total = await self.repo.list_admin(db, page=1, page_size=20)
+        assert rows == []
+        assert total == 0
 
     async def test_get_by_slug_returns_collection(self):
         mock_col = MagicMock()

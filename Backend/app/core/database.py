@@ -1,4 +1,5 @@
 import asyncio
+import re
 import threading
 import time as _time
 from collections.abc import AsyncGenerator
@@ -102,21 +103,14 @@ def get_pool_status() -> dict[str, int]:
 
 
 # ── Connection reset on return to pool ────────────────────────────────────────
-# When a connection is returned to the pool, discard any leftover server-side
-# state (prepared statements, temp tables, SET variables).  This prevents
-# cross-request contamination through Supabase's session-mode PgBouncer, which
-# may reassign the underlying TCP connection to a different client session.
-@event.listens_for(engine.sync_engine, "reset")
-def _on_connection_reset(dbapi_conn, connection_record) -> None:  # type: ignore[misc]
-    """Issue DISCARD ALL when a connection is returned to the pool."""
-    try:
-        cursor = dbapi_conn.cursor()
-        cursor.execute("DISCARD ALL")
-        cursor.close()
-    except Exception:
-        # If DISCARD ALL fails (connection already dead), invalidate it
-        # so the pool doesn't hand it to the next request.
-        connection_record.invalidate()
+# P0-2: the per-return `DISCARD ALL` was removed. It cost one round-trip plus
+# asyncpg prepared-statement re-prepare on EVERY connection return, and the
+# audit found no session-scoped state in the app that could leak: no `SET` /
+# `SET LOCAL` GUCs, no `LISTEN`/`NOTIFY`, no temp tables. Transaction state is
+# already cleaned by the session lifecycle (COMMIT on success, ROLLBACK on
+# error in `get_db`) plus SQLAlchemy's own reset_on_return rollback, so a
+# connection is always returned idle. asyncpg's per-connection prepared
+# statement cache now survives across requests — that is the point of P0-2.
 
 
 class Base(DeclarativeBase):
@@ -148,6 +142,13 @@ async def get_db() -> AsyncGenerator[AsyncSession, None]:
     session's internal state machine is broken (e.g. ``IllegalStateChangeError``
     from a concurrent ``_connection_for_bind``), the error is swallowed and
     the connection is invalidated rather than leaking back into the pool.
+
+    ``COMMIT`` is only issued when the request actually wrote something
+    (P1-1): ORM-tracked changes (``Session.new``/``dirty``/``deleted``) OR any
+    raw Core DML (``INSERT``/``UPDATE``/``DELETE``/``MERGE``) detected by the
+    ``after_cursor_execute`` listener. Read-only requests skip the COMMIT —
+    ``session.close()`` then rolls back the (empty) transaction, which is
+    semantically identical and avoids the write-path cost on the storefront.
     """
     _checkout_start_tls._checkout_start = _time.monotonic()  # type: ignore[attr-defined]
     _t_session = _time.perf_counter()
@@ -155,16 +156,17 @@ async def get_db() -> AsyncGenerator[AsyncSession, None]:
     checkout_ms = (_time.perf_counter() - _t_session) * 1000
     try:
         yield session
-        _t_commit = _time.perf_counter()
-        await session.commit()
-        commit_ms = (_time.perf_counter() - _t_commit) * 1000
-        from app.core.profiling import profiler
+        if _session_has_writes(session):
+            _t_commit = _time.perf_counter()
+            await session.commit()
+            commit_ms = (_time.perf_counter() - _t_commit) * 1000
+            from app.core.profiling import profiler
 
-        profiler.record_db_commit(commit_ms)
-        if checkout_ms > 10 or commit_ms > 10:
-            from app.core.profiling import profiler as _p
+            profiler.record_db_commit(commit_ms)
+            if checkout_ms > 10 or commit_ms > 10:
+                from app.core.profiling import profiler as _p
 
-            _p.record_db_session_lifecycle(checkout_ms, commit_ms)
+                _p.record_db_session_lifecycle(checkout_ms, commit_ms)
     except Exception:
         try:
             await session.rollback()
@@ -184,7 +186,39 @@ async def get_db() -> AsyncGenerator[AsyncSession, None]:
             )
 
 
+def _session_has_writes(session: AsyncSession) -> bool:
+    """Return True if the session executed any write this request.
+
+    Checks ORM-tracked changes first (cheap, pure client state), then falls
+    back to the ``hadha_write`` flag the cursor listener sets on the session's
+    connection when any INSERT/UPDATE/DELETE/MERGE ran. The connection is only
+    consulted if the session actually opened one (i.e. executed a query), so
+    a request that never touched the DB stays a pure no-op.
+    """
+    sync = session.sync_session
+    if sync.new or sync.dirty or sync.deleted:
+        return True
+    txn = sync.get_transaction()
+    conn = getattr(txn, "connection", None) if txn is not None else None
+    return bool(conn is not None and conn.info.get("hadha_write"))
+
+
 # ── SQL query profiling ───────────────────────────────────────────────────────
+
+# Matches statements that write to the database — DML (INSERT/UPDATE/DELETE/
+# MERGE), DDL, and utility/PLpgSQL (DO/CALL/COPY/...). Used to decide whether a
+# request's session needs a COMMIT (P1-1) without tracking every ORM object —
+# Core executes of `text("UPDATE ...")` etc. are invisible to
+# Session.dirty/new/deleted, so the flag is the only reliable signal for them.
+# Searches the whole statement (not just the leading verb) so `WITH ... INSERT`
+# and `DO $$ ... CREATE ...` are caught; rare false positives only cost a
+# redundant COMMIT of an already-read-only transaction (a no-op), while a
+# missed write would silently roll back real data.
+_WRITE_STATEMENT_RE = re.compile(
+    r"\b(?:INSERT|UPDATE|DELETE|MERGE|CREATE|ALTER|DROP|TRUNCATE|GRANT|"
+    r"REVOKE|DO|CALL|COPY|VACUUM|REINDEX|CLUSTER|LOCK)\b",
+    re.IGNORECASE,
+)
 
 
 @event.listens_for(engine.sync_engine, "before_cursor_execute")
@@ -194,9 +228,16 @@ def _before_query(conn, cursor, statement, parameters, context, executemany):  #
 
 @event.listens_for(engine.sync_engine, "after_cursor_execute")
 def _after_query(conn, cursor, statement, parameters, context, executemany):  # type: ignore[misc]
+    statement = str(statement)
+    if _WRITE_STATEMENT_RE.search(statement):
+        conn.info["hadha_write"] = True
     start_times = conn.info.get("query_start_time", [])
     if start_times:
         elapsed_ms = (_time.perf_counter() - start_times.pop()) * 1000
         from app.core.profiling import profiler
 
-        profiler.record_query(elapsed_ms, str(statement)[:500])
+        profiler.record_query(
+            elapsed_ms,
+            statement[:500],
+            slow_threshold_ms=settings.PERF_SLOW_SQL_THRESHOLD_MS,
+        )

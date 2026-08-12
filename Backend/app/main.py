@@ -107,6 +107,30 @@ async def lifespan(app: FastAPI):
 
     start_event_loop_monitor()
 
+    # ── Profiler metrics drain (P0-0) ─────────────────────────────────────
+    # Flushes the in-memory profiler snapshot to the structured perf log every
+    # PERF_DRAIN_INTERVAL_SECONDS so a performance baseline is captured on disk
+    # even without a Prometheus-style scraper hitting /health/metrics.
+    _drain_task: _asyncio.Task | None = None
+
+    if settings.PROFILING_ENABLED and settings.PERF_DRAIN_INTERVAL_SECONDS > 0:
+        from app.core.profiling import profiler as _profiler
+
+        async def _drain_metrics_loop() -> None:
+            _interval = settings.PERF_DRAIN_INTERVAL_SECONDS
+            while True:
+                await _asyncio.sleep(_interval)
+                try:
+                    _profiler.drain_metrics()
+                except Exception as _exc:
+                    _log.warning("metrics_drain_failed", error=str(_exc))
+
+        _drain_task = _asyncio.create_task(_drain_metrics_loop())
+        _log.info(
+            "metrics_drain_started",
+            interval_seconds=settings.PERF_DRAIN_INTERVAL_SECONDS,
+        )
+
     yield
 
     _warm_task.cancel()
@@ -114,6 +138,12 @@ async def lifespan(app: FastAPI):
         await _warm_task
     except _asyncio.CancelledError:
         pass
+    if _drain_task is not None:
+        _drain_task.cancel()
+        try:
+            await _drain_task
+        except _asyncio.CancelledError:
+            pass
     from app.core.pubsub import stop_pubsub_listener
 
     stop_pubsub_listener()
@@ -124,6 +154,12 @@ async def lifespan(app: FastAPI):
 
     await stop_event_loop_monitor()
     shutdown_cpu_executor()
+
+    # Cancel any in-flight fire-and-forget cache busts before the Redis pool
+    # is closed (P0-1). Interrupted busts degrade gracefully via SWR.
+    from app.core.redis import cancel_pending_busts
+
+    cancel_pending_busts()
 
     await close_redis()
 

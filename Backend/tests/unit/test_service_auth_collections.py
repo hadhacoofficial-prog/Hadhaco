@@ -1,11 +1,11 @@
-"""Tests for AuthService 2FA methods and CollectionService success paths."""
+﻿"""Tests for AuthService 2FA methods and CollectionService success paths."""
 
 import uuid
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-# ─── CollectionService success paths ──────────────────────────────────────────
+# â”€â”€â”€ CollectionService success paths â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 
 class TestCollectionServiceSuccessPaths:
@@ -216,7 +216,7 @@ class TestCollectionServiceSuccessPaths:
     ):
         """Regression guard: `collections.primary_image_id` is a
         denormalized column the universal media attach/crop/set-primary flow
-        never writes (it only touches the `images` table) — resolving
+        never writes (it only touches the `images` table) â€” resolving
         image_url must not gate on that column being set, or every
         successfully-attached image silently disappears everywhere a
         collection is listed."""
@@ -255,7 +255,7 @@ class TestCollectionServiceSuccessPaths:
         assert result[0].image_url == "https://cdn/women.webp?v=1"
 
 
-# ─── AuthService 2FA tests ────────────────────────────────────────────────────
+# â”€â”€â”€ AuthService 2FA tests â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 
 class TestAuthService2FA:
@@ -264,21 +264,53 @@ class TestAuthService2FA:
 
         self.svc = AuthService()
 
-    async def test_has_active_2fa_returns_false_when_no_record(self):
+    async def test_get_2fa_gate_state_no_2fa(self):
         db = AsyncMock()
+        row = MagicMock()
+        row.has_2fa = False
+        row.session_verified = False
         mock_result = MagicMock()
-        mock_result.scalar_one_or_none.return_value = None
+        mock_result.one.return_value = row
         db.execute = AsyncMock(return_value=mock_result)
-        result = await self.svc.has_active_2fa(db, str(uuid.uuid4()))
-        assert result is False
+        result = await self.svc.get_2fa_gate_state(db, str(uuid.uuid4()), "sess-1")
+        assert result == (False, False)
+        db.execute.assert_awaited_once()
 
-    async def test_has_active_2fa_returns_true_when_enabled(self):
+    async def test_get_2fa_gate_state_2fa_enabled_session_unverified(self):
         db = AsyncMock()
+        row = MagicMock()
+        row.has_2fa = True
+        row.session_verified = False
         mock_result = MagicMock()
-        mock_result.scalar_one_or_none.return_value = MagicMock()
+        mock_result.one.return_value = row
         db.execute = AsyncMock(return_value=mock_result)
-        result = await self.svc.has_active_2fa(db, str(uuid.uuid4()))
-        assert result is True
+        result = await self.svc.get_2fa_gate_state(db, str(uuid.uuid4()), "sess-1")
+        assert result == (True, False)
+
+    async def test_get_2fa_gate_state_2fa_enabled_session_verified(self):
+        db = AsyncMock()
+        row = MagicMock()
+        row.has_2fa = True
+        row.session_verified = True
+        mock_result = MagicMock()
+        mock_result.one.return_value = row
+        db.execute = AsyncMock(return_value=mock_result)
+        result = await self.svc.get_2fa_gate_state(db, str(uuid.uuid4()), "sess-1")
+        assert result == (True, True)
+
+    async def test_get_2fa_gate_state_session_id_none_is_never_verified(self):
+        """A JWT without a session claim must never satisfy the 2FA gate â€”
+        the old code short-circuited to False before even querying."""
+        db = AsyncMock()
+        row = MagicMock()
+        row.has_2fa = True
+        row.session_verified = True
+        mock_result = MagicMock()
+        mock_result.one.return_value = row
+        db.execute = AsyncMock(return_value=mock_result)
+        result = await self.svc.get_2fa_gate_state(db, str(uuid.uuid4()), None)
+        assert result[0] is True
+        assert result[1] is False
 
     async def test_setup_2fa_returns_uri_and_secret(self):
         db = AsyncMock()
@@ -408,12 +440,12 @@ class TestAuthService2FA:
 
     async def test_validate_2fa_rejects_replay_of_already_used_step(self):
         """A previously-accepted code (same or earlier TOTP time-step) must
-        not verify again — otherwise an intercepted code stays valid for the
+        not verify again â€” otherwise an intercepted code stays valid for the
         whole ~90s pyotp tolerance window and can be replayed verbatim.
 
         The replay check is now a single atomic conditional UPDATE (not a
         Python-side read-then-compare) so that two concurrent requests can't
-        race past it — a rowcount of 0 means either a genuine replay or a
+        race past it â€” a rowcount of 0 means either a genuine replay or a
         concurrent request that already won the race, both correctly
         rejected here."""
         db = AsyncMock()
@@ -479,7 +511,7 @@ class TestAuthService2FA:
 
     async def test_ensure_admin_session_tracked_uses_upsert_not_2fa_fields(self):
         """Must be an upsert (single statement, no db.add) whose set_ clause
-        never includes is_2fa_verified/verified_at/expires_at — a plain
+        never includes is_2fa_verified/verified_at/expires_at â€” a plain
         login-presence touch must never regress an already-verified
         session back to unverified."""
         from sqlalchemy.dialects.postgresql.dml import Insert
@@ -552,7 +584,7 @@ class TestAuthService2FA:
         assert mock_setex.await_count == 2
 
     async def test_track_admin_login_if_new_session_skips_when_already_deduped(self):
-        """Both dedup keys already set (routine reload) — neither side
+        """Both dedup keys already set (routine reload) â€” neither side
         effect should fire again."""
         db = AsyncMock()
         redis = AsyncMock()
@@ -583,7 +615,7 @@ class TestAuthService2FA:
         mock_log.assert_not_called()
 
     async def test_mark_admin_session_2fa_verified_uses_atomic_upsert(self):
-        """Must be a single upsert statement, not SELECT-then-branch — the
+        """Must be a single upsert statement, not SELECT-then-branch â€” the
         old shape had a real race: two concurrent calls for the same
         session could both see no existing row and both attempt an INSERT,
         the second violating the unique (user_id, supabase_session_id)
@@ -603,51 +635,50 @@ class TestAuthService2FA:
         stmt = db.execute.call_args[0][0]
         assert isinstance(stmt, Insert)
 
-    async def test_is_admin_session_2fa_verified_false_when_no_row(self):
+    async def test_get_2fa_gate_state_session_verified_false_when_no_row(self):
         db = AsyncMock()
+        row = MagicMock()
+        row.has_2fa = True
+        row.session_verified = False
         mock_result = MagicMock()
-        mock_result.scalar_one_or_none.return_value = None
+        mock_result.one.return_value = row
         db.execute = AsyncMock(return_value=mock_result)
 
-        result = await self.svc.is_admin_session_2fa_verified(
+        result = await self.svc.get_2fa_gate_state(
             db, str(uuid.uuid4()), "supabase-session-1"
         )
 
-        assert result is False
+        assert result == (True, False)
 
-    async def test_is_admin_session_2fa_verified_false_when_expired(self):
-        from datetime import UTC, datetime, timedelta
-
+    async def test_get_2fa_gate_state_session_verified_false_when_expired(self):
         db = AsyncMock()
-        record = MagicMock()
-        record.is_2fa_verified = True
-        record.expires_at = datetime.now(UTC) - timedelta(hours=1)
+        row = MagicMock()
+        row.has_2fa = True
+        row.session_verified = False
         mock_result = MagicMock()
-        mock_result.scalar_one_or_none.return_value = record
+        mock_result.one.return_value = row
         db.execute = AsyncMock(return_value=mock_result)
 
-        result = await self.svc.is_admin_session_2fa_verified(
+        result = await self.svc.get_2fa_gate_state(
             db, str(uuid.uuid4()), "supabase-session-1"
         )
 
-        assert result is False
+        assert result == (True, False)
 
-    async def test_is_admin_session_2fa_verified_true_when_valid(self):
-        from datetime import UTC, datetime, timedelta
-
+    async def test_get_2fa_gate_state_session_verified_true_when_valid(self):
         db = AsyncMock()
-        record = MagicMock()
-        record.is_2fa_verified = True
-        record.expires_at = datetime.now(UTC) + timedelta(hours=1)
+        row = MagicMock()
+        row.has_2fa = True
+        row.session_verified = True
         mock_result = MagicMock()
-        mock_result.scalar_one_or_none.return_value = record
+        mock_result.one.return_value = row
         db.execute = AsyncMock(return_value=mock_result)
 
-        result = await self.svc.is_admin_session_2fa_verified(
+        result = await self.svc.get_2fa_gate_state(
             db, str(uuid.uuid4()), "supabase-session-1"
         )
 
-        assert result is True
+        assert result == (True, True)
 
     async def test_is_new_device_true_when_no_match(self):
         db = AsyncMock()
@@ -674,7 +705,7 @@ class TestAuthService2FA:
         assert result is False
 
     async def test_is_new_device_true_when_ip_new_even_if_device_recognized(self):
-        """A familiar browser from a brand-new IP must still count as new —
+        """A familiar browser from a brand-new IP must still count as new â€”
         regression test for the De Morgan bug where a single OR'd query only
         fired when *both* signals were unrecognized."""
         db = AsyncMock()
@@ -732,32 +763,33 @@ class TestAuthService2FA:
             await self.svc.clear_2fa_failures(redis, str(uuid.uuid4()))
         mock_delete.assert_awaited_once()
 
-    async def test_touch_admin_session_activity_skips_when_throttled(self):
-        from datetime import UTC, datetime
-
+    async def test_touch_admin_session_activity_single_atomic_update(self):
+        """P1-2: throttle lives in the UPDATE's WHERE â€” exactly one statement,
+        no SELECT-then-UPDATE, no TOCTOU window."""
         db = AsyncMock()
-        record = MagicMock()
-        record.last_activity_at = datetime.now(UTC)
-        mock_result = MagicMock()
-        mock_result.scalar_one_or_none.return_value = record
-        db.execute = AsyncMock(return_value=mock_result)
+        db.execute = AsyncMock()
 
         await self.svc.touch_admin_session_activity(
             db, str(uuid.uuid4()), "sess-1", "1.2.3.4", "Mozilla/5.0"
         )
 
-        # Only the initial SELECT ran — no UPDATE within the throttle window.
-        assert db.execute.await_count == 1
+        db.execute.assert_awaited_once()
+        stmt = db.execute.call_args[0][0]
+        from sqlalchemy.dialects.postgresql import dialect
+        from sqlalchemy.sql.dml import Update as _sa_update
 
-    async def test_touch_admin_session_activity_writes_when_stale(self):
-        from datetime import UTC, datetime, timedelta
+        assert isinstance(stmt, _sa_update)
+        sql = str(stmt.compile(dialect=dialect()))
+        assert "last_activity_at" in sql
+
+    async def test_touch_admin_session_activity_passes_throttle_cutoff(self):
+        """The throttle window must be encoded in the WHERE so a recent touch
+        matches zero rows without any client-side bookkeeping."""
+        from sqlalchemy.dialects.postgresql import dialect
+        from sqlalchemy.sql.dml import Update as _sa_update
 
         db = AsyncMock()
-        record = MagicMock()
-        record.last_activity_at = datetime.now(UTC) - timedelta(hours=1)
-        mock_result = MagicMock()
-        mock_result.scalar_one_or_none.return_value = record
-        db.execute = AsyncMock(return_value=mock_result)
+        db.execute = AsyncMock()
 
         await self.svc.touch_admin_session_activity(
             db,
@@ -767,19 +799,31 @@ class TestAuthService2FA:
             "Mozilla/5.0 (Windows NT 10.0) Chrome/120.0",
         )
 
-        assert db.execute.await_count == 2  # SELECT then UPDATE
+        stmt = db.execute.call_args[0][0]
+        assert isinstance(stmt, _sa_update)
+        sql = str(stmt.compile(dialect=dialect()))
+        assert "IS NULL" in sql
+        assert "last_activity_at" in sql
+        assert "updated_at" not in sql  # presence-only touch, never verified_at
 
-    async def test_touch_admin_session_activity_noop_when_no_row(self):
+    async def test_touch_admin_session_activity_scoped_to_session(self):
+        """The UPDATE must be scoped by (user_id, supabase_session_id) so a
+        touch can never bleed across sessions/users."""
+        from sqlalchemy.dialects.postgresql import dialect
+        from sqlalchemy.sql.dml import Update as _sa_update
+
         db = AsyncMock()
-        mock_result = MagicMock()
-        mock_result.scalar_one_or_none.return_value = None
-        db.execute = AsyncMock(return_value=mock_result)
+        db.execute = AsyncMock()
 
         await self.svc.touch_admin_session_activity(
             db, str(uuid.uuid4()), "sess-1", "1.2.3.4", "Mozilla/5.0"
         )
 
-        assert db.execute.await_count == 1  # SELECT only, nothing to update
+        stmt = db.execute.call_args[0][0]
+        assert isinstance(stmt, _sa_update)
+        sql = str(stmt.compile(dialect=dialect()))
+        assert "supabase_session_id" in sql
+        assert "user_id" in sql
 
     async def test_list_admin_sessions_returns_rows(self):
         db = AsyncMock()
@@ -826,7 +870,7 @@ class TestAuthService2FA:
 
     async def test_revoke_admin_session_refuses_to_delete_current_session(self):
         """Deleting the caller's own current session must go through
-        /revoke-all or /logout instead — not the generic one-session
+        /revoke-all or /logout instead â€” not the generic one-session
         endpoint, so it can't happen by accident."""
         db = AsyncMock()
         record = MagicMock()
@@ -845,7 +889,7 @@ class TestAuthService2FA:
 
         assert deleted is False
         assert was_current is True
-        db.execute.assert_awaited_once()  # SELECT only — no DELETE issued
+        db.execute.assert_awaited_once()  # SELECT only â€” no DELETE issued
 
     async def test_revoke_other_admin_sessions_returns_count(self):
         db = AsyncMock()
@@ -891,7 +935,7 @@ class TestAuthService2FA:
         mock_client.post.assert_awaited_once()
 
     async def test_logout_swallows_supabase_outage_without_raising(self):
-        """A Supabase admin-API outage must never prevent logout — routers
+        """A Supabase admin-API outage must never prevent logout â€” routers
         call this before clearing the local AdminSession row, so letting the
         exception propagate would leave that row (and the 2FA-verified
         state) in place even though the user asked to log out."""

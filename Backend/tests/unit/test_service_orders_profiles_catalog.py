@@ -560,10 +560,6 @@ class TestCatalogServiceRead:
                 AsyncMock(return_value={}),
             ),
             patch(
-                "app.modules.catalog.service._repo.get_image_variants_for_images",
-                AsyncMock(return_value={}),
-            ),
-            patch(
                 "app.modules.catalog.service._repo.get_collections_for_products",
                 AsyncMock(return_value={}),
             ),

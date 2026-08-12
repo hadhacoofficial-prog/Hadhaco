@@ -271,6 +271,82 @@ async def bust_product_list_cache(redis: aioredis.Redis) -> None:
         mark_redis_error()
 
 
+# ── Fire-and-forget product-list bust (P0-1) ─────────────────────────────────
+# The product-list bust (SCAN + per-key soft-expire) used to run inline on the
+# media request path, blocking upload/crop/replace responses for up to ~1s.
+# It now runs as a single-flight background task so the writer responds
+# immediately; the SWR soft-expire still guarantees the next reader stale-serves
+# with one coalesced refresh. Concurrent busts are collapsed — a media op that
+# arrives while one is running is drained right after, so no invalidation is
+# lost, just batched.
+_bust_tasks: set[asyncio.Task[Any]] = set()
+_bust_in_flight: bool = False
+_bust_requested: bool = False
+
+
+def _run_bust_in_background(redis: aioredis.Redis) -> None:
+    """Execute the coalesced bust-and-rewarm loop in a tracked background task."""
+    global _bust_in_flight, _bust_requested
+
+    async def _loop() -> None:
+        global _bust_in_flight, _bust_requested
+        try:
+            while True:
+                await bust_product_list_cache(redis)
+                # Best-effort rewarm (A+C) so the next visitor finds a fully
+                # fresh first page instead of paying SWR's refresh cost. Throttled
+                # internally to once per 10s. Never lets a failure break the loop.
+                try:
+                    from app.core.cache_warmer import rewarm_after_invalidation
+
+                    await rewarm_after_invalidation(["products"])
+                except Exception:
+                    pass
+                # Drain any busts requested while this one ran. The flag is
+                # checked and cleared with no await in between, so a concurrent
+                # schedule cannot slip between the two and be lost.
+                if not _bust_requested:
+                    break
+                _bust_requested = False
+        finally:
+            _bust_in_flight = False
+            _bust_tasks.discard(asyncio.current_task())
+
+    _bust_in_flight = True
+    task = asyncio.create_task(_loop())
+    _bust_tasks.add(task)
+    task.add_done_callback(_bust_tasks.discard)
+
+
+def schedule_product_list_bust(redis: aioredis.Redis) -> None:
+    """Fire-and-forget the product-list cache bust.
+
+    Safe to call from the request path: returns immediately, never raises.
+    While a bust is already running, later calls set ``_bust_requested`` so
+    the running loop drains them before exiting (no lost invalidations).
+    """
+    global _bust_requested
+    if _bust_in_flight:
+        _bust_requested = True
+        return
+    _run_bust_in_background(redis)
+
+
+def cancel_pending_busts() -> None:
+    """Cancel any in-flight bust tasks (called during app shutdown).
+
+    Interrupted mid-way is safe: keys soft-expired so far stay soft-expired
+    (SWR refreshes lazily); keys not yet reached keep serving fresh until the
+    next bust. ``_bust_in_flight`` is cleared here as well because cancelling
+    a task that has not started yet never runs its ``finally`` block.
+    """
+    global _bust_in_flight, _bust_requested
+    for task in list(_bust_tasks):
+        task.cancel()
+    _bust_in_flight = False
+    _bust_requested = False
+
+
 async def _soft_expire_swr_entry(
     redis: aioredis.Redis, key: str, *, ttl_seconds: int
 ) -> None:

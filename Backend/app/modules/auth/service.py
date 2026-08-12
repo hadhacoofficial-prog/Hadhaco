@@ -8,7 +8,7 @@ from datetime import UTC, datetime, timedelta
 import pyotp
 import qrcode
 import redis.asyncio as aioredis
-from sqlalchemy import cast, delete, or_, select, update
+from sqlalchemy import cast, delete, exists, false, or_, select, update
 from sqlalchemy.dialects.postgresql import INET
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -117,14 +117,49 @@ class AuthService:
             raise AuthorizationError("Account is inactive", code="ACCOUNT_INACTIVE")
         return profile
 
-    async def has_active_2fa(self, db: AsyncSession, user_id: str) -> bool:
+    async def get_2fa_gate_state(
+        self, db: AsyncSession, user_id: str, session_id: str | None
+    ) -> tuple[bool, bool]:
+        """Resolve the admin 2FA gate in a single round trip (P1-2).
+
+        Returns ``(has_2fa, session_verified)``. Previously the gate issued
+        two sequential SELECTs (admin_2fa then admin_sessions); a single
+        composite EXISTS query returns both facts at once, halving the DB
+        round trips on every admin request. ``session_id=None`` (JWT without
+        a session claim) always yields ``session_verified=False`` — the same
+        short-circuit the old code performed before querying admin_sessions.
+        """
+        now = datetime.now(UTC)
+        has_2fa_expr = exists().where(
+            Admin2FA.user_id == user_id,
+            Admin2FA.is_enabled.is_(True),
+        )
+        if session_id is None:
+            result = await db.execute(
+                select(
+                    has_2fa_expr.label("has_2fa"),
+                    false().label("session_verified"),
+                )
+            )
+            row = result.one()
+            return bool(row.has_2fa), False
+        verified_expr = exists().where(
+            AdminSession.user_id == user_id,
+            AdminSession.supabase_session_id == session_id,
+            AdminSession.is_2fa_verified.is_(True),
+            or_(
+                AdminSession.expires_at.is_(None),
+                AdminSession.expires_at > now,
+            ),
+        )
         result = await db.execute(
-            select(Admin2FA).where(
-                Admin2FA.user_id == user_id,
-                Admin2FA.is_enabled.is_(True),
+            select(
+                has_2fa_expr.label("has_2fa"),
+                verified_expr.label("session_verified"),
             )
         )
-        return result.scalar_one_or_none() is not None
+        row = result.one()
+        return bool(row.has_2fa), bool(row.session_verified)
 
     async def setup_2fa(self, db: AsyncSession, user_id: str, email: str) -> dict:
         """
@@ -325,27 +360,6 @@ class AuthService:
         )
         return result.rowcount
 
-    async def is_admin_session_2fa_verified(
-        self, db: AsyncSession, user_id: str, session_id: str
-    ) -> bool:
-        """
-        True only if this exact Supabase login session has already completed
-        the TOTP challenge and that verification hasn't expired. This is the
-        real security boundary — never trust a client-side "verified" flag.
-        """
-        result = await db.execute(
-            select(AdminSession).where(
-                AdminSession.user_id == user_id,
-                AdminSession.supabase_session_id == session_id,
-            )
-        )
-        record = result.scalar_one_or_none()
-        if not record or not record.is_2fa_verified:
-            return False
-        if record.expires_at and record.expires_at < datetime.now(UTC):
-            return False
-        return True
-
     async def ensure_admin_session_tracked(
         self,
         db: AsyncSession,
@@ -515,29 +529,28 @@ class AuthService:
         Record last-seen activity for the security dashboard. Throttled to
         once every ADMIN_SESSION_ACTIVITY_THROTTLE — called from an already
         2FA-verified request, never from every request, so this stays cheap.
+
+        P1-2: the throttle check now lives *inside* the UPDATE's WHERE clause
+        (``last_activity_at IS NULL OR last_activity_at < now - throttle``),
+        so a request either updates zero rows (throttled / no such session)
+        or exactly one — one round trip instead of a SELECT + conditional
+        UPDATE, and no TOCTOU window between reading the timestamp and
+        writing it.
         """
         user_agent = _sanitize_user_agent(user_agent)
-        result = await db.execute(
-            select(AdminSession).where(
-                AdminSession.user_id == user_id,
-                AdminSession.supabase_session_id == session_id,
-            )
-        )
-        record = result.scalar_one_or_none()
-        if not record:
-            return
-
-        now = datetime.now(UTC)
-        if (
-            record.last_activity_at is not None
-            and now - record.last_activity_at < ADMIN_SESSION_ACTIVITY_THROTTLE
-        ):
-            return
-
         browser_name, os_name = _parse_user_agent(user_agent)
+        now = datetime.now(UTC)
         await db.execute(
             update(AdminSession)
-            .where(AdminSession.id == record.id)
+            .where(
+                AdminSession.user_id == user_id,
+                AdminSession.supabase_session_id == session_id,
+                or_(
+                    AdminSession.last_activity_at.is_(None),
+                    AdminSession.last_activity_at
+                    < now - ADMIN_SESSION_ACTIVITY_THROTTLE,
+                ),
+            )
             .values(
                 last_activity_at=now,
                 last_seen_ip=ip_address,
@@ -677,7 +690,8 @@ class AuthService:
         admin_session_cleanup worker — a single DELETE, no row locking beyond
         what Postgres does for the statement itself, safe to run concurrently
         with normal request traffic since it only ever removes rows that can
-        no longer pass is_admin_session_2fa_verified anyway.
+        no longer pass the 2FA gate (get_2fa_gate_state's expires_at check)
+        anyway.
         """
         cutoff = datetime.now(UTC) - ADMIN_SESSION_CLEANUP_GRACE
         result = await db.execute(

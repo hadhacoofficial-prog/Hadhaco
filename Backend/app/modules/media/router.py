@@ -10,7 +10,11 @@ from app.common.response_codes import ResponseCode
 from app.common.responses import BaseSuccessResponse, deleted, ok
 from app.core.database import get_db
 from app.core.dependencies import require_admin
-from app.core.redis import bust_product_list_cache, get_redis, safe_redis_delete
+from app.core.redis import (
+    get_redis,
+    safe_redis_delete,
+    schedule_product_list_bust,
+)
 from app.modules.media.crop_engine import CropGeometryError
 from app.modules.media.repository import ImageRepository
 from app.modules.media.schemas import (
@@ -54,10 +58,15 @@ async def _bust_cache_for(owner_type: OwnerType, redis: aioredis.Redis) -> None:
     (`ProductListItem.primary_image`), which nothing in the media module
     otherwise invalidates — a crop/replace/set-primary/upload/delete here
     used to leave that cache serving a stale thumbnail for up to
-    `_PRODUCT_LIST_TTL` seconds after the edit."""
+    `_PRODUCT_LIST_TTL` seconds after the edit.
+
+    The product-list bust is dispatched fire-and-forget (P0-1) so it no
+    longer blocks the media write on the SCAN + per-key soft-expire; the
+    cms:homepage delete stays inline because it is a single fast round-trip.
+    """
     _t = time.perf_counter()
     if owner_type == "product":
-        await bust_product_list_cache(redis)
+        schedule_product_list_bust(redis)
     if owner_type == "cms_section_item":
         await safe_redis_delete(redis, "cms:homepage")
     cache_ms = (time.perf_counter() - _t) * 1000

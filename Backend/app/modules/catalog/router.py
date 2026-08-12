@@ -10,11 +10,7 @@ from app.common.response_codes import ResponseCode
 from app.common.responses import BaseSuccessResponse, deleted, ok
 from app.core.database import AsyncSessionLocal, get_db
 from app.core.dependencies import get_current_user, require_admin
-from app.core.redis import (
-    get_redis,
-    safe_redis_get,
-    safe_redis_setex,
-)
+from app.core.redis import get_redis
 from app.modules.catalog.schemas import (
     ProductAttributeCreateRequest,
     ProductCreateRequest,
@@ -165,57 +161,56 @@ async def list_products(
 async def get_product_by_slug(
     slug: str,
     request: Request,
-    db: AsyncSession = Depends(get_db),
     redis: aioredis.Redis = Depends(get_redis),
 ):
     from app.core.cache import (
         PREFIX_PRODUCT_DETAIL,
         TTL_PRODUCT_DETAIL,
+        add_cache_headers,
+        cache_swr,
         check_not_modified,
         make_etag,
         not_modified_response,
     )
 
     cache_key = f"{PREFIX_PRODUCT_DETAIL}:{slug}"
-    cached = await safe_redis_get(redis, cache_key)
-    if cached:
-        etag = make_etag(cached)
-        if check_not_modified(request, etag):
-            return not_modified_response()
-        resp = ok(
-            ProductResponse.model_validate_json(cached),
+
+    # Fresh worker session — cache_swr may re-run this from a detached
+    # background SWR-refresh task after the request session is gone.
+    async def _fetch_product() -> dict:
+        async with AsyncSessionLocal() as s:
+            result = await _service.get_by_slug(s, slug)
+            return result.model_dump(mode="json")
+
+    # SWR: ttl=600s (10 min fresh), swr_window=600s (serve stale up to 20 min
+    # while a single coalesced background refresh runs).  Request coalescing
+    # prevents stampedes when the TTL expires under concurrent traffic.
+    data = await cache_swr(
+        redis,
+        cache_key,
+        ttl=TTL_PRODUCT_DETAIL,
+        swr_window=TTL_PRODUCT_DETAIL,
+        fetch_fn=_fetch_product,
+    )
+    etag = make_etag(json.dumps(data, sort_keys=True))
+    if check_not_modified(request, etag):
+        return not_modified_response()
+
+    from fastapi.responses import JSONResponse
+
+    response = JSONResponse(
+        content=ok(
+            ProductResponse.model_validate(data),
             ResponseCode.PRODUCT_FETCHED,
             "Product fetched successfully",
-        )
-        import json as _json
-
-        from fastapi.responses import JSONResponse as _JSONResp
-
-        content = _json.loads(resp.model_dump_json())
-        response = _JSONResp(content=content)
-        from app.core.cache import add_cache_headers
-
-        add_cache_headers(response, TTL_PRODUCT_DETAIL, etag=etag)
-        return response
-
-    result = await _service.get_by_slug(db, slug)
-    serialized = result.model_dump_json()
-    await safe_redis_setex(redis, cache_key, TTL_PRODUCT_DETAIL, serialized)
-    etag = make_etag(serialized)
-
-    import json as _json
-
-    from fastapi.responses import JSONResponse as _JSONResp
-
-    content = _json.loads(
-        ok(
-            result, ResponseCode.PRODUCT_FETCHED, "Product fetched successfully"
-        ).model_dump_json()
+        ).model_dump(mode="json")
     )
-    response = _JSONResp(content=content)
-    from app.core.cache import add_cache_headers
-
-    add_cache_headers(response, TTL_PRODUCT_DETAIL, etag=etag)
+    add_cache_headers(
+        response,
+        TTL_PRODUCT_DETAIL,
+        stale_while_revalidate=TTL_PRODUCT_DETAIL,
+        etag=etag,
+    )
     return response
 
 

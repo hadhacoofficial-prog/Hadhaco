@@ -52,16 +52,25 @@ export const Route = createFileRoute("/products/$slug")({
   validateSearch: (search: Record<string, unknown>): { review?: string } => ({
     review: search.review ? String(search.review) : undefined,
   }),
-  loader: async ({ params }) => {
-    const productDetail = await api
-      // `no-cache`: revalidate against origin so a client-side navigation
-      // never renders the stale `max-age` copy from the browser cache (the
-      // live poll below also uses no-cache). On SSR this is a harmless no-op.
-      .get<ProductDetail>(`/products/${params.slug}`, { cache: "no-cache" })
-      .catch((e: unknown) => {
-        if ((e as { status?: number }).status === 404) throw notFound();
-        throw e;
+  loader: async ({ context: { queryClient }, params }) => {
+    // Seed the exact query key the live poll below polls
+    // (`queryKeys.products.stock(slug)`) so the useQuery resolves from cache
+    // instead of issuing a duplicate GET on mount — one request per PDP load,
+    // not two (P1-3). Follows the products.index.tsx loader idiom.
+    let productDetail: ProductDetail;
+    try {
+      productDetail = await queryClient.ensureQueryData({
+        queryKey: queryKeys.products.stock(params.slug),
+        // `no-cache`: revalidate against origin so a client-side navigation
+        // never renders the stale `max-age` copy from the browser cache (the
+        // live poll below also uses no-cache). On SSR this is a harmless no-op.
+        queryFn: () => api.get<ProductDetail>(`/products/${params.slug}`, { cache: "no-cache" }),
+        staleTime: 30_000,
       });
+    } catch (e) {
+      if ((e as { status?: number }).status === 404) throw notFound();
+      throw e;
+    }
     const relatedRes = await api
       .get<ProductListResponse>("/products", {
         params: { page_size: 5, is_featured: true },

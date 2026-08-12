@@ -594,10 +594,6 @@ class TestCatalogServiceExtra:
                 AsyncMock(return_value={mock_product.id: [img]}),
             ),
             patch(
-                "app.modules.catalog.service._repo.get_image_variants_for_images",
-                AsyncMock(return_value={img.id: [large_variant]}),
-            ),
-            patch(
                 "app.modules.catalog.service._repo.get_collections_for_products",
                 AsyncMock(return_value={}),
             ),

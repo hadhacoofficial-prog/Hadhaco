@@ -6,8 +6,9 @@
  * Broadcasts: cart-changed (via SyncBus).
  */
 import { queryKeys } from "../api/queryKeys";
-import { SyncEventType, type SyncEvent } from "./events";
+import { SyncEventType } from "./events";
 import type { SyncBus } from "./SyncBus";
+import { isEventForCurrentUser } from "./userScope";
 
 export function registerCartSync(bus: SyncBus): void {
   const qc = bus.queryClient;
@@ -16,13 +17,15 @@ export function registerCartSync(bus: SyncBus): void {
     qc.invalidateQueries({ queryKey: queryKeys.cart.all });
   });
 
-  bus.subscribe(SyncEventType.ORDER_CREATED, () => {
-    // Cart is cleared after order — invalidate so UI reflects empty cart
+  bus.subscribe(SyncEventType.ORDER_CREATED, async (event) => {
+    // Cart is cleared after order — but only for the OWNING user.
+    if (!(await isEventForCurrentUser(event.payload?.userId))) return;
     qc.invalidateQueries({ queryKey: queryKeys.cart.all });
   });
 
-  bus.subscribe(SyncEventType.RESERVATION_EXPIRED, () => {
-    // Reservation expired — cart items may have changed
+  bus.subscribe(SyncEventType.RESERVATION_EXPIRED, async (event) => {
+    // Reservation expired — only the affected users' cart items may change.
+    if (!(await isEventForCurrentUser(event.payload?.userIds))) return;
     qc.invalidateQueries({ queryKey: queryKeys.cart.all });
   });
 

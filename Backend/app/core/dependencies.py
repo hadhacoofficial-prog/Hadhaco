@@ -270,8 +270,12 @@ async def _ensure_2fa_session(
     _t_total = time.perf_counter()
 
     svc = AuthService()
-    has_2fa = await svc.has_active_2fa(db, str(current_user.id))
-    t_has_2fa = (time.perf_counter() - _t_total) * 1000
+    # One composite EXISTS query resolves both gate facts (P1-2) — previously
+    # two sequential SELECTs (admin_2fa then admin_sessions).
+    has_2fa, verified = await svc.get_2fa_gate_state(
+        db, str(current_user.id), payload.session_id
+    )
+    t_gate = (time.perf_counter() - _t_total) * 1000
     if not has_2fa:
         if required:
             raise AuthorizationError(
@@ -282,18 +286,9 @@ async def _ensure_2fa_session(
         _perflog.debug(
             "ensure_2fa",
             has_2fa=False,
-            total_ms=round(t_has_2fa, 2),
+            gate_ms=round(t_gate, 2),
         )
         return current_user
-
-    _t_verify = time.perf_counter()
-    verified = (
-        payload.session_id is not None
-        and await svc.is_admin_session_2fa_verified(
-            db, str(current_user.id), payload.session_id
-        )
-    )
-    t_verify = (time.perf_counter() - _t_verify) * 1000
 
     if not verified:
         raise AuthorizationError(
@@ -323,11 +318,20 @@ async def _ensure_2fa_session(
         "ensure_2fa",
         has_2fa=True,
         verified=True,
-        has_2fa_ms=round(t_has_2fa, 2),
-        verify_ms=round(t_verify, 2),
+        gate_ms=round(t_gate, 2),
         touch_ms=round(t_touch, 2),
         total_ms=round(total_ms, 2),
     )
+    # The admin 2FA gate runs on every admin request; if it gets slow it
+    # directly hurts the admin panel p95. WARN to the perf log (P0-0) when
+    # it exceeds 100ms so it stays on the radar.
+    if total_ms >= 100:
+        _perflog.warning(
+            "slow_2fa_gate",
+            gate_ms=round(t_gate, 2),
+            touch_ms=round(t_touch, 2),
+            total_ms=round(total_ms, 2),
+        )
 
     return current_user
 

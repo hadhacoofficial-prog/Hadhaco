@@ -1,37 +1,33 @@
 /**
  * Reservation Sync Module
  *
- * Owns: reservation-related queries and checkout store state.
+ * Owns: user-scoped reservation/order/cart queries on reservation events.
  * Subscribes to: RESERVATION_CREATED, RESERVATION_EXPIRED, PAYMENT_FAILED.
  *
- * When a reservation is created, inventory availability changes across
- * all product pages. When it expires, everything reverts.
+ * Stock/list invalidation for reservation events lives in inventory.sync.ts
+ * (targeted per `productIds`). This module only invalidates the OWNING user's
+ * queries — a reservation created/expired by someone else must not touch this
+ * tab's cart/orders (P1-4 per-user scoping).
  */
 import { queryKeys } from "../api/queryKeys";
-import { SyncEventType, type SyncEvent } from "./events";
+import { SyncEventType } from "./events";
 import type { SyncBus } from "./SyncBus";
+import { isEventForCurrentUser } from "./userScope";
 
 export function registerReservationSync(bus: SyncBus): void {
   const qc = bus.queryClient;
 
-  bus.subscribe(SyncEventType.RESERVATION_CREATED, () => {
-    // Reservation holds stock — update everywhere
-    qc.invalidateQueries({ queryKey: queryKeys.products.all });
-    qc.invalidateQueries({ queryKey: queryKeys.inventory.cartStock([]) });
-    qc.invalidateQueries({ queryKey: queryKeys.collections.all });
-    qc.invalidateQueries({ queryKey: queryKeys.search.all });
-    qc.invalidateQueries({ queryKey: queryKeys.cms.homepage });
+  bus.subscribe(SyncEventType.RESERVATION_CREATED, async (event) => {
+    // Reservation holds stock — refresh the OWNER's reservation badges.
+    if (!(await isEventForCurrentUser(event.payload?.userId))) return;
     qc.invalidateQueries({ queryKey: queryKeys.orders.activeReservations });
   });
 
-  bus.subscribe(SyncEventType.RESERVATION_EXPIRED, () => {
-    // Reservation released — stock restored
-    qc.invalidateQueries({ queryKey: queryKeys.products.all });
-    qc.invalidateQueries({ queryKey: queryKeys.inventory.cartStock([]) });
-    qc.invalidateQueries({ queryKey: queryKeys.collections.all });
-    qc.invalidateQueries({ queryKey: queryKeys.search.all });
-    qc.invalidateQueries({ queryKey: queryKeys.cms.homepage });
+  bus.subscribe(SyncEventType.RESERVATION_EXPIRED, async (event) => {
+    // Reservation released — refresh only the affected users' queries.
+    if (!(await isEventForCurrentUser(event.payload?.userIds))) return;
     qc.invalidateQueries({ queryKey: queryKeys.orders.all });
     qc.invalidateQueries({ queryKey: queryKeys.orders.activeReservations });
+    qc.invalidateQueries({ queryKey: queryKeys.cart.all });
   });
 }
