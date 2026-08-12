@@ -144,6 +144,51 @@ class TestMarkGenerationFailed:
         db.flush.assert_awaited_once()
 
 
+class TestUpdateMetadata:
+    """update_metadata's `refresh` kwarg skips the two post-flush reload
+    round-trips when the caller knows another write to the same image
+    follows immediately (UniversalImageService.crop() with changed
+    breakpoints) — flush() must still always run so that next write sees
+    the change, but refresh()/refresh(variants) should be skippable."""
+
+    def setup_method(self):
+        self.repo = ImageRepository()
+
+    def _image(self):
+        image = MagicMock()
+        image.version = 1
+        image.metadata_ = {}
+        return image
+
+    async def test_default_refreshes_scalars_and_variants(self):
+        image = self._image()
+        db = _db()
+
+        result = await self.repo.update_metadata(db, image, {"crops": {}})
+
+        assert result is image
+        assert image.metadata_ == {"crops": {}}
+        assert image.version == 2
+        db.flush.assert_awaited_once()
+        assert db.refresh.await_count == 2
+        db.refresh.assert_any_await(image)
+        db.refresh.assert_any_await(image, attribute_names=["variants"])
+
+    async def test_refresh_false_flushes_but_skips_both_reloads(self):
+        image = self._image()
+        db = _db()
+
+        result = await self.repo.update_metadata(
+            db, image, {"crops": {"desktop": {}}}, refresh=False
+        )
+
+        assert result is image
+        assert image.metadata_ == {"crops": {"desktop": {}}}
+        assert image.version == 2
+        db.flush.assert_awaited_once()
+        db.refresh.assert_not_awaited()
+
+
 class TestReplaceVariants:
     """replace_variants upserts (INSERT ... ON CONFLICT DO UPDATE) instead of
     delete-then-insert, specifically to stay race-safe when two

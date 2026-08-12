@@ -5,6 +5,7 @@ export type {
   UniversalImageEditorSaveResult,
 } from "./UniversalImageEditor/UniversalImageEditor";
 export { CropCanvas } from "./UniversalImageEditor/CropCanvas";
+export { CroppedImageView } from "./UniversalImageEditor/CroppedImageView";
 export { PreviewFrame } from "./UniversalImageEditor/PreviewFrame";
 export { ShapeMaskOverlay } from "./UniversalImageEditor/ShapeMaskOverlay";
 export { useCropGeometry } from "./UniversalImageEditor/useCropGeometry";

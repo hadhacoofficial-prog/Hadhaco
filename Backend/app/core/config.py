@@ -125,15 +125,19 @@ class Settings(BaseSettings):
             )
         return v
 
-    # Supabase Session Pooler has a per-plan client cap (15 on the default plan).
-    # Single shared engine for ALL components (API, workers, event listeners).
-    # Budget: (pool_size + max_overflow) × uvicorn_workers ≤ supabase_limit − overhead
-    # With 2 workers: (2 + 1) × 2 = 6 persistent connections, leaving 9 for
-    # Alembic migrations, health checks, and transient session spikes.
-    # Workers and event listeners reuse the same pool — no separate engine.
-    DATABASE_POOL_SIZE: int = 2
-    DATABASE_MAX_OVERFLOW: int = 1
-    DATABASE_POOL_TIMEOUT: int = 30
+    # Supabase Session Pooler client cap was raised with the plan upgrade
+    # (previously 15 on the default plan — see git history for the old,
+    # tighter budget this replaced). Every OS process gets its own engine/
+    # pool instance (API uvicorn workers AND each forked Celery child — see
+    # Backend/app/core/database.py's module docstring), so the real budget is
+    # (pool_size + max_overflow) × process_count, summed across every process
+    # that opens a connection: backend (2 uvicorn workers), celery-worker-media
+    # (--concurrency=2), celery-worker-general (--concurrency=4). At 10+10=20
+    # per process that's 2×20 + 2×20 + 4×20 = 160 total — sized against the
+    # upgraded plan's higher cap, not the old default-plan limit.
+    DATABASE_POOL_SIZE: int = 10
+    DATABASE_MAX_OVERFLOW: int = 10
+    DATABASE_POOL_TIMEOUT: int = 15
     # Recycle idle connections after 30 minutes. Prevents stale TCP connections
     # from accumulating when traffic drops and the pool stays open but idle.
     DATABASE_POOL_RECYCLE: int = 1800

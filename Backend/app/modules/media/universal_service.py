@@ -388,6 +388,13 @@ class UniversalImageService:
                 merged_crops,
                 payload.focus_point,
             ),
+            # When there are changed breakpoints, _enqueue_generation below
+            # immediately does its own update_fields + refresh on this same
+            # image — that result is what actually gets returned/serialized,
+            # so refreshing here too would just be discarded round-trips.
+            # When there are none, this is the final write, so it must
+            # refresh as normal.
+            refresh=not changed_breakpoints,
         )
         _mark("db_update_metadata")
 

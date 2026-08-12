@@ -1,5 +1,5 @@
+import contextvars
 import re
-import threading
 import time as _time
 from collections.abc import AsyncGenerator
 
@@ -73,7 +73,21 @@ AsyncWorkerSessionLocal = AsyncSessionLocal
 _POOL_CAPACITY = settings.DATABASE_POOL_SIZE + settings.DATABASE_MAX_OVERFLOW
 
 
-_checkout_start_tls = threading.local()
+# threading.local() was tried here first and was wrong: uvicorn's async
+# workers run every concurrent request as a coroutine on one OS thread, so a
+# thread-local is shared by all of them — one request's get_db() overwrites
+# the timestamp another request's still-pending checkout event will read,
+# and a request that never triggers a checkout (cache hit, error before any
+# query) leaves a stale timestamp for whichever later request checks out
+# next, however long after. That produced avg/max "wait" numbers in the
+# minutes-to-hours range even while peak pool utilization stayed under 20%
+# (see 2026-08-12 metrics_drain logs) — noise, not real contention.
+# contextvars.ContextVar is per-asyncio-task (propagated correctly across
+# SQLAlchemy's async-to-sync greenlet bridge), which is the actual unit of
+# concurrency here.
+_checkout_start_var: contextvars.ContextVar[float | None] = contextvars.ContextVar(
+    "_checkout_start_var", default=None
+)
 
 
 @event.listens_for(engine.sync_engine, "checkout")
@@ -84,7 +98,7 @@ def _on_pool_checkout(dbapi_conn, conn_rec, conn_proxy) -> None:  # type: ignore
     # Measure actual wait time from when the session requested a connection.
     now = _time.monotonic()
     wait_ms = 0.0
-    prev = getattr(_checkout_start_tls, "_checkout_start", None)
+    prev = _checkout_start_var.get()
     if prev is not None:
         wait_ms = max(0.0, (now - prev) * 1000)
 
@@ -144,7 +158,7 @@ async def get_db() -> AsyncGenerator[AsyncSession, None]:
     ``session.close()`` then rolls back the (empty) transaction, which is
     semantically identical and avoids the write-path cost on the storefront.
     """
-    _checkout_start_tls._checkout_start = _time.monotonic()  # type: ignore[attr-defined]
+    _checkout_start_var.set(_time.monotonic())
     _t_session = _time.perf_counter()
     session = AsyncSessionLocal()
     checkout_ms = (_time.perf_counter() - _t_session) * 1000

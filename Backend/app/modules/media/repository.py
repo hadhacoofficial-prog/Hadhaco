@@ -62,14 +62,40 @@ class ImageRepository:
         return list(result.scalars().all())
 
     async def update_metadata(
-        self, db: AsyncSession, image: Image, metadata: dict[str, Any]
+        self,
+        db: AsyncSession,
+        image: Image,
+        metadata: dict[str, Any],
+        *,
+        refresh: bool = True,
     ) -> Image:
+        """
+        *refresh* controls whether the two post-flush reload round-trips
+        (scalar columns, then the `variants` relationship) run. Pass
+        ``refresh=False`` when the caller already knows another write to
+        this same image follows immediately in the same request/transaction
+        (e.g. `UniversalImageService.crop()` always follows this with
+        `_enqueue_generation`'s own `update_fields` call whenever there are
+        changed breakpoints) — that next call's refresh is the one whose
+        result actually gets read/returned, so this one would just be two
+        round-trips of discarded work (measured ~500ms of a ~900ms crop
+        request). `flush()` still runs unconditionally: the metadata/version
+        change must be visible to that next write regardless.
+        """
         image.metadata_ = metadata
         image.version += 1
         db.add(image)
         _t = time.perf_counter()
         await db.flush()
         flush_ms = (time.perf_counter() - _t) * 1000
+        if not refresh:
+            _perflog.debug(
+                "update_metadata_db",
+                image_id=str(image.id),
+                flush_ms=round(flush_ms, 2),
+                refreshed=False,
+            )
+            return image
         _t2 = time.perf_counter()
         await db.refresh(image)
         refresh_ms = (time.perf_counter() - _t2) * 1000

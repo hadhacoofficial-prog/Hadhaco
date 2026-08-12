@@ -63,12 +63,11 @@ services:
       REDIS_URL: "redis://:${REDIS_PASSWORD}@hadha-redis:6379/0"
       SENTRY_DSN: "${GLITCHTIP_DSN:-}"
       SENTRY_TRACES_SAMPLE_RATE: "0.1"
-      # Smaller per-process pool than the API — each Celery worker slot holds
-      # one DB session at a time, not one per HTTP request. See
-      # Backend/app/core/database.py's connection-budget comment and
-      # Docs/CELERY_MIGRATION_PLAN.md §13.
-      DATABASE_POOL_SIZE: "1"
-      DATABASE_MAX_OVERFLOW: "1"
+      # Matches app/core/config.py's default pool sizing — sized against the
+      # upgraded Supabase plan's connection cap, see that file's budget
+      # comment and Docs/CELERY_MIGRATION_PLAN.md §13.
+      DATABASE_POOL_SIZE: "10"
+      DATABASE_MAX_OVERFLOW: "10"
     command:
       [
         "celery", "-A", "app.celery_app", "worker",
@@ -110,8 +109,10 @@ services:
       REDIS_URL: "redis://:${REDIS_PASSWORD}@hadha-redis:6379/0"
       SENTRY_DSN: "${GLITCHTIP_DSN:-}"
       SENTRY_TRACES_SAMPLE_RATE: "0.1"
-      DATABASE_POOL_SIZE: "1"
-      DATABASE_MAX_OVERFLOW: "1"
+      # Matches app/core/config.py's default pool sizing — see that file's
+      # budget comment.
+      DATABASE_POOL_SIZE: "10"
+      DATABASE_MAX_OVERFLOW: "10"
     command:
       [
         "celery", "-A", "app.celery_app", "worker",

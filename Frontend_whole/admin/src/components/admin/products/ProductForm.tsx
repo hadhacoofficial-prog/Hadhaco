@@ -24,6 +24,7 @@ import { toUserMessage } from "@/lib/api/errors";
 import { formatINR } from "@/lib/format";
 import {
   UniversalImageEditor,
+  CroppedImageView,
   uploadImage,
   cropImage,
   replaceImage,
@@ -36,6 +37,7 @@ import {
   reorderImages,
   updateImageAltText,
   validateFileResolution,
+  readImageDimensions,
   type ImageOutRaw,
   type SaveIntent,
   type UniversalImageEditorSaveResult,
@@ -131,6 +133,18 @@ function parseStoredCrops(
   return Object.keys(result).length > 0 ? result : undefined;
 }
 
+/** Client-side counterpart of the preset's `storageRules.maxFileMb` — catches
+ * an oversized photo before it ever hits the network, instead of it failing
+ * server-side (or, if a proxy in front of the API caps request bodies below
+ * the preset's own limit, failing opaquely as a network error with no
+ * useful message at all). */
+function validateFileSize(file: File, preset: typeof PRODUCT_PRESET): string | null {
+  const maxBytes = preset.storageRules.maxFileMb * 1024 * 1024;
+  if (file.size <= maxBytes) return null;
+  const fileMb = (file.size / (1024 * 1024)).toFixed(1);
+  return `Image is ${fileMb}MB, over the ${preset.storageRules.maxFileMb}MB limit`;
+}
+
 // ─── Local types ──────────────────────────────────────────────────────────────
 
 interface VariantOption {
@@ -165,6 +179,12 @@ interface PendingImage {
    * after the file is uploaded. NULL means "upload as-is" (backward
    * compatible with the pre-cropping flow). */
   crop: CropGeometry | null;
+  /** Loaded asynchronously right after the file is added (null until then).
+   * Needed to render an accurate client-side crop preview via
+   * CroppedImageView — without the source's natural size, the crop box's
+   * percentages can't be translated into a CSS transform. */
+  naturalWidth: number | null;
+  naturalHeight: number | null;
 }
 
 /** Which image is currently open in the crop editor, and where its bytes
@@ -1414,6 +1434,11 @@ function MediaSection({
       const valid: File[] = [];
       const rejected: { id: string; message: string }[] = [];
       for (const file of files) {
+        const sizeProblem = validateFileSize(file, PRODUCT_PRESET);
+        if (sizeProblem) {
+          rejected.push({ id: uid(), message: `${file.name}: ${sizeProblem}` });
+          continue;
+        }
         const problem = await validateFileResolution(file, PRODUCT_PRESET);
         if (problem) {
           rejected.push({ id: uid(), message: `${file.name}: ${problem}` });
@@ -1454,6 +1479,11 @@ function MediaSection({
     // Same reasoning as validateAndAddPending: this attempt's outcome
     // replaces whatever was left over from a previous, unrelated one.
     setRejectedFiles([]);
+    const sizeProblem = validateFileSize(file, PRODUCT_PRESET);
+    if (sizeProblem) {
+      setRejectedFiles([{ id: uid(), message: `${file.name}: ${sizeProblem}` }]);
+      return;
+    }
     const problem = await validateFileResolution(file, PRODUCT_PRESET);
     if (problem) {
       setRejectedFiles([{ id: uid(), message: `${file.name}: ${problem}` }]);
@@ -1657,7 +1687,17 @@ function MediaSection({
               key={img.id}
               className="relative group border border-dashed border-border aspect-square overflow-hidden bg-secondary"
             >
-              <img src={img.preview} alt="" className="w-full h-full object-cover" />
+              {img.crop?.crops.desktop && img.naturalWidth && img.naturalHeight ? (
+                <CroppedImageView
+                  imageSrc={img.preview}
+                  naturalWidth={img.naturalWidth}
+                  naturalHeight={img.naturalHeight}
+                  geometry={img.crop.crops.desktop}
+                  className="w-full h-full"
+                />
+              ) : (
+                <img src={img.preview} alt="" className="w-full h-full object-cover" />
+              )}
               <div className="absolute top-1 right-1 bg-amber-500/90 text-white text-[9px] uppercase tracking-wider px-1.5 py-0.5">
                 Pending
               </div>
@@ -2839,11 +2879,28 @@ export function ProductForm({ mode, initialProduct, initialCollectionIds }: Prod
         preview: URL.createObjectURL(file),
         alt_text: "",
         crop: null,
+        naturalWidth: null,
+        naturalHeight: null,
       }));
       setPendingImages((prev) => [...prev, ...newImgs]);
       setIsDirty(true);
       // Every uploaded image immediately gets its own turn in the crop editor.
       newImgs.forEach((img) => enqueueCrop({ kind: "pending", id: img.id }));
+      // Fire-and-forget: the crop preview (CroppedImageView) needs the
+      // source's natural size to translate the crop box into a CSS
+      // transform. Loaded once per file, independent of the crop editor
+      // itself, so it's ready by the time the admin saves a crop even if
+      // they save-and-close before this resolves.
+      newImgs.forEach((img) => {
+        readImageDimensions(img.file).then((dims) => {
+          if (!dims) return;
+          setPendingImages((prev) =>
+            prev.map((p) =>
+              p.id === img.id ? { ...p, naturalWidth: dims.width, naturalHeight: dims.height } : p,
+            ),
+          );
+        });
+      });
     },
     [enqueueCrop],
   );
