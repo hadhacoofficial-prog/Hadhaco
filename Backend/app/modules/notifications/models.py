@@ -3,7 +3,7 @@ from __future__ import annotations
 import uuid
 from datetime import UTC, datetime
 
-from sqlalchemy import Boolean, DateTime, Integer, Text, UniqueConstraint
+from sqlalchemy import Boolean, DateTime, Index, Integer, Text, UniqueConstraint
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -71,6 +71,12 @@ class NotificationTemplateVersion(Base):
 
 class NotificationLog(Base):
     __tablename__ = "notification_logs"
+    __table_args__ = (
+        # notification_retry worker (every 30s) selects status='retrying'
+        # with next_retry_at <= now — indexed seek instead of a full scan
+        # (~240-300ms per run on the remote Supabase instance).
+        Index("idx_notification_logs_status_retry_at", "status", "next_retry_at"),
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), primary_key=True, default=uuid.uuid4

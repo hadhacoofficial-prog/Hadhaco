@@ -10,6 +10,7 @@ from sqlalchemy import (
     DateTime,
     Float,
     ForeignKey,
+    Index,
     Integer,
     String,
     Text,
@@ -61,6 +62,15 @@ class Banner(Base):
 
 class LandingSection(Base):
     __tablename__ = "landing_sections"
+    __table_args__ = (
+        # cms_publish worker (every 60s) selects status='scheduled' with
+        # scheduled_at <= now — indexed seek instead of a full scan.
+        Index(
+            "idx_landing_sections_status_scheduled_at",
+            "status",
+            "scheduled_at",
+        ),
+    )
     id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
     )

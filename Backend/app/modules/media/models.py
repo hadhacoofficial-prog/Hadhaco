@@ -5,6 +5,7 @@ from sqlalchemy import (
     Boolean,
     DateTime,
     ForeignKey,
+    Index,
     Integer,
     SmallInteger,
     String,
@@ -28,6 +29,13 @@ class Image(Base):
     """
 
     __tablename__ = "images"
+    __table_args__ = (
+        # Worker sweeps: media_generation.reclaim_stale_processing (every 5s)
+        # and list_pending_images filter by status + updated_at. Without this
+        # index each sweep was a full-table scan (~230-365ms on the remote
+        # Supabase instance, repeatedly in the perf log).
+        Index("idx_images_status_updated_at", "status", "updated_at"),
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), primary_key=True, default=uuid.uuid4

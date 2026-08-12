@@ -71,19 +71,40 @@ async def lifespan(app: FastAPI):
 
     register_notification_listeners()
 
+    # ── Single-runner background work (leader election) ────────────────────
+    # ``uvicorn --workers N`` starts N processes, each running this lifespan.
+    # The APScheduler queue and the notification-rules seed must run in
+    # exactly ONE process, or jobs double-run (duplicate emails/WhatsApp from
+    # notification_retry) and the sweep queries hammer a remote DB twice as
+    # often. A Redis SET NX lock elects a single leader; followers skip.
+    from app.core.worker_leader import WorkerLeader
+
+    leader = WorkerLeader()
+    _is_leader = await leader.try_acquire()
+
     # Sync the code-defined Notification Event Registry into notification_rules
     # (insert-missing-only — never overwrites an admin's existing rule row).
-    from app.core.database import AsyncSessionLocal
-    from app.modules.notifications.event_registry import sync_notification_rules
+    if _is_leader:
+        from app.core.database import AsyncSessionLocal
+        from app.modules.notifications.event_registry import sync_notification_rules
 
-    async with AsyncSessionLocal() as _sync_db:
-        await sync_notification_rules(_sync_db)
+        async with AsyncSessionLocal() as _sync_db:
+            await sync_notification_rules(_sync_db)
 
-    # Start background job scheduler
+    # Start background job scheduler (leader only). The queue object is still
+    # built in every worker so shutdown stays symmetric; start() is what the
+    # lock gates.
     from app.workers.queue import build_queue
 
     queue = build_queue()
-    queue.start()
+    if _is_leader:
+        queue.start()
+    else:
+        _log.info("queue_skipped", reason="follower_worker")
+        # A crashed leader is replaced without a full cluster restart: keep
+        # polling for the lock and start the queue the moment this process
+        # wins the election.
+        leader.start_reacquire_loop(queue.start)
 
     # ── Cache warming (startup-only) ─────────────────────────────────────────
     # Pre-populate Redis for high-traffic storefront endpoints so the first
@@ -148,6 +169,7 @@ async def lifespan(app: FastAPI):
 
     stop_pubsub_listener()
     queue.shutdown()
+    await leader.release()
 
     from app.core.cpu_executor import shutdown_cpu_executor
     from app.core.event_loop_monitor import stop_event_loop_monitor
