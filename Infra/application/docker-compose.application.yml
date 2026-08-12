@@ -131,8 +131,18 @@ services:
     deploy:
       resources:
         limits:
-          memory: 384M
-          cpus: "0.5"
+          # Was 384M — too tight for 5 Python processes (1 main + 4 forked
+          # children, --concurrency=4). Confirmed live via repeated
+          # "ForkPoolWorker-N exited with signal 9 (SIGKILL)" within the
+          # first minute of every deploy — the OOM killer's signature (no
+          # preceding Python traceback, since SIGKILL can't be caught/
+          # logged by the process itself). Made worse by
+          # app.core.model_registry.import_all_models() now eagerly loading
+          # the full 57-table schema into every Celery process for
+          # correctness (see the FK-resolution fix commit) — that's a fixed
+          # per-process cost this container previously didn't pay in full.
+          memory: 640M
+          cpus: "0.75"
     logging:
       driver: "json-file"
       options:
