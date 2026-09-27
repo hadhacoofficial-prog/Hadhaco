@@ -84,7 +84,9 @@ function CartPage() {
     const myReserved = getReservation(line.productId, line.variantId)?.quantity ?? 0;
     const entry = inventoryEntries[inventoryKey(line.productId, line.variantId)];
     if (entry) {
-      const availableStock = entry.availableStock + myReserved;
+      // Server-confirmed stock, not the local optimistic guess add-to-cart
+      // wrote — see confirmedAvailableStock in stores/inventory.ts.
+      const availableStock = entry.confirmedAvailableStock + myReserved;
       stockMap[key] = {
         availableStock,
         maxOrderQty: entry.maxOrderQuantity,

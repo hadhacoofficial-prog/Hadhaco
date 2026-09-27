@@ -33,6 +33,15 @@ export interface InventoryEntry {
   // ── Stock quantities ──────────────────────────────────────────────────────
   stockQuantity: number;
   availableStock: number;
+  /** Last availableStock value confirmed by the server (api/sse/poll) —
+   * unlike `availableStock`, this is never touched by optimisticDecrement/
+   * Increment. Sold-out/checkout-block decisions must read this, not
+   * `availableStock`, since add-to-cart never actually reserves anything
+   * server-side: it just guesses locally. Using the guess to hard-block
+   * checkout produces a false "Sold Out" the instant a shopper adds their
+   * last unit, which a subsequent server-backed refetch (e.g. /cart) then
+   * silently corrects — the exact bug this field prevents. */
+  confirmedAvailableStock: number;
   reservedQuantity: number;
   soldQuantity: number;
 
@@ -158,11 +167,16 @@ export const useInventoryStore = create<InventoryState>()((set, get) => ({
       if (source !== "api" || !existing) {
         inventoryLog.upsert(key, source, merged.availableStock ?? 0, stockStatus);
       }
+      const confirmedAvailableStock =
+        source === "optimistic"
+          ? (existing?.confirmedAvailableStock ?? merged.availableStock ?? 0)
+          : (merged.availableStock ?? 0);
       return {
         entries: {
           ...state.entries,
           [key]: {
             ...merged,
+            confirmedAvailableStock,
             stockStatus,
             lastUpdated: Date.now(),
             syncVersion: state.version + 1,
@@ -233,6 +247,8 @@ export const useInventoryStore = create<InventoryState>()((set, get) => ({
           lastUpdated: Date.now(),
           source: "optimistic",
           confidence: "medium",
+          // confirmedAvailableStock is left untouched — it only moves on a
+          // real server-confirmed upsert (api/sse/poll).
         },
       },
       version: state.version + 1,

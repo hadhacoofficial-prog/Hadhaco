@@ -112,7 +112,9 @@ function CheckoutPage() {
     const entry = inventoryEntries[inventoryKey(line.productId, line.variantId)];
     if (!entry) return false;
     const myReserved = getReservation(line.productId, line.variantId)?.quantity ?? 0;
-    const effectiveAvailable = entry.availableStock + myReserved;
+    // Server-confirmed stock, not add-to-cart's local optimistic guess —
+    // see confirmedAvailableStock in stores/inventory.ts.
+    const effectiveAvailable = entry.confirmedAvailableStock + myReserved;
     if (effectiveAvailable === 0) return true;
     const bounds = computeQuantityBounds({
       availableStock: effectiveAvailable,
@@ -507,7 +509,7 @@ function CheckoutPage() {
       const entry = store.entries[inventoryKey(line.productId, line.variantId)];
       if (!entry) continue;
       const myReserved = getReservation(line.productId, line.variantId)?.quantity ?? 0;
-      const effectiveAvailable = entry.availableStock + myReserved;
+      const effectiveAvailable = entry.confirmedAvailableStock + myReserved;
       const bounds = computeQuantityBounds({
         availableStock: effectiveAvailable,
         maxOrderQty: entry.maxOrderQuantity,

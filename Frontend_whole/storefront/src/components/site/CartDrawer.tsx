@@ -36,7 +36,10 @@ export function CartDrawer() {
     const entry = inventoryEntries[inventoryKey(line.productId, line.variantId)];
     if (!entry) return false;
     const myReserved = getReservation(line.productId, line.variantId)?.quantity ?? 0;
-    const availableStock = entry.availableStock + myReserved;
+    // Use the server-confirmed stock, not the optimistic guess add-to-cart
+    // wrote locally — that guess isn't backed by any real reservation and
+    // must never hard-block checkout on its own (see confirmedAvailableStock).
+    const availableStock = entry.confirmedAvailableStock + myReserved;
     if (availableStock === 0) return true;
     const bounds = computeQuantityBounds({
       availableStock,
@@ -119,7 +122,9 @@ export function CartDrawer() {
               {lines.map((line) => {
                 const entry = inventoryEntries[inventoryKey(line.productId, line.variantId)];
                 const myReserved = getReservation(line.productId, line.variantId)?.quantity ?? 0;
-                const effectiveAvailable = entry ? entry.availableStock + myReserved : undefined;
+                const effectiveAvailable = entry
+                  ? entry.confirmedAvailableStock + myReserved
+                  : undefined;
                 const bounds =
                   entry && effectiveAvailable !== undefined
                     ? computeQuantityBounds({
