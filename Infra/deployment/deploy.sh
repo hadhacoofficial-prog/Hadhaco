@@ -873,7 +873,7 @@ dc_infra down --remove-orphans 2>&1 | tee -a "${LOG_FILE}" || true
 # Containers created outside compose (e.g., manual docker run, or from a
 # different project name) survive and block name reuse.
 INFRA_CONTAINER_NAMES=(
-  hadha-redis hadha-redis-commander hadha-redis-exporter
+  hadha-redis hadha-redis-broker hadha-redis-commander hadha-redis-exporter
   hadha-nginx hadha-prometheus hadha-grafana
   hadha-loki hadha-promtail hadha-node-exporter
   hadha-cadvisor hadha-uptime-kuma hadha-dozzle

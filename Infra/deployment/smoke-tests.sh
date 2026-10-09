@@ -56,7 +56,7 @@ check "Dozzle" "https://dozzle.hadha.co"
 # ── Container checks ──────────────────────────────────────────────────────────
 log ""
 log "Container status:"
-for c in hadha-backend hadha-storefront hadha-admin hadha-redis hadha-nginx \
+for c in hadha-backend hadha-storefront hadha-admin hadha-redis hadha-redis-broker hadha-nginx \
          hadha-prometheus hadha-grafana hadha-loki hadha-promtail; do
   STATUS=$(docker inspect --format='{{.State.Status}}' "${c}" 2>/dev/null || echo "not_found")
   if [[ "${STATUS}" == "running" ]]; then

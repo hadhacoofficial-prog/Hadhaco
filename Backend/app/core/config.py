@@ -125,18 +125,18 @@ class Settings(BaseSettings):
             )
         return v
 
-    # Supabase Session Pooler client cap was raised with the plan upgrade
-    # (previously 15 on the default plan — see git history for the old,
-    # tighter budget this replaced). Every OS process gets its own engine/
-    # pool instance (API uvicorn workers AND each forked Celery child — see
-    # Backend/app/core/database.py's module docstring), so the real budget is
-    # (pool_size + max_overflow) × process_count, summed across every process
-    # that opens a connection: backend (2 uvicorn workers), celery-worker-media
-    # (--concurrency=2), celery-worker-general (--concurrency=4). At 10+10=20
-    # per process that's 2×20 + 2×20 + 4×20 = 160 total — sized against the
-    # upgraded plan's higher cap, not the old default-plan limit.
-    DATABASE_POOL_SIZE: int = 10
-    DATABASE_MAX_OVERFLOW: int = 10
+    # Connection budget. Supabase Postgres reports max_connections=60 (checked
+    # live 2026-10-10) and its own services hold ~12, so ~40 are usable.
+    # Session-mode pooling maps each client connection to a backend one, and
+    # every OS process has its own engine (API uvicorn workers AND each forked
+    # Celery child — see Backend/app/core/database.py), so the worst case is
+    # (pool_size + max_overflow) × process_count summed over all processes:
+    #   backend (2 workers)         2 × (6+4) = 20   (compose sets 6/4)
+    #   celery-worker-media (2)     2 × (2+1) =  6   (compose sets 2/1)
+    #   celery-worker-general (4)   4 × (2+1) = 12   (compose sets 2/1)
+    #   total 38. Raise only after upgrading the Supabase compute size.
+    DATABASE_POOL_SIZE: int = 6
+    DATABASE_MAX_OVERFLOW: int = 4
     DATABASE_POOL_TIMEOUT: int = 15
     # Recycle idle connections after 30 minutes. Prevents stale TCP connections
     # from accumulating when traffic drops and the pool stays open but idle.

@@ -90,6 +90,50 @@ services:
     security_opt:
       - no-new-privileges:true
 
+  # ── Redis (Celery broker only) ───────────────────────────────────────────────
+  # Separate from hadha-redis on purpose: that instance is a cache with
+  # allkeys-lru, which may evict ANY key under memory pressure — including
+  # queued Celery tasks (emails, reservation expiry, inventory release).
+  # The broker therefore gets noeviction (writes fail loudly instead of
+  # silently dropping tasks) and its own AOF volume.
+  hadha-redis-broker:
+    image: redis:7-alpine
+    container_name: hadha-redis-broker
+    restart: unless-stopped
+    command: >
+      redis-server
+        --appendonly yes
+        --maxmemory 128mb
+        --maxmemory-policy noeviction
+        --requirepass ${REDIS_PASSWORD:?REDIS_PASSWORD is required}
+        --loglevel notice
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD}
+    expose:
+      - "6379"
+    volumes:
+      - redis_broker_data:/data
+    networks:
+      - hadha
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli -a $$REDIS_PASSWORD --no-auth-warning ping | grep -q PONG"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 5s
+    deploy:
+      resources:
+        limits:
+          memory: 160M
+          cpus: "0.25"
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "20m"
+        max-file: "3"
+    security_opt:
+      - no-new-privileges:true
+
   # ── Redis Commander ──────────────────────────────────────────────────────────
   redis-commander:
     image: rediscommander/redis-commander:latest@sha256:19cd0c49f418779fa2822a0496c5e6516d0c792effc39ed20089e6268477e40a
@@ -397,6 +441,15 @@ services:
     image: ghcr.io/google/cadvisor:v0.60.6@sha256:b8e7d1093144fd088f425ff003d75a4aa405de075db78dae3bc563730b1bd07a
     container_name: hadha-cadvisor
     restart: unless-stopped
+    # Idle-CPU trim: cAdvisor was the single largest idle consumer (~25% of a
+    # vCPU) at its default 1s housekeeping. Prometheus scrapes every 30s, so
+    # sampling every 30s loses nothing; docker_only skips non-container
+    # cgroups and the disabled collectors are ones no dashboard/alert uses.
+    command:
+      - "--housekeeping_interval=30s"
+      - "--max_housekeeping_interval=60s"
+      - "--docker_only=true"
+      - "--disable_metrics=percpu,sched,tcp,udp,advtcp,hugetlb,referenced_memory,cpu_topology,resctrl,process"
     privileged: true
     # Host PID namespace is required for the /api/v2.0/ps/ endpoint to
     # enumerate container processes; without it that endpoint returns 500
@@ -619,6 +672,8 @@ volumes:
   redis_data:
     external: true
     name: hadha_redis_data
+  redis_broker_data:
+    name: hadha_redis_broker_data
   nginx_logs:
     external: true
     name: hadha_nginx_logs

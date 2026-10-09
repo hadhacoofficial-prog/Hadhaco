@@ -21,10 +21,17 @@ services:
     environment:
       APP_ENV: production
       REDIS_URL: "redis://:${REDIS_PASSWORD}@hadha-redis:6379/0"
+      CELERY_BROKER_URL: "redis://:${REDIS_PASSWORD}@hadha-redis-broker:6379/0"
       ALLOWED_ORIGINS: "https://hadha.co,https://www.hadha.co,https://admin.hadha.co"
       ALLOWED_HOSTS: "api.hadha.co,hadha-backend"
       SENTRY_DSN: "${GLITCHTIP_DSN:-}"
       SENTRY_TRACES_SAMPLE_RATE: "0.1"
+      # Supabase Postgres max_connections=60 (verified live 2026-10-10), ~12
+      # taken by Supabase's own services. API budget: 2 uvicorn workers ×
+      # (6+4) = 20; with celery 6 + 12 the worst case is 38. Overrides any
+      # value baked into /opt/hadha/.env.production.
+      DATABASE_POOL_SIZE: "6"
+      DATABASE_MAX_OVERFLOW: "4"
     expose:
       - "8000"
     networks:
@@ -61,13 +68,12 @@ services:
     environment:
       APP_ENV: production
       REDIS_URL: "redis://:${REDIS_PASSWORD}@hadha-redis:6379/0"
+      CELERY_BROKER_URL: "redis://:${REDIS_PASSWORD}@hadha-redis-broker:6379/0"
       SENTRY_DSN: "${GLITCHTIP_DSN:-}"
       SENTRY_TRACES_SAMPLE_RATE: "0.1"
-      # Matches app/core/config.py's default pool sizing — sized against the
-      # upgraded Supabase plan's connection cap, see that file's budget
-      # comment and Docs/CELERY_MIGRATION_PLAN.md §13.
-      DATABASE_POOL_SIZE: "10"
-      DATABASE_MAX_OVERFLOW: "10"
+      # 2 forked children × (2+1) = 6 — see app/core/config.py budget comment.
+      DATABASE_POOL_SIZE: "2"
+      DATABASE_MAX_OVERFLOW: "1"
     command:
       [
         "celery", "-A", "app.celery_app", "worker",
@@ -107,12 +113,12 @@ services:
     environment:
       APP_ENV: production
       REDIS_URL: "redis://:${REDIS_PASSWORD}@hadha-redis:6379/0"
+      CELERY_BROKER_URL: "redis://:${REDIS_PASSWORD}@hadha-redis-broker:6379/0"
       SENTRY_DSN: "${GLITCHTIP_DSN:-}"
       SENTRY_TRACES_SAMPLE_RATE: "0.1"
-      # Matches app/core/config.py's default pool sizing — see that file's
-      # budget comment.
-      DATABASE_POOL_SIZE: "10"
-      DATABASE_MAX_OVERFLOW: "10"
+      # 4 forked children × (2+1) = 12 — see app/core/config.py budget comment.
+      DATABASE_POOL_SIZE: "2"
+      DATABASE_MAX_OVERFLOW: "1"
     command:
       [
         "celery", "-A", "app.celery_app", "worker",
@@ -163,6 +169,7 @@ services:
     environment:
       APP_ENV: production
       REDIS_URL: "redis://:${REDIS_PASSWORD}@hadha-redis:6379/0"
+      CELERY_BROKER_URL: "redis://:${REDIS_PASSWORD}@hadha-redis-broker:6379/0"
       SENTRY_DSN: "${GLITCHTIP_DSN:-}"
       SENTRY_TRACES_SAMPLE_RATE: "0.1"
     command:

@@ -47,6 +47,7 @@ CRITICAL_CONTAINERS=(
   "hadha-storefront"
   "hadha-admin"
   "hadha-redis"
+  "hadha-redis-broker"
   "hadha-nginx"
   "hadha-glitchtip"
   "hadha-glitchtip-worker"
