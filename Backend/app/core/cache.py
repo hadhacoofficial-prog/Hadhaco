@@ -219,12 +219,31 @@ async def bust_search_cache(redis: aioredis.Redis) -> None:
 
 
 async def bust_review_cache(redis: aioredis.Redis, product_id: str) -> None:
-    """Invalidate review caches for a product."""
+    """Invalidate review caches for a product.
+
+    Review-list pages are cached per offset/limit/sort/rating under
+    ``{PREFIX_REVIEW_LIST}:{product_id}:...``, so they are swept by pattern —
+    deleting the bare ``{PREFIX_REVIEW_LIST}:{product_id}`` key (the previous
+    behaviour) never matched a real page key.
+    """
     await safe_redis_delete(
         redis,
         f"{PREFIX_REVIEW_LIST}:{product_id}",
         f"{PREFIX_REVIEW_SUMMARY}:{product_id}",
     )
+    if not redis_available():
+        return
+    try:
+        keys = [
+            key
+            async for key in redis.scan_iter(
+                match=f"{PREFIX_REVIEW_LIST}:{product_id}:*", count=200
+            )
+        ]
+        if keys:
+            await safe_redis_delete(redis, *keys)
+    except Exception:
+        mark_redis_error()
 
 
 async def bust_feature_flag_cache(redis: aioredis.Redis, key: str) -> None:

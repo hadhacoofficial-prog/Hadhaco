@@ -1,4 +1,5 @@
-import { useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
+import { useNavigate, useSearch } from "@tanstack/react-router";
 import { toast } from "sonner";
 import { Download, RotateCcw, Search } from "lucide-react";
 import { toUserMessage } from "@/lib/api/errors";
@@ -12,6 +13,18 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { TableSkeleton } from "@/components/loading/TableSkeleton";
+import {
+  DateRangeFilter,
+  resolveDateRange,
+  type DateRangeValue,
+} from "@hadha/shared-ui/data/DateRangeFilter";
+import {
+  dateRangeFromSearch,
+  dateRangeToSearch,
+  patchSearch,
+  useClampPage,
+  useUrlSearchText,
+} from "@/lib/tableUrlState";
 import {
   useNotificationLogs,
   useNotificationRules,
@@ -32,10 +45,23 @@ const STATUS_STYLES: Record<string, string> = {
 const PAGE_SIZE = 25;
 
 export function NotificationLogsTable() {
-  const [page, setPage] = useState(1);
-  const [status, setStatus] = useState<string>("all");
-  const [channel, setChannel] = useState<string>("all");
-  const [search, setSearch] = useState("");
+  // Filters / page live in the route's search params (schema on the route).
+  const urlSearch = useSearch({ from: "/admin/notifications/logs" });
+  const navigate = useNavigate({ from: "/admin/notifications/logs" });
+  type LogsSearch = typeof urlSearch;
+  const update = useCallback(
+    (patch: Partial<LogsSearch>, replace = false) =>
+      navigate({ search: (prev) => patchSearch(prev, patch), replace }),
+    [navigate],
+  );
+
+  const [search, setSearch] = useUrlSearchText(urlSearch.q, (q) => update({ q }));
+  const page = urlSearch.page ?? 1;
+  const status: string = urlSearch.status ?? "all";
+  const channel: string = urlSearch.channel ?? "all";
+  const sentAt = dateRangeFromSearch(urlSearch);
+  const setSentAt = (v: DateRangeValue) => update(dateRangeToSearch(v));
+  const setPage = (p: number) => update({ page: p > 1 ? p : undefined });
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [detailLog, setDetailLog] = useState<NotificationLogOut | null>(null);
   const [retryScope, setRetryScope] = useState<
@@ -46,11 +72,17 @@ export function NotificationLogsTable() {
     offset: (page - 1) * PAGE_SIZE,
     limit: PAGE_SIZE,
   };
-  if (status !== "all") filters.status = status;
-  if (channel !== "all") filters.channel = channel;
-  if (search.trim()) filters.search = search.trim();
+  if (urlSearch.status) filters.status = urlSearch.status;
+  if (urlSearch.channel) filters.channel = urlSearch.channel;
+  if (urlSearch.q) filters.search = urlSearch.q;
+  const sentRange = resolveDateRange(sentAt);
+  if (sentRange.date_from) filters.date_from = sentRange.date_from;
+  // resolveDateRange's end is exclusive (next midnight) but the logs API
+  // compares `created_at <= date_to`, so send the range's last millisecond.
+  if (sentRange.date_to)
+    filters.date_to = new Date(new Date(sentRange.date_to).getTime() - 1).toISOString();
 
-  const { data, isLoading, isFetching } = useNotificationLogs(filters);
+  const { data, isLoading, isFetching, isPlaceholderData } = useNotificationLogs(filters);
   const { data: rules } = useNotificationRules();
   const retryLogs = useRetryNotificationLogs();
 
@@ -58,6 +90,12 @@ export function NotificationLogsTable() {
     rules?.find((r) => r.event_type === eventType)?.display_name ?? eventType;
 
   const totalPages = data ? Math.max(1, Math.ceil(data.total / PAGE_SIZE)) : 1;
+  useClampPage(
+    page,
+    data ? { itemCount: data.items.length, totalPages } : undefined,
+    isPlaceholderData,
+    (last) => update({ page: last > 1 ? last : undefined }, true),
+  );
 
   const toggleSelected = (id: string) => {
     setSelected((prev) => {
@@ -123,17 +161,15 @@ export function NotificationLogsTable() {
             placeholder="Search recipient, order number, notification ID…"
             className="pl-8"
             value={search}
-            onChange={(e) => {
-              setSearch(e.target.value);
-              setPage(1);
-            }}
+            aria-label="Search notification logs"
+            onChange={(e) => setSearch(e.target.value)}
           />
         </div>
+        <DateRangeFilter label="Sent" value={sentAt} onChange={setSentAt} />
         <Select
           value={status}
           onValueChange={(v) => {
-            setStatus(v);
-            setPage(1);
+            update({ status: v === "all" ? undefined : (v as LogsSearch["status"]) });
           }}
         >
           <SelectTrigger className="w-36">
@@ -152,8 +188,7 @@ export function NotificationLogsTable() {
         <Select
           value={channel}
           onValueChange={(v) => {
-            setChannel(v);
-            setPage(1);
+            update({ channel: v === "all" ? undefined : (v as LogsSearch["channel"]) });
           }}
         >
           <SelectTrigger className="w-32">
@@ -277,7 +312,7 @@ export function NotificationLogsTable() {
               variant="outline"
               size="sm"
               disabled={page <= 1}
-              onClick={() => setPage((p) => p - 1)}
+              onClick={() => setPage(page - 1)}
             >
               Previous
             </Button>
@@ -285,7 +320,7 @@ export function NotificationLogsTable() {
               variant="outline"
               size="sm"
               disabled={page >= totalPages}
-              onClick={() => setPage((p) => p + 1)}
+              onClick={() => setPage(page + 1)}
             >
               Next
             </Button>

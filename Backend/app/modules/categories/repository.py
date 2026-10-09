@@ -22,6 +22,40 @@ class CategoryRepository:
         )
         return result.scalar_one_or_none()
 
+    async def resolve_ids_with_descendants(
+        self, db: AsyncSession, slugs: list[str]
+    ) -> list[uuid.UUID]:
+        """Category ids for ``slugs`` plus every (non-deleted) sub-category.
+
+        A shopper filtering by a parent category ("Necklaces") expects the
+        products filed under its children ("Chokers", "Long chains") too.
+        One recursive CTE — the category tree is tiny.
+        """
+        if not slugs:
+            return []
+        roots = (
+            select(Category.id)
+            .where(Category.slug.in_(slugs), Category.deleted_at.is_(None))
+            .cte("cat_tree", recursive=True)
+        )
+        children = select(Category.id).where(
+            Category.parent_id == roots.c.id, Category.deleted_at.is_(None)
+        )
+        tree = roots.union(children)
+        result = await db.execute(select(tree.c.id))
+        return list(result.scalars().all())
+
+    async def list_all_not_deleted(self, db: AsyncSession) -> list[Category]:
+        """Every non-deleted category, active or not — the full tree shape
+        that ``resolve_ids_with_descendants`` walks (it does not skip
+        inactive sub-categories)."""
+        result = await db.execute(
+            select(Category)
+            .where(Category.deleted_at.is_(None))
+            .order_by(Category.sort_order.asc(), Category.name.asc())
+        )
+        return list(result.scalars().all())
+
     async def list_all_active(self, db: AsyncSession) -> list[Category]:
         result = await db.execute(
             select(Category)

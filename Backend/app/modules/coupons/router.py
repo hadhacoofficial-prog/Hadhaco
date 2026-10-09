@@ -54,10 +54,26 @@ async def list_coupons(
     is_active: bool | None = Query(None),
     page: int = Query(1, ge=1),
     page_size: int = Query(15, ge=1, le=200),
+    search: str | None = Query(None, max_length=100),
+    state: str | None = Query(None, pattern="^(live|scheduled|expired|inactive)$"),
+    coupon_type: str | None = Query(None, max_length=20),
+    sort_by: str = Query(
+        "created_at",
+        pattern="^(created_at|code|value|usage_count|valid_from|valid_until)$",
+    ),
+    sort_dir: str = Query("desc", pattern="^(asc|desc)$"),
     db: AsyncSession = Depends(get_db),
 ):
     items, total = await _service.list_all(
-        db, is_active=is_active, page=page, page_size=page_size
+        db,
+        is_active=is_active,
+        page=page,
+        page_size=page_size,
+        search=search,
+        state=state,
+        coupon_type=coupon_type,
+        sort_by=sort_by,
+        sort_dir=sort_dir,
     )
     total_pages = math.ceil(total / page_size) if total else 1
     data = CouponListResponse(

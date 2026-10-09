@@ -55,9 +55,22 @@ class CouponService:
         is_active: bool | None = None,
         page: int = 1,
         page_size: int = 15,
+        search: str | None = None,
+        state: str | None = None,
+        coupon_type: str | None = None,
+        sort_by: str = "created_at",
+        sort_dir: str = "desc",
     ) -> tuple[list[CouponResponse], int]:
         coupons, total = await _repo.list_all_paginated(
-            db, is_active=is_active, page=page, page_size=page_size
+            db,
+            is_active=is_active,
+            page=page,
+            page_size=page_size,
+            search=search,
+            state=state,
+            coupon_type=coupon_type,
+            sort_by=sort_by,
+            sort_dir=sort_dir,
         )
         return [CouponResponse.model_validate(c) for c in coupons], total
 

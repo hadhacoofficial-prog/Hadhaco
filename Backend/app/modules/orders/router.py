@@ -1,4 +1,5 @@
 import uuid
+from datetime import datetime
 
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -160,6 +161,17 @@ async def admin_list_orders(
     payment_status: str | None = None,
     user_id: uuid.UUID | None = None,
     search: str | None = Query(None, max_length=100),
+    fulfillment_status: str | None = Query(None, max_length=30),
+    date_from: datetime | None = Query(None, description="Inclusive (ISO 8601)"),
+    date_to: datetime | None = Query(None, description="Exclusive (ISO 8601)"),
+    min_total: float | None = Query(None, ge=0),
+    max_total: float | None = Query(None, ge=0),
+    sort_by: str = Query(
+        "created_at",
+        pattern="^(created_at|total|order_number|status|payment_status"
+        "|fulfillment_status|customer)$",
+    ),
+    sort_dir: str = Query("desc", pattern="^(asc|desc)$"),
     db: AsyncSession = Depends(get_db),
 ):
     result = await _service.admin_list_orders(
@@ -170,6 +182,13 @@ async def admin_list_orders(
         payment_status=payment_status,
         user_id=user_id,
         search=search,
+        fulfillment_status=fulfillment_status,
+        date_from=date_from,
+        date_to=date_to,
+        min_total=min_total,
+        max_total=max_total,
+        sort_by=sort_by,
+        sort_dir=sort_dir,
     )
     return ok(result, ResponseCode.ORDER_LISTED, "Orders listed successfully")
 

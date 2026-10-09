@@ -1,4 +1,5 @@
 import uuid
+from datetime import datetime
 from typing import Annotated
 
 import redis.asyncio as aioredis
@@ -163,9 +164,12 @@ async def list_users(
     search: str | None = Query(default=None),
     sort_by: str = Query(
         default="created_at",
-        pattern="^(created_at|updated_at|email|full_name|role)$",
+        pattern="^(created_at|updated_at|email|full_name|role|order_count"
+        "|total_spent)$",
     ),
     sort_dir: str = Query(default="desc", pattern="^(asc|desc)$"),
+    date_from: datetime | None = Query(None, description="Joined on/after"),
+    date_to: datetime | None = Query(None, description="Joined before"),
     _admin: Profile = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ) -> BaseSuccessResponse[AdminUserListResponse]:
@@ -178,6 +182,8 @@ async def list_users(
         search=search,
         sort_by=sort_by,
         sort_dir=sort_dir,
+        date_from=date_from,
+        date_to=date_to,
     )
     return ok(result, ResponseCode.USER_LISTED, "Users listed successfully")
 

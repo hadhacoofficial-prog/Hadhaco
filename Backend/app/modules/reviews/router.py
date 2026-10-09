@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import math
 import uuid
+from datetime import datetime
 
 import redis.asyncio as aioredis
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile
@@ -52,14 +53,18 @@ async def list_product_reviews(
     product_id: uuid.UUID,
     offset: int = Query(0, ge=0),
     limit: int = Query(20, ge=1, le=100),
+    sort: str = Query("newest", pattern="^(newest|oldest|highest|lowest|helpful)$"),
+    rating: int | None = Query(None, ge=1, le=5, description="Exact star rating"),
     db: AsyncSession = Depends(get_db),
     redis: aioredis.Redis = Depends(get_redis),
     user=Depends(get_current_user_optional),
 ):
     viewer_user_id = user.id if user else None
+    # All variants share the `{prefix}:{product_id}:` namespace so
+    # bust_review_cache can sweep them with one pattern.
+    cache_key = f"{PREFIX_REVIEW_LIST}:{product_id}:{offset}:{limit}:{sort}:{rating}"
     # Only cache when no user is logged in (anonymous browsing)
     if viewer_user_id is None:
-        cache_key = f"{PREFIX_REVIEW_LIST}:{product_id}:{offset}:{limit}"
         cached = await safe_redis_get(redis, cache_key)
         if cached:
             import json as _json
@@ -77,6 +82,8 @@ async def list_product_reviews(
         viewer_user_id=viewer_user_id,
         offset=offset,
         limit=limit,
+        sort=sort,
+        rating=rating,
     )
     review_dtos = [ReviewOut.model_validate(r) for r in reviews]
     # Backward-compatible: data is the reviews array (unchanged shape).
@@ -94,7 +101,6 @@ async def list_product_reviews(
     content = _json.loads(serialized)
     headers = {"X-Total-Count": str(total)}
     if viewer_user_id is None:
-        cache_key = f"{PREFIX_REVIEW_LIST}:{product_id}:{offset}:{limit}"
         await safe_redis_setex(redis, cache_key, TTL_REVIEW_LIST, serialized)
         response = JSONResponse(content=content, headers=headers)
         add_cache_headers(response, TTL_REVIEW_LIST, private=True)
@@ -268,11 +274,30 @@ async def list_all_reviews(
     status: str | None = Query(None, description="pending | approved | rejected"),
     page: int = Query(1, ge=1),
     page_size: int = Query(15, ge=1, le=200),
+    rating: int | None = Query(None, ge=1, le=5),
+    verified: bool | None = None,
+    search: str | None = Query(None, max_length=200),
+    date_from: datetime | None = Query(None, description="Inclusive (ISO 8601)"),
+    date_to: datetime | None = Query(None, description="Exclusive (ISO 8601)"),
+    sort_by: str = Query(
+        "created_at", pattern="^(created_at|rating|helpful_count|product_name)$"
+    ),
+    sort_dir: str = Query("desc", pattern="^(asc|desc)$"),
     db: AsyncSession = Depends(get_db),
     _=Depends(require_admin),
 ):
     items, total = await _svc.list_all_reviews(
-        db, status=status, page=page, page_size=page_size
+        db,
+        status=status,
+        page=page,
+        page_size=page_size,
+        rating=rating,
+        verified=verified,
+        search=search,
+        date_from=date_from,
+        date_to=date_to,
+        sort_by=sort_by,
+        sort_dir=sort_dir,
     )
     total_pages = math.ceil(total / page_size) if total else 1
     data = ReviewListResponse(

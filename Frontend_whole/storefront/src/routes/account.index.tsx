@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { createFileRoute, Link, redirect, useNavigate } from "@tanstack/react-router";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { z } from "zod";
 import {
   User,
@@ -824,13 +824,36 @@ function OrderCard({
 
 // ── Orders tab ─────────────────────────────────────────────────────────────────
 
+const ORDER_STATUS_FILTERS = [
+  { value: "", label: "All" },
+  { value: "confirmed", label: "Confirmed" },
+  { value: "processing", label: "Processing" },
+  { value: "shipped", label: "Shipped" },
+  { value: "delivered", label: "Delivered" },
+  { value: "cancelled", label: "Cancelled" },
+] as const;
+
+const ORDERS_PAGE_SIZE = 10;
+
 function OrdersTab() {
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [status, setStatus] = useState<string>("");
+  const [page, setPage] = useState(1);
 
-  const { data, isLoading } = useQuery({
-    queryKey: queryKeys.orders.list({}),
-    queryFn: () => api.get<OrderListResponse>("/orders", { params: { page: 1, page_size: 20 } }),
+  const params = { page, page_size: ORDERS_PAGE_SIZE, status: status || undefined };
+  const { data, isLoading, isPlaceholderData } = useQuery({
+    // Own key per page/status — the overview tab caches list({}) with a
+    // page size of 3, so sharing that key used to show only 3 orders here.
+    queryKey: queryKeys.orders.list(params),
+    queryFn: () => api.get<OrderListResponse>("/orders", { params }),
+    placeholderData: keepPreviousData,
   });
+
+  const changeStatus = (next: string) => {
+    setStatus(next);
+    setPage(1);
+    setExpandedId(null);
+  };
 
   if (isLoading) {
     return (
@@ -851,8 +874,9 @@ function OrdersTab() {
   }
 
   const orders = data?.items ?? [];
+  const totalPages = data?.total_pages ?? 1;
 
-  if (orders.length === 0) {
+  if (orders.length === 0 && !status) {
     return (
       <div className="bg-card border border-border rounded-2xl p-12 text-center shadow-sm">
         <div className="size-16 rounded-2xl bg-secondary flex items-center justify-center mx-auto mb-4">
@@ -876,16 +900,76 @@ function OrdersTab() {
     <div className="space-y-4">
       <div className="flex items-center justify-between mb-2">
         <h2 className="font-display text-2xl">Your Orders</h2>
-        <span className="text-sm text-muted-foreground">{data?.total ?? 0} orders</span>
+        <span className="text-sm text-muted-foreground" aria-live="polite">
+          {data?.total ?? 0} {status ? `${status} ` : ""}orders
+        </span>
       </div>
-      {orders.map((o) => (
-        <OrderCard
-          key={o.id}
-          order={o}
-          expanded={expandedId === o.id}
-          onToggle={() => setExpandedId(expandedId === o.id ? null : o.id)}
-        />
-      ))}
+      <div
+        role="group"
+        aria-label="Filter orders by status"
+        className="flex gap-2 overflow-x-auto pb-1 -mx-1 px-1"
+      >
+        {ORDER_STATUS_FILTERS.map((f) => (
+          <button
+            key={f.value}
+            type="button"
+            aria-pressed={status === f.value}
+            onClick={() => changeStatus(f.value)}
+            className={`shrink-0 min-h-9 px-4 rounded-full border text-xs uppercase tracking-[0.14em] transition ${
+              status === f.value
+                ? "bg-foreground text-background border-foreground"
+                : "border-border hover:bg-secondary"
+            }`}
+          >
+            {f.label}
+          </button>
+        ))}
+      </div>
+      <div className={`space-y-4 transition-opacity ${isPlaceholderData ? "opacity-60" : ""}`}>
+        {orders.map((o) => (
+          <OrderCard
+            key={o.id}
+            order={o}
+            expanded={expandedId === o.id}
+            onToggle={() => setExpandedId(expandedId === o.id ? null : o.id)}
+          />
+        ))}
+        {orders.length === 0 && (
+          <div className="bg-card border border-border rounded-2xl p-8 text-center text-sm text-muted-foreground">
+            No {status} orders.{" "}
+            <button
+              type="button"
+              onClick={() => changeStatus("")}
+              className="underline underline-offset-4 text-foreground"
+            >
+              Show all orders
+            </button>
+          </div>
+        )}
+      </div>
+      {totalPages > 1 && (
+        <nav aria-label="Orders pagination" className="flex items-center justify-between pt-2">
+          <button
+            type="button"
+            onClick={() => setPage((p) => Math.max(1, p - 1))}
+            disabled={page <= 1}
+            className="min-h-10 px-4 border border-border rounded-xl text-xs uppercase tracking-[0.14em] disabled:opacity-40"
+          >
+            Previous
+          </button>
+          <span className="text-xs text-muted-foreground">
+            Page {page} of {totalPages}
+          </span>
+          <button
+            type="button"
+            onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+            disabled={page >= totalPages}
+            className="min-h-10 px-4 border border-border rounded-xl text-xs uppercase tracking-[0.14em] disabled:opacity-40"
+          >
+            Next
+          </button>
+        </nav>
+      )}
     </div>
   );
 }

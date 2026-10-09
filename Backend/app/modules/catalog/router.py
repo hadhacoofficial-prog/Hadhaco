@@ -11,9 +11,11 @@ from app.common.responses import BaseSuccessResponse, deleted, ok
 from app.core.database import AsyncSessionLocal, get_db
 from app.core.dependencies import get_current_user, require_admin
 from app.core.redis import get_redis
+from app.modules.catalog.repository import ProductFilterSpec
 from app.modules.catalog.schemas import (
     ProductAttributeCreateRequest,
     ProductCreateRequest,
+    ProductFacetsResponse,
     ProductListResponse,
     ProductResponse,
     ProductUpdateRequest,
@@ -43,73 +45,129 @@ def _product_list_cache_key(**params) -> str:
 # ---------- Public ----------
 
 
-@router.get("/products", response_model=BaseSuccessResponse[ProductListResponse])
-async def list_products(
-    page: int = Query(1, ge=1),
-    page_size: int = Query(20, ge=1, le=100),
+_GENDERS = frozenset({"women", "men", "kids", "unisex"})
+# Matches nothing - used when a slug filter was requested but doesn't exist,
+# so a stale/mistyped link shows "no results" instead of the whole catalogue.
+_NO_MATCH_ID = uuid.UUID(int=0)
+
+_PUBLIC_SORT_PATTERN = (
+    "^(created_at|updated_at|base_price|name|stock_quantity|average_rating"
+    "|sold_quantity|discount|featured|relevance)$"
+)
+
+
+def _csv(
+    raw: str | None, *, allowed: frozenset[str] | None = None, max_items: int = 20
+) -> list[str] | None:
+    """Parse a comma-separated multi-value query param (``a,b,c``).
+
+    De-duplicates, drops blanks / over-long / non-allowlisted values and caps
+    the count, so the resulting ``IN (...)`` list is always small and safe.
+    """
+    if not raw:
+        return None
+    values: list[str] = []
+    for part in raw.split(","):
+        v = part.strip()
+        if not v or len(v) > 100 or v in values:
+            continue
+        if allowed is not None and v not in allowed:
+            continue
+        values.append(v)
+    return values[:max_items] or None
+
+
+async def public_product_filters(
     category_id: uuid.UUID | None = None,
-    category_slug: str | None = Query(None, max_length=200),
+    category_slug: str | None = Query(
+        None,
+        max_length=1000,
+        description="Comma-separated; includes each category's sub-categories.",
+    ),
     collection_id: uuid.UUID | None = None,
     collection_slug: str | None = Query(None, max_length=200),
-    metal_type: str | None = None,
-    gender: str | None = None,
+    metal_type: str | None = Query(None, max_length=500, description="Comma-separated"),
+    purity: str | None = Query(None, max_length=500, description="Comma-separated"),
+    gender: str | None = Query(None, max_length=100, description="Comma-separated"),
     is_featured: bool | None = None,
     is_new_arrival: bool | None = None,
     is_best_seller: bool | None = None,
-    min_price: float | None = None,
-    max_price: float | None = None,
+    min_price: float | None = Query(None, ge=0),
+    max_price: float | None = Query(None, ge=0),
+    in_stock: bool | None = None,
+    on_sale: bool | None = None,
+    min_rating: float | None = Query(None, ge=1, le=5),
     search: str | None = Query(None, max_length=200),
-    sort_by: str = Query(
-        "created_at", pattern="^(created_at|base_price|name|stock_quantity)$"
-    ),
-    sort_dir: str = Query("desc", pattern="^(asc|desc)$"),
-    include_collections: bool = Query(
-        True,
-        description="Set false for lightweight listings (e.g. homepage rails) "
-        "that never render collection badges — skips a join per product.",
-    ),
     db: AsyncSession = Depends(get_db),
-    redis: aioredis.Redis = Depends(get_redis),
-):
-    # Resolve category_slug → category_id
-    resolved_category_id = category_id
-    if category_slug and not category_id:
+) -> ProductFilterSpec:
+    """Storefront product filters shared by the list and facets endpoints."""
+    category_ids: list[uuid.UUID] | None = None
+    slugs = _csv(category_slug)
+    if slugs and not category_id:
         from app.modules.categories.repository import CategoryRepository
 
-        cat = await CategoryRepository().get_by_slug(db, category_slug)
-        if cat:
-            resolved_category_id = cat.id
+        category_ids = await CategoryRepository().resolve_ids_with_descendants(
+            db, slugs
+        )
 
-    # Resolve collection_slug → collection_id
     resolved_collection_id = collection_id
     if collection_slug and not collection_id:
         from app.modules.collections.repository import CollectionRepository
 
         col = await CollectionRepository().get_by_slug(db, collection_slug)
-        if col:
-            resolved_collection_id = col.id
+        resolved_collection_id = col.id if col else _NO_MATCH_ID
 
-    cache_key = _product_list_cache_key(
-        page=page,
-        page_size=page_size,
-        category_id=resolved_category_id,
+    lo, hi = min_price, max_price
+    if lo is not None and hi is not None and lo > hi:
+        lo, hi = hi, lo  # tolerate swapped bounds rather than 422-ing
+
+    term = search.strip() if search else ""
+    return ProductFilterSpec(
+        status="active",
+        category_id=category_id,
+        category_ids=category_ids,
         collection_id=resolved_collection_id,
-        metal_type=metal_type,
-        gender=gender,
+        metal_types=_csv(metal_type),
+        purities=_csv(purity),
+        genders=_csv(gender, allowed=_GENDERS),
         is_featured=is_featured,
         is_new_arrival=is_new_arrival,
         is_best_seller=is_best_seller,
-        min_price=min_price,
-        max_price=max_price,
-        search=search,
+        min_price=lo,
+        max_price=hi,
+        search=term or None,
+        in_stock=in_stock or None,
+        on_sale=on_sale or None,
+        min_rating=min_rating,
+    )
+
+
+@router.get("/products", response_model=BaseSuccessResponse[ProductListResponse])
+async def list_products(
+    page: int = Query(1, ge=1),
+    page_size: int = Query(20, ge=1, le=100),
+    sort_by: str = Query("created_at", pattern=_PUBLIC_SORT_PATTERN),
+    sort_dir: str = Query("desc", pattern="^(asc|desc)$"),
+    include_collections: bool = Query(
+        True,
+        description="Set false for lightweight listings (e.g. homepage rails) "
+        "that never render collection badges - skips a join per product.",
+    ),
+    spec: ProductFilterSpec = Depends(public_product_filters),
+    redis: aioredis.Redis = Depends(get_redis),
+):
+    cache_key = _product_list_cache_key(
+        page=page,
+        page_size=page_size,
         sort_by=sort_by,
         sort_dir=sort_dir,
         include_collections=include_collections,
+        **spec.cache_params(),
     )
 
     from app.core.cache import TTL_PRODUCT_LIST, add_cache_headers, cache_swr
 
-    # Fresh worker session — cache_swr may re-run this from a detached
+    # Fresh worker session - cache_swr may re-run this from a detached
     # background SWR-refresh task after the request session is gone.
     async def _fetch_products() -> dict:
         async with AsyncSessionLocal() as s:
@@ -117,17 +175,22 @@ async def list_products(
                 s,
                 page=page,
                 page_size=page_size,
-                status="active",
-                category_id=resolved_category_id,
-                collection_id=resolved_collection_id,
-                metal_type=metal_type,
-                gender=gender,
-                is_featured=is_featured,
-                is_new_arrival=is_new_arrival,
-                is_best_seller=is_best_seller,
-                min_price=min_price,
-                max_price=max_price,
-                search=search,
+                status=spec.status,
+                category_id=spec.category_id,
+                category_ids=spec.category_ids,
+                collection_id=spec.collection_id,
+                metal_types=spec.metal_types,
+                purities=spec.purities,
+                genders=spec.genders,
+                is_featured=spec.is_featured,
+                is_new_arrival=spec.is_new_arrival,
+                is_best_seller=spec.is_best_seller,
+                min_price=spec.min_price,
+                max_price=spec.max_price,
+                search=spec.search,
+                in_stock=spec.in_stock,
+                on_sale=spec.on_sale,
+                min_rating=spec.min_rating,
                 sort_by=sort_by,
                 sort_dir=sort_dir,
                 include_collections=include_collections,
@@ -149,6 +212,49 @@ async def list_products(
     response = JSONResponse(
         content=ok(
             result, ResponseCode.PRODUCT_LISTED, "Products listed successfully"
+        ).model_dump(mode="json")
+    )
+    add_cache_headers(
+        response, TTL_PRODUCT_LIST, stale_while_revalidate=TTL_PRODUCT_LIST
+    )
+    return response
+
+
+# Declared before /products/{slug} so "facets" is never captured as a slug.
+@router.get(
+    "/products/facets", response_model=BaseSuccessResponse[ProductFacetsResponse]
+)
+async def product_facets(
+    spec: ProductFilterSpec = Depends(public_product_filters),
+    redis: aioredis.Redis = Depends(get_redis),
+):
+    """Filter options (with counts) available for the current result set."""
+    h = hashlib.sha256(
+        json.dumps(spec.cache_params(), sort_keys=True, default=str).encode()
+    ).hexdigest()[:12]
+    # Under the product-list prefix so every existing bust_product_list_cache /
+    # reservation invalidation sweep refreshes facets alongside the lists.
+    cache_key = f"products:list:v1:facets:{h}"
+
+    from app.core.cache import TTL_PRODUCT_LIST, add_cache_headers, cache_swr
+
+    async def _fetch_facets() -> dict:
+        async with AsyncSessionLocal() as s:
+            facets = await _service.get_facets(s, spec)
+            return facets.model_dump(mode="json")
+
+    result = await cache_swr(
+        redis,
+        cache_key,
+        ttl=_PRODUCT_LIST_TTL,
+        swr_window=_PRODUCT_LIST_TTL,
+        fetch_fn=_fetch_facets,
+    )
+    from fastapi.responses import JSONResponse
+
+    response = JSONResponse(
+        content=ok(
+            result, ResponseCode.PRODUCT_LISTED, "Product facets listed successfully"
         ).model_dump(mode="json")
     )
     add_cache_headers(
@@ -231,8 +337,17 @@ async def admin_list_products(
     metal_type: str | None = None,
     gender: str | None = None,
     search: str | None = Query(None, max_length=200),
+    stock_status: str | None = Query(
+        None, pattern="^(in_stock|low_stock|out_of_stock)$"
+    ),
+    is_featured: bool | None = None,
+    is_new_arrival: bool | None = None,
+    is_best_seller: bool | None = None,
+    on_sale: bool | None = None,
     sort_by: str = Query(
-        "created_at", pattern="^(created_at|base_price|name|stock_quantity|status)$"
+        "created_at",
+        pattern="^(created_at|updated_at|base_price|name|stock_quantity|status"
+        "|average_rating|sold_quantity)$",
     ),
     sort_dir: str = Query("desc", pattern="^(asc|desc)$"),
     db: AsyncSession = Depends(get_db),
@@ -247,6 +362,11 @@ async def admin_list_products(
         metal_type=metal_type,
         gender=gender,
         search=search,
+        stock_status=stock_status,
+        is_featured=is_featured,
+        is_new_arrival=is_new_arrival,
+        is_best_seller=is_best_seller,
+        on_sale=on_sale or None,
         sort_by=sort_by,
         sort_dir=sort_dir,
         image_variant="thumbnail",

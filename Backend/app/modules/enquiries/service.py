@@ -113,6 +113,10 @@ class EnquiryService:
         status: str | None = None,
         search: str | None = None,
         include_archived: bool = False,
+        date_from: datetime | None = None,
+        date_to: datetime | None = None,
+        sort_by: str = "created_at",
+        sort_dir: str = "desc",
     ) -> EnquiryPage:
         if status:
             valid = {
@@ -132,6 +136,10 @@ class EnquiryService:
             status=status,
             search=search,
             include_archived=include_archived,
+            date_from=date_from,
+            date_to=date_to,
+            sort_by=sort_by,
+            sort_dir=sort_dir,
         )
 
         status_counts = await _repo.get_status_counts(

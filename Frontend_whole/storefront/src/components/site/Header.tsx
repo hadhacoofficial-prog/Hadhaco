@@ -158,18 +158,14 @@ export function Header() {
             {/* Deals — direct link, no dropdown */}
             <Link
               to="/products"
-              search={{ deals: "true" }}
+              search={{ featured: true }}
               className="hover:text-primary transition"
             >
               Deals
             </Link>
 
             {/* New Arrivals — direct link, no dropdown */}
-            <Link
-              to="/products"
-              search={{ sort: "newest" }}
-              className="hover:text-primary transition"
-            >
+            <Link to="/products" search={{ new: true }} className="hover:text-primary transition">
               New Arrivals
             </Link>
           </nav>
@@ -263,7 +259,7 @@ export function Header() {
               ))}
               <Link
                 to="/products"
-                search={{ deals: "true" }}
+                search={{ featured: true }}
                 onClick={() => setMobileOpen(false)}
                 className="block border-b border-border pb-3"
               >
@@ -271,7 +267,7 @@ export function Header() {
               </Link>
               <Link
                 to="/products"
-                search={{ sort: "newest" }}
+                search={{ new: true }}
                 onClick={() => setMobileOpen(false)}
                 className="block border-b border-border pb-3"
               >

@@ -1,7 +1,21 @@
 import uuid
+from dataclasses import asdict, dataclass
 from typing import Any
 
-from sqlalchemy import ColumnElement, and_, func, or_, select, text, update
+from sqlalchemy import (
+    ColumnElement,
+    and_,
+    case,
+    exists,
+    false,
+    func,
+    literal_column,
+    or_,
+    select,
+    text,
+    true,
+    update,
+)
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -12,6 +26,255 @@ from app.modules.catalog.models import (
 )
 from app.modules.inventory.reservation_service import ACTIVE_OR_CHECKOUT_STATUSES
 from app.modules.media.models import Image
+
+# ── Product list filtering / sorting ────────────────────────────────────────
+#
+# Sort keys are an allowlist — the router regex-validates `sort_by` and this
+# map is the only place a key becomes SQL, so user input can never name an
+# arbitrary column.
+
+PRODUCT_SORT_KEYS: tuple[str, ...] = (
+    "created_at",
+    "updated_at",
+    "base_price",
+    "name",
+    "stock_quantity",
+    "status",
+    "average_rating",
+    "sold_quantity",
+    "discount",
+    "featured",
+    "relevance",
+)
+
+
+@dataclass(frozen=True)
+class ProductFilterSpec:
+    status: str | None = None
+    category_id: uuid.UUID | None = None
+    # Already expanded to include sub-categories by the caller. An empty list
+    # means "a category filter was requested but matched nothing" → no rows.
+    category_ids: list[uuid.UUID] | None = None
+    collection_id: uuid.UUID | None = None
+    metal_type: str | None = None
+    metal_types: list[str] | None = None
+    purities: list[str] | None = None
+    gender: str | None = None
+    genders: list[str] | None = None
+    is_featured: bool | None = None
+    is_new_arrival: bool | None = None
+    is_best_seller: bool | None = None
+    min_price: float | None = None
+    max_price: float | None = None
+    search: str | None = None
+    in_stock: bool | None = None
+    on_sale: bool | None = None
+    min_rating: float | None = None
+    stock_status: str | None = None
+    include_deleted: bool = False
+
+    def cache_params(self) -> dict[str, Any]:
+        """JSON-stable dict for Redis cache keys (router + cache warmer)."""
+        d = asdict(self)
+        if d["category_ids"] is not None:
+            d["category_ids"] = sorted(str(c) for c in d["category_ids"])
+        return d
+
+
+def _available_stock_expr() -> ColumnElement[int]:
+    """SQL mirror of ``Product.available_stock`` (sum of active variants'
+    availability when the product has any, else the product-level counters)."""
+    v = ProductVariant
+    has_active = (
+        exists()
+        .where(v.product_id == Product.id, v.is_active.is_(True))
+        .correlate(Product)
+    )
+    variant_sum = (
+        select(
+            func.coalesce(
+                func.sum(
+                    func.greatest(
+                        v.stock_quantity - v.reserved_quantity - v.sold_quantity, 0
+                    )
+                ),
+                0,
+            )
+        )
+        .where(v.product_id == Product.id, v.is_active.is_(True))
+        .correlate(Product)
+        .scalar_subquery()
+    )
+    product_level = func.greatest(
+        Product.stock_quantity - Product.reserved_quantity - Product.sold_quantity, 0
+    )
+    return case((has_active, variant_sum), else_=product_level)
+
+
+def _purchasable_clause() -> ColumnElement[bool]:
+    """Matches ``compute_inventory_status(...)[1]`` (can_purchase)."""
+    return or_(
+        Product.track_inventory.is_(False),
+        Product.allow_backorder.is_(True),
+        _available_stock_expr() > 0,
+    )
+
+
+def _on_sale_clause() -> ColumnElement[bool]:
+    return and_(
+        Product.compare_at_price.is_not(None),
+        Product.compare_at_price > Product.base_price,
+    )
+
+
+def _stock_status_clause(stock_status: str) -> ColumnElement[bool] | None:
+    available = _available_stock_expr()
+    tracked = Product.track_inventory.is_(True)
+    if stock_status == "out_of_stock":
+        return and_(tracked, available <= 0)
+    if stock_status == "low_stock":
+        return and_(tracked, available > 0, available <= Product.low_stock_threshold)
+    if stock_status == "in_stock":
+        return or_(
+            Product.track_inventory.is_(False),
+            available > Product.low_stock_threshold,
+        )
+    return None
+
+
+def _filter_clauses(spec: ProductFilterSpec) -> dict[str, ColumnElement[bool]]:
+    """Build WHERE clauses keyed by facet group.
+
+    Keying lets the facets query drop exactly one group at a time
+    (disjunctive faceting) while the list query simply ANDs them all.
+    """
+    c: dict[str, ColumnElement[bool]] = {}
+    if not spec.include_deleted:
+        c["deleted"] = Product.deleted_at.is_(None)
+    if spec.status:
+        # The storefront's fixed "active" is inlined as a SQL literal (not a
+        # bind param) so the planner can match the partial
+        # ``WHERE deleted_at IS NULL AND status = 'active'`` indexes
+        # (migration 0066) even under generic prepared-statement plans.
+        # Any other value (admin filter, user-supplied) stays a bind param.
+        c["status"] = (
+            Product.status == literal_column("'active'")
+            if spec.status == "active"
+            else Product.status == spec.status
+        )
+    if spec.category_ids is not None:
+        c["category"] = (
+            Product.category_id.in_(spec.category_ids) if spec.category_ids else false()
+        )
+    elif spec.category_id:
+        c["category"] = Product.category_id == spec.category_id
+    if spec.collection_id:
+        from app.modules.collections.models import ProductCollection
+
+        c["collection"] = Product.id.in_(
+            select(ProductCollection.product_id).where(
+                ProductCollection.collection_id == spec.collection_id
+            )
+        )
+    metals = spec.metal_types or ([spec.metal_type] if spec.metal_type else [])
+    if metals:
+        c["metal"] = Product.metal_type.in_(metals)
+    if spec.purities:
+        c["purity"] = Product.purity.in_(spec.purities)
+    genders = spec.genders or ([spec.gender] if spec.gender else [])
+    if genders:
+        c["gender"] = Product.gender.in_(genders)
+    if spec.is_featured is not None:
+        c["featured"] = Product.is_featured == spec.is_featured
+    if spec.is_new_arrival is not None:
+        c["new"] = Product.is_new_arrival == spec.is_new_arrival
+    if spec.is_best_seller is not None:
+        c["bestseller"] = Product.is_best_seller == spec.is_best_seller
+    price: list[ColumnElement[bool]] = []
+    if spec.min_price is not None:
+        price.append(Product.base_price >= spec.min_price)
+    if spec.max_price is not None:
+        price.append(Product.base_price <= spec.max_price)
+    if price:
+        c["price"] = and_(*price)
+    if spec.search:
+        # search_vector (GIN-indexed, trigger-maintained from name/
+        # short_description/description/metal_type/purity/meta_keywords)
+        # replaces leading-wildcard ILIKE on name/description, which
+        # can't use any index. sku is NOT part of the tsvector — it's
+        # a short, separately-indexed code, so it keeps its own ILIKE.
+        c["search"] = or_(
+            Product.search_vector.op("@@")(
+                func.plainto_tsquery("english", spec.search)
+            ),
+            Product.sku.ilike(f"%{spec.search}%"),
+        )
+    if spec.in_stock:
+        c["in_stock"] = _purchasable_clause()
+    if spec.on_sale:
+        c["on_sale"] = _on_sale_clause()
+    if spec.min_rating is not None:
+        c["rating"] = Product.average_rating >= spec.min_rating
+    if spec.stock_status:
+        clause = _stock_status_clause(spec.stock_status)
+        if clause is not None:
+            c["stock_status"] = clause
+    return c
+
+
+def _product_order_by(sort_by: str, sort_dir: str, search: str | None) -> list[Any]:
+    desc = sort_dir == "desc"
+
+    def directed(col: Any) -> Any:
+        return col.desc().nulls_last() if desc else col.asc().nulls_last()
+
+    if sort_by == "relevance":
+        if search:
+            rank = func.ts_rank(
+                Product.search_vector, func.plainto_tsquery("english", search)
+            )
+            # Exact SKU hits outrank text matches; ties fall back to newest.
+            return [
+                (Product.sku.ilike(search)).desc(),
+                rank.desc(),
+                Product.created_at.desc(),
+                Product.id,
+            ]
+        # No query → relevance degenerates to the storefront default.
+        sort_by, desc = "featured", True
+    if sort_by == "featured":
+        return [
+            Product.is_featured.desc(),
+            Product.is_best_seller.desc(),
+            Product.created_at.desc(),
+            Product.id,
+        ]
+    if sort_by == "average_rating":
+        return [
+            directed(Product.average_rating),
+            directed(Product.review_count),
+            Product.id,
+        ]
+    if sort_by == "discount":
+        pct = case(
+            (
+                _on_sale_clause(),
+                (Product.compare_at_price - Product.base_price)
+                / Product.compare_at_price,
+            ),
+            else_=0,
+        )
+        return [directed(pct), Product.id]
+    column_map: dict[str, Any] = {
+        "created_at": Product.created_at,
+        "updated_at": Product.updated_at,
+        "base_price": Product.base_price,
+        "name": func.lower(Product.name),
+        "stock_quantity": Product.stock_quantity,
+        "status": Product.status,
+        "sold_quantity": Product.sold_quantity,
+    }
+    return [directed(column_map.get(sort_by, Product.created_at)), Product.id]
 
 
 class ProductRepository:
@@ -118,6 +381,14 @@ class ProductRepository:
         sort_by: str = "created_at",
         sort_dir: str = "desc",
         include_deleted: bool = False,
+        category_ids: list[uuid.UUID] | None = None,
+        metal_types: list[str] | None = None,
+        purities: list[str] | None = None,
+        genders: list[str] | None = None,
+        in_stock: bool | None = None,
+        on_sale: bool | None = None,
+        min_rating: float | None = None,
+        stock_status: str | None = None,
     ) -> tuple[list[Product], int]:
         """Return paginated products with total count.
 
@@ -127,75 +398,158 @@ class ProductRepository:
         applied here — call ``get_images_for_products`` for list-view image
         hydration, which fetches only the 2 images per product that the UI
         actually renders (with their ``Image.variants`` selectinloaded).
+
+        Filtering always happens before OFFSET/LIMIT and every ordering ends
+        with ``Product.id`` so offset pages are stable (no row can appear on
+        two pages, or on none, when the primary sort key has ties).
         """
-        filters: list[ColumnElement[bool]] = []
-        if not include_deleted:
-            filters.append(Product.deleted_at.is_(None))
-        if status:
-            filters.append(Product.status == status)
-        if category_id:
-            filters.append(Product.category_id == category_id)
-        if collection_id:
-            from app.modules.collections.models import ProductCollection
-
-            filters.append(
-                Product.id.in_(
-                    select(ProductCollection.product_id).where(
-                        ProductCollection.collection_id == collection_id
-                    )
-                )
-            )
-        if metal_type:
-            filters.append(Product.metal_type == metal_type)
-        if gender:
-            filters.append(Product.gender == gender)
-        if is_featured is not None:
-            filters.append(Product.is_featured == is_featured)
-        if is_new_arrival is not None:
-            filters.append(Product.is_new_arrival == is_new_arrival)
-        if is_best_seller is not None:
-            filters.append(Product.is_best_seller == is_best_seller)
-        if min_price is not None:
-            filters.append(Product.base_price >= min_price)
-        if max_price is not None:
-            filters.append(Product.base_price <= max_price)
-        if search:
-            # search_vector (GIN-indexed, trigger-maintained from name/
-            # short_description/description/metal_type/purity/meta_keywords)
-            # replaces leading-wildcard ILIKE on name/description, which
-            # can't use any index. sku is NOT part of the tsvector — it's
-            # a short, separately-indexed code, so it keeps its own ILIKE.
-            filters.append(
-                or_(
-                    Product.search_vector.op("@@")(
-                        func.plainto_tsquery("english", search)
-                    ),
-                    Product.sku.ilike(f"%{search}%"),
-                )
-            )
-
-        where_clause = and_(*filters) if filters else None
+        spec = ProductFilterSpec(
+            status=status,
+            category_id=category_id,
+            category_ids=category_ids,
+            collection_id=collection_id,
+            metal_type=metal_type,
+            metal_types=metal_types,
+            purities=purities,
+            gender=gender,
+            genders=genders,
+            is_featured=is_featured,
+            is_new_arrival=is_new_arrival,
+            is_best_seller=is_best_seller,
+            min_price=min_price,
+            max_price=max_price,
+            search=search,
+            in_stock=in_stock,
+            on_sale=on_sale,
+            min_rating=min_rating,
+            stock_status=stock_status,
+            include_deleted=include_deleted,
+        )
+        filters = list(_filter_clauses(spec).values())
         count_window = func.count().over().label("_total_count")
-
-        sort_col = getattr(Product, sort_by, Product.created_at)
-        order = sort_col.desc() if sort_dir == "desc" else sort_col.asc()
 
         list_q = (
             select(Product, count_window)
             .options(selectinload(Product.variants))
-            .order_by(order)
+            .order_by(*_product_order_by(sort_by, sort_dir, search))
             .offset((page - 1) * page_size)
             .limit(page_size)
         )
-        if where_clause is not None:
-            list_q = list_q.where(where_clause)
+        if filters:
+            list_q = list_q.where(and_(*filters))
         result = await db.execute(list_q)
         rows = result.unique().all()
         if not rows:
-            return [], 0
+            # COUNT(*) OVER() rides on the returned rows, so a page past the end
+            # would report total=0. Only in that case pay for a plain count, so
+            # callers can tell "page too far" from "no results".
+            if page <= 1:
+                return [], 0
+            count_q = select(func.count()).select_from(Product)
+            if filters:
+                count_q = count_q.where(and_(*filters))
+            return [], int((await db.execute(count_q)).scalar_one())
         total: int = rows[0][1]
         items = [row[0] for row in rows]
         return items, total
+
+    async def get_facets(
+        self, db: AsyncSession, spec: "ProductFilterSpec"
+    ) -> dict[str, Any]:
+        """Disjunctive facet counts for the storefront filter panel.
+
+        Each facet is counted under every *other* active filter but not its
+        own, so selecting "Women" still shows how many "Men" pieces exist
+        (multi-select within a group widens; across groups narrows).
+
+        Every scalar facet (total, price bounds, rating buckets, flag counts)
+        comes from ONE scan using per-aggregate ``FILTER (WHERE ...)``
+        clauses; only the value-grouped facets need their own GROUP BY. The
+        router Redis-caches the result alongside the product lists.
+        """
+        clauses = _filter_clauses(spec)
+
+        def where_except(*groups: str) -> list[ColumnElement[bool]]:
+            return [c for k, c in clauses.items() if k not in groups]
+
+        def matching(*groups: str, extra: ColumnElement[bool] | None = None) -> Any:
+            parts = where_except(*groups) + ([extra] if extra is not None else [])
+            return and_(true(), *parts)
+
+        rating_thresholds = (4, 3, 2, 1)
+        summary = (
+            await db.execute(
+                select(
+                    func.count().filter(matching()),
+                    func.min(Product.base_price).filter(matching("price")),
+                    func.max(Product.base_price).filter(matching("price")),
+                    *[
+                        func.count().filter(
+                            matching("rating", extra=Product.average_rating >= t)
+                        )
+                        for t in rating_thresholds
+                    ],
+                    func.count().filter(
+                        matching("in_stock", extra=_purchasable_clause())
+                    ),
+                    func.count().filter(matching("on_sale", extra=_on_sale_clause())),
+                    func.count().filter(
+                        matching("new", extra=Product.is_new_arrival.is_(True))
+                    ),
+                    func.count().filter(
+                        matching("bestseller", extra=Product.is_best_seller.is_(True))
+                    ),
+                    func.count().filter(matching(extra=Product.sold_quantity > 0)),
+                ).select_from(Product)
+            )
+        ).one()
+        total, price_min, price_max = summary[0], summary[1], summary[2]
+        ratings = summary[3 : 3 + len(rating_thresholds)]
+        in_stock, on_sale, new_arrival, best_seller, with_sales = summary[
+            3 + len(rating_thresholds) :
+        ]
+
+        async def grouped(col: Any, group: str) -> list[dict[str, Any]]:
+            q = (
+                select(col, func.count())
+                .select_from(Product)
+                .where(*where_except(group), col.is_not(None))
+                .group_by(col)
+                .order_by(func.count().desc(), col)
+            )
+            return [
+                {"value": v, "count": int(n)}
+                for v, n in (await db.execute(q)).all()
+                if v
+            ]
+
+        cat_rows = (
+            await db.execute(
+                select(Product.category_id, func.count())
+                .select_from(Product)
+                .where(*where_except("category"), Product.category_id.is_not(None))
+                .group_by(Product.category_id)
+            )
+        ).all()
+
+        return {
+            "total": int(total),
+            "category_counts": {cid: int(n) for cid, n in cat_rows},
+            "genders": await grouped(Product.gender, "gender"),
+            "metal_types": await grouped(Product.metal_type, "metal"),
+            "purities": await grouped(Product.purity, "purity"),
+            "price_min": float(price_min) if price_min is not None else None,
+            "price_max": float(price_max) if price_max is not None else None,
+            "ratings": [
+                {"min_rating": t, "count": int(n)}
+                for t, n in zip(rating_thresholds, ratings, strict=True)
+            ],
+            "in_stock": int(in_stock),
+            "on_sale": int(on_sale),
+            "new_arrival": int(new_arrival),
+            "best_seller": int(best_seller),
+            "has_sales": int(with_sales) > 0,
+        }
 
     # ------------------------------------------------------------------ #
     #  List-view image hydration — replaces heavy selectinload(Product.images
@@ -614,6 +968,20 @@ class ProductRepository:
         result = await db.execute(query, params)
         rows = [dict(r._mapping) for r in result.fetchall()]
         total = rows[0]["_total_count"] if rows else 0
+        if not rows and page > 1:
+            # COUNT(*) OVER() rides on the returned rows, so a page past the
+            # end would report total=0; count the same FROM/WHERE instead.
+            count_sql = text(f"""
+                SELECT COUNT(*)
+                FROM product_variants v
+                JOIN products p ON p.id = v.product_id
+                LEFT JOIN categories c ON c.id = p.category_id
+                WHERE {where_sql}  -- nosec B608
+            """)  # nosec B608 — same whitelisted where_sql as above.
+            count_params = {
+                k: v for k, v in params.items() if k not in ("limit", "offset")
+            }
+            total = int((await db.execute(count_sql, count_params)).scalar_one())
         for row in rows:
             row.pop("_total_count", None)
             row.pop("search_rank", None)

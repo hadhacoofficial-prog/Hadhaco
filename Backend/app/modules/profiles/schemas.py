@@ -54,6 +54,8 @@ class AdminUserListItem(BaseModel):
     is_verified: bool
     created_at: datetime
     two_factor_enabled: bool = False
+    order_count: int = 0
+    total_spent: float = 0.0
 
 
 class AdminUserRoleUpdateRequest(BaseModel):

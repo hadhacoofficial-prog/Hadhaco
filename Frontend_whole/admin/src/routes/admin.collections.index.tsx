@@ -1,4 +1,7 @@
-import { useState, useMemo } from "react";
+import { useCallback, useState, useMemo } from "react";
+import { z } from "zod";
+import { SortableHeader, nextSort, type SortState } from "@hadha/shared-ui/data/SortableHeader";
+import { TablePagination } from "@hadha/shared-ui/data/TablePagination";
 import { createFileRoute, useNavigate, Link } from "@tanstack/react-router";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
@@ -35,13 +38,41 @@ import {
 } from "@/components/ui/alert-dialog";
 import { TableSkeleton } from "@/components/loading/TableSkeleton";
 import { ImageWithFallback } from "@/components/common/ImageWithFallback";
-import { useDebounce } from "@hadha/shared-ui/common/use-debounce";
 import { api } from "@/lib/api/client";
 import { queryKeys } from "@/lib/api/queryKeys";
 import { toUserMessage } from "@/lib/api/errors";
 import type { CollectionListResponse } from "@/types/admin";
+import {
+  patchSearch,
+  useClampPage,
+  sortFromSearch,
+  sortToSearch,
+  urlBool,
+  urlDir,
+  urlEnum,
+  urlPage,
+  urlText,
+  useUrlSearchText,
+} from "@/lib/tableUrlState";
+
+const SORT_KEYS = ["sort_order", "name", "product_count", "updated_at"] as const;
+type SortKey = (typeof SORT_KEYS)[number];
+// Default is the storefront display order; headers re-sort server-side.
+const DEFAULT_SORT: SortState<SortKey> = { sortBy: "sort_order", sortDir: "asc" };
+const FIRST_DIR = { sort_order: "asc", name: "asc" } as const;
+
+const collectionsSearchSchema = z.object({
+  q: urlText,
+  active: urlBool,
+  featured: urlBool,
+  sort: urlEnum(SORT_KEYS),
+  dir: urlDir,
+  page: urlPage,
+});
+type CollectionsSearch = z.infer<typeof collectionsSearchSchema>;
 
 export const Route = createFileRoute("/admin/collections/")({
+  validateSearch: collectionsSearchSchema,
   component: AdminCollections,
 });
 
@@ -49,29 +80,41 @@ function AdminCollections() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
 
-  const [search, setSearch] = useState("");
-  const [isActive, setIsActive] = useState<boolean | undefined>(undefined);
-  const [isFeatured, setIsFeatured] = useState<boolean | undefined>(undefined);
-  const [page, setPage] = useState(1);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [deleteId, setDeleteId] = useState<string | null>(null);
 
-  const debouncedSearch = useDebounce(search, 300);
+  // List view state lives in the URL; selection / dialogs stay local.
+  const urlSearch = Route.useSearch();
+  const navigateSearch = Route.useNavigate();
+  const update = useCallback(
+    (patch: Partial<CollectionsSearch>, replace = false) =>
+      navigateSearch({ search: (prev) => patchSearch(prev, patch), replace }),
+    [navigateSearch],
+  );
+
+  const [search, setSearch] = useUrlSearchText(urlSearch.q, (q) => update({ q }));
+  const isActive = urlSearch.active;
+  const isFeatured = urlSearch.featured;
+  const page = urlSearch.page ?? 1;
+  const sort = sortFromSearch(urlSearch, DEFAULT_SORT);
+  const onSort = (key: SortKey) =>
+    update(sortToSearch(nextSort(sort, key, FIRST_DIR), DEFAULT_SORT));
+  const setPage = (p: number) => update({ page: p > 1 ? p : undefined });
 
   const params = useMemo(
     () => ({
       page,
       page_size: 20,
-      search: debouncedSearch || undefined,
-      is_active: isActive,
-      is_featured: isFeatured,
-      sort_by: "sort_order",
-      sort_dir: "asc",
+      search: urlSearch.q,
+      is_active: urlSearch.active,
+      is_featured: urlSearch.featured,
+      sort_by: sort.sortBy,
+      sort_dir: sort.sortDir,
     }),
-    [page, debouncedSearch, isActive, isFeatured],
+    [urlSearch, page, sort.sortBy, sort.sortDir],
   );
 
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, isPlaceholderData } = useQuery({
     queryKey: queryKeys.admin.collectionsList(params),
     queryFn: () => api.get<CollectionListResponse>("/admin/collections", { params }),
     staleTime: 30_000,
@@ -116,6 +159,12 @@ function AdminCollections() {
   const items = data?.items ?? [];
   const total = data?.total ?? 0;
   const totalPages = data?.total_pages ?? 1;
+  useClampPage(
+    page,
+    data ? { itemCount: items.length, totalPages } : undefined,
+    isPlaceholderData,
+    (last) => update({ page: last > 1 ? last : undefined }, true),
+  );
 
   function toggleSelectAll() {
     if (selected.size === items.length) {
@@ -159,10 +208,8 @@ function AdminCollections() {
           <Search className="size-4 text-muted-foreground" />
           <input
             value={search}
-            onChange={(e) => {
-              setSearch(e.target.value);
-              setPage(1);
-            }}
+            onChange={(e) => setSearch(e.target.value)}
+            aria-label="Search collections"
             placeholder="Search by name, slug…"
             className="flex-1 bg-transparent outline-none text-sm"
           />
@@ -171,32 +218,26 @@ function AdminCollections() {
           label="Active"
           value={isActive}
           onAll={() => {
-            setIsActive(undefined);
-            setPage(1);
+            update({ active: undefined });
           }}
           onTrue={() => {
-            setIsActive(true);
-            setPage(1);
+            update({ active: true });
           }}
           onFalse={() => {
-            setIsActive(false);
-            setPage(1);
+            update({ active: false });
           }}
         />
         <FilterButton
           label="Featured"
           value={isFeatured}
           onAll={() => {
-            setIsFeatured(undefined);
-            setPage(1);
+            update({ featured: undefined });
           }}
           onTrue={() => {
-            setIsFeatured(true);
-            setPage(1);
+            update({ featured: true });
           }}
           onFalse={() => {
-            setIsFeatured(false);
-            setPage(1);
+            update({ featured: false });
           }}
         />
       </div>
@@ -271,12 +312,17 @@ function AdminCollections() {
                   />
                 </th>
                 <th className="px-4 py-3 w-16">Image</th>
-                <th className="px-4 py-3">Name</th>
+                <SortableHeader label="Name" sortKey="name" sort={sort} onSort={onSort} />
                 <th className="px-4 py-3">Status</th>
                 <th className="px-4 py-3">Featured</th>
-                <th className="px-4 py-3">Order</th>
-                <th className="px-4 py-3">Products</th>
-                <th className="px-4 py-3">Updated</th>
+                <SortableHeader label="Order" sortKey="sort_order" sort={sort} onSort={onSort} />
+                <SortableHeader
+                  label="Products"
+                  sortKey="product_count"
+                  sort={sort}
+                  onSort={onSort}
+                />
+                <SortableHeader label="Updated" sortKey="updated_at" sort={sort} onSort={onSort} />
                 <th className="px-4 py-3 text-right">Actions</th>
               </tr>
             </thead>
@@ -437,30 +483,13 @@ function AdminCollections() {
         )}
       </div>
 
-      {/* Pagination */}
-      {totalPages > 1 && (
-        <div className="flex items-center justify-between mt-4">
-          <p className="text-sm text-muted-foreground">
-            Page {page} of {totalPages} · {total} collections
-          </p>
-          <div className="flex gap-2">
-            <button
-              onClick={() => setPage((p) => Math.max(1, p - 1))}
-              disabled={page === 1}
-              className="p-2 border border-border hover:bg-secondary disabled:opacity-50 transition"
-            >
-              <ChevronLeft className="size-4" />
-            </button>
-            <button
-              onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-              disabled={page === totalPages}
-              className="p-2 border border-border hover:bg-secondary disabled:opacity-50 transition"
-            >
-              <ChevronRight className="size-4" />
-            </button>
-          </div>
-        </div>
-      )}
+      <TablePagination
+        page={page}
+        totalPages={totalPages}
+        total={total}
+        noun="collections"
+        onPageChange={setPage}
+      />
 
       {/* Delete confirm */}
       <AlertDialog open={!!deleteId} onOpenChange={(v) => !v && setDeleteId(null)}>

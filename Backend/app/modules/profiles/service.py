@@ -1,5 +1,6 @@
 import math
 import uuid
+from datetime import datetime
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -64,6 +65,8 @@ class ProfileService:
         search: str | None = None,
         sort_by: str = "created_at",
         sort_dir: str = "desc",
+        date_from: datetime | None = None,
+        date_to: datetime | None = None,
     ) -> AdminUserListResponse:
         items, total = await self._repo.list_paginated(
             db,
@@ -74,9 +77,14 @@ class ProfileService:
             search=search,
             sort_by=sort_by,
             sort_dir=sort_dir,
+            date_from=date_from,
+            date_to=date_to,
         )
         total_pages = math.ceil(total / page_size) if page_size else 1
         list_items = [AdminUserListItem.model_validate(p) for p in items]
+        for item, profile in zip(list_items, items, strict=True):
+            item.order_count = int(getattr(profile, "_order_count", 0) or 0)
+            item.total_spent = float(getattr(profile, "_total_spent", 0) or 0)
         # get_primary_variant_urls looks up by owner_id (the profile's own
         # id), not by primary_image_id (the Image row's own id).
         ids = [i.id for i in list_items if i.primary_image_id]

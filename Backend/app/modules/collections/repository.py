@@ -78,11 +78,12 @@ class CollectionRepository:
         if is_featured is not None:
             filters.append(Collection.is_featured == is_featured)
 
-        col_map = {
+        col_map: dict[str, Any] = {
             "sort_order": Collection.sort_order,
-            "name": Collection.name,
+            "name": func.lower(Collection.name),
             "updated_at": Collection.updated_at,
             "created_at": Collection.created_at,
+            "product_count": func.coalesce(pc_subq.c.cnt, 0),
         }
         order_col = col_map.get(sort_by, Collection.sort_order)
         order_expr = order_col.asc() if sort_dir == "asc" else order_col.desc()
@@ -95,12 +96,18 @@ class CollectionRepository:
             )
             .outerjoin(pc_subq, pc_subq.c.collection_id == Collection.id)
             .where(*filters)
-            .order_by(order_expr)
+            .order_by(order_expr, Collection.id)
             .offset((page - 1) * page_size)
             .limit(page_size)
         )
         rows = (await db.execute(q)).all()
         total = rows[0].total if rows else 0
+        if not rows and page > 1:
+            # COUNT(*) OVER() rides on the returned rows, so a page past the end
+            # would report total=0. Only in that case pay for a plain count, so
+            # callers can tell "page too far" from "no results".
+            count_q = select(func.count()).select_from(Collection).where(*filters)
+            total = int((await db.execute(count_q)).scalar_one())
         return (
             [
                 {

@@ -57,3 +57,5 @@ node_modules/
 .env
 
 deploy/
+# Local database backups (pg_dump of the Supabase instance) — never commit
+db_backups/

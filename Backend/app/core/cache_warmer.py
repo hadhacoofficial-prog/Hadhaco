@@ -180,22 +180,15 @@ async def _warm_all_targets(redis: aioredis.Redis, force: bool) -> tuple[int, in
                 )
                 return result.model_dump(mode="json")
 
+        from app.modules.catalog.repository import ProductFilterSpec
+
         cache_key = _product_list_cache_key(
             page=1,
             page_size=20,
-            category_id=None,
-            collection_id=None,
-            metal_type=None,
-            gender=None,
-            is_featured=None,
-            is_new_arrival=None,
-            is_best_seller=None,
-            min_price=None,
-            max_price=None,
-            search=None,
             sort_by="created_at",
             sort_dir="desc",
             include_collections=True,
+            **ProductFilterSpec(status="active").cache_params(),
         )
         await _track(await _warm_one("products", cache_key, _warm_products, 600, redis))
     except Exception as exc:
@@ -469,22 +462,15 @@ async def _warm_target(redis: aioredis.Redis, target: str) -> bool:
                 )
                 return result.model_dump(mode="json")
 
+        from app.modules.catalog.repository import ProductFilterSpec
+
         cache_key = _product_list_cache_key(
             page=1,
             page_size=20,
-            category_id=None,
-            collection_id=None,
-            metal_type=None,
-            gender=None,
-            is_featured=None,
-            is_new_arrival=None,
-            is_best_seller=None,
-            min_price=None,
-            max_price=None,
-            search=None,
             sort_by="created_at",
             sort_dir="desc",
             include_collections=True,
+            **ProductFilterSpec(status="active").cache_params(),
         )
         return await _warm_one("products", cache_key, _fetch_products, 600, redis)
 

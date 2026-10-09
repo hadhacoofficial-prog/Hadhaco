@@ -22,7 +22,7 @@ function buildProductsApiParams({
 }: {
   gender?: string;
   category?: string;
-  deals?: string;
+  deals?: string | boolean;
   sort?: string;
   q?: string;
   page?: number;
@@ -30,7 +30,7 @@ function buildProductsApiParams({
   return {
     gender,
     category_slug: category,
-    is_featured: deals === "true" ? true : undefined,
+    is_featured: String(deals) === "true" ? true : undefined,
     is_new_arrival: sort === "newest" ? true : undefined,
     sort_by: sort === "price_asc" || sort === "price_desc" ? "base_price" : "created_at",
     sort_dir: sort === "price_asc" ? "asc" : "desc",
@@ -49,11 +49,11 @@ function buildTitle({
 }: {
   gender?: string;
   category?: string;
-  deals?: string;
+  deals?: string | boolean;
   sort?: string;
   q?: string;
 }): string {
-  if (deals === "true") return "Deals";
+  if (String(deals) === "true") return "Deals";
   if (sort === "newest") return "New Arrivals";
   if (sort === "popular") return "Bestsellers";
 

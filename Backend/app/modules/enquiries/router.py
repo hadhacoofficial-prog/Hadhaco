@@ -74,6 +74,10 @@ async def list_enquiries(
     status: str | None = Query(None),
     search: str | None = Query(None),
     include_archived: bool = Query(False),
+    date_from: datetime | None = Query(None, description="Inclusive (ISO 8601)"),
+    date_to: datetime | None = Query(None, description="Exclusive (ISO 8601)"),
+    sort_by: str = Query("created_at", pattern="^(created_at|name|status|subject)$"),
+    sort_dir: str = Query("desc", pattern="^(asc|desc)$"),
     db: AsyncSession = Depends(get_db),
 ):
     result = await _service.list_paginated(
@@ -83,6 +87,10 @@ async def list_enquiries(
         status=status,
         search=search,
         include_archived=include_archived,
+        date_from=date_from,
+        date_to=date_to,
+        sort_by=sort_by,
+        sort_dir=sort_dir,
     )
     return ok(result, ResponseCode.ENQUIRY_LISTED, "Enquiries listed successfully")
 

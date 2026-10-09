@@ -1,20 +1,17 @@
-import { useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
+import { z } from "zod";
 import { useQuery, useMutation, useQueryClient, keepPreviousData } from "@tanstack/react-query";
-import {
-  ChevronDown,
-  ChevronRight,
-  ChevronLeft,
-  Loader2,
-  Plus,
-  Tag,
-  Trash2,
-  X,
-} from "lucide-react";
+import { ChevronDown, ChevronRight, Loader2, Plus, Tag, Trash2, X } from "lucide-react";
 import { toast } from "sonner";
 import { api } from "@/lib/api/client";
 import { queryKeys } from "@/lib/api/queryKeys";
 import { toUserMessage } from "@/lib/api/errors";
+import { SortableHeader, nextSort, type SortState } from "@hadha/shared-ui/data/SortableHeader";
+import { TableSearchInput } from "@hadha/shared-ui/data/TableSearchInput";
+import { FilterSelect } from "@hadha/shared-ui/data/FilterSelect";
+import { ActiveFilterChips, type FilterChip } from "@hadha/shared-ui/data/ActiveFilterChips";
+import { TablePagination } from "@hadha/shared-ui/data/TablePagination";
 import type {
   CouponDto,
   CouponListResponse,
@@ -22,8 +19,34 @@ import type {
   CouponType,
   CreateCouponDto,
 } from "@/types/admin";
+import {
+  patchSearch,
+  useClampPage,
+  sortFromSearch,
+  sortToSearch,
+  urlDir,
+  urlEnum,
+  urlPage,
+  urlText,
+  useUrlSearchText,
+} from "@/lib/tableUrlState";
+
+const COUPON_SORT_KEYS = ["code", "value", "usage_count", "valid_until", "created_at"] as const;
+const DEFAULT_SORT: SortState<CouponSortKey> = { sortBy: "created_at", sortDir: "desc" };
+const FIRST_DIR = { code: "asc", valid_until: "asc" } as const;
+
+const couponsSearchSchema = z.object({
+  q: urlText,
+  state: urlEnum(["live", "scheduled", "expired", "inactive"]),
+  type: urlEnum(["percentage", "fixed_amount", "free_shipping"]),
+  sort: urlEnum(COUPON_SORT_KEYS),
+  dir: urlDir,
+  page: urlPage,
+});
+type CouponsSearch = z.infer<typeof couponsSearchSchema>;
 
 export const Route = createFileRoute("/admin/coupons")({
+  validateSearch: couponsSearchSchema,
   component: AdminCoupons,
 });
 
@@ -59,20 +82,90 @@ function joinList(arr: string[] | null | undefined): string {
 
 // ── main component ────────────────────────────────────────────────────────────
 
+type CouponSortKey = (typeof COUPON_SORT_KEYS)[number];
+
+const STATE_OPTIONS = [
+  { value: "live", label: "Live now" },
+  { value: "scheduled", label: "Scheduled" },
+  { value: "expired", label: "Expired" },
+  { value: "inactive", label: "Inactive / draft" },
+];
+const TYPE_OPTIONS = [
+  { value: "percentage", label: "Percentage" },
+  { value: "fixed_amount", label: "Fixed amount" },
+  { value: "free_shipping", label: "Free shipping" },
+];
+
 function AdminCoupons() {
   const queryClient = useQueryClient();
   const [draft, setDraft] = useState<CreateCouponDto>(makeEmpty());
   const [editing, setEditing] = useState<CouponDto | null>(null);
   const [openSection, setOpenSection] = useState<string>("basic");
-  const [page, setPage] = useState(1);
+  // List view state lives in the URL; the create/edit form stays local.
+  const urlSearch = Route.useSearch();
+  const navigate = Route.useNavigate();
+  const update = useCallback(
+    (patch: Partial<CouponsSearch>, replace = false) =>
+      navigate({ search: (prev) => patchSearch(prev, patch), replace }),
+    [navigate],
+  );
 
-  const { data: couponsData } = useQuery({
-    queryKey: queryKeys.admin.coupons({ page, page_size: 15 }),
-    queryFn: () =>
-      api.get<CouponListResponse>("/admin/coupons", { params: { page, page_size: 15 } }),
+  const [search, setSearch] = useUrlSearchText(urlSearch.q, (q) => update({ q }));
+  const debouncedSearch = urlSearch.q ?? "";
+  const couponState = urlSearch.state ?? "";
+  const couponType = urlSearch.type ?? "";
+  const page = urlSearch.page ?? 1;
+  const sort = sortFromSearch(urlSearch, DEFAULT_SORT);
+  const onSort = (key: CouponSortKey) =>
+    update(sortToSearch(nextSort(sort, key, FIRST_DIR), DEFAULT_SORT));
+  const setCouponState = (v: string) =>
+    update({ state: (v || undefined) as CouponsSearch["state"] });
+  const setCouponType = (v: string) => update({ type: (v || undefined) as CouponsSearch["type"] });
+  const setPage = (p: number) => update({ page: p > 1 ? p : undefined });
+
+  const listParams = useMemo(
+    () => ({
+      page,
+      page_size: 15,
+      search: urlSearch.q,
+      state: urlSearch.state,
+      coupon_type: urlSearch.type,
+      sort_by: sort.sortBy,
+      sort_dir: sort.sortDir,
+    }),
+    [urlSearch, page, sort.sortBy, sort.sortDir],
+  );
+
+  const { data: couponsData, isPlaceholderData } = useQuery({
+    queryKey: queryKeys.admin.coupons(listParams),
+    queryFn: () => api.get<CouponListResponse>("/admin/coupons", { params: listParams }),
     staleTime: 60_000,
     placeholderData: keepPreviousData,
   });
+
+  const chips: FilterChip[] = [];
+  if (debouncedSearch)
+    chips.push({
+      key: "q",
+      label: `Search: "${debouncedSearch}"`,
+      onRemove: () => update({ q: undefined }),
+    });
+  if (couponState)
+    chips.push({
+      key: "state",
+      label: `State: ${STATE_OPTIONS.find((o) => o.value === couponState)?.label}`,
+      onRemove: () => setCouponState(""),
+    });
+  if (couponType)
+    chips.push({
+      key: "type",
+      label: `Type: ${TYPE_OPTIONS.find((o) => o.value === couponType)?.label}`,
+      onRemove: () => setCouponType(""),
+    });
+  const clearFilters = () => update({ q: undefined, state: undefined, type: undefined });
+  const header = (key: CouponSortKey, label: string) => (
+    <SortableHeader label={label} sortKey={key} sort={sort} onSort={onSort} />
+  );
 
   const createMutation = useMutation({
     mutationFn: (body: CreateCouponDto) => api.post<CouponDto>("/admin/coupons", { body }),
@@ -101,6 +194,12 @@ function AdminCoupons() {
 
   const list = couponsData?.items ?? [];
   const totalPages = couponsData?.total_pages ?? 1;
+  useClampPage(
+    page,
+    couponsData ? { itemCount: list.length, totalPages } : undefined,
+    isPlaceholderData,
+    (last) => update({ page: last > 1 ? last : undefined }, true),
+  );
   const total = couponsData?.total ?? 0;
   const set = (patch: Partial<CreateCouponDto>) => setDraft((d) => ({ ...d, ...patch }));
 
@@ -115,103 +214,142 @@ function AdminCoupons() {
 
       <div className="grid lg:grid-cols-[1fr_420px] gap-6 items-start">
         {/* ── Coupon list ───────────────────────────────────────────────────── */}
-        <div className="bg-background border border-border overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead className="bg-secondary text-left text-[11px] uppercase tracking-[0.18em] text-muted-foreground">
-              <tr>
-                <th className="px-4 py-3">Code</th>
-                <th className="px-4 py-3">Type / Value</th>
-                <th className="px-4 py-3">Min order</th>
-                <th className="px-4 py-3">Uses</th>
-                <th className="px-4 py-3">Status</th>
-                <th className="px-4 py-3">Campaign</th>
-                <th className="px-4 py-3 text-right">Actions</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-border">
-              {list.map((c) => {
-                const isDeletingRow = deleteMutation.isPending && deleteMutation.variables === c.id;
-                return (
-                  <tr
-                    key={c.id}
-                    className="hover:bg-secondary/40 cursor-pointer"
-                    onClick={() => setEditing(c)}
-                  >
-                    <td className="px-4 py-3 font-mono font-semibold">{c.code}</td>
-                    <td className="px-4 py-3 font-display">
-                      {c.coupon_type === "free_shipping"
-                        ? "Free Shipping"
-                        : c.coupon_type === "percentage"
-                          ? `${c.value}%`
-                          : `₹${c.value}`}
-                    </td>
-                    <td className="px-4 py-3 text-muted-foreground">
-                      {c.min_order_amount ? `₹${c.min_order_amount}` : "—"}
-                    </td>
-                    <td className="px-4 py-3 text-muted-foreground">
-                      {c.usage_count}
-                      {c.usage_limit ? `/${c.usage_limit}` : ""}
-                    </td>
-                    <td className="px-4 py-3">
-                      <StatusBadge status={c.status} />
-                    </td>
-                    <td className="px-4 py-3 text-muted-foreground text-xs">
-                      {c.campaign_name ?? "—"}
-                    </td>
-                    <td className="px-4 py-3 text-right">
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          deleteMutation.mutate(c.id);
-                        }}
-                        disabled={isDeletingRow}
-                        aria-busy={isDeletingRow}
-                        className="text-muted-foreground hover:text-destructive disabled:opacity-50"
-                      >
-                        {isDeletingRow ? (
-                          <Loader2 className="size-4 animate-spin" />
-                        ) : (
-                          <Trash2 className="size-4" />
-                        )}
-                      </button>
+        {/* Toolbar, table and pagination share one grid column so the form
+            stays beside the list on every page. */}
+        <div className="min-w-0">
+          <div className="bg-background border border-border p-3 flex flex-wrap items-center gap-3 mb-3">
+            <TableSearchInput
+              value={search}
+              onChange={setSearch}
+              placeholder="Search code or description…"
+              className="flex-1"
+            />
+            <FilterSelect
+              label="State"
+              allLabel="All states"
+              value={couponState}
+              onChange={setCouponState}
+              options={STATE_OPTIONS}
+              className="w-40"
+            />
+            <FilterSelect
+              label="Type"
+              allLabel="All types"
+              value={couponType}
+              onChange={setCouponType}
+              options={TYPE_OPTIONS}
+              className="w-40"
+            />
+          </div>
+          <ActiveFilterChips chips={chips} onClearAll={clearFilters} className="mb-3" />
+          <div
+            className={`bg-background border border-border overflow-x-auto transition-opacity ${isPlaceholderData ? "opacity-60" : ""}`}
+            aria-busy={isPlaceholderData}
+          >
+            <table className="w-full text-sm">
+              <thead className="bg-secondary text-left text-[11px] uppercase tracking-[0.18em] text-muted-foreground">
+                <tr>
+                  {header("code", "Code")}
+                  {header("value", "Type / Value")}
+                  <th className="px-4 py-3">Min order</th>
+                  {header("usage_count", "Uses")}
+                  <th className="px-4 py-3">Status</th>
+                  {header("valid_until", "Expires")}
+                  <th className="px-4 py-3">Campaign</th>
+                  <th className="px-4 py-3 text-right">Actions</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-border">
+                {list.map((c) => {
+                  const isDeletingRow =
+                    deleteMutation.isPending && deleteMutation.variables === c.id;
+                  return (
+                    <tr
+                      key={c.id}
+                      className="hover:bg-secondary/40 cursor-pointer"
+                      onClick={() => setEditing(c)}
+                    >
+                      <td className="px-4 py-3 font-mono font-semibold">{c.code}</td>
+                      <td className="px-4 py-3 font-display">
+                        {c.coupon_type === "free_shipping"
+                          ? "Free Shipping"
+                          : c.coupon_type === "percentage"
+                            ? `${c.value}%`
+                            : `₹${c.value}`}
+                      </td>
+                      <td className="px-4 py-3 text-muted-foreground">
+                        {c.min_order_amount ? `₹${c.min_order_amount}` : "—"}
+                      </td>
+                      <td className="px-4 py-3 text-muted-foreground">
+                        {c.usage_count}
+                        {c.usage_limit ? `/${c.usage_limit}` : ""}
+                      </td>
+                      <td className="px-4 py-3">
+                        <StatusBadge status={c.status} />
+                      </td>
+                      <td className="px-4 py-3 text-muted-foreground text-xs whitespace-nowrap">
+                        {c.valid_until
+                          ? new Date(c.valid_until).toLocaleDateString("en-IN")
+                          : "Never"}
+                      </td>
+                      <td className="px-4 py-3 text-muted-foreground text-xs">
+                        {c.campaign_name ?? "—"}
+                      </td>
+                      <td className="px-4 py-3 text-right">
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            deleteMutation.mutate(c.id);
+                          }}
+                          disabled={isDeletingRow}
+                          aria-busy={isDeletingRow}
+                          className="text-muted-foreground hover:text-destructive disabled:opacity-50"
+                        >
+                          {isDeletingRow ? (
+                            <Loader2 className="size-4 animate-spin" />
+                          ) : (
+                            <Trash2 className="size-4" />
+                          )}
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                })}
+                {list.length === 0 && (
+                  <tr>
+                    <td
+                      colSpan={8}
+                      className="px-4 py-10 text-center text-muted-foreground text-sm"
+                    >
+                      {chips.length ? (
+                        <>
+                          No coupons match these filters.{" "}
+                          <button
+                            type="button"
+                            onClick={clearFilters}
+                            className="underline underline-offset-4 text-foreground"
+                          >
+                            Clear filters
+                          </button>
+                        </>
+                      ) : (
+                        "No coupons yet. Create one →"
+                      )}
                     </td>
                   </tr>
-                );
-              })}
-              {list.length === 0 && (
-                <tr>
-                  <td colSpan={7} className="px-4 py-10 text-center text-muted-foreground text-sm">
-                    No coupons yet. Create one →
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
-
-        {totalPages > 1 && (
-          <div className="flex items-center justify-between mt-4">
-            <p className="text-sm text-muted-foreground">
-              Page {page} of {totalPages} · {total} coupons
-            </p>
-            <div className="flex gap-2">
-              <button
-                onClick={() => setPage((p) => Math.max(1, p - 1))}
-                disabled={page === 1}
-                className="p-2 border border-border hover:bg-secondary disabled:opacity-50"
-              >
-                <ChevronLeft className="size-4" />
-              </button>
-              <button
-                onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-                disabled={page === totalPages}
-                className="p-2 border border-border hover:bg-secondary disabled:opacity-50"
-              >
-                <ChevronRight className="size-4" />
-              </button>
-            </div>
+                )}
+              </tbody>
+            </table>
           </div>
-        )}
+
+          <TablePagination
+            page={page}
+            totalPages={totalPages}
+            total={total}
+            noun="coupons"
+            onPageChange={setPage}
+          />
+        </div>
 
         {/* ── Create / view form ────────────────────────────────────────────── */}
         <aside className="bg-background border border-border p-5 h-fit space-y-0">

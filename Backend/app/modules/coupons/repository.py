@@ -1,7 +1,8 @@
 import uuid
+from datetime import UTC, datetime
 from typing import Any
 
-from sqlalchemy import func, select, update
+from sqlalchemy import and_, func, not_, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.sql.elements import ColumnElement
 
@@ -46,16 +47,57 @@ class CouponRepository:
         is_active: bool | None = None,
         page: int = 1,
         page_size: int = 15,
+        search: str | None = None,
+        state: str | None = None,
+        coupon_type: str | None = None,
+        sort_by: str = "created_at",
+        sort_dir: str = "desc",
     ) -> tuple[list[Coupon], int]:
-        """Paginated list of coupons with total count."""
+        """Paginated list of coupons with total count.
+
+        ``state`` is the *effective* state an admin cares about, combining
+        the status flag with the validity window: ``live`` (usable right
+        now), ``scheduled`` (starts later), ``expired`` (window passed) and
+        ``inactive`` (switched off / draft).
+        """
+        now = datetime.now(UTC)
         filters: list[ColumnElement[bool]] = []
         if is_active is not None:
             filters.append(Coupon.is_active == is_active)
+        if coupon_type:
+            filters.append(Coupon.coupon_type == coupon_type)
+        if search:
+            term = f"%{search.strip()}%"
+            filters.append(or_(Coupon.code.ilike(term), Coupon.description.ilike(term)))
+        is_on = and_(Coupon.status == "active", Coupon.is_active.is_(True))
+        if state == "live":
+            filters += [
+                is_on,
+                Coupon.valid_from <= now,
+                or_(Coupon.valid_until.is_(None), Coupon.valid_until > now),
+            ]
+        elif state == "scheduled":
+            filters += [is_on, Coupon.valid_from > now]
+        elif state == "expired":
+            filters += [Coupon.valid_until.is_not(None), Coupon.valid_until <= now]
+        elif state == "inactive":
+            filters.append(not_(is_on))
+
+        sort_columns: dict[str, Any] = {
+            "created_at": Coupon.created_at,
+            "code": func.lower(Coupon.code),
+            "value": Coupon.value,
+            "usage_count": Coupon.usage_count,
+            "valid_from": Coupon.valid_from,
+            "valid_until": Coupon.valid_until,
+        }
+        col = sort_columns.get(sort_by, Coupon.created_at)
+        order = col.desc().nulls_last() if sort_dir == "desc" else col.asc()
 
         count_window = func.count().over().label("_total_count")
         q = (
             select(Coupon, count_window)
-            .order_by(Coupon.created_at.desc())
+            .order_by(order, Coupon.id)
             .offset((page - 1) * page_size)
             .limit(page_size)
         )
@@ -64,7 +106,13 @@ class CouponRepository:
         result = await db.execute(q)
         rows = result.all()
         if not rows:
-            return [], 0
+            # COUNT(*) OVER() rides on the returned rows, so a page past the end
+            # would report total=0. Only in that case pay for a plain count, so
+            # callers can tell "page too far" from "no results".
+            if page <= 1:
+                return [], 0
+            count_q = select(func.count()).select_from(Coupon).where(*filters)
+            return [], int((await db.execute(count_q)).scalar_one())
         total: int = rows[0][1]
         items = [row[0] for row in rows]
         return items, total

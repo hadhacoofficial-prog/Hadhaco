@@ -1,18 +1,37 @@
-import { useEffect, useState } from "react";
+import { useCallback, useMemo } from "react";
 import { createFileRoute } from "@tanstack/react-router";
+import { z } from "zod";
 import { useQuery, useMutation, useQueryClient, keepPreviousData } from "@tanstack/react-query";
-import { Star, Check, X, Trash2, Loader2, ChevronLeft, ChevronRight } from "lucide-react";
+import { Star, Check, X, Trash2, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { api } from "@/lib/api/client";
 import { queryKeys } from "@/lib/api/queryKeys";
 import { toUserMessage } from "@/lib/api/errors";
 import { ReviewListSkeleton } from "@/components/loading/ReviewCardSkeleton";
 import { ImageWithFallback } from "@/components/common/ImageWithFallback";
+import { TableSearchInput } from "@hadha/shared-ui/data/TableSearchInput";
+import { FilterSelect } from "@hadha/shared-ui/data/FilterSelect";
+import {
+  DateRangeFilter,
+  describeDateRange,
+  resolveDateRange,
+  type DateRangeValue,
+} from "@hadha/shared-ui/data/DateRangeFilter";
+import { ActiveFilterChips, type FilterChip } from "@hadha/shared-ui/data/ActiveFilterChips";
+import { TablePagination } from "@hadha/shared-ui/data/TablePagination";
+import {
+  dateRangeFields,
+  dateRangeFromSearch,
+  dateRangeToSearch,
+  patchSearch,
+  useClampPage,
+  urlBool,
+  urlEnum,
+  urlPage,
+  urlText,
+  useUrlSearchText,
+} from "@/lib/tableUrlState";
 import type { ReviewAction, ReviewDto, ReviewListResponse } from "@/types/admin";
-
-export const Route = createFileRoute("/admin/reviews")({
-  component: AdminReviews,
-});
 
 type StatusFilter = "all" | "pending" | "approved" | "rejected";
 
@@ -45,24 +64,138 @@ function statusBadge(r: ReviewDto) {
   );
 }
 
+// Combined sort options — a card list has no column headers to click.
+const SORT_OPTIONS = [
+  { value: "created_at:desc", label: "Newest first" },
+  { value: "created_at:asc", label: "Oldest first" },
+  { value: "rating:desc", label: "Highest rating" },
+  { value: "rating:asc", label: "Lowest rating" },
+  { value: "helpful_count:desc", label: "Most helpful" },
+  { value: "product_name:asc", label: "Product A–Z" },
+] as const;
+type SortValue = (typeof SORT_OPTIONS)[number]["value"];
+const DEFAULT_SORT: SortValue = "created_at:desc";
+
+const reviewsSearchSchema = z.object({
+  status: urlEnum(["pending", "approved", "rejected"]),
+  q: urlText,
+  rating: z.coerce.number().int().min(1).max(5).optional().catch(undefined),
+  verified: urlBool,
+  ...dateRangeFields,
+  sort: urlEnum([
+    "created_at:desc",
+    "created_at:asc",
+    "rating:desc",
+    "rating:asc",
+    "helpful_count:desc",
+    "product_name:asc",
+  ]),
+  page: urlPage,
+});
+type ReviewsSearch = z.infer<typeof reviewsSearchSchema>;
+
+export const Route = createFileRoute("/admin/reviews")({
+  validateSearch: reviewsSearchSchema,
+  component: AdminReviews,
+});
+
+const RATING_OPTIONS = [5, 4, 3, 2, 1].map((n) => ({ value: String(n), label: `${n} ★` }));
+const VERIFIED_OPTIONS = [
+  { value: "true", label: "Verified purchase" },
+  { value: "false", label: "Not verified" },
+];
+
 function AdminReviews() {
   const queryClient = useQueryClient();
-  const [activeTab, setActiveTab] = useState<StatusFilter>("all");
-  const [page, setPage] = useState(1);
 
-  useEffect(() => {
-    setPage(1);
-  }, [activeTab]);
+  // All view state lives in the URL (refresh / back / shared links keep it).
+  const urlSearch = Route.useSearch();
+  const navigate = Route.useNavigate();
+  const update = useCallback(
+    (patch: Partial<ReviewsSearch>, replace = false) =>
+      navigate({ search: (prev) => patchSearch(prev, patch), replace }),
+    [navigate],
+  );
 
-  const { data, isLoading } = useQuery({
-    queryKey: queryKeys.admin.reviewsAll(activeTab === "all" ? undefined : activeTab, page),
+  const [search, setSearch] = useUrlSearchText(urlSearch.q, (q) => update({ q }));
+  const debouncedSearch = urlSearch.q ?? "";
+  const activeTab: StatusFilter = urlSearch.status ?? "all";
+  const rating = urlSearch.rating ? String(urlSearch.rating) : "";
+  const verified = urlSearch.verified === undefined ? "" : String(urlSearch.verified);
+  const posted = dateRangeFromSearch(urlSearch);
+  const sort: SortValue = urlSearch.sort ?? DEFAULT_SORT;
+  const page = urlSearch.page ?? 1;
+
+  const setActiveTab = (t: StatusFilter) => update({ status: t === "all" ? undefined : t });
+  const setRating = (v: string) => update({ rating: v ? Number(v) : undefined });
+  const setVerified = (v: string) => update({ verified: v ? v === "true" : undefined });
+  const setPosted = (v: DateRangeValue) => update(dateRangeToSearch(v));
+  const setSort = (v: SortValue) => update({ sort: v === DEFAULT_SORT ? undefined : v });
+  const setPage = (p: number) => update({ page: p > 1 ? p : undefined });
+
+  const filters = useMemo(() => {
+    const [sort_by, sort_dir] = (urlSearch.sort ?? DEFAULT_SORT).split(":");
+    return {
+      search: urlSearch.q,
+      rating: urlSearch.rating,
+      verified: urlSearch.verified,
+      sort_by,
+      sort_dir,
+      ...resolveDateRange(dateRangeFromSearch(urlSearch)),
+    };
+  }, [urlSearch]);
+
+  const { data, isLoading, isPlaceholderData } = useQuery({
+    // Extends reviewsAll(...) so the existing ["admin","reviews"] invalidation still matches.
+    queryKey: [
+      ...queryKeys.admin.reviewsAll(activeTab === "all" ? undefined : activeTab, page),
+      filters,
+    ],
     queryFn: () =>
       api.get<ReviewListResponse>("/reviews/admin/reviews", {
-        params: { page, page_size: 15, ...(activeTab !== "all" ? { status: activeTab } : {}) },
+        params: {
+          page,
+          page_size: 15,
+          ...(activeTab !== "all" ? { status: activeTab } : {}),
+          ...filters,
+        },
       }),
     staleTime: 30_000,
     placeholderData: keepPreviousData,
   });
+
+  const chips: FilterChip[] = [];
+  if (debouncedSearch)
+    chips.push({
+      key: "q",
+      label: `Search: "${debouncedSearch}"`,
+      onRemove: () => update({ q: undefined }),
+    });
+  if (rating)
+    chips.push({ key: "rating", label: `Rating: ${rating}★`, onRemove: () => setRating("") });
+  if (verified)
+    chips.push({
+      key: "verified",
+      label: verified === "true" ? "Verified purchase" : "Not verified",
+      onRemove: () => setVerified(""),
+    });
+  const postedLabel = describeDateRange(posted);
+  if (postedLabel)
+    chips.push({
+      key: "posted",
+      label: `Posted: ${postedLabel}`,
+      onRemove: () => setPosted({ preset: "any" }),
+    });
+  // One navigation; keeps the status tab and sort.
+  const clearAll = () =>
+    update({
+      q: undefined,
+      rating: undefined,
+      verified: undefined,
+      date: undefined,
+      from: undefined,
+      to: undefined,
+    });
 
   const invalidate = () => {
     queryClient.invalidateQueries({ queryKey: ["admin", "reviews"] });
@@ -89,6 +222,12 @@ function AdminReviews() {
 
   const list = data?.items ?? [];
   const totalPages = data?.total_pages ?? 1;
+  useClampPage(
+    page,
+    data ? { itemCount: list.length, totalPages } : undefined,
+    isPlaceholderData,
+    (last) => update({ page: last > 1 ? last : undefined }, true),
+  );
   const total = data?.total ?? 0;
 
   const pendingCount = list.filter((r) => !r.is_approved && !r.is_rejected).length;
@@ -123,9 +262,54 @@ function AdminReviews() {
         ))}
       </div>
 
+      <div className="bg-background border border-border p-4 flex flex-wrap items-center gap-3 mb-3">
+        <TableSearchInput
+          value={search}
+          onChange={setSearch}
+          placeholder="Search product, customer, title or text…"
+          className="flex-1"
+        />
+        <FilterSelect
+          label="Rating"
+          allLabel="All ratings"
+          value={rating}
+          onChange={setRating}
+          options={RATING_OPTIONS}
+          className="w-36"
+        />
+        <FilterSelect
+          label="Purchase"
+          allLabel="Any purchase status"
+          value={verified}
+          onChange={setVerified}
+          options={VERIFIED_OPTIONS}
+          className="w-48"
+        />
+        <DateRangeFilter label="Posted" value={posted} onChange={setPosted} />
+        <label className="flex items-center gap-2 text-xs uppercase tracking-[0.18em] text-muted-foreground">
+          Sort
+          <select
+            value={sort}
+            onChange={(e) => setSort(e.target.value as SortValue)}
+            className="h-9 border border-border bg-background px-2 text-sm normal-case tracking-normal text-foreground"
+          >
+            {SORT_OPTIONS.map((o) => (
+              <option key={o.value} value={o.value}>
+                {o.label}
+              </option>
+            ))}
+          </select>
+        </label>
+      </div>
+
+      <ActiveFilterChips chips={chips} onClearAll={clearAll} className="mb-4" />
+
       {isLoading && <ReviewListSkeleton count={4} />}
 
-      <div className="grid gap-4">
+      <div
+        className={`grid gap-4 transition-opacity ${isPlaceholderData ? "opacity-60" : ""}`}
+        aria-busy={isPlaceholderData}
+      >
         {!isLoading &&
           list.map((r) => {
             const isActionPending =
@@ -270,34 +454,28 @@ function AdminReviews() {
           })}
         {!isLoading && list.length === 0 && (
           <p className="text-center text-muted-foreground text-sm py-12">
-            No {activeTab !== "all" ? activeTab : ""} reviews.
+            No {activeTab !== "all" ? activeTab : ""} reviews
+            {chips.length ? " match these filters" : ""}.{" "}
+            {chips.length > 0 && (
+              <button
+                type="button"
+                onClick={clearAll}
+                className="underline underline-offset-4 text-foreground"
+              >
+                Clear filters
+              </button>
+            )}
           </p>
         )}
       </div>
 
-      {totalPages > 1 && (
-        <div className="flex items-center justify-between mt-4">
-          <p className="text-sm text-muted-foreground">
-            Page {page} of {totalPages} · {total} reviews
-          </p>
-          <div className="flex gap-2">
-            <button
-              onClick={() => setPage((p) => Math.max(1, p - 1))}
-              disabled={page === 1}
-              className="p-2 border border-border hover:bg-secondary disabled:opacity-50"
-            >
-              <ChevronLeft className="size-4" />
-            </button>
-            <button
-              onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-              disabled={page === totalPages}
-              className="p-2 border border-border hover:bg-secondary disabled:opacity-50"
-            >
-              <ChevronRight className="size-4" />
-            </button>
-          </div>
-        </div>
-      )}
+      <TablePagination
+        page={page}
+        totalPages={totalPages}
+        total={total}
+        noun="reviews"
+        onPageChange={setPage}
+      />
     </div>
   );
 }

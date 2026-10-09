@@ -461,6 +461,50 @@ class ProductListResponse(BaseModel):
     total_pages: int
 
 
+# ---------- Storefront filter facets ----------
+
+
+class FacetValue(BaseModel):
+    value: str
+    count: int
+
+
+class CategoryFacet(BaseModel):
+    id: uuid.UUID
+    slug: str
+    name: str
+    parent_id: uuid.UUID | None
+    # Includes products filed under sub-categories, matching the list filter.
+    count: int
+
+
+class RatingFacet(BaseModel):
+    min_rating: int
+    count: int
+
+
+class ProductFacetsResponse(BaseModel):
+    """Values the storefront filter panel may offer for the current result
+    set. Each group is counted under all *other* active filters, so options
+    never dead-end and empty groups can simply be hidden."""
+
+    total: int
+    categories: list[CategoryFacet]
+    genders: list[FacetValue]
+    metal_types: list[FacetValue]
+    purities: list[FacetValue]
+    price_min: float | None
+    price_max: float | None
+    ratings: list[RatingFacet]
+    in_stock: int
+    on_sale: int
+    new_arrival: int
+    best_seller: int
+    # Whether any matching product has recorded sales — the storefront only
+    # offers "Best selling" sorting when it would actually reorder results.
+    has_sales: bool = False
+
+
 # ---------- Stock adjustment ----------
 
 

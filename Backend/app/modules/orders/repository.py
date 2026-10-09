@@ -1,8 +1,8 @@
 import uuid
-from datetime import UTC
+from datetime import UTC, datetime
 from typing import Any
 
-from sqlalchemy import func, select, update
+from sqlalchemy import ColumnElement, func, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -87,7 +87,7 @@ class OrderRepository:
         total = (await db.execute(count_q)).scalar_one()
 
         q = (
-            q.order_by(Order.created_at.desc())
+            q.order_by(Order.created_at.desc(), Order.id)
             .offset((page - 1) * page_size)
             .limit(page_size)
         )
@@ -99,6 +99,17 @@ class OrderRepository:
             orders.append(order_obj)
         return orders, total
 
+    # Allowlisted admin sort keys -> columns (never getattr on user input).
+    _ADMIN_SORT_COLUMNS: dict[str, Any] = {
+        "created_at": Order.created_at,
+        "total": Order.total,
+        "order_number": Order.order_number,
+        "status": Order.status,
+        "payment_status": Order.payment_status,
+        "fulfillment_status": Order.fulfillment_status,
+        "customer": func.lower(Order.shipping_full_name),
+    }
+
     async def list_all(
         self,
         db: AsyncSession,
@@ -109,29 +120,58 @@ class OrderRepository:
         payment_status: str | None = None,
         user_id: uuid.UUID | None = None,
         search: str | None = None,
+        fulfillment_status: str | None = None,
+        date_from: datetime | None = None,
+        date_to: datetime | None = None,
+        min_total: float | None = None,
+        max_total: float | None = None,
+        sort_by: str = "created_at",
+        sort_dir: str = "desc",
     ) -> tuple[list[Order], int]:
         item_count_sq = self._item_count_subquery()
 
-        q = select(Order, item_count_sq.label("_item_count"))
-        count_q = select(func.count(Order.id))
-
+        filters: list[ColumnElement[bool]] = []
         if status:
-            q = q.where(Order.status == status)
-            count_q = count_q.where(Order.status == status)
+            filters.append(Order.status == status)
         if payment_status:
-            q = q.where(Order.payment_status == payment_status)
-            count_q = count_q.where(Order.payment_status == payment_status)
+            filters.append(Order.payment_status == payment_status)
+        if fulfillment_status:
+            filters.append(Order.fulfillment_status == fulfillment_status)
         if user_id:
-            q = q.where(Order.user_id == user_id)
-            count_q = count_q.where(Order.user_id == user_id)
+            filters.append(Order.user_id == user_id)
+        if date_from is not None:
+            filters.append(Order.created_at >= date_from)
+        if date_to is not None:
+            filters.append(Order.created_at < date_to)
+        if min_total is not None:
+            filters.append(Order.total >= min_total)
+        if max_total is not None:
+            filters.append(Order.total <= max_total)
         if search:
-            q = q.where(Order.order_number.ilike(f"%{search}%"))
-            count_q = count_q.where(Order.order_number.ilike(f"%{search}%"))
+            from app.modules.profiles.models import Profile
 
+            term = f"%{search.strip()}%"
+            filters.append(
+                or_(
+                    Order.order_number.ilike(term),
+                    Order.shipping_full_name.ilike(term),
+                    Order.shipping_phone.ilike(term),
+                    Order.user_id.in_(
+                        select(Profile.id).where(Profile.email.ilike(term))
+                    ),
+                )
+            )
+
+        count_q = select(func.count(Order.id)).where(*filters)
         total = (await db.execute(count_q)).scalar_one()
 
+        col = self._ADMIN_SORT_COLUMNS.get(sort_by, Order.created_at)
+        order = col.desc() if sort_dir == "desc" else col.asc()
         q = (
-            q.order_by(Order.created_at.desc())
+            select(Order, item_count_sq.label("_item_count"))
+            .where(*filters)
+            # id tie-breaker keeps offset pages stable when sort values tie.
+            .order_by(order, Order.id)
             .offset((page - 1) * page_size)
             .limit(page_size)
         )

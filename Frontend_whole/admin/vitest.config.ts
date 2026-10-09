@@ -16,8 +16,15 @@ export default defineConfig({
     },
   },
   resolve: {
-    alias: {
-      "@": resolve(__dirname, "./src"),
-    },
+    alias: [
+      { find: "@", replacement: resolve(__dirname, "./src") },
+      // Mirrors the tsconfig path: the package `exports` map common/* to
+      // *.tsx, but hooks there (use-debounce) are .ts — the app build
+      // resolves via tsconfig paths, so tests must too.
+      {
+        find: /^@hadha\/shared-ui\/common\/(.*)$/,
+        replacement: resolve(__dirname, "../packages/shared-ui/src/common/$1"),
+      },
+    ],
   },
 });

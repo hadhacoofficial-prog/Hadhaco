@@ -1,7 +1,8 @@
 import uuid
+from datetime import datetime
 from typing import Any
 
-from sqlalchemy import func, or_, select, update
+from sqlalchemy import ColumnElement, func, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.modules.profiles.models import Profile
@@ -63,40 +64,81 @@ class ProfileRepository:
         search: str | None = None,
         sort_by: str = "created_at",
         sort_dir: str = "desc",
+        date_from: datetime | None = None,
+        date_to: datetime | None = None,
     ) -> tuple[list[Profile], int]:
-        q = select(Profile).where(Profile.deleted_at.is_(None))
+        """Admin user list. Each returned Profile carries ``_order_count`` and
+        ``_total_spent`` (paid orders) computed in the same query, so the
+        table can show and sort by customer value with no per-row lookups."""
+        from app.modules.orders.models import Order
 
+        filters: list[ColumnElement[bool]] = [Profile.deleted_at.is_(None)]
         if role:
-            q = q.where(Profile.role == role)
+            filters.append(Profile.role == role)
         if is_active is not None:
-            q = q.where(Profile.is_active == is_active)
+            filters.append(Profile.is_active == is_active)
+        if date_from is not None:
+            filters.append(Profile.created_at >= date_from)
+        if date_to is not None:
+            filters.append(Profile.created_at < date_to)
         if search:
-            term = f"%{search}%"
-            q = q.where(
+            term = f"%{search.strip()}%"
+            filters.append(
                 or_(
                     Profile.email.ilike(term),
                     Profile.full_name.ilike(term),
+                    Profile.phone.ilike(term),
                 )
             )
 
-        # Count
-        count_q = select(func.count()).select_from(q.subquery())
-        total_result = await db.execute(count_q)
+        total_result = await db.execute(
+            select(func.count()).select_from(Profile).where(*filters)
+        )
         total: int = total_result.scalar_one()
 
-        # Sort
-        sort_col = getattr(Profile, sort_by, Profile.created_at)
-        if sort_dir == "desc":
-            q = q.order_by(sort_col.desc())
-        else:
-            q = q.order_by(sort_col.asc())
+        order_count = (
+            select(func.count(Order.id))
+            .where(Order.user_id == Profile.id)
+            .correlate(Profile)
+            .scalar_subquery()
+        )
+        total_spent = (
+            select(func.coalesce(func.sum(Order.total), 0))
+            .where(Order.user_id == Profile.id, Order.payment_status == "paid")
+            .correlate(Profile)
+            .scalar_subquery()
+        )
 
-        # Paginate
-        offset = (page - 1) * page_size
-        q = q.offset(offset).limit(page_size)
+        # Allowlist — never getattr(Profile, user_input).
+        sort_columns: dict[str, Any] = {
+            "created_at": Profile.created_at,
+            "updated_at": Profile.updated_at,
+            "email": func.lower(Profile.email),
+            "full_name": func.lower(Profile.full_name),
+            "role": Profile.role,
+            "order_count": order_count,
+            "total_spent": total_spent,
+        }
+        sort_col = sort_columns.get(sort_by, Profile.created_at)
+        order = sort_col.desc().nulls_last() if sort_dir == "desc" else sort_col.asc()
 
+        q = (
+            select(
+                Profile,
+                order_count.label("_order_count"),
+                total_spent.label("_total_spent"),
+            )
+            .where(*filters)
+            .order_by(order, Profile.id)
+            .offset((page - 1) * page_size)
+            .limit(page_size)
+        )
         result = await db.execute(q)
-        items = list(result.scalars().all())
+        items: list[Profile] = []
+        for profile, n_orders, spent in result.all():
+            profile._order_count = int(n_orders or 0)
+            profile._total_spent = float(spent or 0)
+            items.append(profile)
         return items, total
 
     async def soft_delete(self, db: AsyncSession, user_id: str | uuid.UUID) -> None:

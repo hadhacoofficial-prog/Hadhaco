@@ -1,14 +1,63 @@
-import { useState } from "react";
+import { useCallback, useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
+import { z } from "zod";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { MessageSquare, Search, X, Archive, ArchiveRestore, Trash2, Loader2 } from "lucide-react";
+import { MessageSquare, X, Archive, ArchiveRestore, Trash2, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { api } from "@/lib/api/client";
 import { queryKeys } from "@/lib/api/queryKeys";
 import { toUserMessage } from "@/lib/api/errors";
+import { SortableHeader, nextSort, type SortState } from "@hadha/shared-ui/data/SortableHeader";
+import { TableSearchInput } from "@hadha/shared-ui/data/TableSearchInput";
+import {
+  DateRangeFilter,
+  describeDateRange,
+  resolveDateRange,
+  type DateRangeValue,
+} from "@hadha/shared-ui/data/DateRangeFilter";
+import { ActiveFilterChips, type FilterChip } from "@hadha/shared-ui/data/ActiveFilterChips";
+import { TablePagination } from "@hadha/shared-ui/data/TablePagination";
 import type { EnquiryDto, EnquiryListResponse, EnquiryStatus } from "@/types/admin";
+import {
+  dateRangeFields,
+  dateRangeFromSearch,
+  dateRangeToSearch,
+  patchSearch,
+  useClampPage,
+  sortFromSearch,
+  sortToSearch,
+  urlDir,
+  urlEnum,
+  urlFlag,
+  urlPage,
+  urlText,
+  useUrlSearchText,
+} from "@/lib/tableUrlState";
+
+const ENQUIRY_SORT_KEYS = ["name", "subject", "status", "created_at"] as const;
+type EnquirySortKey = (typeof ENQUIRY_SORT_KEYS)[number];
+const DEFAULT_SORT: SortState<EnquirySortKey> = { sortBy: "created_at", sortDir: "desc" };
+const FIRST_DIR = { name: "asc", subject: "asc", status: "asc" } as const;
+
+const enquiriesSearchSchema = z.object({
+  status: urlEnum([
+    "new_enquiry",
+    "contacted_customer",
+    "positive_response",
+    "negative_response",
+    "closed",
+  ]),
+  archived: urlFlag,
+  q: urlText,
+  ...dateRangeFields,
+  sort: urlEnum(ENQUIRY_SORT_KEYS),
+  dir: urlDir,
+  page: urlPage,
+});
+type EnquiriesSearch = z.infer<typeof enquiriesSearchSchema>;
 
 export const Route = createFileRoute("/admin/enquiries")({
+  validateSearch: enquiriesSearchSchema,
   component: AdminEnquiries,
 });
 
@@ -50,20 +99,69 @@ function statusBadge(status: EnquiryStatus) {
 
 function AdminEnquiries() {
   const queryClient = useQueryClient();
-  const [activeTab, setActiveTab] = useState<StatusFilter>("all");
-  const [search, setSearch] = useState("");
-  const [page, setPage] = useState(1);
-  const [showArchived, setShowArchived] = useState(false);
   const [selected, setSelected] = useState<EnquiryDto | null>(null);
   const [editStatus, setEditStatus] = useState<EnquiryStatus | "">("");
   const [editNotes, setEditNotes] = useState("");
 
-  const params: Record<string, string | number | boolean> = { page, page_size: 20 };
-  if (activeTab !== "all") params.status = activeTab;
-  if (search.trim()) params.search = search.trim();
-  if (showArchived) params.include_archived = true;
+  // List view state lives in the URL; the detail modal stays local.
+  const urlSearch = Route.useSearch();
+  const navigate = Route.useNavigate();
+  const update = useCallback(
+    (patch: Partial<EnquiriesSearch>, replace = false) =>
+      navigate({ search: (prev) => patchSearch(prev, patch), replace }),
+    [navigate],
+  );
 
-  const { data, isLoading } = useQuery({
+  const [search, setSearch] = useUrlSearchText(urlSearch.q, (q) => update({ q }));
+  const debouncedSearch = urlSearch.q ?? "";
+  const activeTab: StatusFilter = urlSearch.status ?? "all";
+  const showArchived = !!urlSearch.archived;
+  const received = dateRangeFromSearch(urlSearch);
+  const page = urlSearch.page ?? 1;
+  const sort = sortFromSearch(urlSearch, DEFAULT_SORT);
+  const onSort = (key: EnquirySortKey) =>
+    update(sortToSearch(nextSort(sort, key, FIRST_DIR), DEFAULT_SORT));
+  const setReceived = (v: DateRangeValue) => update(dateRangeToSearch(v));
+  const setPage = (p: number) => update({ page: p > 1 ? p : undefined });
+
+  const params: Record<string, string | number | boolean> = {
+    page,
+    page_size: 20,
+    sort_by: sort.sortBy,
+    sort_dir: sort.sortDir,
+  };
+  if (activeTab !== "all") params.status = activeTab;
+  if (debouncedSearch) params.search = debouncedSearch;
+  if (showArchived) params.include_archived = true;
+  const range = resolveDateRange(received);
+  if (range.date_from) params.date_from = range.date_from;
+  if (range.date_to) params.date_to = range.date_to;
+
+  const chips: FilterChip[] = [];
+  if (debouncedSearch)
+    chips.push({
+      key: "q",
+      label: `Search: "${debouncedSearch}"`,
+      onRemove: () => update({ q: undefined }),
+    });
+  const receivedLabel = describeDateRange(received);
+  if (receivedLabel)
+    chips.push({
+      key: "received",
+      label: `Received: ${receivedLabel}`,
+      onRemove: () => setReceived({ preset: "any" }),
+    });
+  const header = (key: EnquirySortKey, label: string) => (
+    <SortableHeader
+      label={label}
+      sortKey={key}
+      sort={sort}
+      onSort={onSort}
+      className="font-medium"
+    />
+  );
+
+  const { data, isLoading, isPlaceholderData } = useQuery({
     queryKey: queryKeys.admin.enquiries(params),
     queryFn: () => api.get<EnquiryListResponse>("/admin/enquiries", { params }),
     staleTime: 30_000,
@@ -115,6 +213,12 @@ function AdminEnquiries() {
   const list = result?.items ?? [];
   const stats = result?.stats;
   const totalPages = result?.total_pages ?? 1;
+  useClampPage(
+    page,
+    result ? { itemCount: list.length, totalPages } : undefined,
+    isPlaceholderData,
+    (last) => update({ page: last > 1 ? last : undefined }, true),
+  );
 
   function openDetail(e: EnquiryDto) {
     setSelected(e);
@@ -177,10 +281,8 @@ function AdminEnquiries() {
             <button
               key={t.key}
               type="button"
-              onClick={() => {
-                setActiveTab(t.key);
-                setPage(1);
-              }}
+              aria-pressed={activeTab === t.key}
+              onClick={() => update({ status: t.key === "all" ? undefined : t.key })}
               className={`pb-3 -mb-px text-xs uppercase tracking-[0.22em] border-b-2 transition ${
                 activeTab === t.key
                   ? "border-foreground text-foreground"
@@ -193,10 +295,8 @@ function AdminEnquiries() {
         </div>
         <button
           type="button"
-          onClick={() => {
-            setShowArchived((v) => !v);
-            setPage(1);
-          }}
+          aria-pressed={showArchived}
+          onClick={() => update({ archived: showArchived ? undefined : true })}
           className={`pb-3 -mb-px text-xs uppercase tracking-[0.22em] border-b-2 transition flex items-center gap-1.5 ${
             showArchived
               ? "border-foreground text-foreground"
@@ -208,20 +308,21 @@ function AdminEnquiries() {
         </button>
       </div>
 
-      {/* Search bar */}
-      <div className="relative mb-6 max-w-sm">
-        <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
-        <input
-          type="text"
-          placeholder="Search name, email, subject..."
+      {/* Search + date range (status lives in the tabs above) */}
+      <div className="flex flex-wrap items-center gap-3 mb-3">
+        <TableSearchInput
           value={search}
-          onChange={(e) => {
-            setSearch(e.target.value);
-            setPage(1);
-          }}
-          className="w-full bg-background border border-border pl-9 pr-3 py-2.5 text-sm outline-none focus:border-foreground transition"
+          onChange={setSearch}
+          placeholder="Search name, email, subject…"
+          className="flex-1 max-w-md"
         />
+        <DateRangeFilter label="Received" value={received} onChange={setReceived} />
       </div>
+      <ActiveFilterChips
+        chips={chips}
+        onClearAll={() => update({ q: undefined, date: undefined, from: undefined, to: undefined })}
+        className="mb-4"
+      />
 
       {isLoading && (
         <div className="space-y-3">
@@ -250,11 +351,11 @@ function AdminEnquiries() {
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-border text-[11px] uppercase tracking-[0.22em] text-muted-foreground">
-                  <th className="text-left px-4 py-3 font-medium">Name</th>
+                  {header("name", "Name")}
                   <th className="text-left px-4 py-3 font-medium">Email</th>
-                  <th className="text-left px-4 py-3 font-medium">Subject</th>
-                  <th className="text-left px-4 py-3 font-medium">Status</th>
-                  <th className="text-left px-4 py-3 font-medium">Date</th>
+                  {header("subject", "Subject")}
+                  {header("status", "Status")}
+                  {header("created_at", "Date")}
                   <th className="px-4 py-3 font-medium"></th>
                 </tr>
               </thead>
@@ -290,30 +391,13 @@ function AdminEnquiries() {
             </table>
           </div>
 
-          {/* Pagination */}
-          {totalPages > 1 && (
-            <div className="flex items-center justify-between mt-4 text-xs text-muted-foreground">
-              <span>
-                Page {page} of {totalPages}
-              </span>
-              <div className="flex gap-2">
-                <button
-                  onClick={() => setPage((p) => Math.max(1, p - 1))}
-                  disabled={page <= 1}
-                  className="border border-border px-3 py-1.5 hover:bg-secondary disabled:opacity-50 transition"
-                >
-                  Previous
-                </button>
-                <button
-                  onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-                  disabled={page >= totalPages}
-                  className="border border-border px-3 py-1.5 hover:bg-secondary disabled:opacity-50 transition"
-                >
-                  Next
-                </button>
-              </div>
-            </div>
-          )}
+          <TablePagination
+            page={page}
+            totalPages={totalPages}
+            total={result?.total ?? 0}
+            noun="enquiries"
+            onPageChange={setPage}
+          />
         </>
       )}
 

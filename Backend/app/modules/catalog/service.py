@@ -13,12 +13,15 @@ from app.core.exceptions import (
     ValidationError,
 )
 from app.modules.catalog.models import ProductVariant
-from app.modules.catalog.repository import ProductRepository
+from app.modules.catalog.repository import ProductFilterSpec, ProductRepository
 from app.modules.catalog.schemas import (
+    CategoryFacet,
+    FacetValue,
     LastAdjustmentInfo,
     ProductAttributeCreateRequest,
     ProductCollectionRef,
     ProductCreateRequest,
+    ProductFacetsResponse,
     ProductImageResponse,
     ProductListItem,
     ProductListResponse,
@@ -26,6 +29,7 @@ from app.modules.catalog.schemas import (
     ProductUpdateRequest,
     ProductVariantCreateRequest,
     ProductVariantUpdateRequest,
+    RatingFacet,
     StockAdjustRequest,
     VariantInventoryListResponse,
     VariantInventoryRow,
@@ -94,6 +98,14 @@ class CatalogService:
         include_deleted: bool = False,
         include_collections: bool = True,
         image_variant: Literal["medium", "thumbnail"] = "medium",
+        category_ids: list[uuid.UUID] | None = None,
+        metal_types: list[str] | None = None,
+        purities: list[str] | None = None,
+        genders: list[str] | None = None,
+        in_stock: bool | None = None,
+        on_sale: bool | None = None,
+        min_rating: float | None = None,
+        stock_status: str | None = None,
     ) -> ProductListResponse:
         items, total = await _repo.list_paginated(
             db,
@@ -113,6 +125,14 @@ class CatalogService:
             sort_by=sort_by,
             sort_dir=sort_dir,
             include_deleted=include_deleted,
+            category_ids=category_ids,
+            metal_types=metal_types,
+            purities=purities,
+            genders=genders,
+            in_stock=in_stock,
+            on_sale=on_sale,
+            min_rating=min_rating,
+            stock_status=stock_status,
         )
 
         product_ids = [p.id for p in items]
@@ -209,6 +229,58 @@ class CatalogService:
             page=page,
             page_size=page_size,
             total_pages=math.ceil(total / page_size) if total else 0,
+        )
+
+    async def get_facets(
+        self, db: AsyncSession, spec: ProductFilterSpec
+    ) -> ProductFacetsResponse:
+        from app.modules.categories.repository import CategoryRepository
+
+        raw = await _repo.get_facets(db, spec)
+        direct: dict[uuid.UUID, int] = raw["category_counts"]
+
+        # Roll each category's direct count up to all of its ancestors so a
+        # parent shows the same number the (descendant-inclusive) list
+        # filter will return when it is selected. The walk uses the full
+        # non-deleted tree (as the filter does) so products under an
+        # inactive sub-category still count towards their active parent;
+        # only active categories are offered as options.
+        all_categories = await CategoryRepository().list_all_not_deleted(db)
+        parent_of = {c.id: c.parent_id for c in all_categories}
+        categories = [c for c in all_categories if c.is_active]
+        rolled: dict[uuid.UUID, int] = {}
+        for cat_id, n in direct.items():
+            seen: set[uuid.UUID] = set()
+            node: uuid.UUID | None = cat_id
+            while node is not None and node in parent_of and node not in seen:
+                seen.add(node)
+                rolled[node] = rolled.get(node, 0) + n
+                node = parent_of[node]
+
+        return ProductFacetsResponse(
+            total=raw["total"],
+            categories=[
+                CategoryFacet(
+                    id=c.id,
+                    slug=c.slug,
+                    name=c.name,
+                    parent_id=c.parent_id,
+                    count=rolled[c.id],
+                )
+                for c in categories
+                if rolled.get(c.id)
+            ],
+            genders=[FacetValue(**g) for g in raw["genders"]],
+            metal_types=[FacetValue(**m) for m in raw["metal_types"]],
+            purities=[FacetValue(**p) for p in raw["purities"]],
+            price_min=raw["price_min"],
+            price_max=raw["price_max"],
+            ratings=[RatingFacet(**r) for r in raw["ratings"] if r["count"]],
+            in_stock=raw["in_stock"],
+            on_sale=raw["on_sale"],
+            new_arrival=raw["new_arrival"],
+            best_seller=raw["best_seller"],
+            has_sales=raw["has_sales"],
         )
 
     async def create(

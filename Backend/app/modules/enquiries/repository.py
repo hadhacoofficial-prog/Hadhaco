@@ -1,4 +1,5 @@
 import uuid
+from datetime import datetime
 from typing import Any
 
 from sqlalchemy import delete as sa_delete
@@ -50,8 +51,16 @@ class EnquiryRepository:
         status: str | None = None,
         search: str | None = None,
         include_archived: bool = False,
+        date_from: datetime | None = None,
+        date_to: datetime | None = None,
+        sort_by: str = "created_at",
+        sort_dir: str = "desc",
     ) -> tuple[list[ContactEnquiry], int]:
         filters = []
+        if date_from is not None:
+            filters.append(ContactEnquiry.created_at >= date_from)
+        if date_to is not None:
+            filters.append(ContactEnquiry.created_at < date_to)
         if not include_archived:
             filters.append(ContactEnquiry.is_archived == False)  # noqa: E712
         if status:
@@ -74,8 +83,16 @@ class EnquiryRepository:
         q = select(ContactEnquiry)
         if where_clause is not None:
             q = q.where(*filters)
+        sort_columns: dict[str, Any] = {
+            "created_at": ContactEnquiry.created_at,
+            "name": func.lower(ContactEnquiry.name),
+            "status": ContactEnquiry.status,
+            "subject": func.lower(ContactEnquiry.subject),
+        }
+        col = sort_columns.get(sort_by, ContactEnquiry.created_at)
+        order = col.desc() if sort_dir == "desc" else col.asc()
         q = (
-            q.order_by(ContactEnquiry.created_at.desc())
+            q.order_by(order, ContactEnquiry.id)
             .offset((page - 1) * page_size)
             .limit(page_size)
         )

@@ -23,6 +23,7 @@ export const queryKeys = {
   products: {
     all: ["products"] as const,
     list: (filters?: Filters) => ["products", "list", filters ?? {}] as const,
+    facets: (filters?: Filters) => ["products", "facets", filters ?? {}] as const,
     infinite: (filters?: Filters) => ["products", "infinite", filters ?? {}] as const,
     detail: (slug: string) => ["products", "detail", slug] as const,
     byId: (id: string) => ["products", "id", id] as const,

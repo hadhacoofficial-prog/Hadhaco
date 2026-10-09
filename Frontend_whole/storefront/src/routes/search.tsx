@@ -1,42 +1,31 @@
-import { useState, useEffect, useMemo } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { useQuery, keepPreviousData } from "@tanstack/react-query";
 import { z } from "zod";
 import { Search as SearchIcon, X } from "lucide-react";
 import { SiteLayout } from "@/components/site/SiteLayout";
-import { ProductGrid } from "@/components/site/ProductGrid";
-import { PaginationBar } from "@/components/site/PaginationBar";
-import { EmptyState } from "@/components/site/EmptyState";
-import { ProductGridSkeleton } from "@/components/loading/ProductGridSkeleton";
+import { ProductDiscovery } from "@/components/discovery/ProductDiscovery";
+import { productListQuery } from "@/lib/discoveryQueries";
 import { useRecentSearches } from "@/stores/search";
-import { api } from "@/lib/api/client";
-import { queryKeys } from "@/lib/api/queryKeys";
-import { toProduct } from "@/lib/api/mappers";
-import { hydrateInventoryFromListItems } from "@/hooks/inventory/hydrateInventory";
-import type { ProductListResponse } from "@/types/admin";
+import {
+  activeFilterCount,
+  discoverySearchSchema,
+  resolveDiscovery,
+  toUrlSearch,
+  type DiscoveryState,
+} from "@/lib/discovery";
 
-const searchSchema = z.object({
-  q: z.string().optional(),
-  cat: z.string().optional(),
-  gender: z.enum(["men", "women", "kids", "unisex", "all"]).optional(),
-  filter: z.enum(["new", "bestseller", "deals"]).optional(),
-  page: z.coerce.number().min(1).optional(),
+const searchSchema = discoverySearchSchema.extend({
+  // Legacy / scope params still emitted by existing links.
+  cat: z.string().max(200).optional().catch(undefined), // collection slug (search overlay)
+  filter: z.enum(["new", "bestseller", "deals"]).optional().catch(undefined), // homepage rails
 });
 
 type SearchSearch = z.infer<typeof searchSchema>;
 
-/** Shared between the loader and the component so both hit the identical query key. */
-function buildSearchApiParams({ q, cat, gender, filter, page = 1 }: SearchSearch) {
-  return {
-    search: q || undefined,
-    collection_slug: cat || undefined,
-    gender: gender && gender !== "all" ? gender : undefined,
-    is_new_arrival: filter === "new" ? true : undefined,
-    is_best_seller: filter === "bestseller" ? true : undefined,
-    page,
-    page_size: 24,
-  };
-}
+const DEFAULT_SORT = "newest" as const;
+
+const isActive = (s: SearchSearch, state: DiscoveryState) =>
+  !!(s.q || s.cat || activeFilterCount(state) > 0);
 
 export const Route = createFileRoute("/search")({
   validateSearch: searchSchema,
@@ -46,13 +35,9 @@ export const Route = createFileRoute("/search")({
   // the previous search/filter results never flash back in after the
   // loading indicator disappears.
   loader: async ({ context: { queryClient }, deps }) => {
-    if (!(deps.q || deps.cat || deps.gender || deps.filter)) return;
-    const apiParams = buildSearchApiParams(deps);
-    await queryClient.ensureQueryData({
-      queryKey: queryKeys.products.list(apiParams),
-      queryFn: () => api.get<ProductListResponse>("/products", { params: apiParams }),
-      staleTime: 30_000,
-    });
+    const state = resolveDiscovery(deps, DEFAULT_SORT);
+    if (!isActive(deps, state)) return;
+    await queryClient.ensureQueryData(productListQuery(state, { collectionSlug: deps.cat }));
   },
   head: () => ({ meta: [{ title: "Search · Hadha" }] }),
   component: SearchPage,
@@ -62,87 +47,90 @@ const TRENDING = ["Bugadi", "Chains", "Anklets", "Nakshi Mala", "Bangles", "Blac
 
 function SearchPage() {
   const search = Route.useSearch();
-  const { q, cat, gender, filter } = search;
+  const { q, cat } = search;
   const [input, setInput] = useState(q ?? "");
   const navigate = Route.useNavigate();
   const { recent, push, clear } = useRecentSearches();
+
+  const state = useMemo(() => resolveDiscovery(search, DEFAULT_SORT), [search]);
+  const scope = useMemo(() => ({ collectionSlug: cat }), [cat]);
 
   useEffect(() => {
     if (q) push(q);
   }, [q, push]);
 
-  const apiParams = useMemo(() => buildSearchApiParams(search), [search]);
-
-  const hasFilters = !!(q || cat || gender || filter);
-
-  const { data, isLoading } = useQuery({
-    queryKey: queryKeys.products.list(apiParams),
-    queryFn: () => api.get<ProductListResponse>("/products", { params: apiParams }),
-    enabled: hasFilters,
-    staleTime: 30_000,
-    placeholderData: keepPreviousData,
-  });
-
+  // Keep the box in sync with back/forward navigation.
   useEffect(() => {
-    if (data?.items?.length) hydrateInventoryFromListItems(data.items);
-  }, [data]);
+    setInput(q ?? "");
+  }, [q]);
 
-  const results = useMemo(() => (data?.items ?? []).map(toProduct), [data]);
-  const total = data?.total ?? 0;
-  const totalPages = data?.total_pages ?? 0;
+  const active = isActive(search, state);
 
-  const headline =
-    filter === "new"
-      ? "New Arrivals"
-      : filter === "deals"
-        ? "Deals of the Day"
-        : filter === "bestseller"
-          ? "Bestsellers"
-          : cat
-            ? `Shop ${cat.replace(/-/g, " ")}`
-            : gender
-              ? `Shop ${gender}`
-              : q
-                ? `Results for "${q}"`
-                : "Search";
+  const headline = state.new
+    ? "New Arrivals"
+    : state.onSale
+      ? "Deals of the Day"
+      : state.bestseller
+        ? "Bestsellers"
+        : cat
+          ? `Shop ${cat.replace(/-/g, " ")}`
+          : q
+            ? `Results for "${q}"`
+            : "Search";
+
+  const onChange = useCallback(
+    (next: DiscoveryState, opts?: { replace?: boolean }) => {
+      navigate({
+        search: { ...toUrlSearch(next, DEFAULT_SORT), cat } as SearchSearch,
+        replace: opts?.replace,
+      });
+    },
+    [navigate, cat],
+  );
 
   const onSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    navigate({ search: { q: input.trim() || undefined } });
-  };
-
-  const onPageChange = (page: number) => {
-    navigate({ search: (prev) => ({ ...prev, page: page > 1 ? page : undefined }) });
-    window.scrollTo({ top: 0, behavior: "smooth" });
+    // A new query keeps the active filters but starts back at page 1 and
+    // lets the sort fall back to Relevance.
+    const nextQ = input.trim() || undefined;
+    onChange({ ...state, q: nextQ, sort: nextQ ? "relevance" : DEFAULT_SORT, page: 1 });
   };
 
   return (
     <SiteLayout>
-      <div className="px-4 md:px-8 py-12 max-w-5xl mx-auto">
-        <h1 className="font-display text-4xl md:text-5xl text-center mb-8 capitalize">
-          {headline}
-        </h1>
-        <form
-          onSubmit={onSubmit}
-          className="flex items-center gap-3 border-b border-foreground pb-3"
-        >
-          <SearchIcon className="size-5" />
-          <input
-            autoFocus
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            placeholder="What are you looking for?"
-            className="flex-1 bg-transparent outline-none text-lg tracking-wide placeholder:text-muted-foreground"
-          />
-          {input && (
-            <button type="button" onClick={() => setInput("")}>
-              <X className="size-4" />
-            </button>
-          )}
-        </form>
+      <div className="px-4 md:px-8 py-12 max-w-screen-2xl mx-auto">
+        <div className="max-w-3xl mx-auto">
+          <h1 className="font-display text-4xl md:text-5xl text-center mb-8 capitalize">
+            {headline}
+          </h1>
+          <form
+            role="search"
+            onSubmit={onSubmit}
+            className="flex items-center gap-3 border-b border-foreground pb-3"
+          >
+            <SearchIcon className="size-5" aria-hidden />
+            <label htmlFor="site-search" className="sr-only">
+              Search products
+            </label>
+            <input
+              id="site-search"
+              type="search"
+              autoFocus
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              placeholder="What are you looking for?"
+              className="flex-1 bg-transparent outline-none text-lg tracking-wide placeholder:text-muted-foreground [&::-webkit-search-cancel-button]:hidden"
+            />
+            {input && (
+              <button type="button" onClick={() => setInput("")} aria-label="Clear search text">
+                <X className="size-4" />
+              </button>
+            )}
+          </form>
+        </div>
 
-        {!hasFilters && (
-          <div className="mt-10 space-y-8">
+        {!active && (
+          <div className="mt-10 space-y-8 max-w-3xl mx-auto">
             <section>
               <h2 className="text-xs uppercase tracking-[0.22em] text-muted-foreground mb-3">
                 Trending
@@ -187,33 +175,22 @@ function SearchPage() {
           </div>
         )}
 
-        {hasFilters && (
+        {active && (
           <div className="mt-10">
-            {isLoading ? (
-              <ProductGridSkeleton count={12} />
-            ) : (
-              <>
-                <p className="text-sm text-muted-foreground mb-6">
-                  {total} result{total === 1 ? "" : "s"}
-                </p>
-                {results.length === 0 ? (
-                  <EmptyState
-                    icon={<SearchIcon className="size-5" />}
-                    title="No matches"
-                    description="We couldn't find anything matching these filters. Try something else."
-                  />
-                ) : (
-                  <>
-                    <ProductGrid products={results} />
-                    <PaginationBar
-                      page={data!.page}
-                      totalPages={totalPages}
-                      onPageChange={onPageChange}
-                    />
-                  </>
-                )}
-              </>
-            )}
+            <ProductDiscovery
+              state={state}
+              scope={scope}
+              onChange={onChange}
+              noun={{ one: "result", many: "results" }}
+              emptyAction={
+                <Link
+                  to="/products"
+                  className="text-xs uppercase tracking-[0.18em] underline underline-offset-4"
+                >
+                  Browse all pieces
+                </Link>
+              }
+            />
           </div>
         )}
       </div>

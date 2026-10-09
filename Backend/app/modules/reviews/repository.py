@@ -1,9 +1,10 @@
 from __future__ import annotations
 
 import uuid
+from datetime import datetime
 from typing import Any
 
-from sqlalchemy import delete, func, select, text, update
+from sqlalchemy import delete, func, or_, select, text, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.sql.elements import ColumnElement
 
@@ -128,6 +129,20 @@ class ReviewRepository:
 
     # ── Listing ───────────────────────────────────────────────────────────────
 
+    _PUBLIC_SORTS: dict[str, tuple[Any, ...]] = {
+        "newest": (Review.created_at.desc(),),
+        "oldest": (Review.created_at.asc(),),
+        "highest": (Review.rating.desc(), Review.created_at.desc()),
+        "lowest": (Review.rating.asc(), Review.created_at.desc()),
+        "helpful": (Review.helpful_count.desc(), Review.created_at.desc()),
+    }
+    _ADMIN_SORT_COLUMNS: dict[str, Any] = {
+        "created_at": Review.created_at,
+        "rating": Review.rating,
+        "helpful_count": Review.helpful_count,
+        "product_name": func.lower(Product.name),
+    }
+
     async def list_for_product(
         self,
         db: AsyncSession,
@@ -136,6 +151,8 @@ class ReviewRepository:
         viewer_user_id: uuid.UUID | None = None,
         offset: int = 0,
         limit: int = 20,
+        sort: str = "newest",
+        rating: int | None = None,
     ) -> tuple[list[Review], int]:
         """Return approved reviews + viewer's own pending/rejected if authenticated.
 
@@ -157,24 +174,32 @@ class ReviewRepository:
             )
         else:
             base_filters.append(Review.is_approved.is_(True))
+        if rating is not None:
+            base_filters.append(Review.rating == rating)
 
         # Count window — total rows matching the filter (before OFFSET/LIMIT)
         count_window = func.count().over().label("_total_count")
 
+        # The viewer's own not-yet-approved review always stays on top;
+        # `sort` (allowlisted by the router) orders everything after it.
+        secondary = self._PUBLIC_SORTS.get(sort, self._PUBLIC_SORTS["newest"])
         q = (
             select(Review, count_window)
             .where(*base_filters)
-            .order_by(
-                Review.is_approved.asc(),
-                Review.created_at.desc(),
-            )
+            .order_by(Review.is_approved.asc(), *secondary, Review.id)
             .offset(offset)
             .limit(limit)
         )
         result = await db.execute(q)
         rows = result.all()
         if not rows:
-            return [], 0
+            # COUNT(*) OVER() rides on the returned rows, so a page past the end
+            # would report total=0. Only in that case pay for a plain count, so
+            # callers can tell "page too far" from "no results".
+            if offset <= 0:
+                return [], 0
+            count_q = select(func.count()).select_from(Review).where(*base_filters)
+            return [], int((await db.execute(count_q)).scalar_one())
         total: int = rows[0][1]
         reviews = [row[0] for row in rows]
         return reviews, total
@@ -232,9 +257,34 @@ class ReviewRepository:
         status: str | None = None,
         page: int = 1,
         page_size: int = 15,
+        rating: int | None = None,
+        verified: bool | None = None,
+        search: str | None = None,
+        date_from: datetime | None = None,
+        date_to: datetime | None = None,
+        sort_by: str = "created_at",
+        sort_dir: str = "desc",
     ) -> tuple[list[tuple[Review, str | None]], int]:
         """Admin: paginated list of all reviews with product name and total count."""
         filters: list[ColumnElement[bool]] = [Review.deleted_at.is_(None)]
+        if rating is not None:
+            filters.append(Review.rating == rating)
+        if verified is not None:
+            filters.append(Review.is_verified_purchase.is_(verified))
+        if date_from is not None:
+            filters.append(Review.created_at >= date_from)
+        if date_to is not None:
+            filters.append(Review.created_at < date_to)
+        if search:
+            term = f"%{search.strip()}%"
+            filters.append(
+                or_(
+                    Product.name.ilike(term),
+                    Review.customer_name.ilike(term),
+                    Review.title.ilike(term),
+                    Review.body.ilike(term),
+                )
+            )
         if status == "approved":
             filters.append(Review.is_approved.is_(True))
         elif status == "rejected":
@@ -247,18 +297,31 @@ class ReviewRepository:
             )
 
         count_window = func.count().over().label("_total_count")
+        col = self._ADMIN_SORT_COLUMNS.get(sort_by, Review.created_at)
+        order = col.desc().nulls_last() if sort_dir == "desc" else col.asc()
         q = (
             select(Review, Product.name, count_window)
             .outerjoin(Product, Product.id == Review.product_id)
             .where(*filters)
-            .order_by(Review.created_at.desc())
+            .order_by(order, Review.id)
             .offset((page - 1) * page_size)
             .limit(page_size)
         )
         result = await db.execute(q)
         rows = result.all()
         if not rows:
-            return [], 0
+            # COUNT(*) OVER() rides on the returned rows, so a page past the end
+            # would report total=0. Only in that case pay for a plain count, so
+            # callers can tell "page too far" from "no results".
+            if page <= 1:
+                return [], 0
+            count_q = (
+                select(func.count())
+                .select_from(Review)
+                .outerjoin(Product, Product.id == Review.product_id)
+                .where(*filters)
+            )
+            return [], int((await db.execute(count_q)).scalar_one())
         total: int = rows[0][2]
         items = [(row[0], row[1]) for row in rows]
         return items, total

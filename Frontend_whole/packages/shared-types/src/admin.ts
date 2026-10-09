@@ -574,6 +574,10 @@ export interface AdminUserDto {
   is_verified: boolean;
   created_at: string;
   two_factor_enabled?: boolean;
+  /** All orders placed (any status). */
+  order_count?: number;
+  /** Sum of paid order totals. */
+  total_spent?: number;
 }
 
 // ── Two-Factor Authentication (admin) ──────────────────────────────────────

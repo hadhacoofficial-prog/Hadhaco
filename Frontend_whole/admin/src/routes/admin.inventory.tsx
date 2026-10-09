@@ -1,4 +1,6 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { z } from "zod";
+import { SortableHeader, nextSort, type SortState } from "@hadha/shared-ui/data/SortableHeader";
 import { createFileRoute } from "@tanstack/react-router";
 import { useQuery, useMutation, useQueryClient, keepPreviousData } from "@tanstack/react-query";
 import {
@@ -17,7 +19,19 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { ENV } from "@hadha/shared-api";
-import { useDebounce } from "@hadha/shared-ui/common/use-debounce";
+import {
+  patchSearch,
+  useClampPage,
+  sortFromSearch,
+  sortToSearch,
+  urlDir,
+  urlEnum,
+  urlFlag,
+  urlId,
+  urlPage,
+  urlText,
+  useUrlSearchText,
+} from "@/lib/tableUrlState";
 import { api } from "@/lib/api/client";
 import { queryKeys } from "@/lib/api/queryKeys";
 import { toUserMessage } from "@/lib/api/errors";
@@ -52,7 +66,32 @@ import type {
   VariantOrderHistoryResponse,
 } from "@/types/admin";
 
+const SORT_KEYS = [
+  "updated_at",
+  "available_stock",
+  "stock_quantity",
+  "product_name",
+  "sku",
+] as const;
+type SortKey = (typeof SORT_KEYS)[number];
+const DEFAULT_SORT: SortState<SortKey> = { sortBy: "updated_at", sortDir: "desc" };
+const FIRST_DIR = { product_name: "asc", sku: "asc" } as const;
+
+const inventorySearchSchema = z.object({
+  q: urlText,
+  status: urlEnum(["active", "inactive", "out_of_stock"]),
+  reserved: urlFlag,
+  recent: urlFlag,
+  category: urlId,
+  collection: urlId,
+  sort: urlEnum(SORT_KEYS),
+  dir: urlDir,
+  page: urlPage,
+});
+type InventorySearch = z.infer<typeof inventorySearchSchema>;
+
 export const Route = createFileRoute("/admin/inventory")({
+  validateSearch: inventorySearchSchema,
   component: AdminInventory,
 });
 
@@ -133,16 +172,28 @@ function useInventoryLiveUpdateBanner(): [boolean, () => void] {
 
 function AdminInventory() {
   const queryClient = useQueryClient();
-  const [search, setSearch] = useState("");
-  const debouncedSearch = useDebounce(search, 300);
-  const [page, setPage] = useState(1);
-  const [sortBy, setSortBy] = useState("updated_at");
-  const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
-  const [variantStatus, setVariantStatus] = useState("");
-  const [hasReservations, setHasReservations] = useState(false);
-  const [recentlyUpdated, setRecentlyUpdated] = useState(false);
-  const [categoryId, setCategoryId] = useState("");
-  const [collectionId, setCollectionId] = useState("");
+  // List view state lives in the URL; row expansion / dialogs stay local.
+  const urlSearch = Route.useSearch();
+  const navigate = Route.useNavigate();
+  const update = useCallback(
+    (patch: Partial<InventorySearch>, replace = false) =>
+      navigate({ search: (prev) => patchSearch(prev, patch), replace }),
+    [navigate],
+  );
+
+  const [search, setSearch] = useUrlSearchText(urlSearch.q, (q) => update({ q }));
+  const page = urlSearch.page ?? 1;
+  const sort = sortFromSearch(urlSearch, DEFAULT_SORT);
+  const { sortBy, sortDir } = sort;
+  const variantStatus = urlSearch.status ?? "";
+  const hasReservations = !!urlSearch.reserved;
+  const recentlyUpdated = !!urlSearch.recent;
+  const categoryId = urlSearch.category ?? "";
+  const collectionId = urlSearch.collection ?? "";
+  const setSort = (next: SortState<SortKey>) => update(sortToSearch(next, DEFAULT_SORT));
+  const toggleVariantStatus = (v: NonNullable<InventorySearch["status"]>) =>
+    update({ status: variantStatus === v ? undefined : v });
+  const setPage = (p: number) => update({ page: p > 1 ? p : undefined });
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [adjustTarget, setAdjustTarget] = useState<VariantInventoryRow | null>(null);
   const [hasLiveUpdate, dismissLiveUpdate] = useInventoryLiveUpdateBanner();
@@ -151,42 +202,19 @@ function AdminInventory() {
     () => ({
       page,
       page_size: 20,
-      search: debouncedSearch || undefined,
+      search: urlSearch.q,
       sort_by: sortBy,
       sort_dir: sortDir,
-      variant_status: variantStatus || undefined,
-      has_reservations: hasReservations || undefined,
-      recently_updated_hours: recentlyUpdated ? 24 : undefined,
-      category_id: categoryId || undefined,
-      collection_id: collectionId || undefined,
+      variant_status: urlSearch.status,
+      has_reservations: urlSearch.reserved,
+      recently_updated_hours: urlSearch.recent ? 24 : undefined,
+      category_id: urlSearch.category,
+      collection_id: urlSearch.collection,
     }),
-    [
-      page,
-      debouncedSearch,
-      sortBy,
-      sortDir,
-      variantStatus,
-      hasReservations,
-      recentlyUpdated,
-      categoryId,
-      collectionId,
-    ],
+    [urlSearch, page, sortBy, sortDir],
   );
 
-  useEffect(() => {
-    setPage(1);
-  }, [
-    debouncedSearch,
-    sortBy,
-    sortDir,
-    variantStatus,
-    hasReservations,
-    recentlyUpdated,
-    categoryId,
-    collectionId,
-  ]);
-
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, isPlaceholderData } = useQuery({
     queryKey: queryKeys.admin.productVariants(params),
     queryFn: () => api.get<VariantInventoryListResponse>("/admin/product-variants", { params }),
     staleTime: 30_000,
@@ -239,9 +267,25 @@ function AdminInventory() {
     onError: (e) => toast.error(toUserMessage(e)),
   });
 
+  // Column headers drive the same sort state as the dropdown above.
+  const sortHeader = (key: SortKey, label: string) => (
+    <SortableHeader
+      label={label}
+      sortKey={key}
+      sort={sort}
+      onSort={(k) => setSort(nextSort(sort, k, FIRST_DIR))}
+    />
+  );
+
   const items = data?.items ?? [];
   const summary = data?.summary;
   const totalPages = data?.total_pages ?? 1;
+  useClampPage(
+    page,
+    data ? { itemCount: items.length, totalPages } : undefined,
+    isPlaceholderData,
+    (last) => update({ page: last > 1 ? last : undefined }, true),
+  );
   const total = data?.total ?? 0;
   const categories = categoriesData?.items ?? [];
   const collections = collectionsData?.items ?? [];
@@ -251,31 +295,31 @@ function AdminInventory() {
       key: "active",
       label: "Active",
       active: variantStatus === "active",
-      onClick: () => setVariantStatus((v) => (v === "active" ? "" : "active")),
+      onClick: () => toggleVariantStatus("active"),
     },
     {
       key: "inactive",
       label: "Inactive",
       active: variantStatus === "inactive",
-      onClick: () => setVariantStatus((v) => (v === "inactive" ? "" : "inactive")),
+      onClick: () => toggleVariantStatus("inactive"),
     },
     {
       key: "out_of_stock",
       label: "Out of Stock",
       active: variantStatus === "out_of_stock",
-      onClick: () => setVariantStatus((v) => (v === "out_of_stock" ? "" : "out_of_stock")),
+      onClick: () => toggleVariantStatus("out_of_stock"),
     },
     {
       key: "has_reservations",
       label: "Has Reservations",
       active: hasReservations,
-      onClick: () => setHasReservations((v) => !v),
+      onClick: () => update({ reserved: hasReservations ? undefined : true }),
     },
     {
       key: "recently_updated",
       label: "Recently Updated",
       active: recentlyUpdated,
-      onClick: () => setRecentlyUpdated((v) => !v),
+      onClick: () => update({ recent: recentlyUpdated ? undefined : true }),
     },
   ];
 
@@ -351,7 +395,7 @@ function AdminInventory() {
             className="pl-9"
           />
         </div>
-        <Select value={sortBy} onValueChange={setSortBy}>
+        <Select value={sortBy} onValueChange={(v) => setSort({ sortBy: v as SortKey, sortDir })}>
           <SelectTrigger className="w-[180px]">
             <SelectValue />
           </SelectTrigger>
@@ -366,7 +410,7 @@ function AdminInventory() {
         <Button
           variant="outline"
           size="icon"
-          onClick={() => setSortDir((d) => (d === "asc" ? "desc" : "asc"))}
+          onClick={() => setSort({ sortBy, sortDir: sortDir === "asc" ? "desc" : "asc" })}
           aria-label="Toggle sort direction"
         >
           {sortDir === "asc" ? (
@@ -378,7 +422,7 @@ function AdminInventory() {
         {categories.length > 0 && (
           <Select
             value={categoryId || "__all"}
-            onValueChange={(v) => setCategoryId(v === "__all" ? "" : v)}
+            onValueChange={(v) => update({ category: v === "__all" ? undefined : v })}
           >
             <SelectTrigger className="w-[160px]">
               <SelectValue placeholder="Category" />
@@ -396,7 +440,7 @@ function AdminInventory() {
         {collections.length > 0 && (
           <Select
             value={collectionId || "__all"}
-            onValueChange={(v) => setCollectionId(v === "__all" ? "" : v)}
+            onValueChange={(v) => update({ collection: v === "__all" ? undefined : v })}
           >
             <SelectTrigger className="w-[160px]">
               <SelectValue placeholder="Collection" />
@@ -441,12 +485,12 @@ function AdminInventory() {
           <table className="w-full text-sm">
             <thead className="bg-secondary text-left text-[11px] uppercase tracking-[0.18em] text-muted-foreground">
               <tr>
-                <th className="px-4 py-3">Product / Variant</th>
-                <th className="px-4 py-3">SKU</th>
-                <th className="px-4 py-3">Stock</th>
+                {sortHeader("product_name", "Product / Variant")}
+                {sortHeader("sku", "SKU")}
+                {sortHeader("stock_quantity", "Stock")}
                 <th className="px-4 py-3">Reserved</th>
-                <th className="px-4 py-3">Available</th>
-                <th className="px-4 py-3">Last Adjustment</th>
+                {sortHeader("available_stock", "Available")}
+                {sortHeader("updated_at", "Last Adjustment")}
                 <th className="px-4 py-3">Status</th>
                 <th className="px-4 py-3" />
               </tr>
@@ -482,14 +526,16 @@ function AdminInventory() {
           </p>
           <div className="flex gap-2">
             <button
-              onClick={() => setPage((p) => Math.max(1, p - 1))}
+              onClick={() => setPage(Math.max(1, page - 1))}
+              aria-label="Previous page"
               disabled={page === 1}
               className="p-2 border border-border hover:bg-secondary disabled:opacity-50"
             >
               <ChevronLeft className="size-4" />
             </button>
             <button
-              onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+              onClick={() => setPage(Math.min(totalPages, page + 1))}
+              aria-label="Next page"
               disabled={page === totalPages}
               className="p-2 border border-border hover:bg-secondary disabled:opacity-50"
             >

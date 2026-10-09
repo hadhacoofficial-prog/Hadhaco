@@ -152,7 +152,8 @@ async def admin_list_collections(
     is_active: bool | None = None,
     is_featured: bool | None = None,
     sort_by: str = Query(
-        "sort_order", pattern="^(sort_order|name|updated_at|created_at)$"
+        "sort_order",
+        pattern="^(sort_order|name|updated_at|created_at|product_count)$",
     ),
     sort_dir: str = Query("asc", pattern="^(asc|desc)$"),
 ):

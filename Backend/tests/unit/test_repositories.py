@@ -746,10 +746,20 @@ class TestProfileRepository:
 
     async def test_list_paginated_returns_users(self):
         mock_profile = MagicMock()
-        db = _db(_scalar_one(10), _scalars_result([mock_profile]))
+        db = _db(_scalar_one(10), _all_result([(mock_profile, 3, 4500.0)]))
         items, total = await self.repo.list_paginated(db)
         assert total == 10
         assert items == [mock_profile]
+        # Order stats from the same query are attached for the admin table.
+        assert mock_profile._order_count == 3
+        assert mock_profile._total_spent == 4500.0
+
+    async def test_list_paginated_unknown_sort_falls_back_to_created_at(self):
+        db = _db(_scalar_one(0), _all_result([]))
+        items, total = await self.repo.list_paginated(db, sort_by="password; drop")
+        assert (items, total) == ([], 0)
+        compiled = str(db.execute.await_args_list[1].args[0])
+        assert "ORDER BY profiles.created_at DESC" in compiled
 
     async def test_update_returns_profile(self):
         mock_profile = MagicMock()

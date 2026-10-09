@@ -926,6 +926,13 @@ class OrderService:
         payment_status: str | None = None,
         user_id: uuid.UUID | None = None,
         search: str | None = None,
+        fulfillment_status: str | None = None,
+        date_from: datetime | None = None,
+        date_to: datetime | None = None,
+        min_total: float | None = None,
+        max_total: float | None = None,
+        sort_by: str = "created_at",
+        sort_dir: str = "desc",
     ) -> OrderListResponse:
         items, total = await _repo.list_all(
             db,
@@ -935,6 +942,13 @@ class OrderService:
             payment_status=payment_status,
             user_id=user_id,
             search=search,
+            fulfillment_status=fulfillment_status,
+            date_from=date_from,
+            date_to=date_to,
+            min_total=min_total,
+            max_total=max_total,
+            sort_by=sort_by,
+            sort_dir=sort_dir,
         )
         list_items = [
             OrderListItem(

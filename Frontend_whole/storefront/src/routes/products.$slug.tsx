@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { createFileRoute, Link, notFound, useNavigate } from "@tanstack/react-router";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient, keepPreviousData } from "@tanstack/react-query";
 import {
   Heart,
   Truck,
@@ -261,13 +261,38 @@ function ProductPage() {
 
   const queryClient = useQueryClient();
 
-  const { data: reviewsResponse, refetch: refetchReviews } = useQuery({
-    queryKey: queryKeys.reviews.forProduct(product.id),
+  // Review sort / star filter run server-side; the key extends
+  // reviews.forProduct(id) so existing invalidations still match every variant.
+  // The view is keyed by product id, so navigating to another product
+  // starts at the defaults in the same render — no extra request with the
+  // previous product's sort/filter.
+  const [reviewView, setReviewView] = useState<{
+    productId: string;
+    sort: ReviewSort;
+    rating: number | undefined;
+  }>({ productId: product.id, sort: "newest", rating: undefined });
+  const ownView = reviewView.productId === product.id;
+  const reviewSort: ReviewSort = ownView ? reviewView.sort : "newest";
+  const reviewRating = ownView ? reviewView.rating : undefined;
+  const setReviewSort = (sort: ReviewSort) =>
+    setReviewView({ productId: product.id, sort, rating: reviewRating });
+  const setReviewRating = (rating: number | undefined) =>
+    setReviewView({ productId: product.id, sort: reviewSort, rating });
+  const {
+    data: reviewsResponse,
+    refetch: refetchReviews,
+    isFetching: reviewsFetching,
+  } = useQuery({
+    queryKey: [
+      ...queryKeys.reviews.forProduct(product.id),
+      { sort: reviewSort, rating: reviewRating },
+    ],
     queryFn: () =>
       api.get<PublicReviewListResponse>(`/reviews/products/${product.id}`, {
-        params: { limit: 50 },
+        params: { limit: 50, sort: reviewSort, rating: reviewRating },
       }),
     staleTime: 2 * 60_000,
+    placeholderData: keepPreviousData,
   });
   const reviews = (reviewsResponse?.items ?? []).map(toReview);
 
@@ -765,6 +790,12 @@ function ProductPage() {
             <ReviewsSection
               reviews={reviews}
               productId={product.id}
+              summary={reviewSummary}
+              sort={reviewSort}
+              rating={reviewRating}
+              loading={reviewsFetching}
+              onSortChange={setReviewSort}
+              onRatingChange={setReviewRating}
               onWriteReview={() => setShowReviewModal(true)}
               onRefresh={() => {
                 refetchReviews();
@@ -857,14 +888,35 @@ function ReviewCard({ review }: { review: Review }) {
   );
 }
 
+type ReviewSort = "newest" | "highest" | "lowest" | "helpful";
+
+const REVIEW_SORT_LABELS: Record<ReviewSort, string> = {
+  newest: "Newest",
+  highest: "Highest rated",
+  lowest: "Lowest rated",
+  helpful: "Most helpful",
+};
+
 function ReviewsSection({
   reviews,
   productId,
+  summary,
+  sort,
+  rating,
+  loading,
+  onSortChange,
+  onRatingChange,
   onWriteReview,
   onRefresh,
 }: {
   reviews: Review[];
   productId: string;
+  summary: ReviewSummary | undefined;
+  sort: ReviewSort;
+  rating: number | undefined;
+  loading: boolean;
+  onSortChange: (sort: ReviewSort) => void;
+  onRatingChange: (rating: number | undefined) => void;
   onWriteReview: () => void;
   onRefresh: () => void;
 }) {
@@ -880,13 +932,28 @@ function ReviewsSection({
   const ownUnapproved = reviews.filter((r) => r.userId === currentUserId && !r.isApproved);
   const displayReviews = [...ownUnapproved, ...approvedReviews];
 
+  const starCounts: [number, number][] = summary
+    ? [
+        [5, summary.five_star],
+        [4, summary.four_star],
+        [3, summary.three_star],
+        [2, summary.two_star],
+        [1, summary.one_star],
+      ]
+    : [];
+  const totalApproved = summary?.review_count ?? approvedReviews.length;
+  // Controls only earn their space once there's something to sort / narrow.
+  const showControls = totalApproved > 1;
+
   return (
     <div>
-      <div className="flex items-center justify-between mb-6">
-        <p className="text-sm text-muted-foreground">
-          {approvedReviews.length === 0
+      <div className="flex flex-wrap items-center justify-between gap-3 mb-6">
+        <p className="text-sm text-muted-foreground" aria-live="polite">
+          {totalApproved === 0
             ? "No reviews yet — be the first!"
-            : `${approvedReviews.length} review${approvedReviews.length > 1 ? "s" : ""}`}
+            : rating
+              ? `${approvedReviews.length} of ${totalApproved} reviews · ${rating}★`
+              : `${totalApproved} review${totalApproved > 1 ? "s" : ""}`}
         </p>
         <button
           type="button"
@@ -897,12 +964,84 @@ function ReviewsSection({
           Write a Review
         </button>
       </div>
-      <div className="space-y-6">
+      {showControls && (
+        <div className="flex flex-wrap items-center justify-between gap-3 mb-6 border-y border-border py-3">
+          <div
+            role="group"
+            aria-label="Filter reviews by star rating"
+            className="flex flex-wrap gap-2"
+          >
+            <button
+              type="button"
+              aria-pressed={rating === undefined}
+              onClick={() => onRatingChange(undefined)}
+              className={`min-h-9 px-3 border text-xs uppercase tracking-[0.14em] ${
+                rating === undefined
+                  ? "bg-foreground text-background border-foreground"
+                  : "border-border hover:bg-secondary"
+              }`}
+            >
+              All
+            </button>
+            {starCounts
+              .filter(([, n]) => n > 0)
+              .map(([stars, n]) => (
+                <button
+                  key={stars}
+                  type="button"
+                  aria-pressed={rating === stars}
+                  aria-label={`${stars} star reviews (${n})`}
+                  onClick={() => onRatingChange(rating === stars ? undefined : stars)}
+                  className={`min-h-9 px-3 border text-xs tracking-[0.08em] ${
+                    rating === stars
+                      ? "bg-foreground text-background border-foreground"
+                      : "border-border hover:bg-secondary"
+                  }`}
+                >
+                  {stars}★ <span className="opacity-70">({n})</span>
+                </button>
+              ))}
+          </div>
+          <label className="flex items-center gap-2 text-xs uppercase tracking-[0.18em]">
+            Sort
+            <select
+              value={sort}
+              onChange={(e) => onSortChange(e.target.value as ReviewSort)}
+              className="bg-background border border-border min-h-9 px-2 text-xs normal-case tracking-normal"
+            >
+              {(Object.keys(REVIEW_SORT_LABELS) as ReviewSort[]).map((k) => (
+                <option key={k} value={k}>
+                  {REVIEW_SORT_LABELS[k]}
+                </option>
+              ))}
+            </select>
+          </label>
+        </div>
+      )}
+      <div
+        className={`space-y-6 transition-opacity ${loading ? "opacity-60" : ""}`}
+        aria-busy={loading}
+      >
         {displayReviews.map((r) => (
           <ReviewCard key={r.id} review={r} />
         ))}
         {displayReviews.length === 0 && (
-          <p className="text-sm text-muted-foreground">No reviews yet.</p>
+          <div className="text-sm text-muted-foreground">
+            {rating ? (
+              <p>
+                No {rating}★ reviews yet.{" "}
+                <button
+                  type="button"
+                  onClick={() => onRatingChange(undefined)}
+                  className="underline underline-offset-4 text-foreground"
+                >
+                  Show all reviews
+                </button>
+              </p>
+            ) : (
+              <p>No reviews yet.</p>
+            )}
+          </div>
         )}
       </div>
     </div>

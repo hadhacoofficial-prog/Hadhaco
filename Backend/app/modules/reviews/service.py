@@ -112,6 +112,8 @@ class ReviewService:
         viewer_user_id: uuid.UUID | None = None,
         offset: int = 0,
         limit: int = 20,
+        sort: str = "newest",
+        rating: int | None = None,
     ) -> tuple[list[Review], int]:
         return await self._repo.list_for_product(
             db,
@@ -119,6 +121,8 @@ class ReviewService:
             viewer_user_id=viewer_user_id,
             offset=offset,
             limit=limit,
+            sort=sort,
+            rating=rating,
         )
 
     async def rating_summary(
@@ -273,9 +277,26 @@ class ReviewService:
         status: str | None = None,
         page: int = 1,
         page_size: int = 15,
+        rating: int | None = None,
+        verified: bool | None = None,
+        search: str | None = None,
+        date_from: datetime | None = None,
+        date_to: datetime | None = None,
+        sort_by: str = "created_at",
+        sort_dir: str = "desc",
     ) -> tuple[list[AdminReviewOut], int]:
         rows, total = await self._repo.list_all_paginated(
-            db, status=status, page=page, page_size=page_size
+            db,
+            status=status,
+            page=page,
+            page_size=page_size,
+            rating=rating,
+            verified=verified,
+            search=search,
+            date_from=date_from,
+            date_to=date_to,
+            sort_by=sort_by,
+            sort_dir=sort_dir,
         )
         result: list[AdminReviewOut] = []
         for review, product_name in rows:
