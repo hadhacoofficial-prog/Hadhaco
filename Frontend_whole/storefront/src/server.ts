@@ -1,6 +1,8 @@
 import "./lib/error-capture";
 
+import { AsyncLocalStorage } from "node:async_hooks";
 import * as Sentry from "@sentry/react";
+import { cspHeader, generateNonce, type CspRequestContext } from "./lib/csp";
 import { consumeLastCapturedError } from "./lib/error-capture";
 import { renderErrorPage } from "./lib/error-page";
 
@@ -12,6 +14,26 @@ if (sentryDsn) {
     environment: process.env.NODE_ENV || "production",
     release: process.env.APP_VERSION || "unknown",
     tracesSampleRate: 0.1,
+  });
+}
+
+// Publish the per-request nonce store for getRouter() (router.tsx), which has no
+// access to the Request. Must be set before the first request is handled.
+const cspStore = new AsyncLocalStorage<CspRequestContext>();
+globalThis.__hadhaCspStore = cspStore;
+
+function withCsp(response: Response, nonce: string): Response {
+  const contentType = response.headers.get("content-type") ?? "";
+  if (!contentType.includes("text/html")) return response;
+  const csp = cspHeader(nonce);
+  if (!csp) return response;
+  // Responses from the handler can have immutable headers; copy before setting.
+  const headers = new Headers(response.headers);
+  headers.set(csp.name, csp.value);
+  return new Response(response.body, {
+    status: response.status,
+    statusText: response.statusText,
+    headers,
   });
 }
 
@@ -51,10 +73,11 @@ async function normalizeCatastrophicSsrResponse(response: Response): Promise<Res
 
 export default {
   async fetch(request: Request, env: unknown, ctx: unknown) {
+    const nonce = generateNonce();
     try {
       const handler = await getServerEntry();
-      const response = await handler.fetch(request, env, ctx);
-      return await normalizeCatastrophicSsrResponse(response);
+      const response = await cspStore.run({ nonce }, () => handler.fetch(request, env, ctx));
+      return withCsp(await normalizeCatastrophicSsrResponse(response), nonce);
     } catch (error) {
       console.error(error);
       Sentry.captureException(error);

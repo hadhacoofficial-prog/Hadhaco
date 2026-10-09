@@ -3,6 +3,7 @@ import { createRouter } from "@tanstack/react-router";
 import { routeTree } from "./routeTree.gen";
 import { isApiError } from "./lib/api/errors";
 import { initSync } from "@hadha/shared-api";
+import { currentNonce } from "@/lib/csp";
 import { listenInventoryEvents } from "@/hooks/inventory/listenInventoryEvents";
 import { listenReservationEvents } from "@/hooks/reservation/listenReservationEvents";
 
@@ -56,6 +57,9 @@ export const getRouter = () => {
     context: { queryClient },
     scrollRestoration: true,
     defaultPreloadStaleTime: 0,
+    // Server only: the per-request CSP nonce (undefined in the browser). It is
+    // stamped on the inline scripts TanStack Start emits; see lib/csp.ts.
+    ssr: { nonce: currentNonce() },
   });
 
   return router;
