@@ -24,28 +24,30 @@ export function useActiveReservations() {
 
   const items = useMemo(() => query.data?.items ?? [], [query.data?.items]);
 
-  /** Set of `"productId::variantId"` keys for O(1) lookup. */
-  const reservationKeys = useMemo(() => {
-    const keys = new Set<string>();
-    for (const item of items) {
-      keys.add(reservationKey(item.product_id, item.variant_id));
-    }
-    return keys;
-  }, [items]);
-
-  /** Check if a specific product (optionally a variant) is reserved for the current user. */
-  const isReserved = (productId: string, variantId?: string | null): boolean => {
-    return reservationKeys.has(reservationKey(productId, variantId ?? null));
-  };
-
-  /** Get the reservation items for a specific product. */
+  /**
+   * Get the reservation for a product (optionally a specific variant).
+   *
+   * The server always reserves against a concrete variant (adding to cart
+   * resolves the product's default variant), but a product card or an
+   * unpicked cart line has no variantId. With no variant given, fall back to
+   * the product's own reservation so the shopper's held item isn't read as
+   * "not reserved" (and therefore "Sold Out"). An exact product + variant
+   * match always wins, and a given variant never borrows another variant's
+   * reservation.
+   */
   const getReservation = (
     productId: string,
     variantId?: string | null,
   ): ActiveReservationItem | undefined => {
     const key = reservationKey(productId, variantId ?? null);
-    return items.find((item) => reservationKey(item.product_id, item.variant_id) === key);
+    const exact = items.find((item) => reservationKey(item.product_id, item.variant_id) === key);
+    if (exact || variantId) return exact;
+    return items.find((item) => item.product_id === productId);
   };
+
+  /** Check if a specific product (optionally a variant) is reserved for the current user. */
+  const isReserved = (productId: string, variantId?: string | null): boolean =>
+    getReservation(productId, variantId) !== undefined;
 
   /** True if ANY reservation exists for the given product (any variant). */
   const hasAnyReservation = (productId: string): boolean => {
