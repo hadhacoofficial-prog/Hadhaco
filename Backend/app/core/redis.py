@@ -17,8 +17,14 @@ _redis_pool: aioredis.Redis | None = None
 #   OPEN    → Redis down, requests fail fast with fallback
 #   HALF_OPEN → one probe allowed through; success → CLOSED, failure → OPEN
 #
-# Uses exponential backoff when transitioning OPEN → HALF_OPEN:
-#   30s → 60s → 120s → 300s (max). Resets on success.
+# CLOSED → OPEN only after _CIRCUIT_FAILURE_THRESHOLD consecutive failures.
+# A single slow/timed-out GET (e.g. a 170 KB catalogue page while the event
+# loop is busy) is not "Redis is down": opening on the first failure made every
+# cached endpoint hit Postgres at once, saturating the DB pool (load test
+# 2026-10-10: 6 errors -> 1,500 fallbacks, p95 15 s on /products).
+#
+# Exponential backoff when transitioning OPEN → HALF_OPEN:
+#   5s → 10s → 20s → 40s → 60s (max). Resets on success.
 
 
 class _CircuitState(Enum):
@@ -30,17 +36,19 @@ class _CircuitState(Enum):
 _circuit_state: _CircuitState = _CircuitState.CLOSED
 _circuit_failed_at: float = 0.0
 _circuit_consecutive_failures: int = 0
-_CIRCUIT_INITIAL_BACKOFF: float = 30.0  # seconds
-_CIRCUIT_MAX_BACKOFF: float = 300.0  # 5 minutes max
+_CIRCUIT_INITIAL_BACKOFF: float = 5.0  # seconds
+_CIRCUIT_MAX_BACKOFF: float = 60.0
 _CIRCUIT_BACKOFF_MULTIPLIER: float = 2.0
-_REDIS_OP_TIMEOUT: float = 0.3  # max seconds per cache operation
+_CIRCUIT_FAILURE_THRESHOLD: int = 5  # consecutive failures before opening
+# Max seconds per cache operation. 0.3s was tighter than a loaded single-core
+# event loop can service for large cached pages, producing spurious timeouts.
+_REDIS_OP_TIMEOUT: float = 1.0
 
 
 def _circuit_backoff() -> float:
     """Compute exponential backoff for the current failure count."""
-    backoff = _CIRCUIT_INITIAL_BACKOFF * (
-        _CIRCUIT_BACKOFF_MULTIPLIER ** min(_circuit_consecutive_failures, 5)
-    )
+    extra = max(_circuit_consecutive_failures - _CIRCUIT_FAILURE_THRESHOLD, 0)
+    backoff = _CIRCUIT_INITIAL_BACKOFF * (_CIRCUIT_BACKOFF_MULTIPLIER ** min(extra, 5))
     return min(backoff, _CIRCUIT_MAX_BACKOFF)
 
 
@@ -93,8 +101,11 @@ def mark_redis_error() -> None:
             consecutive_failures=_circuit_consecutive_failures,
             backoff_s=round(_circuit_backoff(), 1),
         )
-    elif _circuit_state == _CircuitState.CLOSED:
-        # First failure — transition to OPEN
+    elif (
+        _circuit_state == _CircuitState.CLOSED
+        and _circuit_consecutive_failures >= _CIRCUIT_FAILURE_THRESHOLD
+    ):
+        # Threshold of consecutive failures reached — transition to OPEN
         _circuit_failed_at = time.monotonic()
         _circuit_state = _CircuitState.OPEN
         import structlog

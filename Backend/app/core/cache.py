@@ -493,6 +493,28 @@ def _evict_stale_locks() -> None:
             del _coalesce_lock_last_used[k]
 
 
+# Last-good values kept in-process and served ONLY while Redis is unavailable
+# (circuit open), so a Redis blip degrades to "slightly stale" instead of every
+# request hitting Postgres. Never consulted while Redis is healthy, so admin
+# cache busts are unaffected. Bounded: ~170 KB/entry worst case.
+_LOCAL_FALLBACK_MAX = 64
+_local_fallback: dict[str, tuple[float, Any]] = {}
+
+
+def _local_fallback_put(key: str, data: Any) -> None:
+    _local_fallback.pop(key, None)
+    _local_fallback[key] = (time.time(), data)
+    while len(_local_fallback) > _LOCAL_FALLBACK_MAX:
+        _local_fallback.pop(next(iter(_local_fallback)))
+
+
+def _local_fallback_get(key: str, max_age: float) -> Any | None:
+    entry = _local_fallback.get(key)
+    if entry is None or (time.time() - entry[0]) >= max_age:
+        return None
+    return entry[1]
+
+
 _MAX_SWR_TASKS = 32
 _swr_refresh_tasks: set[asyncio.Task[None]] = set()
 
@@ -582,6 +604,12 @@ async def cache_swr(
             return data
         # else: hard miss — fall through to blocking fetch below
 
+    if not cached_raw and not redis_available():
+        local = _local_fallback_get(cache_key, ttl + swr_window)
+        if local is not None:
+            profiler.record_cache_hit()
+            return local
+
     profiler.record_cache_miss()
 
     # Cache miss or hard-expired: coalesce concurrent requests
@@ -603,6 +631,7 @@ async def cache_swr(
                 return json.loads(cached_raw)
 
         data = await fetch_fn(*args, **kwargs)
+        _local_fallback_put(cache_key, data)
         wrapper = _safe_json_dumps({"d": data, "t": time.time()})
         # Compress large payloads transparently before storing in Redis.
         compressed = _compress_value(wrapper)
@@ -629,6 +658,7 @@ async def _swr_refresh(
     async with lock:
         try:
             data = await fetch_fn(*args, **kwargs)
+            _local_fallback_put(cache_key, data)
             wrapper = _safe_json_dumps({"d": data, "t": time.time()})
             compressed = _compress_value(wrapper)
             await safe_redis_setex(redis, cache_key, ttl + swr_window, compressed)
