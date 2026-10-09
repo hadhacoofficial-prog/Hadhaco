@@ -22,6 +22,7 @@ services:
       - /opt/hadha/nginx/nginx.conf:/etc/nginx/nginx.conf:ro
       - /opt/hadha/nginx/conf.d:/etc/nginx/conf.d:ro
       - /opt/hadha/nginx/.htpasswd:/etc/nginx/.htpasswd:ro
+      - /opt/hadha/nginx/origin-pull:/etc/nginx/origin-pull:ro
       - /etc/letsencrypt:/etc/letsencrypt:ro
       - /var/www/certbot:/var/www/certbot:ro
       - nginx_logs:/var/log/nginx
@@ -91,7 +92,7 @@ services:
 
   # ── Redis Commander ──────────────────────────────────────────────────────────
   redis-commander:
-    image: rediscommander/redis-commander:latest
+    image: rediscommander/redis-commander:latest@sha256:19cd0c49f418779fa2822a0496c5e6516d0c792effc39ed20089e6268477e40a
     container_name: hadha-redis-commander
     restart: unless-stopped
     environment:
@@ -237,7 +238,7 @@ services:
     restart: unless-stopped
     environment:
       GF_SECURITY_ADMIN_USER: ${GRAFANA_USERNAME:-admin}
-      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_PASSWORD:-hadha-admin}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_PASSWORD:?GRAFANA_PASSWORD is required}
       GF_USERS_ALLOW_SIGN_UP: "false"
       GF_SERVER_ROOT_URL: "https://grafana.hadha.co"
       GF_SERVER_SERVE_FROM_SUB_PATH: "false"
@@ -393,7 +394,7 @@ services:
 
   # ── cAdvisor — container metrics ─────────────────────────────────────────────
   cadvisor:
-    image: ghcr.io/google/cadvisor:latest
+    image: ghcr.io/google/cadvisor:v0.60.6@sha256:b8e7d1093144fd088f425ff003d75a4aa405de075db78dae3bc563730b1bd07a
     container_name: hadha-cadvisor
     restart: unless-stopped
     privileged: true

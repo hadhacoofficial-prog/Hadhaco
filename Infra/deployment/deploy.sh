@@ -828,6 +828,12 @@ if [[ -d "${SYNC_SRC}" ]]; then
     for f in "${SYNC_SRC}/Infra/infrastructure/nginx/conf.d/"*.conf; do
       [[ -f "$f" ]] && cp -f "$f" "${APP_DIR}/nginx/conf.d/$(basename "$f")"
     done
+    # Cloudflare origin-pull CA (enforcement is opt-in via origin-pull.sh)
+    mkdir -p "${APP_DIR}/nginx/origin-pull"
+    if [[ -f "${SYNC_SRC}/Infra/infrastructure/nginx/origin-pull/cloudflare-origin-pull-ca.pem" ]]; then
+      cp -f "${SYNC_SRC}/Infra/infrastructure/nginx/origin-pull/cloudflare-origin-pull-ca.pem" \
+        "${APP_DIR}/nginx/origin-pull/cloudflare-origin-pull-ca.pem"
+    fi
     log "  Nginx configs synced"
   fi
 
