@@ -222,6 +222,9 @@ class TestReturnService:
             ),
             patch.object(ReturnRepository, "create", AsyncMock(return_value=mock_ret)),
             patch.object(ReturnRepository, "add_item", AsyncMock()),
+            patch.object(
+                type(self.svc), "_validate_return_items", AsyncMock(return_value=None)
+            ),
         ):
             db.commit = AsyncMock()
             db.refresh = AsyncMock()
@@ -240,9 +243,81 @@ class TestReturnService:
             )
         assert result is mock_ret
 
+    async def test_create_return_rejects_item_from_another_order(self):
+        db = AsyncMock()
+        result = MagicMock()
+        result.scalars.return_value.all.return_value = []  # no matching order item
+        db.execute = AsyncMock(return_value=result)
+        with (
+            patch.object(
+                ReturnRepository,
+                "is_within_return_window",
+                AsyncMock(return_value=True),
+            ),
+            patch.object(
+                ReturnRepository, "returned_quantities", AsyncMock(return_value={})
+            ),
+        ):
+            with pytest.raises(HTTPException) as exc:
+                await self.svc.create_return(
+                    db,
+                    customer_id=uuid.uuid4(),
+                    data=ReturnCreate(
+                        order_id=uuid.uuid4(),
+                        reason="x",
+                        items=[
+                            ReturnItemCreate(
+                                order_item_id=uuid.uuid4(), quantity=1, reason="x"
+                            )
+                        ],
+                    ),
+                )
+        assert exc.value.status_code == 400
+        assert "does not belong" in exc.value.detail
+
+    async def test_create_return_rejects_quantity_above_remaining(self):
+        db = AsyncMock()
+        item_id = uuid.uuid4()
+        order_item = MagicMock()
+        order_item.id = item_id
+        order_item.quantity = 2
+        result = MagicMock()
+        result.scalars.return_value.all.return_value = [order_item]
+        db.execute = AsyncMock(return_value=result)
+        with (
+            patch.object(
+                ReturnRepository,
+                "is_within_return_window",
+                AsyncMock(return_value=True),
+            ),
+            patch.object(
+                ReturnRepository,
+                "returned_quantities",
+                AsyncMock(return_value={item_id: 1}),
+            ),
+        ):
+            with pytest.raises(HTTPException) as exc:
+                await self.svc.create_return(
+                    db,
+                    customer_id=uuid.uuid4(),
+                    data=ReturnCreate(
+                        order_id=uuid.uuid4(),
+                        reason="x",
+                        items=[
+                            ReturnItemCreate(
+                                order_item_id=item_id, quantity=2, reason="x"
+                            )
+                        ],
+                    ),
+                )
+        assert exc.value.status_code == 400
+        assert "only 1" in exc.value.detail
+
     async def test_admin_update_status_raises_404_when_not_found(self):
         db = AsyncMock()
-        with patch.object(ReturnRepository, "get", AsyncMock(return_value=None)):
+        with patch.object(
+            ReturnRepository, "get_for_update", AsyncMock(return_value=None)
+        ):
             with pytest.raises(HTTPException) as exc:
                 await self.svc.admin_update_status(
                     db,
@@ -257,7 +332,9 @@ class TestReturnService:
         mock_ret = MagicMock()
         mock_updated = MagicMock()
         with (
-            patch.object(ReturnRepository, "get", AsyncMock(return_value=mock_ret)),
+            patch.object(
+                ReturnRepository, "get_for_update", AsyncMock(return_value=mock_ret)
+            ),
             patch.object(
                 ReturnRepository, "update_status", AsyncMock(return_value=mock_updated)
             ),

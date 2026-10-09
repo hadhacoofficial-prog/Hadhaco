@@ -3,7 +3,7 @@ from __future__ import annotations
 import uuid
 from typing import Any
 
-from sqlalchemy import select, text
+from sqlalchemy import func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.modules.returns.models import Return, ReturnItem
@@ -13,6 +13,33 @@ class ReturnRepository:
     async def get(self, db: AsyncSession, return_id: uuid.UUID) -> Return | None:
         result = await db.execute(select(Return).where(Return.id == return_id))
         return result.scalar_one_or_none()
+
+    async def get_for_update(
+        self, db: AsyncSession, return_id: uuid.UUID
+    ) -> Return | None:
+        """Row-locked fetch so two concurrent status updates serialise."""
+        result = await db.execute(
+            select(Return)
+            .where(Return.id == return_id)
+            .with_for_update()
+            .execution_options(populate_existing=True)
+        )
+        return result.scalar_one_or_none()
+
+    async def returned_quantities(
+        self, db: AsyncSession, order_id: uuid.UUID
+    ) -> dict[uuid.UUID, int]:
+        """Units already claimed per order item by non-rejected/cancelled returns."""
+        result = await db.execute(
+            select(ReturnItem.order_item_id, func.sum(ReturnItem.quantity))
+            .join(Return, Return.id == ReturnItem.return_id)
+            .where(
+                Return.order_id == order_id,
+                Return.status.notin_(("rejected", "cancelled")),
+            )
+            .group_by(ReturnItem.order_item_id)
+        )
+        return {row[0]: int(row[1] or 0) for row in result.all()}
 
     async def list_for_customer(
         self, db: AsyncSession, customer_id: uuid.UUID

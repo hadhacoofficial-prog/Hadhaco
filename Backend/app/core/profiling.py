@@ -135,6 +135,11 @@ class _SlowQueryEntry:
         }
 
 
+# Hard cap on distinct endpoint keys kept in memory (defence in depth: callers
+# pass route templates, but the table must never be unbounded).
+_MAX_TRACKED_ENDPOINTS = 500
+
+
 @dataclass
 class _EndpointStats:
     """Per-path latency accumulator for the top-N ranking."""
@@ -313,8 +318,12 @@ class Profiler:
             if path:
                 ep = self._global.endpoints.get(path)
                 if ep is None:
-                    ep = _EndpointStats(path=path)
-                    self._global.endpoints[path] = ep
+                    if len(self._global.endpoints) >= _MAX_TRACKED_ENDPOINTS:
+                        path = "<other>"
+                        ep = self._global.endpoints.get(path)
+                    if ep is None:
+                        ep = _EndpointStats(path=path)
+                        self._global.endpoints[path] = ep
                 ep.count += 1
                 ep.total_ms += duration_ms
                 if duration_ms > ep.max_ms:

@@ -215,3 +215,30 @@ class TestBackupCodes:
         hashed = hash_backup_code(code)
         assert verify_backup_code(code, hashed) is True
         assert verify_backup_code("WRONG12345", hashed) is False
+
+
+class TestWhatsappWebhookSignature:
+    def test_empty_secret_rejects_even_a_correct_looking_signature(self, monkeypatch):
+        import hashlib
+        import hmac
+
+        from app.core.config import settings
+        from app.core.security import verify_whatsapp_webhook_signature
+
+        monkeypatch.setattr(settings, "WHATSAPP_WEBHOOK_SECRET", "")
+        body = b'{"entry": []}'
+        forged = "sha256=" + hmac.new(b"", body, hashlib.sha256).hexdigest()
+        assert verify_whatsapp_webhook_signature(body, forged) is False
+
+    def test_configured_secret_accepts_valid_and_rejects_invalid(self, monkeypatch):
+        import hashlib
+        import hmac
+
+        from app.core.config import settings
+        from app.core.security import verify_whatsapp_webhook_signature
+
+        monkeypatch.setattr(settings, "WHATSAPP_WEBHOOK_SECRET", "s3cret")
+        body = b'{"entry": []}'
+        good = "sha256=" + hmac.new(b"s3cret", body, hashlib.sha256).hexdigest()
+        assert verify_whatsapp_webhook_signature(body, good) is True
+        assert verify_whatsapp_webhook_signature(body, "sha256=00") is False

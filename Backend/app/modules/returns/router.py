@@ -59,7 +59,7 @@ async def admin_update_return_status(
     admin=Depends(require_admin),
 ):
     result = await _svc.admin_update_status(
-        db, return_id=return_id, admin_id=uuid.UUID(admin["sub"]), data=data
+        db, return_id=return_id, admin_id=admin.id, data=data
     )
     return ok(
         result, ResponseCode.RETURN_STATUS_UPDATED, "Return status updated successfully"

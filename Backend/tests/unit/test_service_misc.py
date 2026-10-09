@@ -288,6 +288,67 @@ class TestCartServiceErrorPaths:
                     user_id=uuid.uuid4(),
                 )
 
+    async def test_anonymous_caller_cannot_touch_another_users_cart(self):
+        from app.core.exceptions import NotFoundError
+        from app.modules.cart.schemas import UpdateCartItemRequest
+
+        db = AsyncMock()
+        mock_cart = MagicMock()
+        mock_cart.user_id = uuid.uuid4()
+        mock_cart.items = []
+        with patch(
+            "app.modules.cart.service._repo.get_by_id",
+            AsyncMock(return_value=mock_cart),
+        ):
+            with pytest.raises(NotFoundError):
+                await self.svc.update_item(
+                    db,
+                    uuid.uuid4(),
+                    uuid.uuid4(),
+                    UpdateCartItemRequest(quantity=2),
+                )
+            with pytest.raises(NotFoundError):
+                await self.svc.remove_item(db, uuid.uuid4(), uuid.uuid4())
+
+    async def test_guest_cart_requires_matching_session_id(self):
+        from app.core.exceptions import NotFoundError
+
+        db = AsyncMock()
+        mock_cart = MagicMock()
+        mock_cart.user_id = None
+        mock_cart.session_id = "sess-owner"
+        mock_cart.items = []
+        with patch(
+            "app.modules.cart.service._repo.get_by_id",
+            AsyncMock(return_value=mock_cart),
+        ):
+            with pytest.raises(NotFoundError):
+                await self.svc.remove_item(
+                    db, uuid.uuid4(), uuid.uuid4(), session_id="sess-attacker"
+                )
+
+    async def test_remove_item_requires_item_to_belong_to_cart(self):
+        from app.core.exceptions import NotFoundError
+
+        db = AsyncMock()
+        user_id = uuid.uuid4()
+        mock_cart = MagicMock()
+        mock_cart.user_id = user_id
+        mock_cart.items = []
+        remove = AsyncMock()
+        with (
+            patch(
+                "app.modules.cart.service._repo.get_by_id",
+                AsyncMock(return_value=mock_cart),
+            ),
+            patch("app.modules.cart.service._repo.remove_item", remove),
+        ):
+            with pytest.raises(NotFoundError):
+                await self.svc.remove_item(
+                    db, uuid.uuid4(), uuid.uuid4(), user_id=user_id
+                )
+        remove.assert_not_awaited()
+
     async def test_update_item_raises_404_when_item_not_found(self):
         from app.core.exceptions import NotFoundError
         from app.modules.cart.schemas import UpdateCartItemRequest

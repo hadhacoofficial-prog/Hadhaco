@@ -773,14 +773,21 @@ class ReservationService:
         Runs inside the caller's existing transaction — does not commit.
 
         Returns "fulfilled" if the order's reservations completed normally,
-        "refund_required" if the reservation had already expired.
+        "refund_required" if the reservation had already expired, or was
+        released (e.g. by a payment.failed webhook for an earlier attempt) and
+        never completed — in both cases the stock hold is gone, so captured
+        money must be refunded rather than the order silently confirmed.
         """
         await self.complete_order_reservations(db, order_id)
 
         has_expired = await db.execute(
             text(
-                "SELECT 1 FROM inventory_reservations "
-                "WHERE order_id = :oid AND status = 'EXPIRED' LIMIT 1"
+                "SELECT 1 FROM inventory_reservations r "
+                "WHERE r.order_id = :oid AND ("
+                "r.status = 'EXPIRED' OR (r.status = 'RELEASED' AND NOT EXISTS ("
+                "SELECT 1 FROM inventory_reservations c "
+                "WHERE c.order_id = :oid AND c.status = 'COMPLETED'))"
+                ") LIMIT 1"
             ),
             {"oid": str(order_id)},
         )

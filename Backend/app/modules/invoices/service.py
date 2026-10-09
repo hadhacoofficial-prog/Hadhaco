@@ -1,6 +1,8 @@
 import io
+import secrets
 import uuid
 from datetime import UTC, datetime
+from xml.sax.saxutils import escape
 
 import boto3
 from botocore.config import Config
@@ -47,9 +49,11 @@ def _build_pdf(order, invoice_number: str) -> bytes:
     elements = []
 
     # Header
-    elements.append(Paragraph(f"<b>{settings.APP_NAME}</b>", styles["Title"]))
+    elements.append(Paragraph(f"<b>{escape(settings.APP_NAME)}</b>", styles["Title"]))
     if settings.SELLER_GSTIN:
-        elements.append(Paragraph(f"GSTIN: {settings.SELLER_GSTIN}", styles["Normal"]))
+        elements.append(
+            Paragraph(f"GSTIN: {escape(str(settings.SELLER_GSTIN))}", styles["Normal"])
+        )
     elements.append(Spacer(1, 4 * mm))
     elements.append(Paragraph("<b>TAX INVOICE</b>", styles["Heading2"]))
     elements.append(Spacer(1, 2 * mm))
@@ -76,21 +80,32 @@ def _build_pdf(order, invoice_number: str) -> bytes:
 
     # Shipping address
     elements.append(Paragraph("<b>Ship To:</b>", styles["Normal"]))
+    # ReportLab Paragraph parses an XML-like mini markup (<img src=...>, <font>,
+    # <a href>). Customer-controlled address text MUST be escaped or it can
+    # trigger server-side image fetches / local file embedding and break PDF
+    # generation.
     addr_lines = filter(
         None,
         [
-            order.shipping_full_name,
-            order.shipping_line1,
-            order.shipping_line2,
-            f"Landmark: {order.shipping_landmark}" if order.shipping_landmark else None,
-            f"{order.shipping_city}, {order.shipping_state} {order.shipping_postal}",
-            order.shipping_country,
-            f"Phone: {order.shipping_phone}" if order.shipping_phone else None,
-            (
-                f"Alt Phone: {order.shipping_alternate_phone}"
-                if order.shipping_alternate_phone
-                else None
-            ),
+            escape(str(line)) if line else None
+            for line in [
+                order.shipping_full_name,
+                order.shipping_line1,
+                order.shipping_line2,
+                (
+                    f"Landmark: {order.shipping_landmark}"
+                    if order.shipping_landmark
+                    else None
+                ),
+                f"{order.shipping_city}, {order.shipping_state} {order.shipping_postal}",
+                order.shipping_country,
+                f"Phone: {order.shipping_phone}" if order.shipping_phone else None,
+                (
+                    f"Alt Phone: {order.shipping_alternate_phone}"
+                    if order.shipping_alternate_phone
+                    else None
+                ),
+            ]
         ],
     )
     elements.append(Paragraph("<br/>".join(addr_lines), styles["Normal"]))
@@ -199,7 +214,11 @@ class InvoiceService:
         pdf_bytes = _build_pdf(order, invoice_number)
 
         # Upload to R2
-        r2_key = f"invoices/{order.id}/{invoice_number}.pdf"
+        # Unguessable key segment: the order id is not a secret (it appears in
+        # review payloads), so the object path must not be derivable from it.
+        # Customers download through a short-lived presigned URL
+        # (get_download_url); no public URL is persisted for the invoice.
+        r2_key = f"invoices/{order.id}/{secrets.token_urlsafe(24)}-{invoice_number}.pdf"
         client = _r2_client()
         client.put_object(
             Bucket=settings.R2_BUCKET_NAME,
@@ -207,7 +226,7 @@ class InvoiceService:
             Body=pdf_bytes,
             ContentType="application/pdf",
         )
-        pdf_url = f"{settings.R2_PUBLIC_URL.rstrip('/')}/{r2_key}"
+        pdf_url = None
 
         invoice = await repo.create_invoice(
             db,

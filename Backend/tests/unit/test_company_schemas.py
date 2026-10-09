@@ -270,8 +270,13 @@ class TestCompanyConfigUpdate:
         ],
     )
     def test_each_field_can_be_set_independently(self, field):
-        data = self.schema(**{field: "test_value"})
-        assert getattr(data, field) == "test_value"
+        value = (
+            "https://cdn.example.com/logo.png"
+            if field in ("packing_slip_logo_url", "shipping_label_logo_url")
+            else "test_value"
+        )
+        data = self.schema(**{field: value})
+        assert getattr(data, field) == value
 
     def test_country_can_be_set_independently(self):
         data = self.schema(country="US")

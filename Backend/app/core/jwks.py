@@ -21,6 +21,14 @@ from app.core.config import settings
 log = structlog.get_logger(__name__)
 
 
+# Minimum seconds between upstream JWKS fetch attempts. Without it, any
+# unauthenticated request carrying an ES256 token with an unknown `kid` forces
+# a network fetch while holding the shared lock, stalling every other token
+# verification in the worker. Legitimate key rotation is picked up within this
+# window.
+_MIN_REFETCH_INTERVAL = 10.0
+
+
 class JWKSCache:
     """
     Async-safe, in-memory cache for Supabase JWKS EC public keys.
@@ -37,20 +45,30 @@ class JWKSCache:
         self._ttl: int = ttl if ttl is not None else settings.JWKS_CACHE_TTL
         self._keys: dict[str, Any] = {}  # kid → ECAlgorithm public key object
         self._fetched_at: float = 0.0
+        self._last_attempt: float | None = None
         self._lock: asyncio.Lock = asyncio.Lock()
 
     async def get_key(self, kid: str) -> Any:
         """Return the EC public key for *kid*, refreshing the cache if needed."""
+        # Fast path: fresh cache hit never touches the lock or the network.
+        if not self._is_stale() and kid in self._keys:
+            return self._keys[kid]
+
         async with self._lock:
-            if self._is_stale():
-                await self._try_refresh()
-            if kid not in self._keys:
-                # Key not found — Supabase may have rotated. Refresh once more.
+            if (self._is_stale() or kid not in self._keys) and self._may_refetch():
+                # Stale TTL, or unknown kid (Supabase may have rotated keys):
+                # one fetch, rate limited by _MIN_REFETCH_INTERVAL.
                 await self._try_refresh()
 
         if kid not in self._keys:
             raise ValueError(f"JWKS: unknown key id '{kid}'")
         return self._keys[kid]
+
+    def _may_refetch(self) -> bool:
+        return (
+            self._last_attempt is None
+            or (time.monotonic() - self._last_attempt) >= _MIN_REFETCH_INTERVAL
+        )
 
     async def _try_refresh(self) -> None:
         """
@@ -61,6 +79,7 @@ class JWKSCache:
         cached keys at all — then there is genuinely nothing to verify
         against, and failing closed is correct.
         """
+        self._last_attempt = time.monotonic()
         try:
             await self._refresh()
         except Exception:

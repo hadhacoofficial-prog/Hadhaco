@@ -14,6 +14,7 @@ from app.modules.support.schemas import (
     MessageCreate,
     TicketCreate,
     TicketOut,
+    customer_view,
 )
 from app.modules.support.service import SupportService
 
@@ -42,7 +43,11 @@ async def list_tickets(
     db: AsyncSession = Depends(get_db), user=Depends(get_current_user)
 ):
     result = await _svc.list_customer_tickets(db, user.id)
-    return ok(result, ResponseCode.SUPPORT_TICKET_LISTED, "Tickets listed successfully")
+    return ok(
+        [customer_view(t) for t in result],
+        ResponseCode.SUPPORT_TICKET_LISTED,
+        "Tickets listed successfully",
+    )
 
 
 @router.get("/tickets/{ticket_id}", response_model=BaseSuccessResponse[TicketOut])
@@ -53,7 +58,9 @@ async def get_ticket(
 ):
     result = await _svc.get_ticket(db, ticket_id, viewer_id=user.id, is_admin=False)
     return ok(
-        result, ResponseCode.SUPPORT_TICKET_FETCHED, "Ticket fetched successfully"
+        customer_view(result),
+        ResponseCode.SUPPORT_TICKET_FETCHED,
+        "Ticket fetched successfully",
     )
 
 

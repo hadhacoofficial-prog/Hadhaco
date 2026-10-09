@@ -198,7 +198,9 @@ async def change_user_role(
     db: AsyncSession = Depends(get_db),
     redis: aioredis.Redis = Depends(get_redis),
 ) -> BaseSuccessResponse[ProfileResponse]:
-    profile = await _svc.change_role(db, user_id, data.role, current_user.id)
+    profile = await _svc.change_role(
+        db, user_id, data.role, current_user.id, actor_role=current_user.role
+    )
     await _invalidate(redis, user_id)
     return ok(
         await _to_profile_response(db, profile),
@@ -217,7 +219,9 @@ async def set_user_status(
     db: AsyncSession = Depends(get_db),
     redis: aioredis.Redis = Depends(get_redis),
 ) -> BaseSuccessResponse[ProfileResponse]:
-    profile = await _svc.set_status(db, user_id, data.is_active, current_user.id)
+    profile = await _svc.set_status(
+        db, user_id, data.is_active, current_user.id, actor_role=current_user.role
+    )
     await _invalidate(redis, user_id)
     return ok(
         await _to_profile_response(db, profile),

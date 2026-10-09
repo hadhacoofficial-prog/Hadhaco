@@ -61,9 +61,12 @@ async def update_cart_item(
     payload: UpdateCartItemRequest,
     db: AsyncSession = Depends(get_db),
     current_user=Depends(get_current_user_optional),
+    x_session_id: str | None = Header(None, alias="X-Session-ID"),
 ):
-    user_id = current_user.id if current_user else None
-    result = await _service.update_item(db, cart_id, item_id, payload, user_id=user_id)
+    user_id, session_id = _resolve_identity(current_user, x_session_id)
+    result = await _service.update_item(
+        db, cart_id, item_id, payload, user_id=user_id, session_id=session_id
+    )
     return ok(result, ResponseCode.CART_ITEM_UPDATED, "Cart item updated")
 
 
@@ -75,9 +78,12 @@ async def remove_cart_item(
     item_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
     current_user=Depends(get_current_user_optional),
+    x_session_id: str | None = Header(None, alias="X-Session-ID"),
 ):
-    user_id = current_user.id if current_user else None
-    result = await _service.remove_item(db, cart_id, item_id, user_id=user_id)
+    user_id, session_id = _resolve_identity(current_user, x_session_id)
+    result = await _service.remove_item(
+        db, cart_id, item_id, user_id=user_id, session_id=session_id
+    )
     return ok(result, ResponseCode.CART_ITEM_REMOVED, "Item removed from cart")
 
 

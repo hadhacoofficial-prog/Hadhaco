@@ -361,6 +361,11 @@ class TestOrderServiceCreatePaymentIntent:
             patch("app.modules.orders.service._repo.add_item", AsyncMock()),
             patch("app.modules.orders.service._repo.update", AsyncMock()),
             patch.object(
+                type(self.svc),
+                "_coupon_context",
+                AsyncMock(return_value=(None, "buyer@example.com", None)),
+            ),
+            patch.object(
                 CouponService,
                 "apply_and_reserve",
                 AsyncMock(return_value=(50.0, coupon_id, "percentage")),
@@ -438,6 +443,11 @@ class TestOrderServiceCreatePaymentIntent:
             ),
             patch("app.modules.orders.service._repo.add_item", AsyncMock()),
             patch("app.modules.orders.service._repo.update", AsyncMock()),
+            patch.object(
+                type(self.svc),
+                "_coupon_context",
+                AsyncMock(return_value=(None, "buyer@example.com", None)),
+            ),
             patch.object(
                 CouponService,
                 "apply_and_reserve",

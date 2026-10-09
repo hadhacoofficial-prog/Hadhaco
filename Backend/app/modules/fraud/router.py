@@ -59,7 +59,7 @@ async def resolve_signal(
     admin=Depends(require_admin),
 ):
     result = await _svc.resolve_signal(
-        db, signal_id=signal_id, resolver_id=uuid.UUID(admin["sub"]), data=data
+        db, signal_id=signal_id, resolver_id=admin.id, data=data
     )
     return ok(
         result, ResponseCode.FRAUD_SIGNAL_RESOLVED, "Fraud signal resolved successfully"

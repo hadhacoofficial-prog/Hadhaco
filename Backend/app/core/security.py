@@ -181,12 +181,18 @@ def verify_whatsapp_webhook_signature(body: bytes, signature_header: str) -> boo
     import hashlib
     import hmac
 
+    secret = settings.WHATSAPP_WEBHOOK_SECRET
+    if not secret:
+        # Fail closed: HMAC with an empty key is computable by anyone, so an
+        # unconfigured secret must reject every callback instead of accepting
+        # forged ones.
+        return False
     prefix = "sha256="
     if not signature_header.startswith(prefix):
         return False
     provided = signature_header[len(prefix) :]
     expected = hmac.new(
-        settings.WHATSAPP_WEBHOOK_SECRET.encode(),
+        secret.encode(),
         body,
         hashlib.sha256,
     ).hexdigest()

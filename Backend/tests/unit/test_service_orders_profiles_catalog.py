@@ -247,6 +247,7 @@ class TestOrderServiceCancel:
         mock_order = MagicMock()
         mock_order.user_id = user_id
         mock_order.status = "pending"
+        mock_order.fulfillment_status = "pending"
         mock_order.coupon_id = None
         mock_order.items = []
         mock_updated = MagicMock()
@@ -444,9 +445,48 @@ class TestProfileService:
             patch("app.modules.audit.service.AuditService.log", AsyncMock()),
         ):
             result = await self.svc.change_role(
-                db, str(uuid.uuid4()), UserRole.ADMIN, str(uuid.uuid4())
+                db,
+                str(uuid.uuid4()),
+                UserRole.ADMIN,
+                str(uuid.uuid4()),
+                actor_role=UserRole.SUPER_ADMIN,
             )
         assert result is mock_updated
+
+    async def test_change_role_denied_for_plain_admin(self):
+        from app.core.constants import UserRole
+        from app.core.exceptions import AuthorizationError
+
+        db = AsyncMock()
+        mock_profile = MagicMock()
+        mock_profile.role = UserRole.CUSTOMER
+        with patch.object(
+            self.repo_cls, "get_by_id", AsyncMock(return_value=mock_profile)
+        ):
+            with pytest.raises(AuthorizationError):
+                await self.svc.change_role(
+                    db,
+                    str(uuid.uuid4()),
+                    UserRole.SUPER_ADMIN,
+                    str(uuid.uuid4()),
+                    actor_role=UserRole.ADMIN,
+                )
+
+    async def test_change_role_denied_for_self(self):
+        from app.core.constants import UserRole
+        from app.core.exceptions import AuthorizationError
+
+        db = AsyncMock()
+        me = str(uuid.uuid4())
+        mock_profile = MagicMock()
+        mock_profile.role = UserRole.SUPER_ADMIN
+        with patch.object(
+            self.repo_cls, "get_by_id", AsyncMock(return_value=mock_profile)
+        ):
+            with pytest.raises(AuthorizationError):
+                await self.svc.change_role(
+                    db, me, UserRole.CUSTOMER, me, actor_role=UserRole.SUPER_ADMIN
+                )
 
     async def test_set_status_raises_404_when_not_found(self):
         from app.core.exceptions import NotFoundError
@@ -458,9 +498,52 @@ class TestProfileService:
                     db, str(uuid.uuid4()), False, str(uuid.uuid4())
                 )
 
+    async def test_set_status_denied_against_equal_or_higher_role(self):
+        from app.core.constants import UserRole
+        from app.core.exceptions import AuthorizationError
+
+        db = AsyncMock()
+        for target_role, actor_role in (
+            (UserRole.SUPER_ADMIN, UserRole.ADMIN),
+            (UserRole.ADMIN, UserRole.ADMIN),
+            (UserRole.SUPER_ADMIN, UserRole.SUPER_ADMIN),
+        ):
+            mock_profile = MagicMock()
+            mock_profile.role = target_role
+            with patch.object(
+                self.repo_cls, "get_by_id", AsyncMock(return_value=mock_profile)
+            ):
+                with pytest.raises(AuthorizationError):
+                    await self.svc.set_status(
+                        db,
+                        str(uuid.uuid4()),
+                        False,
+                        str(uuid.uuid4()),
+                        actor_role=actor_role,
+                    )
+
+    async def test_set_status_denied_for_self(self):
+        from app.core.constants import UserRole
+        from app.core.exceptions import AuthorizationError
+
+        db = AsyncMock()
+        me = str(uuid.uuid4())
+        mock_profile = MagicMock()
+        mock_profile.role = UserRole.CUSTOMER
+        with patch.object(
+            self.repo_cls, "get_by_id", AsyncMock(return_value=mock_profile)
+        ):
+            with pytest.raises(AuthorizationError):
+                await self.svc.set_status(
+                    db, me, False, me, actor_role=UserRole.SUPER_ADMIN
+                )
+
     async def test_set_status_success(self):
+        from app.core.constants import UserRole
+
         db = AsyncMock()
         mock_profile = MagicMock()
+        mock_profile.role = UserRole.CUSTOMER
         mock_updated = MagicMock()
         with (
             patch.object(
@@ -470,7 +553,11 @@ class TestProfileService:
             patch("app.modules.audit.service.AuditService.log", AsyncMock()),
         ):
             result = await self.svc.set_status(
-                db, str(uuid.uuid4()), False, str(uuid.uuid4())
+                db,
+                str(uuid.uuid4()),
+                False,
+                str(uuid.uuid4()),
+                actor_role=UserRole.ADMIN,
             )
         assert result is mock_updated
 

@@ -59,3 +59,6 @@ node_modules/
 deploy/
 # Local database backups (pg_dump of the Supabase instance) — never commit
 db_backups/
+
+# Security audit run output (local only) — never commit
+security-audit/

@@ -430,14 +430,13 @@ def _logo_data_uri(
 
     if logo_url:
         try:
-            import httpx
+            from app.core.safe_fetch import fetch_public_image
 
-            resp = httpx.get(logo_url, timeout=5.0)
-            resp.raise_for_status()
-            content_type = resp.headers.get("content-type", "image/png").split(";")[0]
-            data = base64.b64encode(resp.content).decode()
+            body, content_type = fetch_public_image(logo_url)
+            data = base64.b64encode(body).decode()
             return f"data:{content_type};base64,{data}"
         except Exception:
+            # Unsafe, unreachable or non-image URL: fall back to the bundled logo.
             pass
 
     logo = _TEMPLATES_DIR / default_filename

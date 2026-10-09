@@ -272,7 +272,9 @@ class CouponService:
                 return _invalid("This coupon is not valid for your account.")
 
         if phones := _nonempty(coupon.allowed_phone_numbers):
-            if user_phone and user_phone not in phones:
+            # Fail closed: an account with no phone on file cannot satisfy a
+            # phone-restricted audience.
+            if not user_phone or user_phone not in phones:
                 return _invalid("This coupon is not valid for your account.")
 
         return result
@@ -283,6 +285,9 @@ class CouponService:
         code: str,
         subtotal: float,
         user_id: uuid.UUID,
+        ctx: CouponValidateRequest | None = None,
+        user_email: str | None = None,
+        user_phone: str | None = None,
     ) -> tuple[float, uuid.UUID, str]:
         """Validate, record a pending usage (order_id filled later), return
         (discount, coupon_id, coupon_type) — coupon_type is already known
@@ -295,7 +300,17 @@ class CouponService:
         usage, oversubscribing a capped promo or double-redeeming a
         one-time-per-customer coupon.
         """
-        result = await self.validate(db, code, subtotal, user_id)
+        # The state-changing path must enforce exactly the rules the /validate
+        # preview does: audience (email/phone) plus the checkout context
+        # (products, categories, payment/shipping method, region). ctx and the
+        # customer identity are derived server-side by the caller — never from
+        # client-supplied fields.
+        if user_email is not None:
+            result = await self.validate_with_email_check(
+                db, code, subtotal, user_id, user_email, user_phone, ctx
+            )
+        else:
+            result = await self.validate(db, code, subtotal, user_id, ctx)
         if not result.valid:
             raise ValidationError(result.message)
 

@@ -231,14 +231,38 @@ _SSE_EVENT_MAP: dict[str, str] = {
 }
 
 
+# Fields each SSE event type may expose on the public, unauthenticated stream.
+# This is an ALLOWLIST: anything not listed (customer_email, customer_phone,
+# order_number, totals, ...) is never broadcast, even if a domain event gains
+# new fields later. user_id/user_ids stay only because the client uses them to
+# scope per-user cache invalidation; they are opaque identifiers, not contact
+# data.
+_SSE_PUBLIC_FIELDS: dict[str, frozenset[str]] = {
+    "inventory_changed": frozenset({"product_ids", "available_by_product"}),
+    "order_created": frozenset({"order_id", "user_id"}),
+    "order_status_changed": frozenset({"order_id", "user_id", "new_status"}),
+    "reservation_created": frozenset(
+        {"reservation_id", "user_id", "product_ids", "available_by_product"}
+    ),
+    "reservation_expired": frozenset(
+        {"reservation_id", "user_ids", "product_ids", "available_by_product"}
+    ),
+    "product_updated": frozenset({"product_id"}),
+    "price_changed": frozenset({"product_id", "old_price", "new_price"}),
+    "collection_updated": frozenset({"collection_id"}),
+    "cms_published": frozenset({"section_key"}),
+}
+
+
 def _event_to_sse_payload(event: BaseEvent) -> dict[str, Any] | None:
-    """Convert a domain event to an SSE-friendly payload."""
+    """Convert a domain event to an SSE-friendly payload (allowlisted fields only)."""
     sse_type = _SSE_EVENT_MAP.get(event.event_type)
     if not sse_type:
         return None
+    allowed = _SSE_PUBLIC_FIELDS.get(sse_type, frozenset())
     payload: dict[str, Any] = {}
     for k, v in event.__dict__.items():
-        if k in ("event_type", "occurred_at"):
+        if k not in allowed:
             continue
         if v is not None and v != "" and v != [] and v != 0.0:
             payload[k] = v

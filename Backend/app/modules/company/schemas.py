@@ -125,3 +125,16 @@ class CompanyConfigUpdate(BaseModel):
     @classmethod
     def _uppercase_country(cls, v: str | None) -> str | None:
         return v.upper() if v else v
+
+    @field_validator("packing_slip_logo_url", "shipping_label_logo_url")
+    @classmethod
+    def _logo_must_be_public_https(cls, v: str | None) -> str | None:
+        # Only these two URLs are fetched server-side (label / packing slip).
+        if not v:
+            return v
+        from app.core.safe_fetch import UnsafeUrlError, validate_public_https_url
+
+        try:
+            return validate_public_https_url(v)
+        except UnsafeUrlError as exc:
+            raise ValueError(str(exc)) from exc

@@ -1,3 +1,4 @@
+import re
 import uuid
 
 import structlog
@@ -5,6 +6,8 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.requests import Request
 from starlette.responses import Response
 from starlette.types import ASGIApp
+
+_SAFE_REQUEST_ID = re.compile(r"[A-Za-z0-9._:-]{1,64}")
 
 
 class RequestIDMiddleware(BaseHTTPMiddleware):
@@ -18,7 +21,12 @@ class RequestIDMiddleware(BaseHTTPMiddleware):
         super().__init__(app)
 
     async def dispatch(self, request: Request, call_next) -> Response:
-        request_id = request.headers.get("X-Request-ID") or str(uuid.uuid4())
+        # Reuse a client-supplied id only if it is a short, safe token; anything
+        # else (control chars, huge values, log-injection attempts) is replaced.
+        supplied = request.headers.get("X-Request-ID", "")
+        request_id = (
+            supplied if _SAFE_REQUEST_ID.fullmatch(supplied) else str(uuid.uuid4())
+        )
         request.state.request_id = request_id
 
         structlog.contextvars.clear_contextvars()

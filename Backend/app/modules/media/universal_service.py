@@ -47,6 +47,7 @@ from app.modules.media.schemas import (
 )
 from app.modules.media.validation import (
     ImageValidationError,
+    assert_pixel_budget,
     resolve_extension,
     sanitize_svg,
     validate_upload,
@@ -233,6 +234,12 @@ class UniversalImageService:
         preset = get_preset(preset_id)
         is_svg = content_type == "image/svg+xml"
         if not is_svg:
+            # Reject oversized pixel dimensions from the header BEFORE any
+            # decode (orientation normalisation decodes the whole image).
+            try:
+                assert_pixel_budget(file_bytes)
+            except ImageValidationError as exc:
+                raise UniversalImageServiceError(str(exc)) from exc
             file_bytes = await _normalize_orientation_off_loop(file_bytes, preset)
             _mark("normalize_orientation")
 

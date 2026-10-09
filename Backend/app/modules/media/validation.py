@@ -18,6 +18,14 @@ from PIL import Image
 
 from app.modules.media.preset_registry import Breakpoint, CropPreset
 
+# Hard ceiling on decoded pixels (width x height). A tiny, highly compressible
+# PNG/WebP can declare tens of thousands of pixels per side and expand to
+# gigabytes in RAM when decoded; reject on the header before any decode. Also
+# applied process-wide so Pillow's own decompression-bomb guard trips at this
+# limit (it raises at 2x MAX_IMAGE_PIXELS) rather than at its much higher default.
+MAX_IMAGE_PIXELS = 50_000_000
+Image.MAX_IMAGE_PIXELS = MAX_IMAGE_PIXELS
+
 
 class ImageValidationError(ValueError):
     pass
@@ -65,6 +73,21 @@ def sanitize_svg(file_bytes: bytes) -> bytes:
     return ET.tostring(root, encoding="utf-8", xml_declaration=True)
 
 
+def assert_pixel_budget(file_bytes: bytes) -> None:
+    """Header-only check: raises ImageValidationError if the image would decode
+    to more than MAX_IMAGE_PIXELS pixels. Does not decode pixel data."""
+    try:
+        with Image.open(io.BytesIO(file_bytes)) as probe:
+            width, height = probe.size
+    except Exception as exc:  # unreadable / decompression bomb header
+        raise ImageValidationError(f"File is not a valid image: {exc}") from exc
+    if width * height > MAX_IMAGE_PIXELS:
+        raise ImageValidationError(
+            f"Image is {width}x{height} ({width * height / 1e6:.0f} MP), "
+            f"exceeds the {MAX_IMAGE_PIXELS // 1_000_000} MP limit"
+        )
+
+
 def validate_upload(
     file_bytes: bytes,
     original_filename: str,
@@ -94,6 +117,8 @@ def validate_upload(
     if content_type == "image/svg+xml":
         # SVGs have no raster dimensions to validate against min_resolution.
         return
+
+    assert_pixel_budget(file_bytes)
 
     try:
         img = Image.open(io.BytesIO(file_bytes))

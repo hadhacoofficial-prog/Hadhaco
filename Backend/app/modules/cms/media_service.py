@@ -15,6 +15,7 @@ from __future__ import annotations
 import asyncio
 import io
 import logging
+import re
 import uuid
 
 import boto3
@@ -29,6 +30,7 @@ from app.core.cpu_executor import run_cpu_bound
 from app.core.exceptions import HTTP_422
 from app.modules.cms.models import CmsMedia
 from app.modules.cms.repository import CMSRepository
+from app.modules.media.validation import ImageValidationError, assert_pixel_budget
 
 logger = logging.getLogger(__name__)
 
@@ -38,6 +40,20 @@ _THUMBNAIL_SIZE = (400, 400)
 _IMAGE_MIMES = {"image/jpeg", "image/png", "image/webp", "image/gif", "image/avif"}
 _VIDEO_MIMES = {"video/mp4", "video/webm", "video/ogg"}
 _MAX_FILE_SIZE = 50 * 1024 * 1024  # 50 MB
+
+# Object-key extension is derived from the *validated* content type, never from
+# the client-supplied filename; the folder must be a short slug path.
+_EXT_BY_MIME = {
+    "image/jpeg": "jpg",
+    "image/png": "png",
+    "image/webp": "webp",
+    "image/gif": "gif",
+    "image/avif": "avif",
+    "video/mp4": "mp4",
+    "video/webm": "webm",
+    "video/ogg": "ogv",
+}
+_FOLDER_RE = re.compile(r"^[a-z0-9][a-z0-9_-]{0,39}(/[a-z0-9][a-z0-9_-]{0,39}){0,3}$")
 
 # CMS objects are stored at a media_id-derived key that's never reused for
 # different content (a replace uploads a new id), so — like URIS variants —
@@ -86,6 +102,7 @@ def _probe_and_thumbnail(
     kept as two decodes rather than sharing one Image object across both,
     matching the original behavior exactly since _to_webp mutates the image
     it decodes (thumbnail() is in-place)."""
+    assert_pixel_budget(data)
     width, height = Image.open(io.BytesIO(data)).size
     thumb_data = _to_webp(data, max_size)
     return width, height, thumb_data
@@ -119,14 +136,22 @@ class CmsMediaService:
                 status.HTTP_413_REQUEST_ENTITY_TOO_LARGE, "File exceeds 50 MB limit"
             )
 
+        if is_image:
+            try:
+                assert_pixel_budget(data)
+            except ImageValidationError as exc:
+                raise HTTPException(HTTP_422, str(exc)) from exc
+
         media_id = uuid.uuid4()
         original_filename = file.filename or "upload"
-        safe_folder = folder.strip("/") or "cms"
-        ext = (
-            original_filename.rsplit(".", 1)[-1].lower()
-            if "." in original_filename
-            else "bin"
-        )
+        safe_folder = folder.strip().strip("/") or "cms"
+        if not _FOLDER_RE.fullmatch(safe_folder):
+            raise HTTPException(
+                HTTP_422,
+                "Invalid folder: use lowercase letters, digits, '-' or '_' "
+                "(up to 4 levels).",
+            )
+        ext = _EXT_BY_MIME[content_type]
         key = f"{safe_folder}/{media_id}.{ext}"
 
         client = _r2()

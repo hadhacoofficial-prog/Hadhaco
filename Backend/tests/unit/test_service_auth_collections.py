@@ -328,6 +328,7 @@ class TestAuthService2FA:
     async def test_setup_2fa_updates_existing_record(self):
         db = AsyncMock()
         mock_record = MagicMock()
+        mock_record.is_enabled = False
         mock_result = MagicMock()
         mock_result.scalar_one_or_none.return_value = mock_record  # existing record
         db.execute = AsyncMock(return_value=mock_result)
@@ -336,6 +337,21 @@ class TestAuthService2FA:
         assert "totp_uri" in result
         # Should call execute twice: once to get existing, once to update
         assert db.execute.await_count == 2
+
+    async def test_setup_2fa_refuses_to_replace_enabled_factor(self):
+        from app.core.exceptions import ConflictError
+
+        db = AsyncMock()
+        mock_record = MagicMock()
+        mock_record.is_enabled = True
+        mock_result = MagicMock()
+        mock_result.scalar_one_or_none.return_value = mock_record
+        db.execute = AsyncMock(return_value=mock_result)
+
+        with pytest.raises(ConflictError):
+            await self.svc.setup_2fa(db, str(uuid.uuid4()), "test@example.com")
+        # Only the lookup ran — the enabled factor was never overwritten.
+        assert db.execute.await_count == 1
 
     async def test_verify_and_activate_2fa_raises_error_on_invalid_totp(self):
         from app.core.exceptions import AuthenticationError
@@ -923,31 +939,27 @@ class TestAuthService2FA:
 
         assert result == 2
 
-    async def test_logout_calls_supabase_api(self):
+    async def test_logout_revokes_auth_sessions_in_savepoint(self):
         db = AsyncMock()
-        mock_response = MagicMock()
-        mock_client = AsyncMock()
-        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
-        mock_client.__aexit__ = AsyncMock(return_value=False)
-        mock_client.post = AsyncMock(return_value=mock_response)
-        with patch("httpx.AsyncClient", return_value=mock_client):
-            await self.svc.logout(db, str(uuid.uuid4()))
-        mock_client.post.assert_awaited_once()
+        nested_cm = AsyncMock()
+        nested_cm.__aenter__ = AsyncMock(return_value=None)
+        nested_cm.__aexit__ = AsyncMock(return_value=False)
+        db.begin_nested = MagicMock(return_value=nested_cm)
+        uid = str(uuid.uuid4())
+        await self.svc.logout(db, uid)
+        db.execute.assert_awaited_once()
+        stmt, params = db.execute.await_args.args
+        assert "auth.sessions" in str(stmt)
+        assert params == {"uid": uid}
 
-    async def test_logout_swallows_supabase_outage_without_raising(self):
-        """A Supabase admin-API outage must never prevent logout â€” routers
-        call this before clearing the local AdminSession row, so letting the
-        exception propagate would leave that row (and the 2FA-verified
-        state) in place even though the user asked to log out."""
+    async def test_logout_swallows_revocation_failure_without_raising(self):
+        """A revocation failure must never prevent logout — routers call this
+        before clearing the local AdminSession row, so letting the exception
+        propagate would leave that row (and the 2FA-verified state) in place
+        even though the user asked to log out."""
         db = AsyncMock()
-        mock_client = AsyncMock()
-        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
-        mock_client.__aexit__ = AsyncMock(return_value=False)
-        mock_client.post = AsyncMock(
-            side_effect=ConnectionError("supabase unreachable")
-        )
-        with patch("httpx.AsyncClient", return_value=mock_client):
-            await self.svc.logout(db, str(uuid.uuid4()))  # must not raise
+        db.begin_nested = MagicMock(side_effect=ConnectionError("db unreachable"))
+        await self.svc.logout(db, str(uuid.uuid4()))  # must not raise
 
     async def test_force_logout_delegates_to_logout(self):
         db = AsyncMock()

@@ -56,9 +56,16 @@ jobs:
 
       - name: Resolve version
         id: version
+        env:
+          # Passed via env, never expanded inline into the script (script injection).
+          INPUT_IMAGE_TAG: ${{ github.event.inputs.image_tag }}
         run: |
-          if [[ -n "${{ github.event.inputs.image_tag }}" ]]; then
-            TAG="${{ github.event.inputs.image_tag }}"
+          if [[ -n "${INPUT_IMAGE_TAG}" ]]; then
+            if [[ ! "${INPUT_IMAGE_TAG}" =~ ^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$ ]]; then
+              echo "::error::image_tag must match ^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$"
+              exit 1
+            fi
+            TAG="${INPUT_IMAGE_TAG}"
             echo "Using manually specified tag: ${TAG}"
           else
             SHORT_SHA="${GITHUB_SHA::8}"
@@ -76,6 +83,9 @@ jobs:
     name: Build & Push Images
     runs-on: ubuntu-24.04
     needs: [ci, version]
+    # Never build/push/deploy production images from a non-main ref, even when
+    # the workflow is dispatched manually from a feature branch.
+    if: github.ref == 'refs/heads/main'
     permissions:
       contents: read
       packages: write
@@ -194,6 +204,7 @@ jobs:
     name: Verify GHCR Image Propagation
     runs-on: ubuntu-24.04
     needs: build-push
+    if: github.ref == 'refs/heads/main'
     permissions:
       contents: read
       packages: read
@@ -262,6 +273,7 @@ jobs:
     name: Deploy to Production
     runs-on: ubuntu-24.04
     needs: [version, build-push, verify-images]
+    if: github.ref == 'refs/heads/main'
     environment:
       name: production
       url: https://hadha.co

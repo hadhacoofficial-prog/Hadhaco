@@ -8,13 +8,18 @@ from datetime import UTC, datetime, timedelta
 import pyotp
 import qrcode
 import redis.asyncio as aioredis
-from sqlalchemy import cast, delete, exists, false, or_, select, update
+from sqlalchemy import cast, delete, exists, false, or_, select, text, update
 from sqlalchemy.dialects.postgresql import INET
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
-from app.core.exceptions import AuthenticationError, AuthorizationError, NotFoundError
+from app.core.exceptions import (
+    AuthenticationError,
+    AuthorizationError,
+    ConflictError,
+    NotFoundError,
+)
 from app.core.redis import safe_redis_delete, safe_redis_get, safe_redis_setex
 from app.core.security import (
     decrypt_value,
@@ -164,8 +169,20 @@ class AuthService:
     async def setup_2fa(self, db: AsyncSession, user_id: str, email: str) -> dict:
         """
         Generate a TOTP secret, store it encrypted, return QR URI and data URL.
-        Overwrites any existing (disabled) setup.
+        Overwrites any existing *unactivated* setup only. An already-enabled
+        factor is never replaced here: re-enrolling would let a holder of a
+        first-factor-only admin token swap in their own authenticator and
+        bypass the second factor. The admin must disable 2FA first (which
+        requires a valid TOTP/backup code).
         """
+        existing = await db.execute(select(Admin2FA).where(Admin2FA.user_id == user_id))
+        record = existing.scalar_one_or_none()
+        if record is not None and record.is_enabled:
+            raise ConflictError(
+                "Two-factor authentication is already enabled. "
+                "Disable it with a valid code before enrolling a new device."
+            )
+
         secret = pyotp.random_base32()
         totp = pyotp.TOTP(secret)
         uri = totp.provisioning_uri(name=email, issuer_name=settings.APP_NAME)
@@ -180,10 +197,7 @@ class AuthService:
 
         encrypted_secret = encrypt_value(secret)
 
-        # Upsert
-        existing = await db.execute(select(Admin2FA).where(Admin2FA.user_id == user_id))
-        record = existing.scalar_one_or_none()
-
+        # Upsert (record was loaded above; it is guaranteed not enabled here)
         if record:
             await db.execute(
                 update(Admin2FA)
@@ -304,27 +318,29 @@ class AuthService:
 
     async def logout(self, db: AsyncSession, user_id: str) -> None:
         """
-        Revoke Supabase session via service role API. Best-effort: if
-        Supabase's admin API is unreachable (outage, timeout), this must not
-        prevent the caller from clearing local AdminSession state — routers
-        call this *before* clear_admin_session_2fa/clear_all_admin_sessions_2fa,
-        so letting a network error propagate here would leave the local
-        2FA-verified row in place even though the user asked to log out.
+        Revoke the user's Supabase Auth sessions (and with them their refresh
+        tokens) by deleting their rows from ``auth.sessions`` — refresh tokens
+        cascade. GoTrue has no documented admin "logout user by id" endpoint,
+        so the previous HTTP call could silently do nothing.
+
+        Best-effort: runs in a SAVEPOINT and never raises. Routers call this
+        *before* clear_admin_session_2fa/clear_all_admin_sessions_2fa, so a
+        failure here must not leave the local 2FA-verified row in place even
+        though the user asked to log out. Already-issued access JWTs stay valid
+        until they expire, but the admin 2FA gate is backed by local
+        admin_sessions rows that the callers clear.
         """
-        import httpx
         import structlog
 
         log = structlog.get_logger(__name__)
         try:
-            async with httpx.AsyncClient(timeout=10.0) as client:
-                response = await client.post(
-                    f"{settings.SUPABASE_URL}/auth/v1/admin/users/{user_id}/logout",
-                    headers={
-                        "apikey": settings.SUPABASE_SERVICE_ROLE_KEY,
-                        "Authorization": f"Bearer {settings.SUPABASE_SERVICE_ROLE_KEY}",
-                    },
+            async with db.begin_nested():
+                await db.execute(
+                    text(
+                        "DELETE FROM auth.sessions WHERE user_id = CAST(:uid AS uuid)"
+                    ),
+                    {"uid": user_id},
                 )
-                response.raise_for_status()
         except Exception:
             log.warning(
                 "supabase_logout_revocation_failed",

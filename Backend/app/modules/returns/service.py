@@ -30,6 +30,7 @@ class ReturnService:
                 status.HTTP_400_BAD_REQUEST,
                 "Order not eligible for return (not delivered or outside 7-day window)",
             )
+        await self._validate_return_items(db, data)
         ret = await self._repo.create(
             db, order_id=data.order_id, customer_id=customer_id, reason=data.reason
         )
@@ -44,6 +45,48 @@ class ReturnService:
         await db.commit()
         await db.refresh(ret)
         return ret
+
+    async def _validate_return_items(
+        self, db: AsyncSession, data: ReturnCreate
+    ) -> None:
+        """Every returned line must belong to THIS order and not exceed what was
+        bought minus what other open/accepted returns already claim — the
+        quantity later drives restocking, so it must never be taken on trust."""
+        if not data.items:
+            raise HTTPException(
+                status.HTTP_400_BAD_REQUEST, "A return must include at least one item"
+            )
+        requested: dict[uuid.UUID, int] = {}
+        for item in data.items:
+            if item.order_item_id in requested:
+                raise HTTPException(
+                    status.HTTP_400_BAD_REQUEST,
+                    "Each order item may appear only once per return",
+                )
+            requested[item.order_item_id] = item.quantity
+
+        result = await db.execute(
+            select(OrderItem).where(
+                OrderItem.id.in_(requested.keys()),
+                OrderItem.order_id == data.order_id,
+            )
+        )
+        order_items = {oi.id: oi for oi in result.scalars().all()}
+        already = await self._repo.returned_quantities(db, data.order_id)
+        for order_item_id, qty in requested.items():
+            order_item = order_items.get(order_item_id)
+            if order_item is None:
+                raise HTTPException(
+                    status.HTTP_400_BAD_REQUEST,
+                    "Item does not belong to this order",
+                )
+            remaining = order_item.quantity - already.get(order_item_id, 0)
+            if qty > remaining:
+                raise HTTPException(
+                    status.HTTP_400_BAD_REQUEST,
+                    f"Cannot return {qty} unit(s); only {max(remaining, 0)} "
+                    "eligible for return",
+                )
 
     async def list_customer_returns(
         self, db: AsyncSession, customer_id: uuid.UUID
@@ -63,7 +106,9 @@ class ReturnService:
         admin_id: uuid.UUID,
         data: AdminReturnStatusUpdate,
     ) -> Return:
-        ret = await self._repo.get(db, return_id)
+        # Row lock: two concurrent updates must not both pass the received_at
+        # gate below and restock the same return twice.
+        ret = await self._repo.get_for_update(db, return_id)
         if not ret:
             raise HTTPException(status.HTTP_404_NOT_FOUND, "Return not found")
 
@@ -108,7 +153,8 @@ class ReturnService:
                     db,
                     product_id=order_item.product_id,
                     variant_id=order_item.variant_id,
-                    quantity=item.quantity,
+                    # Never restock more than was actually sold on the line.
+                    quantity=min(item.quantity, order_item.quantity),
                     order_id=ret.order_id,
                     reference=f"return:{ret.id}",
                 )

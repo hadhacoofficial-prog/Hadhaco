@@ -92,9 +92,13 @@ class RequestLoggingMiddleware(BaseHTTPMiddleware):
         response = await call_next(request)
         duration_ms = round((time.perf_counter() - t0) * 1000, 2)
 
-        # Normalise path: strip query string and collapse path-parameter
-        # segments so that /products/42 and /products/7 track as one bucket.
-        _normalised = request.url.path
+        # Normalise path: use the matched route TEMPLATE (/products/{id}) so
+        # /products/42 and /products/7 track as one bucket. Unmatched requests
+        # (404 scans, random paths) share one bucket — never the raw path, or
+        # an unauthenticated client could grow the profiler's endpoint table
+        # without bound.
+        _route = request.scope.get("route")
+        _normalised = getattr(_route, "path", None) or "<unmatched>"
         profiler.end_request(path=_normalised, duration_ms=duration_ms)
 
         status = response.status_code

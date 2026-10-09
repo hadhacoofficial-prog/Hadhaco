@@ -6,7 +6,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.constants import UserRole
-from app.core.exceptions import NotFoundError
+from app.core.exceptions import AuthorizationError, NotFoundError
 from app.modules.media.repository import ImageRepository
 from app.modules.profiles.models import Admin2FA, Profile
 from app.modules.profiles.repository import ProfileRepository
@@ -17,6 +17,12 @@ from app.modules.profiles.schemas import (
 )
 
 _image_repo = ImageRepository()
+
+_ROLE_RANK = {
+    UserRole.CUSTOMER.value: 0,
+    UserRole.ADMIN.value: 1,
+    UserRole.SUPER_ADMIN.value: 2,
+}
 
 
 class ProfileService:
@@ -124,10 +130,19 @@ class ProfileService:
         target_user_id: str | uuid.UUID,
         new_role: UserRole,
         actor_id: str | uuid.UUID,
+        *,
+        actor_role: str | None = None,
     ) -> Profile:
         profile = await self._repo.get_by_id(db, target_user_id)
         if not profile:
             raise NotFoundError("User not found")
+        # Role assignment is a super_admin-only privilege: a plain admin must
+        # never be able to mint admins/super_admins or demote super_admins, and
+        # nobody may change their own role (no self-promotion / self-lockout).
+        if actor_role != UserRole.SUPER_ADMIN:
+            raise AuthorizationError("Only a super admin can change user roles")
+        if str(actor_id) == str(target_user_id):
+            raise AuthorizationError("You cannot change your own role")
         old_role = profile.role
         updated = await self._repo.update(db, target_user_id, {"role": new_role})
 
@@ -152,10 +167,21 @@ class ProfileService:
         target_user_id: str | uuid.UUID,
         is_active: bool,
         actor_id: str | uuid.UUID,
+        *,
+        actor_role: str | None = None,
     ) -> Profile:
         profile = await self._repo.get_by_id(db, target_user_id)
         if not profile:
             raise NotFoundError("User not found")
+        # Hierarchy: you may only (de)activate accounts strictly below your own
+        # role, and never your own account. Prevents an admin (or a stolen
+        # admin token) from locking out super admins or peer admins.
+        if str(actor_id) == str(target_user_id):
+            raise AuthorizationError("You cannot change your own account status")
+        if _ROLE_RANK.get(str(actor_role), -1) <= _ROLE_RANK.get(str(profile.role), 99):
+            raise AuthorizationError(
+                "You can only change the status of accounts below your own role"
+            )
         updated = await self._repo.update(db, target_user_id, {"is_active": is_active})
 
         from app.modules.audit.service import AuditService

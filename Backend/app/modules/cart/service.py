@@ -1,4 +1,6 @@
+import hmac
 import uuid
+from typing import Any
 
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -40,6 +42,29 @@ def _build_summary(cart: Cart) -> CartSummary:
         coupon_code=cart.coupon_code,
         expires_at=cart.expires_at,
     )
+
+
+def _assert_cart_access(
+    cart: Any, user_id: uuid.UUID | None, session_id: str | None
+) -> None:
+    """Proof of ownership for cart-scoped operations.
+
+    A user-owned cart requires the matching authenticated user. A guest cart
+    requires the matching X-Session-ID. An anonymous caller with neither is
+    never allowed to touch a cart just because they know its id. Failures
+    return 404 so cart ids cannot be probed.
+    """
+    if cart.user_id is not None:
+        if user_id is None or cart.user_id != user_id:
+            raise NotFoundError("Cart not found")
+        return
+    cart_session = getattr(cart, "session_id", None)
+    if (
+        not session_id
+        or not cart_session
+        or not hmac.compare_digest(str(cart_session), str(session_id))
+    ):
+        raise NotFoundError("Cart not found")
 
 
 class CartService:
@@ -306,12 +331,12 @@ class CartService:
         item_id: uuid.UUID,
         payload: UpdateCartItemRequest,
         user_id: uuid.UUID | None = None,
+        session_id: str | None = None,
     ) -> CartSummary:
         cart = await _repo.get_by_id(db, cart_id)
         if not cart:
             raise NotFoundError("Cart not found")
-        if user_id and cart.user_id != user_id:
-            raise NotFoundError("Cart not found")
+        _assert_cart_access(cart, user_id, session_id)
 
         item = next((i for i in cart.items if i.id == item_id), None)
         if not item:
@@ -351,12 +376,16 @@ class CartService:
         cart_id: uuid.UUID,
         item_id: uuid.UUID,
         user_id: uuid.UUID | None = None,
+        session_id: str | None = None,
     ) -> CartSummary:
         cart = await _repo.get_by_id(db, cart_id)
         if not cart:
             raise NotFoundError("Cart not found")
-        if user_id and cart.user_id != user_id:
-            raise NotFoundError("Cart not found")
+        _assert_cart_access(cart, user_id, session_id)
+        # The item must belong to THIS cart — deleting by item_id alone would
+        # let a caller who owns one cart remove items from any other cart.
+        if not any(i.id == item_id for i in cart.items):
+            raise NotFoundError("Cart item not found")
 
         await _repo.remove_item(db, item_id)
         cart = await _repo.get_by_id(db, cart_id)

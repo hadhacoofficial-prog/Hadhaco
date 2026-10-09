@@ -241,6 +241,7 @@ class OrderService:
         line_items: list[dict],
         coupon_code: str | None,
         user_id: uuid.UUID,
+        address: dict | None = None,
     ) -> tuple[float, float, float, float, uuid.UUID | None, str | None]:
         subtotal = round(sum(i["unit_price"] * i["quantity"] for i in line_items), 2)
         total_tax = round(sum(i["tax_amount"] for i in line_items), 2)
@@ -255,8 +256,17 @@ class OrderService:
             from app.modules.coupons.service import CouponService
 
             coupon_svc = CouponService()
+            ctx, user_email, user_phone = await self._coupon_context(
+                db, line_items, user_id, subtotal, coupon_code, address
+            )
             discount, coupon_id, coupon_type = await coupon_svc.apply_and_reserve(
-                db, coupon_code, subtotal, user_id
+                db,
+                coupon_code,
+                subtotal,
+                user_id,
+                ctx=ctx,
+                user_email=user_email,
+                user_phone=user_phone,
             )
             applied_coupon_code = coupon_code.upper()
             if coupon_type == "free_shipping":
@@ -271,6 +281,47 @@ class OrderService:
             coupon_id,
             applied_coupon_code,
         )
+
+    async def _coupon_context(
+        self,
+        db: AsyncSession,
+        line_items: list[dict],
+        user_id: uuid.UUID,
+        subtotal: float,
+        coupon_code: str,
+        address: dict | None,
+    ) -> tuple[Any, str, str | None]:
+        """Server-derived coupon eligibility context (never client supplied)."""
+        from app.modules.coupons.schemas import CouponValidateRequest
+        from app.modules.profiles.repository import ProfileRepository
+
+        product_ids = [str(li["product_id"]) for li in line_items]
+        category_rows = await db.execute(
+            text(
+                "SELECT DISTINCT c.slug FROM products p "
+                "JOIN categories c ON c.id = p.category_id "
+                "WHERE p.id = ANY(CAST(:pids AS uuid[]))"
+            ),
+            {"pids": product_ids},
+        )
+        category_slugs = [r[0] for r in category_rows.fetchall() if r[0]]
+        addr = address or {}
+        ctx = CouponValidateRequest(
+            code=coupon_code,
+            order_subtotal=max(subtotal, 0.01),
+            cart_product_ids=product_ids,
+            cart_category_slugs=category_slugs,
+            payment_method="razorpay",
+            delivery_state=addr.get("state"),
+            delivery_city=addr.get("city"),
+            delivery_pincode=addr.get("postal_code"),
+        )
+        profile = await ProfileRepository().get_by_id(db, user_id)
+        user_email = (profile.email if profile else "") or ""
+        user_phone = (profile.phone if profile else None) or (
+            (address or {}).get("phone")
+        )
+        return ctx, user_email, user_phone
 
     async def _get_address(
         self, db: AsyncSession, address_id: uuid.UUID, user_id: uuid.UUID
@@ -425,7 +476,9 @@ class OrderService:
             raise  # re-raise with the human-readable message from reservation_service
 
         subtotal, total_tax, shipping_charge, discount, coupon_id, coupon_code = (
-            await self._compute_totals(db, line_items, payload.coupon_code, user_id)
+            await self._compute_totals(
+                db, line_items, payload.coupon_code, user_id, address=addr
+            )
         )
         # subtotal is already GST-inclusive (see _resolve_line_items) — total_tax
         # is only the informational tax component within it, not added again.
@@ -643,6 +696,20 @@ class OrderService:
         # have been released by the expiry worker — complete_expired_order_reservations
         # will handle the deduction.
 
+        # The signature only proves Razorpay issued *some* payment for the
+        # razorpay_order_id the client sent. Bind it to THIS order's own
+        # Razorpay order (created server-side for exactly order.total) —
+        # otherwise a customer could replay a cheap order's valid
+        # (order_id, payment_id, signature) triple against a pricier order.
+        if not order.razorpay_order_id or not hmac.compare_digest(
+            str(order.razorpay_order_id), str(payload.razorpay_order_id)
+        ):
+            log.warning(
+                "payment_order_binding_mismatch",
+                order_id=str(order.id),
+            )
+            raise ValidationError("Payment does not belong to this order")
+
         # HMAC verification before any writes
         msg = f"{payload.razorpay_order_id}|{payload.razorpay_payment_id}"
         expected = hmac.new(
@@ -694,6 +761,19 @@ class OrderService:
                     },
                 )
         except IntegrityError:
+            # Benign only when the existing row is THIS order's payment (frontend
+            # retry racing the webhook). A payment id already attached to a
+            # different order must never confirm this one.
+            existing_payment = await PaymentRepository().get_by_razorpay_payment_id(
+                db, payload.razorpay_payment_id
+            )
+            if existing_payment is not None and existing_payment.order_id != order.id:
+                log.warning(
+                    "payment_id_belongs_to_other_order",
+                    order_id=str(order.id),
+                    razorpay_payment_id=payload.razorpay_payment_id,
+                )
+                raise ValidationError("Payment does not belong to this order") from None
             log.info(
                 "payment_already_recorded",
                 order_id=str(order.id),
@@ -1185,6 +1265,16 @@ class OrderService:
         if order.status not in _CANCELLABLE_STATUSES:
             raise ValidationError(
                 f"Order in '{order.status}' status cannot be cancelled"
+            )
+        # Fulfilment progresses independently of order.status (dispatch leaves
+        # status="confirmed"). Once the parcel is packed/shipped the customer
+        # can no longer self-cancel — otherwise stock would be restocked and
+        # coupon usage reverted for goods that already left the warehouse.
+        fulfillment_status = getattr(order, "fulfillment_status", None)
+        if fulfillment_status not in (None, "pending"):
+            raise ValidationError(
+                "This order is already being fulfilled and can no longer be "
+                "cancelled. Please request a return or contact support."
             )
 
         await self._restock_cancelled_order(db, order, order_id)

@@ -39,6 +39,13 @@ class TicketOut(BaseModel):
     model_config = {"from_attributes": True}
 
 
+def customer_view(ticket: object) -> TicketOut:
+    """TicketOut for the owning customer: staff-only internal notes are removed."""
+    out = TicketOut.model_validate(ticket)
+    out.messages = [m for m in out.messages if not m.is_internal]
+    return out
+
+
 class AdminTicketUpdate(BaseModel):
     status: str | None = None
     priority: str | None = None

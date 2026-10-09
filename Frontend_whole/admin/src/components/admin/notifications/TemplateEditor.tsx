@@ -3,6 +3,7 @@ import { useNavigate } from "@tanstack/react-router";
 import { toast } from "sonner";
 import { Copy, RefreshCw } from "lucide-react";
 import { toUserMessage } from "@/lib/api/errors";
+import { sanitizeHtml } from "@/lib/sanitizeHtml";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -200,7 +201,7 @@ export function TemplateEditor({ template }: { template: NotificationTemplateOut
               <div
                 className="text-sm prose-sm max-w-none"
                 dangerouslySetInnerHTML={{
-                  __html: renderPreview(body, VARIABLE_EXAMPLES),
+                  __html: sanitizeHtml(renderPreview(body, VARIABLE_EXAMPLES)),
                 }}
               />
             </div>

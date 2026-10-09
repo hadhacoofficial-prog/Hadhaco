@@ -125,6 +125,7 @@ def _make_order(
     order.order_number = "ORD-2024-001"
     order.shipping_phone = "9999999999"
     order.razorpay_order_id = "rzp_ord_test123"
+    order.fulfillment_status = "pending"
     order.items = []
     return order
 
@@ -660,7 +661,7 @@ class TestVerifyAndFulfill:
         ):
             payload = MagicMock()
             payload.order_id = order.id
-            payload.razorpay_order_id = "rzp_ord_test"
+            payload.razorpay_order_id = "rzp_ord_test123"
             payload.razorpay_payment_id = "rzp_pay_test"
             payload.razorpay_signature = "sig"
 
@@ -681,7 +682,7 @@ class TestVerifyAndFulfill:
         ):
             payload = MagicMock()
             payload.order_id = order.id
-            payload.razorpay_order_id = "rzp_ord_test"
+            payload.razorpay_order_id = "rzp_ord_test123"
             payload.razorpay_payment_id = "rzp_pay_test"
             payload.razorpay_signature = "bad_sig"
 
@@ -716,13 +717,37 @@ class TestVerifyAndFulfill:
         ):
             payload = MagicMock()
             payload.order_id = order.id
-            payload.razorpay_order_id = "rzp_ord_test"
+            payload.razorpay_order_id = "rzp_ord_test123"
             payload.razorpay_payment_id = "rzp_pay_test"
             payload.razorpay_signature = "bad_signature"
 
             db = AsyncMock()
             with pytest.raises(ValidationError, match="signature"):
                 await self.svc.verify_and_fulfill(db, user_id, payload)
+
+    async def test_signature_for_other_orders_razorpay_order_is_rejected(self):
+        """A valid signature for a DIFFERENT Razorpay order must not confirm this one."""
+        from app.core.exceptions import ValidationError
+
+        user_id = uuid.uuid4()
+        order = _make_order(user_id=user_id, status="payment_pending")
+        other_rzp_order, other_payment = "rzp_ord_CHEAP", "rzp_pay_CHEAP"
+
+        payload = MagicMock()
+        payload.order_id = order.id
+        payload.razorpay_order_id = other_rzp_order
+        payload.razorpay_payment_id = other_payment
+        payload.razorpay_signature = self._valid_signature(
+            other_rzp_order, other_payment
+        )
+
+        with patch(
+            "app.modules.orders.service._repo.get_by_id", AsyncMock(return_value=order)
+        ):
+            db = AsyncMock()
+            with pytest.raises(ValidationError, match="does not belong"):
+                await self.svc.verify_and_fulfill(db, user_id, payload)
+        db.commit.assert_not_called()
 
     async def test_order_not_found_raises_not_found(self):
         from app.core.exceptions import NotFoundError
@@ -745,7 +770,7 @@ class TestVerifyAndFulfill:
         )
         order.coupon_id = None
 
-        rzp_order_id = "rzp_ord_ABC"
+        rzp_order_id = order.razorpay_order_id
         rzp_payment_id = "rzp_pay_XYZ"
         sig = self._valid_signature(rzp_order_id, rzp_payment_id)
 
@@ -1006,6 +1031,22 @@ class TestCancelOrderReservation:
             db = AsyncMock()
             with pytest.raises(ValidationError):
                 await self.svc.cancel_order(db, order.id, user_id, payload)
+
+    async def test_cancel_order_blocked_once_fulfillment_started(self):
+        from app.core.exceptions import ValidationError
+
+        user_id = uuid.uuid4()
+        order = _make_order(user_id=user_id, status="confirmed")
+        order.fulfillment_status = "dispatched"
+        payload = MagicMock()
+        payload.reason = "changed my mind"
+        db = AsyncMock()
+        with patch(
+            "app.modules.orders.service._repo.get_by_id", AsyncMock(return_value=order)
+        ):
+            with pytest.raises(ValidationError, match="fulfilled"):
+                await self.svc.cancel_order(db, order.id, user_id, payload)
+        db.commit.assert_not_called()
 
     async def test_cancel_order_not_found_raises_not_found(self):
         from app.core.exceptions import NotFoundError
