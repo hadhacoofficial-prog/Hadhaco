@@ -17,14 +17,15 @@ from app.core.cache import (
     TTL_REVIEW_SUMMARY,
     add_cache_headers,
     bust_review_cache,
+    cache_swr,
 )
-from app.core.database import get_db
+from app.core.database import AsyncSessionLocal, get_db
 from app.core.dependencies import (
     get_current_user,
     get_current_user_optional,
     require_admin,
 )
-from app.core.redis import get_redis, safe_redis_get, safe_redis_setex
+from app.core.redis import get_redis
 from app.modules.reviews.schemas import (
     AdminReviewAction,
     MyProductReviewStatus,
@@ -40,6 +41,11 @@ from app.modules.reviews.service import ReviewService
 
 router = APIRouter(prefix="/reviews", tags=["reviews"])
 _svc = ReviewService()
+
+# Seconds past the TTL that an idle entry is still served (stale) while one
+# background refresh runs. bust_review_cache hard-deletes on any review change,
+# so this only ever bridges idle expiry, never a stale review after an edit.
+_REVIEW_SWR_WINDOW = 3600
 
 
 # ── Public ────────────────────────────────────────────────────────────────────
@@ -60,52 +66,67 @@ async def list_product_reviews(
     user=Depends(get_current_user_optional),
 ):
     viewer_user_id = user.id if user else None
-    # All variants share the `{prefix}:{product_id}:` namespace so
-    # bust_review_cache can sweep them with one pattern.
-    cache_key = f"{PREFIX_REVIEW_LIST}:{product_id}:{offset}:{limit}:{sort}:{rating}"
-    # Only cache when no user is logged in (anonymous browsing)
-    if viewer_user_id is None:
-        cached = await safe_redis_get(redis, cache_key)
-        if cached:
-            import json as _json
-
-            from fastapi.responses import JSONResponse
-
-            content = _json.loads(cached)
-            response = JSONResponse(content=content)
-            add_cache_headers(response, TTL_REVIEW_LIST, private=True)
-            return response
-
-    reviews, total = await _svc.list_product_reviews(
-        db,
-        product_id=product_id,
-        viewer_user_id=viewer_user_id,
-        offset=offset,
-        limit=limit,
-        sort=sort,
-        rating=rating,
-    )
-    review_dtos = [ReviewOut.model_validate(r) for r in reviews]
-    # Backward-compatible: data is the reviews array (unchanged shape).
-    # Total count for pagination is returned in the X-Total-Count header.
-    response_data = ok(
-        review_dtos,
-        ResponseCode.REVIEW_LISTED,
-        "Reviews listed successfully",
-    )
-    import json as _json
 
     from fastapi.responses import JSONResponse
 
-    serialized = _json.dumps(_json.loads(response_data.model_dump_json()), default=str)
-    content = _json.loads(serialized)
-    headers = {"X-Total-Count": str(total)}
-    if viewer_user_id is None:
-        await safe_redis_setex(redis, cache_key, TTL_REVIEW_LIST, serialized)
-        response = JSONResponse(content=content, headers=headers)
-        add_cache_headers(response, TTL_REVIEW_LIST, private=True)
-        return response
-    return JSONResponse(content=content, headers=headers)
+    # Backward-compatible: data is the reviews array (unchanged shape).
+    # Total count for pagination is returned in the X-Total-Count header.
+    if viewer_user_id is not None:
+        # Per-viewer fields (e.g. "my vote") — never cached.
+        reviews, total = await _svc.list_product_reviews(
+            db,
+            product_id=product_id,
+            viewer_user_id=viewer_user_id,
+            offset=offset,
+            limit=limit,
+            sort=sort,
+            rating=rating,
+        )
+        body = ok(
+            [ReviewOut.model_validate(r) for r in reviews],
+            ResponseCode.REVIEW_LISTED,
+            "Reviews listed successfully",
+        ).model_dump(mode="json")
+        return JSONResponse(content=body, headers={"X-Total-Count": str(total)})
+
+    # All variants share the `{prefix}:{product_id}:` namespace so
+    # bust_review_cache can sweep them with one pattern.
+    cache_key = f"{PREFIX_REVIEW_LIST}:{product_id}:{offset}:{limit}:{sort}:{rating}"
+
+    # Fresh session: cache_swr may re-run this from a detached background
+    # refresh after the request session is gone.
+    async def _fetch() -> dict:
+        async with AsyncSessionLocal() as s:
+            reviews, total = await _svc.list_product_reviews(
+                s,
+                product_id=product_id,
+                viewer_user_id=None,
+                offset=offset,
+                limit=limit,
+                sort=sort,
+                rating=rating,
+            )
+            body = ok(
+                [ReviewOut.model_validate(r) for r in reviews],
+                ResponseCode.REVIEW_LISTED,
+                "Reviews listed successfully",
+            ).model_dump(mode="json")
+            return {"body": body, "total": total}
+
+    # SWR: an idle product's reviews still serve instantly (stale) and refresh
+    # once in the background, instead of a ~1.3s cold fetch for the visitor.
+    cached = await cache_swr(
+        redis,
+        cache_key,
+        ttl=TTL_REVIEW_LIST,
+        swr_window=_REVIEW_SWR_WINDOW,
+        fetch_fn=_fetch,
+    )
+    response = JSONResponse(
+        content=cached["body"], headers={"X-Total-Count": str(cached["total"])}
+    )
+    add_cache_headers(response, TTL_REVIEW_LIST, private=True)
+    return response
 
 
 @router.get(
@@ -118,43 +139,38 @@ async def product_rating_summary(
     redis: aioredis.Redis = Depends(get_redis),
 ):
     cache_key = f"{PREFIX_REVIEW_SUMMARY}:{product_id}"
-    cached = await safe_redis_get(redis, cache_key)
-    if cached:
-        import json as _json
 
-        from fastapi.responses import JSONResponse
-
-        content = _json.loads(cached)
-        response = JSONResponse(content=content)
-        add_cache_headers(response, TTL_REVIEW_SUMMARY)
-        return response
-
-    data = await _svc.rating_summary(db, product_id)
-    if data is None:
-        summary = ProductRatingSummary(
-            product_id=product_id,
-            review_count=0,
-            average_rating=0.0,
-            five_star=0,
-            four_star=0,
-            three_star=0,
-            two_star=0,
-            one_star=0,
-        )
-    else:
-        summary = ProductRatingSummary(**data)
-    response_data = ok(
-        summary,
-        ResponseCode.REVIEW_SUMMARY_FETCHED,
-        "Rating summary fetched successfully",
-    )
-    import json as _json
+    async def _fetch() -> dict:
+        async with AsyncSessionLocal() as s:
+            data = await _svc.rating_summary(s, product_id)
+        if data is None:
+            summary = ProductRatingSummary(
+                product_id=product_id,
+                review_count=0,
+                average_rating=0.0,
+                five_star=0,
+                four_star=0,
+                three_star=0,
+                two_star=0,
+                one_star=0,
+            )
+        else:
+            summary = ProductRatingSummary(**data)
+        return ok(
+            summary,
+            ResponseCode.REVIEW_SUMMARY_FETCHED,
+            "Rating summary fetched successfully",
+        ).model_dump(mode="json")
 
     from fastapi.responses import JSONResponse
 
-    serialized = _json.dumps(_json.loads(response_data.model_dump_json()), default=str)
-    await safe_redis_setex(redis, cache_key, TTL_REVIEW_SUMMARY, serialized)
-    content = _json.loads(serialized)
+    content = await cache_swr(
+        redis,
+        cache_key,
+        ttl=TTL_REVIEW_SUMMARY,
+        swr_window=_REVIEW_SWR_WINDOW,
+        fetch_fn=_fetch,
+    )
     response = JSONResponse(content=content)
     add_cache_headers(response, TTL_REVIEW_SUMMARY)
     return response
