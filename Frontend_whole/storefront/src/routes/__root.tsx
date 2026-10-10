@@ -14,6 +14,7 @@ import { GlobalJewelleryBackground } from "../components/site/GlobalJewelleryBac
 import appCss from "../styles.css?url";
 import { reportLovableError } from "../lib/lovable-error-reporting";
 import { initSentry } from "../lib/sentry";
+import { gaHeadScripts } from "../lib/analytics";
 import markAsset from "../assets/hadha-mark.png";
 import { AuthProvider } from "../providers/AuthProvider";
 import { RouteTransition } from "../components/common/RouteTransition";
@@ -130,6 +131,7 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
         href: "https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@400;500;600;700&family=Inter:wght@400;500;600&family=Noto+Serif:wght@400;600&display=swap",
       },
     ],
+    scripts: gaHeadScripts(),
   }),
   shellComponent: RootShell,
   component: RootComponent,
