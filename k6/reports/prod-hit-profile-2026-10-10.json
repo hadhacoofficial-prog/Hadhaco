@@ -1,0 +1,2816 @@
+{
+ "started": "2026-10-09T21:07:46.515639+00:00",
+ "finished": "2026-10-09T21:13:22.373067+00:00",
+ "n": 10,
+ "gap_s": 1.2,
+ "results": [
+  {
+   "kind": "API",
+   "name": "GET /health",
+   "path": "/health",
+   "hits": [
+    {
+     "n": 1,
+     "status": 200,
+     "ttfb_ms": 125.3,
+     "total_ms": 125.3,
+     "bytes": 33,
+     "cf": "DYNAMIC",
+     "age": null,
+     "xcache": null,
+     "err": null
+    },
+    {
+     "n": 2,
+     "status": 200,
+     "ttfb_ms": 130.4,
+     "total_ms": 130.4,
+     "bytes": 33,
+     "cf": "DYNAMIC",
+     "age": null,
+     "xcache": null,
+     "err": null
+    },
+    {
+     "n": 3,
+     "status": 200,
+     "ttfb_ms": 117.3,
+     "total_ms": 117.4,
+     "bytes": 33,
+     "cf": "DYNAMIC",
+     "age": null,
+     "xcache": null,
+     "err": null
+    },
+    {
+     "n": 4,
+     "status": 200,
+     "ttfb_ms": 132.5,
+     "total_ms": 132.5,
+     "bytes": 33,
+     "cf": "DYNAMIC",
+     "age": null,
+     "xcache": null,
+     "err": null
+    },
+    {
+     "n": 5,
+     "status": 200,
+     "ttfb_ms": 141.0,
+     "total_ms": 141.0,
+     "bytes": 33,
+     "cf": "DYNAMIC",
+     "age": null,
+     "xcache": null,
+     "err": null
+    },
+    {
+     "n": 6,
+     "status": 200,
+     "ttfb_ms": 120.2,
+     "total_ms": 120.2,
+     "bytes": 33,
+     "cf": "DYNAMIC",
+     "age": null,
+     "xcache": null,
+     "err": null
+    },
+    {
+     "n": 7,
+     "status": 200,
+     "ttfb_ms": 117.5,
+     "total_ms": 117.5,
+     "bytes": 33,
+     "cf": "DYNAMIC",
+     "age": null,
+     "xcache": null,
+     "err": null
+    },
+    {
+     "n": 8,
+     "status": 200,
+     "ttfb_ms": 120.0,
+     "total_ms": 120.0,
+     "bytes": 33,
+     "cf": "DYNAMIC",
+     "age": null,
+     "xcache": null,
+     "err": null
+    },
+    {
+     "n": 9,
+     "status": 200,
+     "ttfb_ms": 117.0,
+     "total_ms": 117.0,
+     "bytes": 33,
+     "cf": "DYNAMIC",
+     "age": null,
+     "xcache": null,
+     "err": null
+    },
+    {
+     "n": 10,
+     "status": 200,
+     "ttfb_ms": 129.2,
+     "total_ms": 129.2,
+     "bytes": 33,
+     "cf": "DYNAMIC",
+     "age": null,
+     "xcache": null,
+     "err": null
+    }
+   ]
+  },
+  {
+   "kind": "API",
+   "name": "GET /health/ready",
+   "path": "/health/ready",
+   "hits": [
+    {
+     "n": 1,
+     "status": 404,
+     "ttfb_ms": 108.5,
+     "total_ms": 108.6,
+     "bytes": 106,
+     "cf": "DYNAMIC",
+     "age": null,
+     "xcache": null,
+     "err": null
+    },
+    {
+     "n": 2,
+     "status": 404,
+     "ttfb_ms": 112.9,
+     "total_ms": 113.0,
+     "bytes": 106,
+     "cf": "DYNAMIC",
+     "age": null,
+     "xcache": null,
+     "err": null
+    },
+    {
+     "n": 3,
+     "status": 404,
+     "ttfb_ms": 114.1,
+     "total_ms": 114.2,
+     "bytes": 106,
+     "cf": "DYNAMIC",
+     "age": null,
+     "xcache": null,
+     "err": null
+    },
+    {
+     "n": 4,
+     "status": 404,
+     "ttfb_ms": 122.2,
+     "total_ms": 122.3,
+     "bytes": 106,
+     "cf": "DYNAMIC",
+     "age": null,
+     "xcache": null,
+     "err": null
+    },
+    {
+     "n": 5,
+     "status": 404,
+     "ttfb_ms": 110.9,
+     "total_ms": 111.0,
+     "bytes": 106,
+     "cf": "DYNAMIC",
+     "age": null,
+     "xcache": null,
+     "err": null
+    },
+    {
+     "n": 6,
+     "status": 404,
+     "ttfb_ms": 110.6,
+     "total_ms": 110.8,
+     "bytes": 106,
+     "cf": "DYNAMIC",
+     "age": null,
+     "xcache": null,
+     "err": null
+    },
+    {
+     "n": 7,
+     "status": 404,
+     "ttfb_ms": 125.9,
+     "total_ms": 125.9,
+     "bytes": 106,
+     "cf": "DYNAMIC",
+     "age": null,
+     "xcache": null,
+     "err": null
+    },
+    {
+     "n": 8,
+     "status": 404,
+     "ttfb_ms": 122.6,
+     "total_ms": 122.7,
+     "bytes": 106,
+     "cf": "DYNAMIC",
+     "age": null,
+     "xcache": null,
+     "err": null
+    },
+    {
+     "n": 9,
+     "status": 404,
+     "ttfb_ms": 110.2,
+     "total_ms": 110.3,
+     "bytes": 106,
+     "cf": "DYNAMIC",
+     "age": null,
+     "xcache": null,
+     "err": null
+    },
+    {
+     "n": 10,
+     "status": 404,
+     "ttfb_ms": 109.6,
+     "total_ms": 109.8,
+     "bytes": 106,
+     "cf": "DYNAMIC",
+     "age": null,
+     "xcache": null,
+     "err": null
+    }
+   ]
+  },
+  {
+   "kind": "API",
+   "name": "GET /categories",
+   "path": "/api/v1/categories",
+   "hits": [
+    {
+     "n": 1,
+     "status": 200,
+     "ttfb_ms": 135.9,
+     "total_ms": 135.9,
+     "bytes": 2057,
+     "cf": "DYNAMIC",
+     "age": null,
+     "xcache": null,
+     "err": null
+    },
+    {
+     "n": 2,
+     "status": 200,
+     "ttfb_ms": 118.1,
+     "total_ms": 118.2,
+     "bytes": 2057,
+     "cf": "DYNAMIC",
+     "age": null,
+     "xcache": null,
+     "err": null
+    },
+    {
+     "n": 3,
+     "status": 200,
+     "ttfb_ms": 117.7,
+     "total_ms": 117.7,
+     "bytes": 2057,
+     "cf": "DYNAMIC",
+     "age": null,
+     "xcache": null,
+     "err": null
+    },
+    {
+     "n": 4,
+     "status": 200,
+     "ttfb_ms": 137.2,
+     "total_ms": 137.2,
+     "bytes": 2057,
+     "cf": "DYNAMIC",
+     "age": null,
+     "xcache": null,
+     "err": null
+    },
+    {
+     "n": 5,
+     "status": 200,
+     "ttfb_ms": 119.2,
+     "total_ms": 119.2,
+     "bytes": 2057,
+     "cf": "DYNAMIC",
+     "age": null,
+     "xcache": null,
+     "err": null
+    },
+    {
+     "n": 6,
+     "status": 200,
+     "ttfb_ms": 118.9,
+     "total_ms": 118.9,
+     "bytes": 2057,
+     "cf": "DYNAMIC",
+     "age": null,
+     "xcache": null,
+     "err": null
+    },
+    {
+     "n": 7,
+     "status": 200,
+     "ttfb_ms": 118.2,
+     "total_ms": 118.2,
+     "bytes": 2057,
+     "cf": "DYNAMIC",
+     "age": null,
+     "xcache": null,
+     "err": null
+    },
+    {
+     "n": 8,
+     "status": 200,
+     "ttfb_ms": 131.8,
+     "total_ms": 131.8,
+     "bytes": 2057,
+     "cf": "DYNAMIC",
+     "age": null,
+     "xcache": null,
+     "err": null
+    },
+    {
+     "n": 9,
+     "status": 200,
+     "ttfb_ms": 121.9,
+     "total_ms": 121.9,
+     "bytes": 2057,
+     "cf": "DYNAMIC",
+     "age": null,
+     "xcache": null,
+     "err": null
+    },
+    {
+     "n": 10,
+     "status": 200,
+     "ttfb_ms": 124.2,
+     "total_ms": 124.2,
+     "bytes": 2057,
+     "cf": "DYNAMIC",
+     "age": null,
+     "xcache": null,
+     "err": null
+    }
+   ]
+  },
+  {
+   "kind": "API",
+   "name": "GET /categories/navbar",
+   "path": "/api/v1/categories/navbar",
+   "hits": [
+    {
+     "n": 1,
+     "status": 200,
+     "ttfb_ms": 131.1,
+     "total_ms": 131.1,
+     "bytes": 1874,
+     "cf": "DYNAMIC",
+     "age": null,
+     "xcache": null,
+     "err": null
+    },
+    {
+     "n": 2,
+     "status": 200,
+     "ttfb_ms": 121.1,
+     "total_ms": 121.1,
+     "bytes": 1874,
+     "cf": "DYNAMIC",
+     "age": null,
+     "xcache": null,
+     "err": null
+    },
+    {
+     "n": 3,
+     "status": 200,
+     "ttfb_ms": 127.0,
+     "total_ms": 127.0,
+     "bytes": 1874,
+     "cf": "DYNAMIC",
+     "age": null,
+     "xcache": null,
+     "err": null
+    },
+    {
+     "n": 4,
+     "status": 200,
+     "ttfb_ms": 118.5,
+     "total_ms": 118.5,
+     "bytes": 1874,
+     "cf": "DYNAMIC",
+     "age": null,
+     "xcache": null,
+     "err": null
+    },
+    {
+     "n": 5,
+     "status": 200,
+     "ttfb_ms": 120.3,
+     "total_ms": 120.3,
+     "bytes": 1874,
+     "cf": "DYNAMIC",
+     "age": null,
+     "xcache": null,
+     "err": null
+    },
+    {
+     "n": 6,
+     "status": 200,
+     "ttfb_ms": 121.1,
+     "total_ms": 121.1,
+     "bytes": 1874,
+     "cf": "DYNAMIC",
+     "age": null,
+     "xcache": null,
+     "err": null
+    },
+    {
+     "n": 7,
+     "status": 200,
+     "ttfb_ms": 120.4,
+     "total_ms": 120.4,
+     "bytes": 1874,
+     "cf": "DYNAMIC",
+     "age": null,
+     "xcache": null,
+     "err": null
+    },
+    {
+     "n": 8,
+     "status": 200,
+     "ttfb_ms": 123.4,
+     "total_ms": 123.4,
+     "bytes": 1874,
+     "cf": "DYNAMIC",
+     "age": null,
+     "xcache": null,
+     "err": null
+    },
+    {
+     "n": 9,
+     "status": 200,
+     "ttfb_ms": 124.8,
+     "total_ms": 124.9,
+     "bytes": 1874,
+     "cf": "DYNAMIC",
+     "age": null,
+     "xcache": null,
+     "err": null
+    },
+    {
+     "n": 10,
+     "status": 200,
+     "ttfb_ms": 122.0,
+     "total_ms": 122.0,
+     "bytes": 1874,
+     "cf": "DYNAMIC",
+     "age": null,
+     "xcache": null,
+     "err": null
+    }
+   ]
+  },
+  {
+   "kind": "API",
+   "name": "GET /categories/navigation",
+   "path": "/api/v1/categories/navigation",
+   "hits": [
+    {
+     "n": 1,
+     "status": 200,
+     "ttfb_ms": 286.9,
+     "total_ms": 286.9,
+     "bytes": 1991,
+     "cf": "DYNAMIC",
+     "age": null,
+     "xcache": null,
+     "err": null
+    },
+    {
+     "n": 2,
+     "status": 200,
+     "ttfb_ms": 118.9,
+     "total_ms": 118.9,
+     "bytes": 1991,
+     "cf": "DYNAMIC",
+     "age": null,
+     "xcache": null,
+     "err": null
+    },
+    {
+     "n": 3,
+     "status": 200,
+     "ttfb_ms": 127.2,
+     "total_ms": 127.2,
+     "bytes": 1991,
+     "cf": "DYNAMIC",
+     "age": null,
+     "xcache": null,
+     "err": null
+    },
+    {
+     "n": 4,
+     "status": 200,
+     "ttfb_ms": 116.2,
+     "total_ms": 116.2,
+     "bytes": 1991,
+     "cf": "DYNAMIC",
+     "age": null,
+     "xcache": null,
+     "err": null
+    },
+    {
+     "n": 5,
+     "status": 200,
+     "ttfb_ms": 118.9,
+     "total_ms": 118.9,
+     "bytes": 1991,
+     "cf": "DYNAMIC",
+     "age": null,
+     "xcache": null,
+     "err": null
+    },
+    {
+     "n": 6,
+     "status": 200,
+     "ttfb_ms": 124.0,
+     "total_ms": 124.0,
+     "bytes": 1991,
+     "cf": "DYNAMIC",
+     "age": null,
+     "xcache": null,
+     "err": null
+    },
+    {
+     "n": 7,
+     "status": 200,
+     "ttfb_ms": 124.2,
+     "total_ms": 124.2,
+     "bytes": 1991,
+     "cf": "DYNAMIC",
+     "age": null,
+     "xcache": null,
+     "err": null
+    },
+    {
+     "n": 8,
+     "status": 200,
+     "ttfb_ms": 120.6,
+     "total_ms": 120.6,
+     "bytes": 1991,
+     "cf": "DYNAMIC",
+     "age": null,
+     "xcache": null,
+     "err": null
+    },
+    {
+     "n": 9,
+     "status": 200,
+     "ttfb_ms": 128.8,
+     "total_ms": 128.8,
+     "bytes": 1991,
+     "cf": "DYNAMIC",
+     "age": null,
+     "xcache": null,
+     "err": null
+    },
+    {
+     "n": 10,
+     "status": 200,
+     "ttfb_ms": 127.4,
+     "total_ms": 127.4,
+     "bytes": 1991,
+     "cf": "DYNAMIC",
+     "age": null,
+     "xcache": null,
+     "err": null
+    }
+   ]
+  },
+  {
+   "kind": "API",
+   "name": "GET /collections",
+   "path": "/api/v1/collections",
+   "hits": [
+    {
+     "n": 1,
+     "status": 200,
+     "ttfb_ms": 130.5,
+     "total_ms": 130.6,
+     "bytes": 2410,
+     "cf": "DYNAMIC",
+     "age": null,
+     "xcache": null,
+     "err": null
+    },
+    {
+     "n": 2,
+     "status": 200,
+     "ttfb_ms": 125.6,
+     "total_ms": 125.6,
+     "bytes": 2410,
+     "cf": "DYNAMIC",
+     "age": null,
+     "xcache": null,
+     "err": null
+    },
+    {
+     "n": 3,
+     "status": 200,
+     "ttfb_ms": 117.5,
+     "total_ms": 117.5,
+     "bytes": 2410,
+     "cf": "DYNAMIC",
+     "age": null,
+     "xcache": null,
+     "err": null
+    },
+    {
+     "n": 4,
+     "status": 200,
+     "ttfb_ms": 122.6,
+     "total_ms": 122.7,
+     "bytes": 2410,
+     "cf": "DYNAMIC",
+     "age": null,
+     "xcache": null,
+     "err": null
+    },
+    {
+     "n": 5,
+     "status": 200,
+     "ttfb_ms": 122.8,
+     "total_ms": 122.8,
+     "bytes": 2410,
+     "cf": "DYNAMIC",
+     "age": null,
+     "xcache": null,
+     "err": null
+    },
+    {
+     "n": 6,
+     "status": 200,
+     "ttfb_ms": 117.8,
+     "total_ms": 117.8,
+     "bytes": 2410,
+     "cf": "DYNAMIC",
+     "age": null,
+     "xcache": null,
+     "err": null
+    },
+    {
+     "n": 7,
+     "status": 200,
+     "ttfb_ms": 125.4,
+     "total_ms": 125.4,
+     "bytes": 2410,
+     "cf": "DYNAMIC",
+     "age": null,
+     "xcache": null,
+     "err": null
+    },
+    {
+     "n": 8,
+     "status": 200,
+     "ttfb_ms": 172.9,
+     "total_ms": 172.9,
+     "bytes": 2410,
+     "cf": "DYNAMIC",
+     "age": null,
+     "xcache": null,
+     "err": null
+    },
+    {
+     "n": 9,
+     "status": 200,
+     "ttfb_ms": 169.5,
+     "total_ms": 169.5,
+     "bytes": 2410,
+     "cf": "DYNAMIC",
+     "age": null,
+     "xcache": null,
+     "err": null
+    },
+    {
+     "n": 10,
+     "status": 200,
+     "ttfb_ms": 149.1,
+     "total_ms": 149.1,
+     "bytes": 2410,
+     "cf": "DYNAMIC",
+     "age": null,
+     "xcache": null,
+     "err": null
+    }
+   ]
+  },
+  {
+   "kind": "API",
+   "name": "GET /products (page_size=20)",
+   "path": "/api/v1/products?page=1&page_size=20",
+   "hits": [
+    {
+     "n": 1,
+     "status": 200,
+     "ttfb_ms": 1480.0,
+     "total_ms": 1480.6,
+     "bytes": 19154,
+     "cf": "DYNAMIC",
+     "age": null,
+     "xcache": null,
+     "err": null
+    },
+    {
+     "n": 2,
+     "status": 200,
+     "ttfb_ms": 191.4,
+     "total_ms": 191.5,
+     "bytes": 19154,
+     "cf": "DYNAMIC",
+     "age": null,
+     "xcache": null,
+     "err": null
+    },
+    {
+     "n": 3,
+     "status": 200,
+     "ttfb_ms": 218.3,
+     "total_ms": 218.4,
+     "bytes": 19154,
+     "cf": "DYNAMIC",
+     "age": null,
+     "xcache": null,
+     "err": null
+    },
+    {
+     "n": 4,
+     "status": 200,
+     "ttfb_ms": 199.3,
+     "total_ms": 201.3,
+     "bytes": 19154,
+     "cf": "DYNAMIC",
+     "age": null,
+     "xcache": null,
+     "err": null
+    },
+    {
+     "n": 5,
+     "status": 200,
+     "ttfb_ms": 191.6,
+     "total_ms": 191.6,
+     "bytes": 19154,
+     "cf": "DYNAMIC",
+     "age": null,
+     "xcache": null,
+     "err": null
+    },
+    {
+     "n": 6,
+     "status": 200,
+     "ttfb_ms": 197.9,
+     "total_ms": 198.0,
+     "bytes": 19154,
+     "cf": "DYNAMIC",
+     "age": null,
+     "xcache": null,
+     "err": null
+    },
+    {
+     "n": 7,
+     "status": 200,
+     "ttfb_ms": 195.8,
+     "total_ms": 195.8,
+     "bytes": 19154,
+     "cf": "DYNAMIC",
+     "age": null,
+     "xcache": null,
+     "err": null
+    },
+    {
+     "n": 8,
+     "status": 200,
+     "ttfb_ms": 219.1,
+     "total_ms": 221.5,
+     "bytes": 19154,
+     "cf": "DYNAMIC",
+     "age": null,
+     "xcache": null,
+     "err": null
+    },
+    {
+     "n": 9,
+     "status": 200,
+     "ttfb_ms": 210.3,
+     "total_ms": 211.8,
+     "bytes": 19154,
+     "cf": "DYNAMIC",
+     "age": null,
+     "xcache": null,
+     "err": null
+    },
+    {
+     "n": 10,
+     "status": 200,
+     "ttfb_ms": 190.5,
+     "total_ms": 191.6,
+     "bytes": 19154,
+     "cf": "DYNAMIC",
+     "age": null,
+     "xcache": null,
+     "err": null
+    }
+   ]
+  },
+  {
+   "kind": "API",
+   "name": "GET /products (cold-key page_size=36)",
+   "path": "/api/v1/products?page=1&page_size=36",
+   "hits": [
+    {
+     "n": 1,
+     "status": 200,
+     "ttfb_ms": 2366.8,
+     "total_ms": 2369.2,
+     "bytes": 33423,
+     "cf": "DYNAMIC",
+     "age": null,
+     "xcache": null,
+     "err": null
+    },
+    {
+     "n": 2,
+     "status": 200,
+     "ttfb_ms": 201.0,
+     "total_ms": 207.1,
+     "bytes": 33423,
+     "cf": "DYNAMIC",
+     "age": null,
+     "xcache": null,
+     "err": null
+    },
+    {
+     "n": 3,
+     "status": 200,
+     "ttfb_ms": 197.3,
+     "total_ms": 205.1,
+     "bytes": 33423,
+     "cf": "DYNAMIC",
+     "age": null,
+     "xcache": null,
+     "err": null
+    },
+    {
+     "n": 4,
+     "status": 200,
+     "ttfb_ms": 214.6,
+     "total_ms": 218.9,
+     "bytes": 33423,
+     "cf": "DYNAMIC",
+     "age": null,
+     "xcache": null,
+     "err": null
+    },
+    {
+     "n": 5,
+     "status": 200,
+     "ttfb_ms": 197.9,
+     "total_ms": 203.3,
+     "bytes": 33423,
+     "cf": "DYNAMIC",
+     "age": null,
+     "xcache": null,
+     "err": null
+    },
+    {
+     "n": 6,
+     "status": 200,
+     "ttfb_ms": 198.6,
+     "total_ms": 203.2,
+     "bytes": 33423,
+     "cf": "DYNAMIC",
+     "age": null,
+     "xcache": null,
+     "err": null
+    },
+    {
+     "n": 7,
+     "status": 200,
+     "ttfb_ms": 197.4,
+     "total_ms": 200.8,
+     "bytes": 33423,
+     "cf": "DYNAMIC",
+     "age": null,
+     "xcache": null,
+     "err": null
+    },
+    {
+     "n": 8,
+     "status": 200,
+     "ttfb_ms": 204.6,
+     "total_ms": 211.5,
+     "bytes": 33423,
+     "cf": "DYNAMIC",
+     "age": null,
+     "xcache": null,
+     "err": null
+    },
+    {
+     "n": 9,
+     "status": 200,
+     "ttfb_ms": 197.0,
+     "total_ms": 199.6,
+     "bytes": 33423,
+     "cf": "DYNAMIC",
+     "age": null,
+     "xcache": null,
+     "err": null
+    },
+    {
+     "n": 10,
+     "status": 200,
+     "ttfb_ms": 198.2,
+     "total_ms": 203.6,
+     "bytes": 33423,
+     "cf": "DYNAMIC",
+     "age": null,
+     "xcache": null,
+     "err": null
+    }
+   ]
+  },
+  {
+   "kind": "API",
+   "name": "GET /products/facets",
+   "path": "/api/v1/products/facets",
+   "hits": [
+    {
+     "n": 1,
+     "status": 200,
+     "ttfb_ms": 1738.7,
+     "total_ms": 1738.7,
+     "bytes": 1350,
+     "cf": "DYNAMIC",
+     "age": null,
+     "xcache": null,
+     "err": null
+    },
+    {
+     "n": 2,
+     "status": 200,
+     "ttfb_ms": 142.0,
+     "total_ms": 142.0,
+     "bytes": 1350,
+     "cf": "DYNAMIC",
+     "age": null,
+     "xcache": null,
+     "err": null
+    },
+    {
+     "n": 3,
+     "status": 200,
+     "ttfb_ms": 129.2,
+     "total_ms": 129.2,
+     "bytes": 1350,
+     "cf": "DYNAMIC",
+     "age": null,
+     "xcache": null,
+     "err": null
+    },
+    {
+     "n": 4,
+     "status": 200,
+     "ttfb_ms": 119.7,
+     "total_ms": 119.7,
+     "bytes": 1350,
+     "cf": "DYNAMIC",
+     "age": null,
+     "xcache": null,
+     "err": null
+    },
+    {
+     "n": 5,
+     "status": 200,
+     "ttfb_ms": 121.3,
+     "total_ms": 121.3,
+     "bytes": 1350,
+     "cf": "DYNAMIC",
+     "age": null,
+     "xcache": null,
+     "err": null
+    },
+    {
+     "n": 6,
+     "status": 200,
+     "ttfb_ms": 121.6,
+     "total_ms": 121.6,
+     "bytes": 1350,
+     "cf": "DYNAMIC",
+     "age": null,
+     "xcache": null,
+     "err": null
+    },
+    {
+     "n": 7,
+     "status": 200,
+     "ttfb_ms": 123.5,
+     "total_ms": 123.5,
+     "bytes": 1350,
+     "cf": "DYNAMIC",
+     "age": null,
+     "xcache": null,
+     "err": null
+    },
+    {
+     "n": 8,
+     "status": 200,
+     "ttfb_ms": 127.6,
+     "total_ms": 127.6,
+     "bytes": 1350,
+     "cf": "DYNAMIC",
+     "age": null,
+     "xcache": null,
+     "err": null
+    },
+    {
+     "n": 9,
+     "status": 200,
+     "ttfb_ms": 118.8,
+     "total_ms": 118.8,
+     "bytes": 1350,
+     "cf": "DYNAMIC",
+     "age": null,
+     "xcache": null,
+     "err": null
+    },
+    {
+     "n": 10,
+     "status": 200,
+     "ttfb_ms": 136.9,
+     "total_ms": 137.0,
+     "bytes": 1350,
+     "cf": "DYNAMIC",
+     "age": null,
+     "xcache": null,
+     "err": null
+    }
+   ]
+  },
+  {
+   "kind": "API",
+   "name": "GET /search/trending",
+   "path": "/api/v1/search/trending",
+   "hits": [
+    {
+     "n": 1,
+     "status": 200,
+     "ttfb_ms": 343.7,
+     "total_ms": 343.7,
+     "bytes": 119,
+     "cf": "DYNAMIC",
+     "age": null,
+     "xcache": null,
+     "err": null
+    },
+    {
+     "n": 2,
+     "status": 200,
+     "ttfb_ms": 120.8,
+     "total_ms": 121.4,
+     "bytes": 119,
+     "cf": "DYNAMIC",
+     "age": null,
+     "xcache": null,
+     "err": null
+    },
+    {
+     "n": 3,
+     "status": 200,
+     "ttfb_ms": 118.1,
+     "total_ms": 118.2,
+     "bytes": 119,
+     "cf": "DYNAMIC",
+     "age": null,
+     "xcache": null,
+     "err": null
+    },
+    {
+     "n": 4,
+     "status": 200,
+     "ttfb_ms": 118.0,
+     "total_ms": 118.1,
+     "bytes": 119,
+     "cf": "DYNAMIC",
+     "age": null,
+     "xcache": null,
+     "err": null
+    },
+    {
+     "n": 5,
+     "status": 200,
+     "ttfb_ms": 321.6,
+     "total_ms": 321.7,
+     "bytes": 119,
+     "cf": "DYNAMIC",
+     "age": null,
+     "xcache": null,
+     "err": null
+    },
+    {
+     "n": 6,
+     "status": 200,
+     "ttfb_ms": 117.2,
+     "total_ms": 117.3,
+     "bytes": 119,
+     "cf": "DYNAMIC",
+     "age": null,
+     "xcache": null,
+     "err": null
+    },
+    {
+     "n": 7,
+     "status": 200,
+     "ttfb_ms": 121.3,
+     "total_ms": 121.4,
+     "bytes": 119,
+     "cf": "DYNAMIC",
+     "age": null,
+     "xcache": null,
+     "err": null
+    },
+    {
+     "n": 8,
+     "status": 200,
+     "ttfb_ms": 156.5,
+     "total_ms": 156.5,
+     "bytes": 119,
+     "cf": "DYNAMIC",
+     "age": null,
+     "xcache": null,
+     "err": null
+    },
+    {
+     "n": 9,
+     "status": 200,
+     "ttfb_ms": 133.4,
+     "total_ms": 133.5,
+     "bytes": 119,
+     "cf": "DYNAMIC",
+     "age": null,
+     "xcache": null,
+     "err": null
+    },
+    {
+     "n": 10,
+     "status": 200,
+     "ttfb_ms": 135.2,
+     "total_ms": 135.2,
+     "bytes": 119,
+     "cf": "DYNAMIC",
+     "age": null,
+     "xcache": null,
+     "err": null
+    }
+   ]
+  },
+  {
+   "kind": "API",
+   "name": "GET /search?q=ring",
+   "path": "/api/v1/search?q=ring&page=1&page_size=10",
+   "hits": [
+    {
+     "n": 1,
+     "status": 200,
+     "ttfb_ms": 1410.3,
+     "total_ms": 1410.3,
+     "bytes": 1373,
+     "cf": "DYNAMIC",
+     "age": null,
+     "xcache": null,
+     "err": null
+    },
+    {
+     "n": 2,
+     "status": 200,
+     "ttfb_ms": 118.9,
+     "total_ms": 118.9,
+     "bytes": 1373,
+     "cf": "DYNAMIC",
+     "age": null,
+     "xcache": null,
+     "err": null
+    },
+    {
+     "n": 3,
+     "status": 200,
+     "ttfb_ms": 121.8,
+     "total_ms": 121.9,
+     "bytes": 1373,
+     "cf": "DYNAMIC",
+     "age": null,
+     "xcache": null,
+     "err": null
+    },
+    {
+     "n": 4,
+     "status": 200,
+     "ttfb_ms": 119.2,
+     "total_ms": 119.2,
+     "bytes": 1373,
+     "cf": "DYNAMIC",
+     "age": null,
+     "xcache": null,
+     "err": null
+    },
+    {
+     "n": 5,
+     "status": 200,
+     "ttfb_ms": 122.4,
+     "total_ms": 122.4,
+     "bytes": 1373,
+     "cf": "DYNAMIC",
+     "age": null,
+     "xcache": null,
+     "err": null
+    },
+    {
+     "n": 6,
+     "status": 200,
+     "ttfb_ms": 124.1,
+     "total_ms": 124.2,
+     "bytes": 1373,
+     "cf": "DYNAMIC",
+     "age": null,
+     "xcache": null,
+     "err": null
+    },
+    {
+     "n": 7,
+     "status": 200,
+     "ttfb_ms": 122.5,
+     "total_ms": 122.5,
+     "bytes": 1373,
+     "cf": "DYNAMIC",
+     "age": null,
+     "xcache": null,
+     "err": null
+    },
+    {
+     "n": 8,
+     "status": 200,
+     "ttfb_ms": 122.5,
+     "total_ms": 122.6,
+     "bytes": 1373,
+     "cf": "DYNAMIC",
+     "age": null,
+     "xcache": null,
+     "err": null
+    },
+    {
+     "n": 9,
+     "status": 200,
+     "ttfb_ms": 122.5,
+     "total_ms": 122.6,
+     "bytes": 1373,
+     "cf": "DYNAMIC",
+     "age": null,
+     "xcache": null,
+     "err": null
+    },
+    {
+     "n": 10,
+     "status": 200,
+     "ttfb_ms": 120.0,
+     "total_ms": 120.0,
+     "bytes": 1373,
+     "cf": "DYNAMIC",
+     "age": null,
+     "xcache": null,
+     "err": null
+    }
+   ]
+  },
+  {
+   "kind": "API",
+   "name": "GET /search/autocomplete?q=ri",
+   "path": "/api/v1/search/autocomplete?q=ri",
+   "hits": [
+    {
+     "n": 1,
+     "status": 200,
+     "ttfb_ms": 316.0,
+     "total_ms": 316.3,
+     "bytes": 130,
+     "cf": "DYNAMIC",
+     "age": null,
+     "xcache": null,
+     "err": null
+    },
+    {
+     "n": 2,
+     "status": 200,
+     "ttfb_ms": 126.4,
+     "total_ms": 126.5,
+     "bytes": 130,
+     "cf": "DYNAMIC",
+     "age": null,
+     "xcache": null,
+     "err": null
+    },
+    {
+     "n": 3,
+     "status": 200,
+     "ttfb_ms": 119.2,
+     "total_ms": 119.2,
+     "bytes": 130,
+     "cf": "DYNAMIC",
+     "age": null,
+     "xcache": null,
+     "err": null
+    },
+    {
+     "n": 4,
+     "status": 200,
+     "ttfb_ms": 123.5,
+     "total_ms": 123.6,
+     "bytes": 130,
+     "cf": "DYNAMIC",
+     "age": null,
+     "xcache": null,
+     "err": null
+    },
+    {
+     "n": 5,
+     "status": 200,
+     "ttfb_ms": 129.2,
+     "total_ms": 129.3,
+     "bytes": 130,
+     "cf": "DYNAMIC",
+     "age": null,
+     "xcache": null,
+     "err": null
+    },
+    {
+     "n": 6,
+     "status": 200,
+     "ttfb_ms": 119.0,
+     "total_ms": 119.1,
+     "bytes": 130,
+     "cf": "DYNAMIC",
+     "age": null,
+     "xcache": null,
+     "err": null
+    },
+    {
+     "n": 7,
+     "status": 200,
+     "ttfb_ms": 118.4,
+     "total_ms": 118.5,
+     "bytes": 130,
+     "cf": "DYNAMIC",
+     "age": null,
+     "xcache": null,
+     "err": null
+    },
+    {
+     "n": 8,
+     "status": 200,
+     "ttfb_ms": 119.8,
+     "total_ms": 119.9,
+     "bytes": 130,
+     "cf": "DYNAMIC",
+     "age": null,
+     "xcache": null,
+     "err": null
+    },
+    {
+     "n": 9,
+     "status": 200,
+     "ttfb_ms": 123.6,
+     "total_ms": 123.8,
+     "bytes": 130,
+     "cf": "DYNAMIC",
+     "age": null,
+     "xcache": null,
+     "err": null
+    },
+    {
+     "n": 10,
+     "status": 200,
+     "ttfb_ms": 123.4,
+     "total_ms": 123.5,
+     "bytes": 130,
+     "cf": "DYNAMIC",
+     "age": null,
+     "xcache": null,
+     "err": null
+    }
+   ]
+  },
+  {
+   "kind": "API",
+   "name": "GET /cms/home",
+   "path": "/api/v1/cms/home",
+   "hits": [
+    {
+     "n": 1,
+     "status": 200,
+     "ttfb_ms": 120.5,
+     "total_ms": 120.6,
+     "bytes": 253,
+     "cf": "DYNAMIC",
+     "age": null,
+     "xcache": null,
+     "err": null
+    },
+    {
+     "n": 2,
+     "status": 200,
+     "ttfb_ms": 121.4,
+     "total_ms": 121.4,
+     "bytes": 256,
+     "cf": "DYNAMIC",
+     "age": null,
+     "xcache": null,
+     "err": null
+    },
+    {
+     "n": 3,
+     "status": 200,
+     "ttfb_ms": 120.0,
+     "total_ms": 120.0,
+     "bytes": 256,
+     "cf": "DYNAMIC",
+     "age": null,
+     "xcache": null,
+     "err": null
+    },
+    {
+     "n": 4,
+     "status": 200,
+     "ttfb_ms": 120.2,
+     "total_ms": 120.3,
+     "bytes": 256,
+     "cf": "DYNAMIC",
+     "age": null,
+     "xcache": null,
+     "err": null
+    },
+    {
+     "n": 5,
+     "status": 200,
+     "ttfb_ms": 118.1,
+     "total_ms": 118.2,
+     "bytes": 256,
+     "cf": "DYNAMIC",
+     "age": null,
+     "xcache": null,
+     "err": null
+    },
+    {
+     "n": 6,
+     "status": 200,
+     "ttfb_ms": 121.0,
+     "total_ms": 121.0,
+     "bytes": 256,
+     "cf": "DYNAMIC",
+     "age": null,
+     "xcache": null,
+     "err": null
+    },
+    {
+     "n": 7,
+     "status": 200,
+     "ttfb_ms": 151.6,
+     "total_ms": 151.6,
+     "bytes": 256,
+     "cf": "DYNAMIC",
+     "age": null,
+     "xcache": null,
+     "err": null
+    },
+    {
+     "n": 8,
+     "status": 200,
+     "ttfb_ms": 118.7,
+     "total_ms": 118.7,
+     "bytes": 256,
+     "cf": "DYNAMIC",
+     "age": null,
+     "xcache": null,
+     "err": null
+    },
+    {
+     "n": 9,
+     "status": 200,
+     "ttfb_ms": 121.9,
+     "total_ms": 122.0,
+     "bytes": 256,
+     "cf": "DYNAMIC",
+     "age": null,
+     "xcache": null,
+     "err": null
+    },
+    {
+     "n": 10,
+     "status": 200,
+     "ttfb_ms": 129.0,
+     "total_ms": 129.1,
+     "bytes": 256,
+     "cf": "DYNAMIC",
+     "age": null,
+     "xcache": null,
+     "err": null
+    }
+   ]
+  },
+  {
+   "kind": "API",
+   "name": "GET /cms/homepage",
+   "path": "/api/v1/cms/homepage",
+   "hits": [
+    {
+     "n": 1,
+     "status": 200,
+     "ttfb_ms": 121.7,
+     "total_ms": 121.7,
+     "bytes": 3534,
+     "cf": "DYNAMIC",
+     "age": null,
+     "xcache": null,
+     "err": null
+    },
+    {
+     "n": 2,
+     "status": 200,
+     "ttfb_ms": 121.7,
+     "total_ms": 121.7,
+     "bytes": 3534,
+     "cf": "DYNAMIC",
+     "age": null,
+     "xcache": null,
+     "err": null
+    },
+    {
+     "n": 3,
+     "status": 200,
+     "ttfb_ms": 123.5,
+     "total_ms": 123.5,
+     "bytes": 3534,
+     "cf": "DYNAMIC",
+     "age": null,
+     "xcache": null,
+     "err": null
+    },
+    {
+     "n": 4,
+     "status": 200,
+     "ttfb_ms": 121.5,
+     "total_ms": 121.5,
+     "bytes": 3534,
+     "cf": "DYNAMIC",
+     "age": null,
+     "xcache": null,
+     "err": null
+    },
+    {
+     "n": 5,
+     "status": 200,
+     "ttfb_ms": 125.7,
+     "total_ms": 125.7,
+     "bytes": 3534,
+     "cf": "DYNAMIC",
+     "age": null,
+     "xcache": null,
+     "err": null
+    },
+    {
+     "n": 6,
+     "status": 200,
+     "ttfb_ms": 129.4,
+     "total_ms": 129.5,
+     "bytes": 3534,
+     "cf": "DYNAMIC",
+     "age": null,
+     "xcache": null,
+     "err": null
+    },
+    {
+     "n": 7,
+     "status": 200,
+     "ttfb_ms": 123.7,
+     "total_ms": 123.7,
+     "bytes": 3534,
+     "cf": "DYNAMIC",
+     "age": null,
+     "xcache": null,
+     "err": null
+    },
+    {
+     "n": 8,
+     "status": 200,
+     "ttfb_ms": 128.7,
+     "total_ms": 128.8,
+     "bytes": 3534,
+     "cf": "DYNAMIC",
+     "age": null,
+     "xcache": null,
+     "err": null
+    },
+    {
+     "n": 9,
+     "status": 200,
+     "ttfb_ms": 124.3,
+     "total_ms": 124.3,
+     "bytes": 3534,
+     "cf": "DYNAMIC",
+     "age": null,
+     "xcache": null,
+     "err": null
+    },
+    {
+     "n": 10,
+     "status": 200,
+     "ttfb_ms": 123.8,
+     "total_ms": 123.8,
+     "bytes": 3534,
+     "cf": "DYNAMIC",
+     "age": null,
+     "xcache": null,
+     "err": null
+    }
+   ]
+  },
+  {
+   "kind": "API",
+   "name": "GET /company",
+   "path": "/api/v1/company",
+   "hits": [
+    {
+     "n": 1,
+     "status": 200,
+     "ttfb_ms": 133.2,
+     "total_ms": 133.2,
+     "bytes": 502,
+     "cf": "DYNAMIC",
+     "age": null,
+     "xcache": null,
+     "err": null
+    },
+    {
+     "n": 2,
+     "status": 200,
+     "ttfb_ms": 141.5,
+     "total_ms": 141.6,
+     "bytes": 502,
+     "cf": "DYNAMIC",
+     "age": null,
+     "xcache": null,
+     "err": null
+    },
+    {
+     "n": 3,
+     "status": 200,
+     "ttfb_ms": 128.3,
+     "total_ms": 128.3,
+     "bytes": 502,
+     "cf": "DYNAMIC",
+     "age": null,
+     "xcache": null,
+     "err": null
+    },
+    {
+     "n": 4,
+     "status": 200,
+     "ttfb_ms": 119.6,
+     "total_ms": 119.6,
+     "bytes": 502,
+     "cf": "DYNAMIC",
+     "age": null,
+     "xcache": null,
+     "err": null
+    },
+    {
+     "n": 5,
+     "status": 200,
+     "ttfb_ms": 126.6,
+     "total_ms": 126.6,
+     "bytes": 502,
+     "cf": "DYNAMIC",
+     "age": null,
+     "xcache": null,
+     "err": null
+    },
+    {
+     "n": 6,
+     "status": 200,
+     "ttfb_ms": 203.3,
+     "total_ms": 203.4,
+     "bytes": 502,
+     "cf": "DYNAMIC",
+     "age": null,
+     "xcache": null,
+     "err": null
+    },
+    {
+     "n": 7,
+     "status": 200,
+     "ttfb_ms": 123.2,
+     "total_ms": 123.2,
+     "bytes": 502,
+     "cf": "DYNAMIC",
+     "age": null,
+     "xcache": null,
+     "err": null
+    },
+    {
+     "n": 8,
+     "status": 200,
+     "ttfb_ms": 125.5,
+     "total_ms": 125.6,
+     "bytes": 502,
+     "cf": "DYNAMIC",
+     "age": null,
+     "xcache": null,
+     "err": null
+    },
+    {
+     "n": 9,
+     "status": 200,
+     "ttfb_ms": 126.7,
+     "total_ms": 126.8,
+     "bytes": 502,
+     "cf": "DYNAMIC",
+     "age": null,
+     "xcache": null,
+     "err": null
+    },
+    {
+     "n": 10,
+     "status": 200,
+     "ttfb_ms": 126.5,
+     "total_ms": 126.5,
+     "bytes": 502,
+     "cf": "DYNAMIC",
+     "age": null,
+     "xcache": null,
+     "err": null
+    }
+   ]
+  },
+  {
+   "kind": "API",
+   "name": "GET /sitemap.xml",
+   "path": "/api/v1/sitemap.xml",
+   "hits": [
+    {
+     "n": 1,
+     "status": 200,
+     "ttfb_ms": 1607.0,
+     "total_ms": 1607.0,
+     "bytes": 4367,
+     "cf": "DYNAMIC",
+     "age": null,
+     "xcache": null,
+     "err": null
+    },
+    {
+     "n": 2,
+     "status": 200,
+     "ttfb_ms": 142.3,
+     "total_ms": 142.3,
+     "bytes": 4367,
+     "cf": "DYNAMIC",
+     "age": null,
+     "xcache": null,
+     "err": null
+    },
+    {
+     "n": 3,
+     "status": 200,
+     "ttfb_ms": 121.4,
+     "total_ms": 121.4,
+     "bytes": 4367,
+     "cf": "DYNAMIC",
+     "age": null,
+     "xcache": null,
+     "err": null
+    },
+    {
+     "n": 4,
+     "status": 200,
+     "ttfb_ms": 123.0,
+     "total_ms": 123.0,
+     "bytes": 4367,
+     "cf": "DYNAMIC",
+     "age": null,
+     "xcache": null,
+     "err": null
+    },
+    {
+     "n": 5,
+     "status": 200,
+     "ttfb_ms": 126.1,
+     "total_ms": 126.2,
+     "bytes": 4367,
+     "cf": "DYNAMIC",
+     "age": null,
+     "xcache": null,
+     "err": null
+    },
+    {
+     "n": 6,
+     "status": 200,
+     "ttfb_ms": 120.8,
+     "total_ms": 120.9,
+     "bytes": 4367,
+     "cf": "DYNAMIC",
+     "age": null,
+     "xcache": null,
+     "err": null
+    },
+    {
+     "n": 7,
+     "status": 200,
+     "ttfb_ms": 121.0,
+     "total_ms": 121.0,
+     "bytes": 4367,
+     "cf": "DYNAMIC",
+     "age": null,
+     "xcache": null,
+     "err": null
+    },
+    {
+     "n": 8,
+     "status": 200,
+     "ttfb_ms": 123.3,
+     "total_ms": 123.3,
+     "bytes": 4367,
+     "cf": "DYNAMIC",
+     "age": null,
+     "xcache": null,
+     "err": null
+    },
+    {
+     "n": 9,
+     "status": 200,
+     "ttfb_ms": 126.8,
+     "total_ms": 126.8,
+     "bytes": 4367,
+     "cf": "DYNAMIC",
+     "age": null,
+     "xcache": null,
+     "err": null
+    },
+    {
+     "n": 10,
+     "status": 200,
+     "ttfb_ms": 123.4,
+     "total_ms": 123.4,
+     "bytes": 4367,
+     "cf": "DYNAMIC",
+     "age": null,
+     "xcache": null,
+     "err": null
+    }
+   ]
+  },
+  {
+   "kind": "API",
+   "name": "GET /products/{slug}",
+   "path": "/api/v1/products/test-1",
+   "hits": [
+    {
+     "n": 1,
+     "status": 200,
+     "ttfb_ms": 1054.9,
+     "total_ms": 1054.9,
+     "bytes": 1835,
+     "cf": "DYNAMIC",
+     "age": null,
+     "xcache": null,
+     "err": null
+    },
+    {
+     "n": 2,
+     "status": 200,
+     "ttfb_ms": 124.3,
+     "total_ms": 124.3,
+     "bytes": 1835,
+     "cf": "DYNAMIC",
+     "age": null,
+     "xcache": null,
+     "err": null
+    },
+    {
+     "n": 3,
+     "status": 200,
+     "ttfb_ms": 123.1,
+     "total_ms": 123.1,
+     "bytes": 1835,
+     "cf": "DYNAMIC",
+     "age": null,
+     "xcache": null,
+     "err": null
+    },
+    {
+     "n": 4,
+     "status": 200,
+     "ttfb_ms": 121.0,
+     "total_ms": 121.0,
+     "bytes": 1835,
+     "cf": "DYNAMIC",
+     "age": null,
+     "xcache": null,
+     "err": null
+    },
+    {
+     "n": 5,
+     "status": 200,
+     "ttfb_ms": 124.7,
+     "total_ms": 124.7,
+     "bytes": 1835,
+     "cf": "DYNAMIC",
+     "age": null,
+     "xcache": null,
+     "err": null
+    },
+    {
+     "n": 6,
+     "status": 200,
+     "ttfb_ms": 122.7,
+     "total_ms": 122.7,
+     "bytes": 1835,
+     "cf": "DYNAMIC",
+     "age": null,
+     "xcache": null,
+     "err": null
+    },
+    {
+     "n": 7,
+     "status": 200,
+     "ttfb_ms": 121.5,
+     "total_ms": 121.6,
+     "bytes": 1835,
+     "cf": "DYNAMIC",
+     "age": null,
+     "xcache": null,
+     "err": null
+    },
+    {
+     "n": 8,
+     "status": 200,
+     "ttfb_ms": 125.8,
+     "total_ms": 125.8,
+     "bytes": 1835,
+     "cf": "DYNAMIC",
+     "age": null,
+     "xcache": null,
+     "err": null
+    },
+    {
+     "n": 9,
+     "status": 200,
+     "ttfb_ms": 121.9,
+     "total_ms": 121.9,
+     "bytes": 1835,
+     "cf": "DYNAMIC",
+     "age": null,
+     "xcache": null,
+     "err": null
+    },
+    {
+     "n": 10,
+     "status": 200,
+     "ttfb_ms": 118.5,
+     "total_ms": 118.5,
+     "bytes": 1835,
+     "cf": "DYNAMIC",
+     "age": null,
+     "xcache": null,
+     "err": null
+    }
+   ]
+  },
+  {
+   "kind": "API",
+   "name": "GET /collections/{slug}",
+   "path": "/api/v1/collections/Women-Collection",
+   "hits": [
+    {
+     "n": 1,
+     "status": 200,
+     "ttfb_ms": 585.1,
+     "total_ms": 585.1,
+     "bytes": 502,
+     "cf": "DYNAMIC",
+     "age": null,
+     "xcache": null,
+     "err": null
+    },
+    {
+     "n": 2,
+     "status": 200,
+     "ttfb_ms": 119.5,
+     "total_ms": 119.6,
+     "bytes": 502,
+     "cf": "DYNAMIC",
+     "age": null,
+     "xcache": null,
+     "err": null
+    },
+    {
+     "n": 3,
+     "status": 200,
+     "ttfb_ms": 122.3,
+     "total_ms": 122.3,
+     "bytes": 502,
+     "cf": "DYNAMIC",
+     "age": null,
+     "xcache": null,
+     "err": null
+    },
+    {
+     "n": 4,
+     "status": 200,
+     "ttfb_ms": 121.3,
+     "total_ms": 121.4,
+     "bytes": 502,
+     "cf": "DYNAMIC",
+     "age": null,
+     "xcache": null,
+     "err": null
+    },
+    {
+     "n": 5,
+     "status": 200,
+     "ttfb_ms": 119.5,
+     "total_ms": 119.5,
+     "bytes": 502,
+     "cf": "DYNAMIC",
+     "age": null,
+     "xcache": null,
+     "err": null
+    },
+    {
+     "n": 6,
+     "status": 200,
+     "ttfb_ms": 117.8,
+     "total_ms": 117.8,
+     "bytes": 502,
+     "cf": "DYNAMIC",
+     "age": null,
+     "xcache": null,
+     "err": null
+    },
+    {
+     "n": 7,
+     "status": 200,
+     "ttfb_ms": 123.0,
+     "total_ms": 123.0,
+     "bytes": 502,
+     "cf": "DYNAMIC",
+     "age": null,
+     "xcache": null,
+     "err": null
+    },
+    {
+     "n": 8,
+     "status": 200,
+     "ttfb_ms": 138.7,
+     "total_ms": 138.7,
+     "bytes": 502,
+     "cf": "DYNAMIC",
+     "age": null,
+     "xcache": null,
+     "err": null
+    },
+    {
+     "n": 9,
+     "status": 200,
+     "ttfb_ms": 125.1,
+     "total_ms": 125.1,
+     "bytes": 502,
+     "cf": "DYNAMIC",
+     "age": null,
+     "xcache": null,
+     "err": null
+    },
+    {
+     "n": 10,
+     "status": 200,
+     "ttfb_ms": 130.6,
+     "total_ms": 130.7,
+     "bytes": 502,
+     "cf": "DYNAMIC",
+     "age": null,
+     "xcache": null,
+     "err": null
+    }
+   ]
+  },
+  {
+   "kind": "API",
+   "name": "GET /reviews/products/{id}",
+   "path": "/api/v1/reviews/products/3c6ee110-3a20-42cf-8e76-fb7465d63b1e",
+   "hits": [
+    {
+     "n": 1,
+     "status": 200,
+     "ttfb_ms": 1301.7,
+     "total_ms": 1301.8,
+     "bytes": 99,
+     "cf": "DYNAMIC",
+     "age": null,
+     "xcache": null,
+     "err": null
+    },
+    {
+     "n": 2,
+     "status": 200,
+     "ttfb_ms": 122.3,
+     "total_ms": 122.4,
+     "bytes": 99,
+     "cf": "DYNAMIC",
+     "age": null,
+     "xcache": null,
+     "err": null
+    },
+    {
+     "n": 3,
+     "status": 200,
+     "ttfb_ms": 122.5,
+     "total_ms": 122.6,
+     "bytes": 99,
+     "cf": "DYNAMIC",
+     "age": null,
+     "xcache": null,
+     "err": null
+    },
+    {
+     "n": 4,
+     "status": 200,
+     "ttfb_ms": 133.1,
+     "total_ms": 133.1,
+     "bytes": 99,
+     "cf": "DYNAMIC",
+     "age": null,
+     "xcache": null,
+     "err": null
+    },
+    {
+     "n": 5,
+     "status": 200,
+     "ttfb_ms": 169.0,
+     "total_ms": 169.1,
+     "bytes": 99,
+     "cf": "DYNAMIC",
+     "age": null,
+     "xcache": null,
+     "err": null
+    },
+    {
+     "n": 6,
+     "status": 200,
+     "ttfb_ms": 146.9,
+     "total_ms": 146.9,
+     "bytes": 99,
+     "cf": "DYNAMIC",
+     "age": null,
+     "xcache": null,
+     "err": null
+    },
+    {
+     "n": 7,
+     "status": 200,
+     "ttfb_ms": 130.4,
+     "total_ms": 130.4,
+     "bytes": 99,
+     "cf": "DYNAMIC",
+     "age": null,
+     "xcache": null,
+     "err": null
+    },
+    {
+     "n": 8,
+     "status": 200,
+     "ttfb_ms": 118.0,
+     "total_ms": 118.0,
+     "bytes": 99,
+     "cf": "DYNAMIC",
+     "age": null,
+     "xcache": null,
+     "err": null
+    },
+    {
+     "n": 9,
+     "status": 200,
+     "ttfb_ms": 132.8,
+     "total_ms": 132.9,
+     "bytes": 99,
+     "cf": "DYNAMIC",
+     "age": null,
+     "xcache": null,
+     "err": null
+    },
+    {
+     "n": 10,
+     "status": 200,
+     "ttfb_ms": 130.7,
+     "total_ms": 130.7,
+     "bytes": 99,
+     "cf": "DYNAMIC",
+     "age": null,
+     "xcache": null,
+     "err": null
+    }
+   ]
+  },
+  {
+   "kind": "API",
+   "name": "GET /reviews/products/{id}/summary",
+   "path": "/api/v1/reviews/products/3c6ee110-3a20-42cf-8e76-fb7465d63b1e/summary",
+   "hits": [
+    {
+     "n": 1,
+     "status": 200,
+     "ttfb_ms": 1150.4,
+     "total_ms": 1150.5,
+     "bytes": 213,
+     "cf": "DYNAMIC",
+     "age": null,
+     "xcache": null,
+     "err": null
+    },
+    {
+     "n": 2,
+     "status": 200,
+     "ttfb_ms": 126.5,
+     "total_ms": 126.6,
+     "bytes": 213,
+     "cf": "DYNAMIC",
+     "age": null,
+     "xcache": null,
+     "err": null
+    },
+    {
+     "n": 3,
+     "status": 200,
+     "ttfb_ms": 123.8,
+     "total_ms": 123.9,
+     "bytes": 213,
+     "cf": "DYNAMIC",
+     "age": null,
+     "xcache": null,
+     "err": null
+    },
+    {
+     "n": 4,
+     "status": 200,
+     "ttfb_ms": 121.8,
+     "total_ms": 121.9,
+     "bytes": 213,
+     "cf": "DYNAMIC",
+     "age": null,
+     "xcache": null,
+     "err": null
+    },
+    {
+     "n": 5,
+     "status": 200,
+     "ttfb_ms": 125.7,
+     "total_ms": 125.8,
+     "bytes": 213,
+     "cf": "DYNAMIC",
+     "age": null,
+     "xcache": null,
+     "err": null
+    },
+    {
+     "n": 6,
+     "status": 200,
+     "ttfb_ms": 126.5,
+     "total_ms": 126.6,
+     "bytes": 213,
+     "cf": "DYNAMIC",
+     "age": null,
+     "xcache": null,
+     "err": null
+    },
+    {
+     "n": 7,
+     "status": 200,
+     "ttfb_ms": 123.0,
+     "total_ms": 123.1,
+     "bytes": 213,
+     "cf": "DYNAMIC",
+     "age": null,
+     "xcache": null,
+     "err": null
+    },
+    {
+     "n": 8,
+     "status": 200,
+     "ttfb_ms": 127.8,
+     "total_ms": 128.0,
+     "bytes": 213,
+     "cf": "DYNAMIC",
+     "age": null,
+     "xcache": null,
+     "err": null
+    },
+    {
+     "n": 9,
+     "status": 200,
+     "ttfb_ms": 128.1,
+     "total_ms": 128.2,
+     "bytes": 213,
+     "cf": "DYNAMIC",
+     "age": null,
+     "xcache": null,
+     "err": null
+    },
+    {
+     "n": 10,
+     "status": 200,
+     "ttfb_ms": 126.3,
+     "total_ms": 126.4,
+     "bytes": 213,
+     "cf": "DYNAMIC",
+     "age": null,
+     "xcache": null,
+     "err": null
+    }
+   ]
+  },
+  {
+   "kind": "WEB",
+   "name": "GET / (SSR home)",
+   "path": "/",
+   "hits": [
+    {
+     "n": 1,
+     "status": 200,
+     "ttfb_ms": 290.6,
+     "total_ms": 290.7,
+     "bytes": 1725,
+     "cf": "DYNAMIC",
+     "age": null,
+     "xcache": null,
+     "err": null
+    },
+    {
+     "n": 2,
+     "status": 200,
+     "ttfb_ms": 153.3,
+     "total_ms": 153.3,
+     "bytes": 1724,
+     "cf": "DYNAMIC",
+     "age": null,
+     "xcache": null,
+     "err": null
+    },
+    {
+     "n": 3,
+     "status": 200,
+     "ttfb_ms": 155.5,
+     "total_ms": 155.5,
+     "bytes": 1725,
+     "cf": "DYNAMIC",
+     "age": null,
+     "xcache": null,
+     "err": null
+    },
+    {
+     "n": 4,
+     "status": 200,
+     "ttfb_ms": 159.7,
+     "total_ms": 159.8,
+     "bytes": 1726,
+     "cf": "DYNAMIC",
+     "age": null,
+     "xcache": null,
+     "err": null
+    },
+    {
+     "n": 5,
+     "status": 200,
+     "ttfb_ms": 149.2,
+     "total_ms": 149.9,
+     "bytes": 1725,
+     "cf": "DYNAMIC",
+     "age": null,
+     "xcache": null,
+     "err": null
+    },
+    {
+     "n": 6,
+     "status": 200,
+     "ttfb_ms": 155.2,
+     "total_ms": 155.4,
+     "bytes": 1723,
+     "cf": "DYNAMIC",
+     "age": null,
+     "xcache": null,
+     "err": null
+    },
+    {
+     "n": 7,
+     "status": 200,
+     "ttfb_ms": 150.3,
+     "total_ms": 150.4,
+     "bytes": 1726,
+     "cf": "DYNAMIC",
+     "age": null,
+     "xcache": null,
+     "err": null
+    },
+    {
+     "n": 8,
+     "status": 200,
+     "ttfb_ms": 151.2,
+     "total_ms": 151.3,
+     "bytes": 1725,
+     "cf": "DYNAMIC",
+     "age": null,
+     "xcache": null,
+     "err": null
+    },
+    {
+     "n": 9,
+     "status": 200,
+     "ttfb_ms": 159.8,
+     "total_ms": 159.9,
+     "bytes": 1726,
+     "cf": "DYNAMIC",
+     "age": null,
+     "xcache": null,
+     "err": null
+    },
+    {
+     "n": 10,
+     "status": 200,
+     "ttfb_ms": 153.6,
+     "total_ms": 153.9,
+     "bytes": 1725,
+     "cf": "DYNAMIC",
+     "age": null,
+     "xcache": null,
+     "err": null
+    }
+   ]
+  },
+  {
+   "kind": "WEB",
+   "name": "GET /products (SSR)",
+   "path": "/products",
+   "hits": [
+    {
+     "n": 1,
+     "status": 200,
+     "ttfb_ms": 1270.5,
+     "total_ms": 1270.9,
+     "bytes": 1784,
+     "cf": "DYNAMIC",
+     "age": null,
+     "xcache": null,
+     "err": null
+    },
+    {
+     "n": 2,
+     "status": 200,
+     "ttfb_ms": 172.6,
+     "total_ms": 172.7,
+     "bytes": 1781,
+     "cf": "DYNAMIC",
+     "age": null,
+     "xcache": null,
+     "err": null
+    },
+    {
+     "n": 3,
+     "status": 200,
+     "ttfb_ms": 166.2,
+     "total_ms": 166.3,
+     "bytes": 1782,
+     "cf": "DYNAMIC",
+     "age": null,
+     "xcache": null,
+     "err": null
+    },
+    {
+     "n": 4,
+     "status": 200,
+     "ttfb_ms": 197.5,
+     "total_ms": 197.7,
+     "bytes": 1783,
+     "cf": "DYNAMIC",
+     "age": null,
+     "xcache": null,
+     "err": null
+    },
+    {
+     "n": 5,
+     "status": 200,
+     "ttfb_ms": 199.2,
+     "total_ms": 199.3,
+     "bytes": 1784,
+     "cf": "DYNAMIC",
+     "age": null,
+     "xcache": null,
+     "err": null
+    },
+    {
+     "n": 6,
+     "status": 200,
+     "ttfb_ms": 170.5,
+     "total_ms": 170.6,
+     "bytes": 1783,
+     "cf": "DYNAMIC",
+     "age": null,
+     "xcache": null,
+     "err": null
+    },
+    {
+     "n": 7,
+     "status": 200,
+     "ttfb_ms": 177.5,
+     "total_ms": 177.6,
+     "bytes": 1783,
+     "cf": "DYNAMIC",
+     "age": null,
+     "xcache": null,
+     "err": null
+    },
+    {
+     "n": 8,
+     "status": 200,
+     "ttfb_ms": 187.5,
+     "total_ms": 187.7,
+     "bytes": 1780,
+     "cf": "DYNAMIC",
+     "age": null,
+     "xcache": null,
+     "err": null
+    },
+    {
+     "n": 9,
+     "status": 200,
+     "ttfb_ms": 183.8,
+     "total_ms": 184.0,
+     "bytes": 1782,
+     "cf": "DYNAMIC",
+     "age": null,
+     "xcache": null,
+     "err": null
+    },
+    {
+     "n": 10,
+     "status": 200,
+     "ttfb_ms": 178.0,
+     "total_ms": 178.1,
+     "bytes": 1784,
+     "cf": "DYNAMIC",
+     "age": null,
+     "xcache": null,
+     "err": null
+    }
+   ]
+  },
+  {
+   "kind": "WEB",
+   "name": "GET /collections (SSR)",
+   "path": "/collections",
+   "hits": [
+    {
+     "n": 1,
+     "status": 200,
+     "ttfb_ms": 150.4,
+     "total_ms": 150.7,
+     "bytes": 1555,
+     "cf": "DYNAMIC",
+     "age": null,
+     "xcache": null,
+     "err": null
+    },
+    {
+     "n": 2,
+     "status": 200,
+     "ttfb_ms": 142.4,
+     "total_ms": 142.5,
+     "bytes": 1555,
+     "cf": "DYNAMIC",
+     "age": null,
+     "xcache": null,
+     "err": null
+    },
+    {
+     "n": 3,
+     "status": 200,
+     "ttfb_ms": 140.1,
+     "total_ms": 140.5,
+     "bytes": 1554,
+     "cf": "DYNAMIC",
+     "age": null,
+     "xcache": null,
+     "err": null
+    },
+    {
+     "n": 4,
+     "status": 200,
+     "ttfb_ms": 144.3,
+     "total_ms": 144.4,
+     "bytes": 1553,
+     "cf": "DYNAMIC",
+     "age": null,
+     "xcache": null,
+     "err": null
+    },
+    {
+     "n": 5,
+     "status": 200,
+     "ttfb_ms": 142.5,
+     "total_ms": 142.6,
+     "bytes": 1553,
+     "cf": "DYNAMIC",
+     "age": null,
+     "xcache": null,
+     "err": null
+    },
+    {
+     "n": 6,
+     "status": 200,
+     "ttfb_ms": 152.1,
+     "total_ms": 152.1,
+     "bytes": 1554,
+     "cf": "DYNAMIC",
+     "age": null,
+     "xcache": null,
+     "err": null
+    },
+    {
+     "n": 7,
+     "status": 200,
+     "ttfb_ms": 148.4,
+     "total_ms": 148.5,
+     "bytes": 1556,
+     "cf": "DYNAMIC",
+     "age": null,
+     "xcache": null,
+     "err": null
+    },
+    {
+     "n": 8,
+     "status": 200,
+     "ttfb_ms": 143.3,
+     "total_ms": 143.4,
+     "bytes": 1556,
+     "cf": "DYNAMIC",
+     "age": null,
+     "xcache": null,
+     "err": null
+    },
+    {
+     "n": 9,
+     "status": 200,
+     "ttfb_ms": 144.3,
+     "total_ms": 144.7,
+     "bytes": 1553,
+     "cf": "DYNAMIC",
+     "age": null,
+     "xcache": null,
+     "err": null
+    },
+    {
+     "n": 10,
+     "status": 200,
+     "ttfb_ms": 142.4,
+     "total_ms": 142.5,
+     "bytes": 1555,
+     "cf": "DYNAMIC",
+     "age": null,
+     "xcache": null,
+     "err": null
+    }
+   ]
+  },
+  {
+   "kind": "WEB",
+   "name": "GET /products/{slug} (SSR)",
+   "path": "/products/test-1",
+   "hits": [
+    {
+     "n": 1,
+     "status": 200,
+     "ttfb_ms": 1142.9,
+     "total_ms": 1143.0,
+     "bytes": 4393,
+     "cf": "DYNAMIC",
+     "age": null,
+     "xcache": null,
+     "err": null
+    },
+    {
+     "n": 2,
+     "status": 200,
+     "ttfb_ms": 178.3,
+     "total_ms": 178.4,
+     "bytes": 4392,
+     "cf": "DYNAMIC",
+     "age": null,
+     "xcache": null,
+     "err": null
+    },
+    {
+     "n": 3,
+     "status": 200,
+     "ttfb_ms": 172.1,
+     "total_ms": 172.1,
+     "bytes": 4389,
+     "cf": "DYNAMIC",
+     "age": null,
+     "xcache": null,
+     "err": null
+    },
+    {
+     "n": 4,
+     "status": 200,
+     "ttfb_ms": 192.2,
+     "total_ms": 192.3,
+     "bytes": 4393,
+     "cf": "DYNAMIC",
+     "age": null,
+     "xcache": null,
+     "err": null
+    },
+    {
+     "n": 5,
+     "status": 200,
+     "ttfb_ms": 203.5,
+     "total_ms": 203.6,
+     "bytes": 4392,
+     "cf": "DYNAMIC",
+     "age": null,
+     "xcache": null,
+     "err": null
+    },
+    {
+     "n": 6,
+     "status": 200,
+     "ttfb_ms": 180.5,
+     "total_ms": 180.7,
+     "bytes": 4392,
+     "cf": "DYNAMIC",
+     "age": null,
+     "xcache": null,
+     "err": null
+    },
+    {
+     "n": 7,
+     "status": 200,
+     "ttfb_ms": 203.5,
+     "total_ms": 203.6,
+     "bytes": 4390,
+     "cf": "DYNAMIC",
+     "age": null,
+     "xcache": null,
+     "err": null
+    },
+    {
+     "n": 8,
+     "status": 200,
+     "ttfb_ms": 187.6,
+     "total_ms": 187.7,
+     "bytes": 4391,
+     "cf": "DYNAMIC",
+     "age": null,
+     "xcache": null,
+     "err": null
+    },
+    {
+     "n": 9,
+     "status": 200,
+     "ttfb_ms": 169.5,
+     "total_ms": 169.6,
+     "bytes": 4392,
+     "cf": "DYNAMIC",
+     "age": null,
+     "xcache": null,
+     "err": null
+    },
+    {
+     "n": 10,
+     "status": 200,
+     "ttfb_ms": 182.7,
+     "total_ms": 182.8,
+     "bytes": 4391,
+     "cf": "DYNAMIC",
+     "age": null,
+     "xcache": null,
+     "err": null
+    }
+   ]
+  }
+ ]
+}
