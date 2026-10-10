@@ -1,0 +1,63 @@
+time="2026-10-10T02:09:48+05:30" level=warning msg="Request Failed" error="Get \"https://hadha.co/products\": request timeout"
+time="2026-10-10T02:09:48+05:30" level=warning msg="Request Failed" error="Get \"https://hadha.co/products\": request timeout"
+time="2026-10-10T02:09:49+05:30" level=warning msg="Request Failed" error="Get \"https://hadha.co/products\": request timeout"
+time="2026-10-10T02:09:50+05:30" level=warning msg="Request Failed" error="Get \"https://hadha.co/products\": request timeout"
+time="2026-10-10T02:09:51+05:30" level=warning msg="Request Failed" error="Get \"https://hadha.co/products\": request timeout"
+
+
+  █ THRESHOLDS 
+
+    blocked_403_429
+    ✓ 'count<20' count=0
+
+    http_req_duration
+    ✗ 'p(95)<5000' p(95)=5.15s
+
+      {page:collections}
+      ✓ 'p(95)<999999' p(95)=652.69ms
+
+      {page:home}
+      ✓ 'p(95)<999999' p(95)=655.78ms
+
+      {page:products}
+      ✓ 'p(95)<999999' p(95)=15.66s
+
+    http_req_failed
+    ✓ 'rate<0.02' rate=1.33%
+
+
+  █ TOTAL RESULTS 
+
+    checks_total.......: 6582   11.043785/s
+    checks_succeeded...: 98.66% 6494 out of 6582
+    checks_failed......: 1.33%  88 out of 6582
+
+    ✗ status 200
+      ↳  98% — ✓ 6494 / ✗ 88
+
+    CUSTOM
+    blocked_403_429................: 0      0/s
+    cf_cache_miss_or_dynamic.......: 6582   11.043785/s
+
+    HTTP
+    http_req_duration..............: avg=1.45s    min=113.04ms med=188.65ms max=1m0s   p(90)=1.35s    p(95)=5.15s   
+      { expected_response:true }...: avg=1.39s    min=113.04ms med=187.8ms  max=59.72s p(90)=1.19s    p(95)=4.55s   
+      { page:collections }.........: avg=236.64ms min=116.84ms med=144.2ms  max=3.91s  p(90)=341.79ms p(95)=652.69ms
+      { page:home }................: avg=242.38ms min=113.04ms med=144.29ms max=4.43s  p(90)=341.63ms p(95)=655.78ms
+      { page:products }............: avg=2.25s    min=123.11ms med=236.33ms max=1m0s   p(90)=2.99s    p(95)=15.66s  
+    http_req_failed................: 1.33%  88 out of 6584
+    http_reqs......................: 6584   11.04714/s
+
+    EXECUTION
+    iteration_duration.............: avg=3.44s    min=1.13s    med=2.37s    max=1m3s   p(90)=3.56s    p(95)=7.15s   
+    iterations.....................: 6571   11.025328/s
+    vus............................: 100    min=1          max=100
+    vus_max........................: 100    min=100        max=100
+
+    NETWORK
+    data_received..................: 95 MB  160 kB/s
+    data_sent......................: 989 kB 1.7 kB/s
+
+
+
+time="2026-10-10T02:10:31+05:30" level=error msg="thresholds on metrics 'http_req_duration' were crossed; at least one has abortOnFail enabled, stopping test prematurely"

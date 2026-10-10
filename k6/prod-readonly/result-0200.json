@@ -1,0 +1,227 @@
+{
+    "root_group": {
+        "id": "d41d8cd98f00b204e9800998ecf8427e",
+        "groups": {},
+        "checks": {
+                "status 200": {
+                    "passes": 6494,
+                    "fails": 88,
+                    "name": "status 200",
+                    "path": "::status 200",
+                    "id": "fad9fa412b86fcb03bee97c80dcd61f1"
+                }
+            },
+        "name": "",
+        "path": ""
+    },
+    "metrics": {
+        "vus_max": {
+            "max": 100,
+            "value": 100,
+            "min": 100
+        },
+        "http_req_duration": {
+            "avg": 1459.973655877886,
+            "min": 113.0408,
+            "med": 188.6563,
+            "max": 60001.1253,
+            "p(90)": 1358.0693299999991,
+            "p(95)": 5150.038974999973,
+            "thresholds": {
+                "p(95)<5000": true
+            }
+        },
+        "http_req_duration{page:products}": {
+            "med": 236.33975,
+            "max": 60001.1253,
+            "p(90)": 2991.46065,
+            "p(95)": 15662.544525000001,
+            "avg": 2254.995017160061,
+            "min": 123.1102,
+            "thresholds": {
+                "p(95)<999999": false
+            }
+        },
+        "http_reqs": {
+            "count": 6584,
+            "rate": 11.047099910306324
+        },
+        "data_sent": {
+            "rate": 1659.4542742543745,
+            "count": 989024
+        },
+        "data_received": {
+            "count": 95428668,
+            "rate": 160116.95469371992
+        },
+        "http_req_failed": {
+            "passes": 88,
+            "fails": 6496,
+            "thresholds": {
+                "rate<0.02": false
+            },
+            "value": 0.013365735115431349
+        },
+        "iteration_duration": {
+            "avg": 3449.791794506169,
+            "min": 1134.6787,
+            "med": 2379.1476,
+            "max": 63273.5928,
+            "p(90)": 3561.0541,
+            "p(95)": 7159.9232
+        },
+        "http_req_duration{page:collections}": {
+            "p(95)": 652.6930099999989,
+            "avg": 236.64414200595834,
+            "min": 116.8458,
+            "med": 144.208,
+            "max": 3919.8593,
+            "p(90)": 341.79105999999985,
+            "thresholds": {
+                "p(95)<999999": false
+            }
+        },
+        "http_req_connecting": {
+            "p(95)": 0,
+            "avg": 0.8784502430133653,
+            "min": 0,
+            "med": 0,
+            "max": 81.1428,
+            "p(90)": 0
+        },
+        "http_req_tls_handshaking": {
+            "avg": 1.0937085965978126,
+            "min": 0,
+            "med": 0,
+            "max": 98.6334,
+            "p(90)": 0,
+            "p(95)": 0
+        },
+        "cf_cache_miss_or_dynamic": {
+            "count": 6582,
+            "rate": 11.043744169142803
+        },
+        "http_req_receiving": {
+            "avg": 5.581964064398557,
+            "min": 0,
+            "med": 2.5257500000000004,
+            "max": 1044.4129,
+            "p(90)": 11.26125,
+            "p(95)": 12.536314999999998
+        },
+        "http_req_duration{page:home}": {
+            "avg": 242.38825626179974,
+            "min": 113.0408,
+            "med": 144.2913,
+            "max": 4436.9747,
+            "p(90)": 341.63666,
+            "p(95)": 655.78536,
+            "thresholds": {
+                "p(95)<999999": false
+            }
+        },
+        "checks": {
+            "passes": 6494,
+            "fails": 88,
+            "value": 0.9866302035855363
+        },
+        "http_req_waiting": {
+            "p(90)": 1347.2535799999994,
+            "p(95)": 5150.038974999973,
+            "avg": 1454.1988702460521,
+            "min": 111.6703,
+            "med": 181.85115,
+            "max": 60001.1253
+        },
+        "http_req_blocked": {
+            "avg": 1.99027417982989,
+            "min": 0,
+            "med": 0,
+            "max": 187.2438,
+            "p(90)": 0,
+            "p(95)": 0
+        },
+        "vus": {
+            "max": 100,
+            "value": 100,
+            "min": 1
+        },
+        "blocked_403_429": {
+            "count": 0,
+            "rate": 0,
+            "thresholds": {
+                "count<20": false
+            }
+        },
+        "iterations": {
+            "count": 6571,
+            "rate": 11.025287592743446
+        },
+        "http_req_duration{expected_response:true}": {
+            "avg": 1397.6671944581287,
+            "min": 113.0408,
+            "med": 187.80635,
+            "max": 59721.8964,
+            "p(90)": 1191.9582,
+            "p(95)": 4555.488475
+        },
+        "http_req_sending": {
+            "avg": 0.1928215674362088,
+            "min": 0,
+            "med": 0,
+            "max": 4.1188,
+            "p(90)": 0.6346,
+            "p(95)": 0.7107
+        }
+    },
+    "setup_data": {
+        "cats": [
+            "shop-women",
+            "shop-men",
+            "shop-unisex",
+            "shop-kids"
+        ],
+        "slugs": [
+            "test-1",
+            "new-divine-om-925-sterling-silver-rakhi-elegant-spiritual-raksha-bandhan-gift",
+            "hadha-925-silver-om-ganesh-rakhi-divine-elegant-designer-rakhi",
+            "celestial-crescent-925-silver-diamond-ring",
+            "eternal-link-925-silver-designer-ring-elegant-crystal-accent-band",
+            "bugati-925-sterling-silver-marquise-cz-drop-earrings-elegant-luxury-sparkle-for-women",
+            "hadha-925-sterling-silver-bugati-butterfly-drop-earrings-premium-sparkling-designer-earrings-for-women",
+            "karungali-925-sterling-silver-mens-bracelet-premium-matte-anticblack-bead-bracelet-for-men",
+            "premium-925-sterling-silver-mens-oval-link-bracelet-modern-luxury-chain-bracelet-for-men",
+            "hadha-premium-925-sterling-silver-mens-interlock-curb-link-bracelet",
+            "hadha-premium-925-sterling-silver-cuban-link-mens-bracelet-classic-luxury-chain-bracelet-for-men",
+            "eligent-premium-925-sterling-silver-cuban-link-mens-chain-timeless-luxury-necklace-for-men",
+            "new-eternal-butterfly-elegance-925-sterling-silver-ring",
+            "super-premium-925-sterling-silver-flat-snake-chain-for-men-sleek-timeless-everyday-luxury",
+            "premium-925-sterling-silver-mens-figaro-chain-necklace-classic-luxury-everyday-chain",
+            "excellent-elegant-infinity-baguette-925-sterling-silver-ring",
+            "super-royal-crown-925-sterling-silver-ring-elegant-princess-tiara-design",
+            "royal-crown-925-sterling-silver-adjustable-ring-elegant-minimalist-queen-crown-design",
+            "925-sterling-silver-floral-infinity-ring-elegant-sparkle-adjustable-ring-for-women",
+            "925-sterling-silver-butterfly-initial-ring-elegant-personalized-adjustable-ring-for-women",
+            "925-sterling-silver-princess-crown-ring-elegant-cz-tiara-adjustable-ring-for-women-girls",
+            "925-sterling-silver-initial-d-sparkle-ring-elegant-personalized-cz-band-for-women",
+            "hadha-925-sterling-silver-initial-h-ring-minimalist-sparkling-cz-letter-ring-for-women",
+            "925-sterling-silver-initial-m-cz-letter-ring-minimalist-personalized-sparkle-ring-for-women",
+            "925-sterling-silver-initial-r-cz-letter-ring-personalized-minimalist-name-ring-for-women",
+            "super-radiant-baguette-sparkle-ring-premium-925-sterling-silver",
+            "elegant-wave-duo-ring-premium-925-sterling-silver-cz-ring",
+            "elegant-open-heart-925-sterling-silver-ring-sparkling-cz-love-ring-for-women",
+            "925-sterling-silver-sparkling-turtle-ring-symbol-of-wisdom-longevity-good-fortune",
+            "elegant-925-sterling-silver-musical-notes-ring-sparkling-cz-adjustable-ring-for-women",
+            "925-sterling-silver-initial-p-zircon-ring-elegant-personalized-minimalist-band-for-women",
+            "hadha-925-sterling-silver-sparkling-bow-knot-ring-for-women-elegant-cz-diamond-adjustable-ring-minimalist-luxury-jewellery",
+            "elegant-925-sterling-silver-baguette-halo-ring-sparkling-minimalist-cz-ring-for-women",
+            "elegant-chevron-sparkle-ring-premium-925-sterling-silver-adjustable-ring",
+            "elegant-925-sterling-silver-geometric-open-ring-with-sparkling-zircon-stones",
+            "925-sterling-silver-initial-j-sparkle-ring-minimalist-personalized-letter-ring-for-women",
+            "925-sterling-silver-cute-frog-ring-minimalist-adjustable-animal-ring-premium-silver-statement-jewelry",
+            "925-sterling-silver-minimalist-heart-ring-elegant-cz-promise-ring-for-women",
+            "radiant-twist-baguette-ring-premium-925-sterling-silver-elegance",
+            "elegant-serpentine-sparkle-ring-premium-925-sterling-silver-cz-snake-ring"
+        ]
+    }
+}
