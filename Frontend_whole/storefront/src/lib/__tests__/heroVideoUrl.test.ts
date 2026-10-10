@@ -1,9 +1,5 @@
 import { describe, expect, it } from "vitest";
-import {
-  hasVideoBackground,
-  videoUrlProblem,
-  type HeroSlideMedia,
-} from "@hadha/shared-types";
+import { hasVideoBackground, videoUrlProblem, type HeroSlideMedia } from "@hadha/shared-types";
 
 describe("videoUrlProblem", () => {
   it.each([
