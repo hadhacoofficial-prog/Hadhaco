@@ -33,6 +33,12 @@ router = APIRouter()
 _service = CatalogService()
 
 _PRODUCT_LIST_TTL = 300  # 5 minutes — catalog changes via admin only
+# How long past the TTL an idle entry is still served (stale) while ONE
+# background refresh runs. Long enough that a quiet site never makes a visitor
+# pay the cold DB fetch (~1.5s measured); admin edits soft-expire entries via
+# bust_product_list_cache, so this never delays a catalog change by more than
+# one stale response. Keep equal to redis._PRODUCT_LIST_SWR_WINDOW_SECONDS.
+_PRODUCT_LIST_SWR_WINDOW = 3600
 
 
 def _product_list_cache_key(**params) -> str:
@@ -197,14 +203,14 @@ async def list_products(
             )
             return result.model_dump(mode="json")
 
-    # SWR: ttl=300s (5 min fresh), swr_window=300s (serve stale up to 10 min
+    # SWR: ttl=300s (5 min fresh), swr_window=3600s (serve stale up to ~1h
     # while background-refreshing).  Request coalescing prevents stampedes
     # when the 5-min TTL expires under concurrent traffic.
     result = await cache_swr(
         redis,
         cache_key,
         ttl=_PRODUCT_LIST_TTL,
-        swr_window=_PRODUCT_LIST_TTL,
+        swr_window=_PRODUCT_LIST_SWR_WINDOW,
         fetch_fn=_fetch_products,
     )
     from fastapi.responses import JSONResponse
@@ -247,7 +253,7 @@ async def product_facets(
         redis,
         cache_key,
         ttl=_PRODUCT_LIST_TTL,
-        swr_window=_PRODUCT_LIST_TTL,
+        swr_window=_PRODUCT_LIST_SWR_WINDOW,
         fetch_fn=_fetch_facets,
     )
     from fastapi.responses import JSONResponse
@@ -288,14 +294,14 @@ async def get_product_by_slug(
             result = await _service.get_by_slug(s, slug)
             return result.model_dump(mode="json")
 
-    # SWR: ttl=600s (10 min fresh), swr_window=600s (serve stale up to 20 min
+    # SWR: ttl=600s (10 min fresh), swr_window=3600s (serve stale up to ~1h
     # while a single coalesced background refresh runs).  Request coalescing
     # prevents stampedes when the TTL expires under concurrent traffic.
     data = await cache_swr(
         redis,
         cache_key,
         ttl=TTL_PRODUCT_DETAIL,
-        swr_window=TTL_PRODUCT_DETAIL,
+        swr_window=_PRODUCT_LIST_SWR_WINDOW,
         fetch_fn=_fetch_product,
     )
     etag = make_etag(json.dumps(data, sort_keys=True))

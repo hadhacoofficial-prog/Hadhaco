@@ -35,6 +35,10 @@ _WARM_LOCK_TTL = 300
 _MIN_REWARM_INTERVAL = 10  # seconds
 _last_warm_at: float = 0.0
 
+# Redis expiry for product-list / facets entries: soft TTL + SWR window, the
+# same total cache_swr stores them with (see catalog/router.py).
+_PRODUCT_LIST_HARD_TTL = 300 + 3600
+
 
 def _product_list_cache_key(**params: object) -> str:
     """Build product list cache key — mirrors the catalog router's logic."""
@@ -52,8 +56,12 @@ async def _warm_one(
     redis: aioredis.Redis,
     *,
     wrap_swr: bool = True,
+    hard_ttl: int | None = None,
 ) -> bool:
     """Warm a single cache entry.
+
+    *ttl* drives the freshness skip; *hard_ttl* (default: *ttl*) is the Redis
+    expiry — pass ``ttl + swr_window`` to match what ``cache_swr`` stores.
 
     Always re-warms (skips only if the current value was written less than
     half the TTL ago — this avoids redundant warming under high traffic
@@ -89,12 +97,43 @@ async def _warm_one(
         else:
             payload = raw if isinstance(raw, str) else _safe_json_dumps(raw)
         compressed = _compress_value(payload)
-        await safe_redis_setex(redis, cache_key, ttl, compressed)
+        await safe_redis_setex(redis, cache_key, hard_ttl or ttl, compressed)
         logger.info("warm_ok", endpoint=name, cache_key=cache_key)
         return True
     except Exception as exc:
         logger.warning("warm_error", endpoint=name, error=str(exc))
         return False
+
+
+def _facets_cache_key(spec_params: dict[str, Any]) -> str:
+    """Build the product-facets cache key — mirrors the catalog router."""
+    h = hashlib.sha256(
+        json.dumps(spec_params, sort_keys=True, default=str).encode()
+    ).hexdigest()[:12]
+    return f"products:list:v1:facets:{h}"
+
+
+async def _warm_default_facets(redis: aioredis.Redis) -> bool:
+    """Warm the unfiltered facets entry (``GET /products/facets`` with no params)."""
+    from app.core.database import AsyncSessionLocal
+    from app.modules.catalog.repository import ProductFilterSpec
+    from app.modules.catalog.service import CatalogService
+
+    spec = ProductFilterSpec(status="active")
+
+    async def _fetch_facets() -> dict:
+        async with AsyncSessionLocal() as db:
+            facets = await CatalogService().get_facets(db, spec)
+            return facets.model_dump(mode="json")
+
+    return await _warm_one(
+        "products:facets",
+        _facets_cache_key(spec.cache_params()),
+        _fetch_facets,
+        600,
+        redis,
+        hard_ttl=_PRODUCT_LIST_HARD_TTL,
+    )
 
 
 async def warm_once(*, force: bool = False) -> dict[str, object]:
@@ -190,10 +229,27 @@ async def _warm_all_targets(redis: aioredis.Redis, force: bool) -> tuple[int, in
             include_collections=True,
             **ProductFilterSpec(status="active").cache_params(),
         )
-        await _track(await _warm_one("products", cache_key, _warm_products, 600, redis))
+        await _track(
+            await _warm_one(
+                "products",
+                cache_key,
+                _warm_products,
+                600,
+                redis,
+                hard_ttl=_PRODUCT_LIST_HARD_TTL,
+            )
+        )
     except Exception as exc:
         fail_count += 1
         logger.warning("warm_error", endpoint="products", error=str(exc))
+
+    # 1b. Default (unfiltered) product facets — the filter panel requests this
+    # on every /products page load.
+    try:
+        await _track(await _warm_default_facets(redis))
+    except Exception as exc:
+        fail_count += 1
+        logger.warning("warm_error", endpoint="products:facets", error=str(exc))
 
     # 2. Categories tree
     try:
@@ -390,16 +446,29 @@ async def _warm_all_targets(redis: aioredis.Redis, force: bool) -> tuple[int, in
     return skip_count, ok_count, fail_count
 
 
-async def start_warm_loop() -> None:
-    """Startup-only warming (replaces the old periodic loop).
+# SWR only refreshes an entry when a request arrives for it. On a low-traffic
+# site an entry idles past its hard TTL (600s for the product list, 1h for the
+# sitemap) and the next visitor pays the full DB miss (~1.5s measured in
+# production). Re-checking every 150s keeps each target refreshed at its
+# soft-TTL boundary (``_warm_one`` skips entries younger than half the hard
+# TTL, so most ticks are a cheap Redis GET) and never lets one hard-expire.
+_WARM_INTERVAL_SECONDS = 150
 
-    Warms once at startup. After that, SWR handles freshness — stale entries
-    are served while background refreshes run. No periodic re-warming needed.
+
+async def start_warm_loop() -> None:
+    """Warm at startup, then keep targets from hard-expiring while idle.
+
+    The Redis lock in ``warm_once`` makes concurrent workers collapse to one
+    warmer per tick. Runs until cancelled at shutdown.
     """
-    try:
-        await warm_once()
-    except Exception as exc:
-        logger.error("warm_startup_failed", error=str(exc))
+    while True:
+        try:
+            await warm_once()
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:
+            logger.error("warm_loop_failed", error=str(exc))
+        await asyncio.sleep(_WARM_INTERVAL_SECONDS)
 
 
 async def rewarm_after_invalidation(
@@ -472,7 +541,18 @@ async def _warm_target(redis: aioredis.Redis, target: str) -> bool:
             include_collections=True,
             **ProductFilterSpec(status="active").cache_params(),
         )
-        return await _warm_one("products", cache_key, _fetch_products, 600, redis)
+        warmed = await _warm_one(
+            "products",
+            cache_key,
+            _fetch_products,
+            600,
+            redis,
+            hard_ttl=_PRODUCT_LIST_HARD_TTL,
+        )
+        # Facets share the products:list:v1:* prefix, so the same bust that
+        # soft-expired the list also soft-expired them.
+        facets_warmed = await _warm_default_facets(redis)
+        return warmed or facets_warmed
 
     if target == "collections":
         from app.core.database import AsyncSessionLocal

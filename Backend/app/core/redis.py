@@ -224,11 +224,13 @@ async def safe_redis_delete(redis: aioredis.Redis, *keys: str) -> None:
         mark_redis_error()
 
 
-# Must match catalog/router.py's `_PRODUCT_LIST_TTL` (the `ttl` *and*
-# `swr_window` passed to `cache_swr` for the product-list cache — both are
-# 300s there). Duplicated here rather than imported to avoid a cycle
-# (app.core.cache imports bust_product_list_cache from this module already).
+# Must match catalog/router.py's `_PRODUCT_LIST_TTL` (the `ttl` passed to
+# `cache_swr` for the product-list cache) and `_PRODUCT_LIST_SWR_WINDOW` (its
+# `swr_window`). Duplicated here rather than imported to avoid a cycle
+# (app.core.cache imports bust_product_list_cache from this module already);
+# tests/unit/test_cache_warmer_loop.py asserts they stay equal.
 _PRODUCT_LIST_SWR_TTL_SECONDS = 300
+_PRODUCT_LIST_SWR_WINDOW_SECONDS = 3600
 
 
 async def bust_product_list_cache(redis: aioredis.Redis) -> None:
@@ -272,7 +274,10 @@ async def bust_product_list_cache(redis: aioredis.Redis) -> None:
         _t_keys = _time.perf_counter()
         for key in keys:
             await _soft_expire_swr_entry(
-                redis, key, ttl_seconds=_PRODUCT_LIST_SWR_TTL_SECONDS
+                redis,
+                key,
+                ttl_seconds=_PRODUCT_LIST_SWR_TTL_SECONDS,
+                swr_window_seconds=_PRODUCT_LIST_SWR_WINDOW_SECONDS,
             )
         keys_ms = (_time.perf_counter() - _t_keys) * 1000
         from app.core.profiling import profiler
@@ -359,7 +364,11 @@ def cancel_pending_busts() -> None:
 
 
 async def _soft_expire_swr_entry(
-    redis: aioredis.Redis, key: str, *, ttl_seconds: int
+    redis: aioredis.Redis,
+    key: str,
+    *,
+    ttl_seconds: int,
+    swr_window_seconds: int | None = None,
 ) -> None:
     """Rewrite one `cache_swr`-format entry's `"t"` field so the next read
     lands on cache_swr's soft-expired (stale-serve + background-refresh)
@@ -382,9 +391,10 @@ async def _soft_expire_swr_entry(
         wrapper["d"]
         wrapper["t"] = time.time() - ttl_seconds
         rewritten = _compress_value(json.dumps(wrapper, default=str))
-        # cache_swr always stores at Redis TTL = ttl + swr_window; for the
-        # product list both are ttl_seconds, so 2x here reproduces that.
-        await safe_redis_setex(redis, key, ttl_seconds * 2, rewritten)
+        # cache_swr always stores at Redis TTL = ttl + swr_window. When the
+        # caller doesn't pass a window it defaults to ttl_seconds (ttl == window).
+        window = ttl_seconds if swr_window_seconds is None else swr_window_seconds
+        await safe_redis_setex(redis, key, ttl_seconds + window, rewritten)
     except (json.JSONDecodeError, KeyError, TypeError):
         await safe_redis_delete(redis, key)
 
