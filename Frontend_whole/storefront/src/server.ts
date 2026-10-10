@@ -5,6 +5,7 @@ import * as Sentry from "@sentry/react";
 import { cspHeader, generateNonce, type CspRequestContext } from "./lib/csp";
 import { consumeLastCapturedError } from "./lib/error-capture";
 import { renderErrorPage } from "./lib/error-page";
+import { handleSeoRequest } from "./lib/seo-routes";
 
 // Initialize Sentry on the server side (SSR)
 const sentryDsn = process.env.SENTRY_DSN;
@@ -73,6 +74,10 @@ async function normalizeCatastrophicSsrResponse(response: Response): Promise<Res
 
 export default {
   async fetch(request: Request, env: unknown, ctx: unknown) {
+    // robots.txt / sitemap.xml are not app routes; answer them before SSR.
+    const seoResponse = await handleSeoRequest(request);
+    if (seoResponse) return seoResponse;
+
     const nonce = generateNonce();
     try {
       const handler = await getServerEntry();
