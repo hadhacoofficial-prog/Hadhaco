@@ -133,6 +133,9 @@ class CatalogService:
             on_sale=on_sale,
             min_rating=min_rating,
             stock_status=stock_status,
+            # Availability is computed in the list statement itself; loading
+            # every product's variants would cost a separate round trip.
+            load_variants=False,
         )
 
         product_ids = [p.id for p in items]
@@ -183,8 +186,9 @@ class CatalogService:
             cols = [
                 ProductCollectionRef.model_validate(c) for c in col_map.get(p.id, [])
             ]
+            available_stock: int = p.list_available_stock  # type: ignore[attr-defined]
             inventory_status, can_purchase = compute_inventory_status(
-                p.available_stock,
+                available_stock,
                 p.low_stock_threshold,
                 p.track_inventory,
                 p.allow_backorder,
@@ -201,7 +205,7 @@ class CatalogService:
                     base_price=p.base_price,
                     compare_at_price=p.compare_at_price,
                     stock_quantity=p.stock_quantity,
-                    available_stock=p.available_stock,
+                    available_stock=available_stock,
                     inventory_status=inventory_status,
                     can_purchase=can_purchase,
                     status=p.status,

@@ -628,7 +628,7 @@ class TestCatalogServiceRead:
         mock_product.base_price = 999.0
         mock_product.compare_at_price = None
         mock_product.stock_quantity = 10
-        mock_product.available_stock = 10
+        mock_product.list_available_stock = 10
         mock_product.low_stock_threshold = 5
         mock_product.track_inventory = True
         mock_product.allow_backorder = False

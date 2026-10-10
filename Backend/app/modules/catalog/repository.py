@@ -389,8 +389,16 @@ class ProductRepository:
         on_sale: bool | None = None,
         min_rating: float | None = None,
         stock_status: str | None = None,
+        load_variants: bool = True,
     ) -> tuple[list[Product], int]:
         """Return paginated products with total count.
+
+        ``load_variants=False`` skips the ``Product.variants`` selectinload (one
+        whole extra round trip) and instead computes availability in the same
+        statement via ``_available_stock_expr()``, exposing it as
+        ``product.list_available_stock``. ``Product.available_stock`` must not
+        be read on such items (the relationship is not loaded) - use
+        ``list_available_stock``. List views need only that number.
 
         Uses COUNT(*) OVER() window function so count + data are fetched in a
         single round-trip (saves one DB round-trip vs the previous separate
@@ -428,13 +436,17 @@ class ProductRepository:
         filters = list(_filter_clauses(spec).values())
         count_window = func.count().over().label("_total_count")
 
+        columns: list[Any] = [Product, count_window]
+        if not load_variants:
+            columns.append(_available_stock_expr().label("_avail"))
         list_q = (
-            select(Product, count_window)
-            .options(selectinload(Product.variants))
+            select(*columns)
             .order_by(*_product_order_by(sort_by, sort_dir, search))
             .offset((page - 1) * page_size)
             .limit(page_size)
         )
+        if load_variants:
+            list_q = list_q.options(selectinload(Product.variants))
         if filters:
             list_q = list_q.where(and_(*filters))
         result = await db.execute(list_q)
@@ -451,6 +463,9 @@ class ProductRepository:
             return [], int((await db.execute(count_q)).scalar_one())
         total: int = rows[0][1]
         items = [row[0] for row in rows]
+        if not load_variants:
+            for row in rows:
+                row[0].list_available_stock = int(row[2])
         return items, total
 
     async def get_facets(
@@ -555,7 +570,7 @@ class ProductRepository:
     #  List-view image hydration — replaces heavy selectinload(Product.images
     #  ).selectinload(Image.variants) which loaded ALL images for ALL products.
     #  Instead, we fetch exactly 2 images per product (primary + first
-    #  secondary) in a single batch query, with Image.variants selectinloaded
+    #  secondary) in a single statement, with Image.variants joined-loaded
     #  for those images only.
     # ------------------------------------------------------------------ #
 
@@ -565,22 +580,23 @@ class ProductRepository:
         """Fetch exactly 2 images (primary + secondary) per product.
 
         Returns ``{product_id: [primary_img, secondary_img]}`` — each img
-        has its ``.variants`` relationship populated (via selectinload in the
-        calling batch query).
+        has its ``.variants`` relationship populated (joined-loaded in the
+        same single statement).
         """
         if not product_ids:
             return {}
 
-        from sqlalchemy.orm import selectinload as _sel
+        from sqlalchemy.orm import joinedload
 
         from app.modules.media.models import Image
 
-        # Step 1: CTE ranks images per product (only ID + owner_id + rn)
-        # — avoids the JSONB-hashing issue with .unique() on full Image rows.
-        ranked_q = (
+        # One statement: rank images per product in a subquery (primary first,
+        # then sort_order, then age) and keep the top two, joining each
+        # image's variants in the same round trip. This used to be three
+        # statements (rank ids, load images, selectinload variants).
+        ranked = (
             select(
                 Image.id.label("_image_id"),
-                Image.owner_id.label("_owner_id"),
                 func.row_number()
                 .over(
                     partition_by=Image.owner_id,
@@ -600,35 +616,19 @@ class ProductRepository:
             .subquery()
         )
 
-        ids_q = select(ranked_q.c._image_id, ranked_q.c._owner_id).where(
-            ranked_q.c._rn <= 2
+        q = (
+            select(Image)
+            .join(ranked, ranked.c._image_id == Image.id)
+            .where(ranked.c._rn <= 2)
+            .options(joinedload(Image.variants))
+            .order_by(Image.owner_id, ranked.c._rn)
         )
-        result = await db.execute(ids_q)
-        id_rows = result.all()
-        if not id_rows:
-            return {}
+        images = (await db.execute(q)).unique().scalars().all()
 
-        image_ids = [row[0] for row in id_rows]
-        owner_map: dict[uuid.UUID, uuid.UUID] = {row[0]: row[1] for row in id_rows}
-
-        # Step 2: batch-load full Image objects (with selectinload for variants)
-        imgs_result = await db.execute(
-            select(Image).where(Image.id.in_(image_ids)).options(_sel(Image.variants))
-        )
-        images = imgs_result.scalars().all()
-
-        # Step 3: build {product_id: [img, ...]} preserving sort order from CTE
-        id_order: dict[uuid.UUID, int] = {
-            row[0]: idx for idx, row in enumerate(id_rows)
-        }
         mapping: dict[uuid.UUID, list] = {}
         for img in images:
-            pid = owner_map.get(img.id)
-            if pid is not None:
-                mapping.setdefault(pid, []).append(img)
-        # Sort each product's images by the CTE row number
-        for pid in mapping:
-            mapping[pid].sort(key=lambda i: id_order.get(i.id, 999))
+            if img.owner_id is not None:
+                mapping.setdefault(img.owner_id, []).append(img)
         return mapping
 
     async def create(self, db: AsyncSession, data: dict[str, Any]) -> Product:
