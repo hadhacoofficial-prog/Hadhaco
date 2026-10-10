@@ -29,6 +29,9 @@ logger = structlog.get_logger("cache.warmer")
 # safety net in case the holder crashes mid-warm.
 _WARM_LOCK_KEY = "cache:warmer:lock"
 _WARM_LOCK_TTL = 300
+# Set (not deleted) at the start of each periodic pass so only one worker in
+# the cluster runs a pass per interval.
+_WARM_TICK_KEY = "cache:warmer:tick"
 
 # How long to wait between re-warm attempts triggered by invalidation.
 # Prevents burst re-warming when multiple invalidations arrive in a short window.
@@ -74,6 +77,18 @@ async def _warm_one(
 
     try:
         existing = await safe_redis_get(redis, cache_key)
+        if existing and not wrap_swr:
+            # Raw (non-SWR) entries carry no timestamp, so judge freshness by
+            # the Redis TTL left. Without this they were regenerated on every
+            # tick (trending + sitemap showed warm_ok 12/12 ticks in prod logs).
+            try:
+                left = int(await asyncio.wait_for(redis.ttl(cache_key), timeout=0.5))
+            except Exception:
+                left = -1
+            total = hard_ttl or ttl
+            if left > 0 and (total - left) < ttl * 0.5:
+                logger.debug("warm_skip", endpoint=name, cache_key=cache_key)
+                return False
         if existing:
             # Decompress if needed, then parse the SWR wrapper to check age.
             existing = _decompress_value(existing)
@@ -136,11 +151,16 @@ async def _warm_default_facets(redis: aioredis.Redis) -> bool:
     )
 
 
-async def warm_once(*, force: bool = False) -> dict[str, object]:
+async def warm_once(
+    *, force: bool = False, rate_limit_seconds: int | None = None
+) -> dict[str, object]:
     """Populate Redis for each warm-target endpoint.
 
     Uses a Redis distributed lock so only one worker warms at a time.
     Pass *force=True* to bypass the freshness check and always re-warm.
+    *rate_limit_seconds* makes the pass cluster-wide at-most-once per window:
+    the lock above is released when a pass ends, so with 2 uvicorn workers
+    each looping on the same cadence both used to run back to back.
     """
     from app.core.redis import get_redis_pool, redis_available
 
@@ -149,6 +169,17 @@ async def warm_once(*, force: bool = False) -> dict[str, object]:
         return {"ok": 0, "fail": 0, "skipped": 0, "elapsed_ms": 0}
 
     redis = get_redis_pool()
+
+    if rate_limit_seconds:
+        try:
+            first = await asyncio.wait_for(
+                redis.set(_WARM_TICK_KEY, "1", nx=True, ex=rate_limit_seconds),
+                timeout=0.5,
+            )
+            if not first:
+                return {"ok": 0, "fail": 0, "skipped": 0, "elapsed_ms": 0}
+        except Exception:
+            pass  # Redis hiccup - fall through to the normal lock
 
     # ── Distributed lock ─────────────────────────────────────────────────
     lock_key = _WARM_LOCK_KEY
@@ -461,13 +492,17 @@ async def start_warm_loop() -> None:
     The Redis lock in ``warm_once`` makes concurrent workers collapse to one
     warmer per tick. Runs until cancelled at shutdown.
     """
+    first = True
     while True:
         try:
-            await warm_once()
+            await warm_once(
+                rate_limit_seconds=None if first else _WARM_INTERVAL_SECONDS - 15
+            )
         except asyncio.CancelledError:
             raise
         except Exception as exc:
             logger.error("warm_loop_failed", error=str(exc))
+        first = False
         await asyncio.sleep(_WARM_INTERVAL_SECONDS)
 
 

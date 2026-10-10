@@ -141,3 +141,74 @@ async def test_soft_expire_keeps_full_swr_window_in_redis_ttl():
     assert r.setex.await_args.args[1] == 3900
     rewritten = json.loads(r.setex.await_args.args[2])
     assert time.time() - rewritten["t"] >= 300  # lands in the stale-serve window
+
+
+class _FakeWarmRedis:
+    """Tiny stand-in: get/ttl/setex/set(nx) - what the warmer touches."""
+
+    def __init__(self, value: str | None = None, ttl_left: int = -2) -> None:
+        self.value = value
+        self.ttl_left = ttl_left
+        self.keys: set[str] = set()
+        self.setex = AsyncMock()
+
+    async def get(self, key: str):
+        return self.value
+
+    async def ttl(self, key: str) -> int:
+        return self.ttl_left
+
+    async def set(self, key: str, val: str, nx: bool = False, ex: int | None = None):
+        if nx and key in self.keys:
+            return None
+        self.keys.add(key)
+        return True
+
+    async def delete(self, *keys: str) -> None:
+        self.keys.difference_update(keys)
+
+
+async def test_raw_entry_fresh_by_redis_ttl_is_not_regenerated():
+    """sitemap/trending are stored without a timestamp; judge age by TTL left."""
+    redis = _FakeWarmRedis(value="<xml/>", ttl_left=3500)  # written ~100s ago of 3600
+    fetch = AsyncMock(return_value="<xml/>")
+
+    warmed = await warmer._warm_one(
+        "sitemap", "sitemap:v1", fetch, 3600, redis, wrap_swr=False
+    )
+
+    assert warmed is False
+    fetch.assert_not_awaited()
+
+
+async def test_raw_entry_past_half_ttl_is_regenerated():
+    redis = _FakeWarmRedis(value="<xml/>", ttl_left=1000)  # ~2600s old of 3600
+    fetch = AsyncMock(return_value="<xml/>")
+
+    warmed = await warmer._warm_one(
+        "sitemap", "sitemap:v1", fetch, 3600, redis, wrap_swr=False
+    )
+
+    assert warmed is True
+    fetch.assert_awaited_once()
+
+
+async def test_rate_limited_warm_pass_runs_once_per_window(monkeypatch):
+    import app.core.redis as redis_mod
+
+    redis = _FakeWarmRedis()
+    monkeypatch.setattr(redis_mod, "redis_available", lambda: True)
+    monkeypatch.setattr(redis_mod, "get_redis_pool", lambda: redis)
+    targets = AsyncMock(return_value=(0, 0, 0))
+    monkeypatch.setattr(warmer, "_warm_all_targets", targets)
+
+    first = await warmer.warm_once(rate_limit_seconds=135)
+    second = await warmer.warm_once(rate_limit_seconds=135)
+
+    assert "elapsed_ms" in first and second == {
+        "ok": 0,
+        "fail": 0,
+        "skipped": 0,
+        "elapsed_ms": 0,
+    }
+    assert targets.await_count == 1
