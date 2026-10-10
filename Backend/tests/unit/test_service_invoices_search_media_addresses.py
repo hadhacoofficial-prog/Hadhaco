@@ -199,13 +199,10 @@ class TestSearchService:
         result = await self.svc.full_text_search(db, "   ")
         assert result["total"] == 0
 
-    async def test_full_text_search_returns_fts_results(self):
-        db = AsyncMock()
-        mock_count_result = MagicMock()
-        mock_count_result.scalar_one.return_value = 2
-
-        mock_row = MagicMock()
-        mock_row._mapping = {
+    @staticmethod
+    def _row(total: int, **over):
+        row = MagicMock()
+        mapping = {
             "id": uuid.uuid4(),
             "name": "Silver Ring",
             "slug": "silver-ring",
@@ -217,80 +214,72 @@ class TestSearchService:
             "allow_backorder": False,
             "metal_type": "silver",
             "is_featured": False,
-            "rank": 0.8,
+            "_total": total,
         }
-        mock_items_result = MagicMock()
-        mock_items_result.fetchall.return_value = [mock_row, mock_row]
+        mapping.update(over)
+        row._mapping = mapping
+        return row
 
-        db.execute = AsyncMock(side_effect=[mock_count_result, mock_items_result])
+    @staticmethod
+    def _rows(*rows):
+        res = MagicMock()
+        res.fetchall.return_value = list(rows)
+        return res
+
+    @staticmethod
+    def _count(n: int):
+        res = MagicMock()
+        res.scalar_one.return_value = n
+        return res
+
+    async def test_full_text_search_returns_fts_results_in_one_statement(self):
+        db = AsyncMock()
+        db.execute = AsyncMock(
+            side_effect=[self._rows(self._row(2), self._row(2, rank=0.8))]
+        )
         result = await self.svc.full_text_search(db, "silver ring")
 
+        assert db.execute.await_count == 1  # count rides on the page (COUNT OVER)
         assert result["total"] == 2
         assert len(result["items"]) == 2
         assert result["page"] == 1
+        assert "_total" not in result["items"][0]
 
     async def test_full_text_search_falls_back_to_ilike_when_no_fts_results(self):
         db = AsyncMock()
-        mock_fts_count = MagicMock()
-        mock_fts_count.scalar_one.return_value = 0  # no FTS results
-
-        mock_ilike_count = MagicMock()
-        mock_ilike_count.scalar_one.return_value = 1  # 1 ILIKE result
-
-        mock_row = MagicMock()
-        mock_row._mapping = {
-            "id": uuid.uuid4(),
-            "name": "Silver Bangle",
-            "slug": "silver-bangle",
-            "base_price": 500.0,
-            "compare_at_price": None,
-            "available_stock": 5,
-            "low_stock_threshold": 5,
-            "track_inventory": True,
-            "allow_backorder": False,
-            "metal_type": "silver",
-            "is_featured": False,
-        }
-        mock_items_result = MagicMock()
-        mock_items_result.fetchall.return_value = [mock_row]
-
         db.execute = AsyncMock(
-            side_effect=[mock_fts_count, mock_ilike_count, mock_items_result]
+            side_effect=[
+                self._rows(),  # FTS: page 1, no rows -> total 0, no count needed
+                self._rows(self._row(1, name="Silver Bangle")),
+            ]
         )
         result = await self.svc.full_text_search(db, "bangle")
 
+        assert db.execute.await_count == 2
         assert result["total"] == 1
         assert len(result["items"]) == 1
 
     async def test_full_text_search_with_category_filter(self):
         db = AsyncMock()
-        mock_count = MagicMock()
-        mock_count.scalar_one.return_value = 0
-        mock_ilike_count = MagicMock()
-        mock_ilike_count.scalar_one.return_value = 0
-        mock_items = MagicMock()
-        mock_items.fetchall.return_value = []
-
-        db.execute = AsyncMock(side_effect=[mock_count, mock_ilike_count, mock_items])
+        db.execute = AsyncMock(side_effect=[self._rows(), self._rows()])
         result = await self.svc.full_text_search(
             db, "ring", category_id=uuid.uuid4(), min_price=100.0, max_price=5000.0
         )
         assert result["total"] == 0
+        assert result["items"] == []
 
-    async def test_full_text_search_pagination_params(self):
+    async def test_full_text_search_page_past_end_reports_real_total(self):
         db = AsyncMock()
-        mock_count = MagicMock()
-        mock_count.scalar_one.return_value = 45
-        mock_items = MagicMock()
-        mock_items.fetchall.return_value = []
-
-        db.execute = AsyncMock(side_effect=[mock_count, mock_items])
+        # page 3 of 45 hits, but page_size makes it empty -> plain count
+        db.execute = AsyncMock(side_effect=[self._rows(), self._count(45)])
         result = await self.svc.full_text_search(db, "ring", page=3, page_size=10)
 
+        assert db.execute.await_count == 2
         assert result["page"] == 3
         assert result["page_size"] == 10
         assert result["total"] == 45
         assert result["total_pages"] == 5
+        assert result["items"] == []
 
     async def test_autocomplete_returns_empty_for_short_query(self):
         db = AsyncMock()

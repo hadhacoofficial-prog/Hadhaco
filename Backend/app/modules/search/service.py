@@ -61,16 +61,24 @@ class SearchService:
 
         where_sql = " AND ".join(where_clauses)
 
-        count_sql = text(
-            f"SELECT COUNT(*) FROM products p WHERE {where_sql}"  # nosec B608
+        # One statement returns the page AND the total (COUNT(*) OVER()), so a
+        # normal search is a single round trip to the DB instead of count +
+        # items. Each extra statement costs ~100-250ms against the remote DB.
+        total, items = await self._page(
+            db,
+            where_sql,
+            params,
+            page,
+            select_extra=(
+                "ts_rank(p.search_vector, plainto_tsquery('english', :query)) "
+                "AS rank"
+            ),
+            order_sql="rank DESC, p.id",
         )
-        total_result = await db.execute(count_sql, params)
-        total: int = total_result.scalar_one()
 
         if total == 0:
             # Fallback: ILIKE
-            ilike_term = f"%{safe_query}%"
-            params["ilike"] = ilike_term
+            params["ilike"] = f"%{safe_query}%"
             fallback_where = [
                 "p.deleted_at IS NULL",
                 "p.status = :status",
@@ -83,48 +91,15 @@ class SearchService:
             if max_price is not None:
                 fallback_where.append("p.base_price <= :max_price")
 
-            fallback_sql = " AND ".join(fallback_where)
-            count_fb = await db.execute(
-                text(f"SELECT COUNT(*) FROM products p WHERE {fallback_sql}"),  # nosec
+            total, items = await self._page(
+                db,
+                " AND ".join(fallback_where),
                 params,
-            )
-            total = count_fb.scalar_one()
-
-            items_sql = text(
-                f"SELECT p.id, p.name, p.slug, p.base_price, p.compare_at_price, "  # nosec B608
-                f"vs.available_stock, "
-                f"p.low_stock_threshold, p.track_inventory, p.allow_backorder, "
-                f"p.metal_type, p.is_featured "
-                f"FROM products p "
-                f"LEFT JOIN LATERAL ("
-                f"    SELECT COALESCE(SUM(GREATEST(v.stock_quantity - v.reserved_quantity"
-                f"    - v.sold_quantity, 0)), 0) AS available_stock"  # mirrors compute_available_stock()
-                f"    FROM product_variants v"
-                f"    WHERE v.product_id = p.id AND v.is_active = true"
-                f") vs ON true "
-                f"WHERE {fallback_sql} "
-                f"ORDER BY p.created_at DESC OFFSET :offset LIMIT :limit"
-            )
-        else:
-            items_sql = text(
-                f"SELECT p.id, p.name, p.slug, p.base_price, p.compare_at_price, "  # nosec B608
-                f"vs.available_stock, "
-                f"p.low_stock_threshold, p.track_inventory, p.allow_backorder, "
-                f"p.metal_type, p.is_featured, "
-                f"ts_rank(p.search_vector, plainto_tsquery('english', :query)) AS rank "
-                f"FROM products p "
-                f"LEFT JOIN LATERAL ("
-                f"    SELECT COALESCE(SUM(GREATEST(v.stock_quantity - v.reserved_quantity"
-                f"    - v.sold_quantity, 0)), 0) AS available_stock"  # mirrors compute_available_stock()
-                f"    FROM product_variants v"
-                f"    WHERE v.product_id = p.id AND v.is_active = true"
-                f") vs ON true "
-                f"WHERE {where_sql} "
-                f"ORDER BY rank DESC OFFSET :offset LIMIT :limit"
+                page,
+                select_extra=None,
+                order_sql="p.created_at DESC, p.id",
             )
 
-        rows = await db.execute(items_sql, params)
-        items = [dict(r._mapping) for r in rows.fetchall()]
         for item in items:
             inventory_status, can_purchase = compute_inventory_status(
                 item["available_stock"],
@@ -144,6 +119,54 @@ class SearchService:
             "page_size": page_size,
             "total_pages": math.ceil(total / page_size) if total else 0,
         }
+
+    async def _page(
+        self,
+        db: AsyncSession,
+        where_sql: str,
+        params: dict[str, Any],
+        page: int,
+        *,
+        select_extra: str | None,
+        order_sql: str,
+    ) -> tuple[int, list[dict[str, Any]]]:
+        """Fetch one page of matches plus the total match count.
+
+        ``COUNT(*) OVER()`` rides on the returned rows, so a page past the end
+        reports no total; only then (page > 1 and no rows) pay for a plain
+        count so callers can tell "page too far" from "no results".
+        """
+        extra = f", {select_extra}" if select_extra else ""
+        items_sql = text(
+            "SELECT p.id, p.name, p.slug, p.base_price, p.compare_at_price, "  # nosec B608
+            "vs.available_stock, "
+            "p.low_stock_threshold, p.track_inventory, p.allow_backorder, "
+            f"p.metal_type, p.is_featured{extra}, "
+            "COUNT(*) OVER() AS _total "
+            "FROM products p "
+            "LEFT JOIN LATERAL ("
+            "    SELECT COALESCE(SUM(GREATEST(v.stock_quantity - v.reserved_quantity"
+            "    - v.sold_quantity, 0)), 0) AS available_stock"  # mirrors compute_available_stock()
+            "    FROM product_variants v"
+            "    WHERE v.product_id = p.id AND v.is_active = true"
+            ") vs ON true "
+            f"WHERE {where_sql} "
+            f"ORDER BY {order_sql} OFFSET :offset LIMIT :limit"
+        )
+        rows = (await db.execute(items_sql, params)).fetchall()
+        if rows:
+            mappings = [dict(r._mapping) for r in rows]
+            total = int(mappings[0]["_total"])
+            for m in mappings:
+                m.pop("_total", None)
+            return total, mappings
+        if page <= 1:
+            return 0, []
+        count = await db.execute(
+            text(f"SELECT COUNT(*) FROM products p WHERE {where_sql}"),  # nosec B608
+            params,
+        )
+        return int(count.scalar_one()), []
 
     async def autocomplete(
         self, db: AsyncSession, query: str, limit: int = 8

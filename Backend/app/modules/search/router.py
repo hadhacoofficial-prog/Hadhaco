@@ -1,3 +1,4 @@
+import asyncio
 import uuid
 
 import redis.asyncio as aioredis
@@ -19,13 +20,39 @@ from app.core.cache import (
     make_etag,
     not_modified_response,
 )
-from app.core.database import get_db
+from app.core.database import AsyncSessionLocal, get_db
 from app.core.dependencies import get_current_user_optional
 from app.core.redis import get_redis, safe_redis_get, safe_redis_setex
 from app.modules.search.service import SearchService
 
 router = APIRouter()
 _service = SearchService()
+
+# Strong references so fire-and-forget history writes aren't garbage collected
+# mid-flight.
+_record_tasks: set[asyncio.Task[None]] = set()
+
+
+async def _record_search_background(
+    query: str, user_id: str | None, total: int
+) -> None:
+    """Persist search history on its own session, off the response path.
+
+    Doing the INSERT + COMMIT inline cost the visitor two extra DB round trips
+    on every cache miss for data they never see.
+    """
+    try:
+        async with AsyncSessionLocal() as session:
+            await _service.record_search(session, query, user_id, total)
+            await session.commit()
+    except Exception:  # analytics must never affect the search response
+        pass
+
+
+def _schedule_record_search(query: str, user_id: str | None, total: int) -> None:
+    task = asyncio.create_task(_record_search_background(query, user_id, total))
+    _record_tasks.add(task)
+    task.add_done_callback(_record_tasks.discard)
 
 
 @router.get("/search", response_model=BaseSuccessResponse[dict])
@@ -69,12 +96,9 @@ async def search_products(
         min_price=min_price,
         max_price=max_price,
     )
-    # Record search async (fire-and-forget pattern — swallow errors)
-    try:
-        user_id = str(current_user.id) if current_user else None
-        await _service.record_search(db, q, user_id, result["total"])
-    except Exception:
-        pass
+    # Record search off the response path (fire-and-forget, errors swallowed).
+    user_id = str(current_user.id) if current_user else None
+    _schedule_record_search(q, user_id, result["total"])
 
     response_data = ok(
         result,
