@@ -104,6 +104,7 @@ import {
   migrateSlideConfig,
   migrateSectionConfig,
   validateHeroConfig,
+  videoUrlProblem,
   HERO_PALETTE,
 } from "@/types/cms";
 import type { ProductListItem, ProductListResponse } from "@/types/admin";
@@ -827,8 +828,11 @@ function HeroSlideCard({
                   <TextInput
                     value={media.video_url ?? ""}
                     onChange={(v) => onUpdateMedia("video_url", v)}
-                    placeholder="https://...mp4"
+                    placeholder="https://cdn.hadha.co/...mp4"
                   />
+                  {videoUrlProblem(media.video_url) && (
+                    <p className="mt-1 text-xs text-red-600">{videoUrlProblem(media.video_url)}</p>
+                  )}
                 </Field>
                 {media.video_url && (
                   <Field label="Video poster image">

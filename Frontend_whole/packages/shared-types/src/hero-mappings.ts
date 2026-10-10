@@ -27,6 +27,42 @@ import type {
 import type { ImageBundle } from "./media";
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Video URL rules
+// Mirror the storefront CSP `media-src` (storefront/src/lib/csp.ts) and the
+// backend `hero_validation.video_url_problem`. A page link (Instagram, YouTube)
+// is not a playable file, and a host outside the CSP is blocked by the browser.
+// ─────────────────────────────────────────────────────────────────────────────
+
+const ALLOWED_VIDEO_HOSTS = ["cdn.hadha.co", "videos.pexels.com"];
+const VIDEO_EXTENSIONS = [".mp4", ".webm", ".ogg", ".ogv", ".m4v", ".mov"];
+
+export const VIDEO_URL_MESSAGE =
+  "Video URL must be a direct video file (.mp4 or .webm) hosted on cdn.hadha.co. Page links such as Instagram or YouTube cannot be played.";
+
+/** Returns an error message when `url` can't be used as a hero video. */
+export function videoUrlProblem(url?: string | null): string | null {
+  const value = (url ?? "").trim();
+  if (!value) return null; // optional field
+  if (value.startsWith("//")) return VIDEO_URL_MESSAGE; // protocol-relative
+  let parsed: URL;
+  try {
+    parsed = new URL(value, "https://cdn.hadha.co");
+  } catch {
+    return VIDEO_URL_MESSAGE;
+  }
+  const path = parsed.pathname.toLowerCase();
+  if (!VIDEO_EXTENSIONS.some((ext) => path.endsWith(ext))) {
+    return VIDEO_URL_MESSAGE;
+  }
+  if (value.startsWith("/") && !value.startsWith("//")) return null; // same-origin
+  if (parsed.protocol !== "https:") return VIDEO_URL_MESSAGE;
+  if (!ALLOWED_VIDEO_HOSTS.includes(parsed.hostname.toLowerCase())) {
+    return VIDEO_URL_MESSAGE;
+  }
+  return null;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Color Palette – derives from project design tokens via CSS variables
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -375,7 +411,9 @@ export function resolveImageUrl(
 }
 
 export function hasVideoBackground(media?: HeroSlideMedia): boolean {
-  return Boolean(media?.video_url);
+  // An unplayable URL (e.g. an Instagram link already stored in the CMS) is
+  // ignored so the slide falls back to its image instead of a blocked <video>.
+  return Boolean(media?.video_url) && !videoUrlProblem(media?.video_url);
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -439,7 +477,7 @@ export function resolveSlide(slide: HeroSlideConfig): ResolvedSlide {
       desktopUrl: media.desktop_image_url ?? "",
       tabletUrl: media.tablet_image_url ?? "",
       mobileUrl: media.mobile_image_url ?? "",
-      videoUrl: media.video_url ?? "",
+      videoUrl: hasVideoBackground(media) ? (media.video_url ?? "") : "",
       videoPosterUrl: media.video_poster_url ?? "",
       hasVideo: hasVideoBackground(media),
       desktopBundle: media.desktop_image_bundle,
@@ -615,6 +653,16 @@ export function validateHeroConfig(
         type: "error",
         field: "media",
         message: `Slide ${i + 1}: An image or video is required.`,
+        slideIndex: i,
+      });
+    }
+
+    const videoProblem = videoUrlProblem(slide.media?.video_url);
+    if (videoProblem) {
+      errors.push({
+        type: "error",
+        field: "media.video_url",
+        message: `Slide ${i + 1}: ${videoProblem}`,
         slideIndex: i,
       });
     }

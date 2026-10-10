@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import re
 from typing import Any, Literal
+from urllib.parse import urlparse
 
 from pydantic import BaseModel, Field, field_validator
 
@@ -51,6 +52,40 @@ HeroContentWidth = Literal["narrow", "wide"]
 HeroPadding = Literal["compact", "standard", "generous"]
 
 _HEX_RE = re.compile(r"^#([0-9A-Fa-f]{3}|[0-9A-Fa-f]{6})$")
+
+# ─── Video URL rules ────────────────────────────────────────────────────────
+# Hosts must mirror the storefront CSP ``media-src``
+# (Frontend_whole/storefront/src/lib/csp.ts) - a video from any other host is
+# blocked by the browser, and a page URL (e.g. an Instagram profile) is not a
+# playable file at all. Keep in sync with packages/shared-types hero-mappings.
+ALLOWED_VIDEO_HOSTS = frozenset({"cdn.hadha.co", "videos.pexels.com"})
+VIDEO_EXTENSIONS = (".mp4", ".webm", ".ogg", ".ogv", ".m4v", ".mov")
+
+VIDEO_URL_MESSAGE = (
+    "Video URL must be a direct video file (.mp4 or .webm) hosted on "
+    "cdn.hadha.co. Page links such as Instagram or YouTube cannot be played."
+)
+
+
+def video_url_problem(url: str | None) -> str | None:
+    """Return an error message if *url* can't be used as a hero video, else None.
+
+    Empty/None is fine (video is optional).
+    """
+    if url is None or not url.strip():
+        return None
+    value = url.strip()
+    parsed = urlparse(value)
+    if not parsed.path.lower().endswith(VIDEO_EXTENSIONS):
+        return VIDEO_URL_MESSAGE
+    if value.startswith("/") and not value.startswith("//"):
+        return None  # same-origin path ('self' in the CSP)
+    if parsed.scheme != "https":
+        return VIDEO_URL_MESSAGE
+    if (parsed.hostname or "").lower() not in ALLOWED_VIDEO_HOSTS:
+        return VIDEO_URL_MESSAGE
+    return None
+
 
 # ─── Nested slide models ────────────────────────────────────────────────────
 
@@ -377,6 +412,16 @@ def validate_hero_slide(
             HeroValidationError(
                 field="media",
                 message=f"Slide {index + 1}: An image or video is required.",
+                slide_index=index,
+            )
+        )
+
+    video_problem = video_url_problem(media.get("video_url"))
+    if video_problem:
+        errors.append(
+            HeroValidationError(
+                field="media.video_url",
+                message=f"Slide {index + 1}: {video_problem}",
                 slide_index=index,
             )
         )

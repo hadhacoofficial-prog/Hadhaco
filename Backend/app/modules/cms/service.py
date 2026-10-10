@@ -17,6 +17,7 @@ from app.modules.cms.hero_validation import (
     normalize_section_config,
     normalize_slide,
     validate_hero_config,
+    video_url_problem,
 )
 from app.modules.cms.media_service import CmsMediaService
 from app.modules.cms.models import Banner, CmsMedia, CmsPage, LandingSection
@@ -420,10 +421,34 @@ class CMSService:
             raise HTTPException(status.HTTP_404_NOT_FOUND, "Section not found")
         return await self._repo.get_items_for_section(db, s.id)
 
+    @staticmethod
+    def _reject_unplayable_video(section: LandingSection, config: dict | None) -> None:
+        """Refuse to store a hero slide whose video_url can't play.
+
+        Publish-time validation already blocks it, but the item was saved
+        regardless and then rendered live (an Instagram profile URL reached
+        production this way). Reject at save so it can't be stored at all.
+        """
+        if section.section_type != "hero_carousel" or not config:
+            return
+        media = config.get("media")
+        candidate = media.get("video_url") if isinstance(media, dict) else None
+        candidate = candidate or config.get("video_url")  # legacy flat shape
+        problem = video_url_problem(candidate if isinstance(candidate, str) else None)
+        if problem:
+            raise HTTPException(
+                status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail={
+                    "message": "Hero slide validation failed",
+                    "errors": [{"field": "media.video_url", "message": problem}],
+                },
+            )
+
     async def create_item(self, db: AsyncSession, key: str, data: SectionItemCreate):
         s = await self._repo.get_section_by_key(db, key)
         if not s:
             raise HTTPException(status.HTTP_404_NOT_FOUND, "Section not found")
+        self._reject_unplayable_video(s, data.config)
         item = await self._repo.create_item(db, s.id, **data.model_dump())
         await db.commit()
         await db.refresh(item)
@@ -438,6 +463,7 @@ class CMSService:
         item = await self._repo.get_item(db, item_id)
         if not item or item.section_id != s.id:
             raise HTTPException(status.HTTP_404_NOT_FOUND, "Item not found")
+        self._reject_unplayable_video(s, data.config)
         item = await self._repo.update_item(
             db, item, data.model_dump(exclude_unset=True)
         )
