@@ -11,6 +11,7 @@ from app.core.cache import (
     PREFIX_SITEMAP,
     TTL_SEO_PAGE,
     TTL_SITEMAP,
+    _decompress_value,
     add_cache_headers,
     bust_seo_page_cache,
     check_not_modified,
@@ -131,6 +132,9 @@ async def sitemap(
     cache_key = PREFIX_SITEMAP
     cached = await safe_redis_get(redis, cache_key)
     if cached:
+        # The cache warmer stores large payloads zlib-compressed (\x01 prefix).
+        # Serving that raw returned binary garbage instead of XML.
+        cached = _decompress_value(cached)
         etag = make_etag(cached)
         if check_not_modified(request, etag):
             from fastapi.responses import Response as _Resp

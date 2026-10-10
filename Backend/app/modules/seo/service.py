@@ -75,8 +75,20 @@ class SeoService:
             '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">',
         ]
 
-        # Static pages
-        for path in ["/", "/collections", "/categories"]:
+        # Static pages. Only paths the storefront actually serves: there is no
+        # /categories route, so listing it (and /categories/{slug}) produced
+        # 404s for crawlers. Category browsing lives under /products?...
+        for path in [
+            "/",
+            "/products",
+            "/collections",
+            "/about",
+            "/contact",
+            "/faq",
+            "/shipping-returns",
+            "/privacy",
+            "/terms",
+        ]:
             lines.append(
                 f"  <url><loc>{base_url}{path}</loc><changefreq>weekly</changefreq></url>"
             )
@@ -95,16 +107,16 @@ class SeoService:
                 f"<changefreq>weekly</changefreq></url>"
             )
 
-        # Active categories
-        cats = await db.execute(
+        # Active collections (served at /collections/{slug})
+        cols = await db.execute(
             text(
-                "SELECT slug FROM categories WHERE is_active = true AND deleted_at IS NULL"
+                "SELECT slug FROM collections WHERE is_active = true AND deleted_at IS NULL"
             )
         )
-        for row in cats.fetchall():
+        for row in cols.fetchall():
             lines.append(
-                f"  <url><loc>{base_url}/categories/{row[0]}</loc>"
-                f"<changefreq>monthly</changefreq></url>"
+                f"  <url><loc>{base_url}/collections/{row[0]}</loc>"
+                f"<changefreq>weekly</changefreq></url>"
             )
 
         lines.append("</urlset>")
