@@ -39,6 +39,14 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import {
+  Drawer,
+  DrawerContent,
+  DrawerDescription,
+  DrawerHeader,
+  DrawerTitle,
+} from "@/components/ui/drawer";
+import { useBreakpoint } from "@/hooks/useBreakpoint";
 import { formatINR } from "@/lib/format";
 import { api } from "@/lib/api/client";
 import { queryKeys } from "@/lib/api/queryKeys";
@@ -137,13 +145,17 @@ function SizeOptions({
   variants,
   selectedId,
   onSelect,
+  layout = "inline",
 }: {
   variants: ProductVariant[];
   selectedId: string | undefined;
   onSelect: (v: ProductVariant) => void;
+  /** "sheet" = full-width grid with larger tap targets for the mobile bottom sheet */
+  layout?: "inline" | "sheet";
 }) {
+  const sheet = layout === "sheet";
   return (
-    <div className="flex flex-wrap gap-2">
+    <div className={sheet ? "grid grid-cols-3 gap-2.5" : "flex flex-wrap gap-2"}>
       {variants.map((v) => {
         const outOfStock = variantStockOf(v) === 0;
         const vStatus = v.inventory_status ?? (outOfStock ? "OUT_OF_STOCK" : "IN_STOCK");
@@ -156,7 +168,7 @@ function SizeOptions({
             disabled={outOfStock}
             aria-pressed={isSelected}
             aria-label={`${v.name}${outOfStock ? " — sold out" : vStatus === "LOW_STOCK" ? " — low stock" : ""}`}
-            className={`px-3.5 py-2 text-xs border transition-all ${
+            className={`${sheet ? "px-2 py-3.5 text-sm" : "px-3.5 py-2 text-xs"} border transition-all ${
               isSelected
                 ? "bg-foreground text-background border-foreground"
                 : outOfStock
@@ -484,6 +496,15 @@ function ProductPage() {
     if (action) runVariantAction(action, v);
   };
 
+  const sizePromptText =
+    sizePrompt === "buy"
+      ? "Choose a size to continue to checkout."
+      : sizePrompt === "wishlist"
+        ? "Choose a size to add to your wishlist."
+        : "Choose a size to add to your cart.";
+  // Bottom nav (and so the bottom-sheet prompt) is used below lg.
+  const isDesktop = useBreakpoint() === "desktop";
+
   const handleAddToCart = () => requestVariantAction("cart");
   const handleWishlistToggle = () => requestVariantAction("wishlist");
   const handleBuyNow = () => requestVariantAction("buy");
@@ -779,32 +800,49 @@ function ProductPage() {
           )}
 
           {/* ── "Select Size" prompt (multi-size product, nothing chosen) ── */}
-          {hasVariants && (
-            <Dialog
-              open={sizePrompt !== null}
-              onOpenChange={(open) => !open && setSizePrompt(null)}
-            >
-              <DialogContent className="max-w-md rounded-none sm:rounded-none">
-                <DialogHeader>
-                  <DialogTitle className="font-display text-xl font-normal">
-                    Select Size
-                  </DialogTitle>
-                  <DialogDescription>
-                    {sizePrompt === "buy"
-                      ? "Choose a size to continue to checkout."
-                      : sizePrompt === "wishlist"
-                        ? "Choose a size to add to your wishlist."
-                        : "Choose a size to add to your cart."}
-                  </DialogDescription>
-                </DialogHeader>
-                <SizeOptions
-                  variants={liveProduct.variants!}
-                  selectedId={currentVariant?.id}
-                  onSelect={handleSizePromptPick}
-                />
-              </DialogContent>
-            </Dialog>
-          )}
+          {hasVariants &&
+            (isDesktop ? (
+              <Dialog
+                open={sizePrompt !== null}
+                onOpenChange={(open) => !open && setSizePrompt(null)}
+              >
+                <DialogContent className="max-w-md rounded-none sm:rounded-none">
+                  <DialogHeader>
+                    <DialogTitle className="font-display text-xl font-normal">
+                      Select Size
+                    </DialogTitle>
+                    <DialogDescription>{sizePromptText}</DialogDescription>
+                  </DialogHeader>
+                  <SizeOptions
+                    variants={liveProduct.variants!}
+                    selectedId={currentVariant?.id}
+                    onSelect={handleSizePromptPick}
+                  />
+                </DialogContent>
+              </Dialog>
+            ) : (
+              // Bottom sheet: slides up, closes on outside tap or drag-down.
+              <Drawer
+                open={sizePrompt !== null}
+                onOpenChange={(open) => !open && setSizePrompt(null)}
+                shouldScaleBackground={false}
+              >
+                <DrawerContent className="rounded-t-2xl border-x-0 border-b-0 px-5 pb-[max(1.5rem,env(safe-area-inset-bottom))]">
+                  <DrawerHeader className="px-0 pt-5 pb-4 text-left">
+                    <DrawerTitle className="font-display text-xl font-normal">
+                      Select Size
+                    </DrawerTitle>
+                    <DrawerDescription>{sizePromptText}</DrawerDescription>
+                  </DrawerHeader>
+                  <SizeOptions
+                    variants={liveProduct.variants!}
+                    selectedId={currentVariant?.id}
+                    onSelect={handleSizePromptPick}
+                    layout="sheet"
+                  />
+                </DrawerContent>
+              </Drawer>
+            ))}
 
           {/* Trust */}
           <div className="mt-8 grid grid-cols-2 gap-3 border-t border-border pt-6">
