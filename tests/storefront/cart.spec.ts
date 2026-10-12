@@ -104,17 +104,16 @@ test.describe('Cart Functionality', () => {
       }
     });
 
-    test('variant products require selection before add to cart', async ({ page }) => {
+    test('multi-size products prompt for a size on add to cart', async ({ page }) => {
       if (!productSlug) return;
-      const variantBtns = page.locator('button[aria-pressed]');
-      const count = await variantBtns.count();
-      if (count > 0) {
+      // Single-size products are pre-selected; only 2+ sizes need the prompt.
+      const variantBtns = page.locator('button[aria-pressed="false"]');
+      const count = await page.locator('button[aria-pressed]').count();
+      if (count > 1 && (await variantBtns.count()) === count) {
         const addToCartBtn = page.getByRole('button', { name: /add to cart/i });
         if (await addToCartBtn.isVisible({ timeout: 3000 }).catch(() => false)) {
           await addToCartBtn.click();
-          await page.waitForTimeout(300);
-          const variantError = page.getByText(/select a variant/i);
-          await expect(variantError).toBeVisible();
+          await expect(page.getByRole('dialog', { name: /select size/i })).toBeVisible();
         }
       }
     });

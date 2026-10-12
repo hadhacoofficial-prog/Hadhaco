@@ -32,6 +32,13 @@ import { useActiveReservations } from "@/hooks/useActiveReservations";
 import { useReservationCountdown } from "@/hooks/reservation/useReservationCountdown";
 import { ReservationBanner } from "@/components/reservation/ReservationBanner";
 import { PurchaseProtectedIndicator } from "@/components/reservation/ReservationCheckoutBanner";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { formatINR } from "@/lib/format";
 import { api } from "@/lib/api/client";
 import { queryKeys } from "@/lib/api/queryKeys";
@@ -116,6 +123,64 @@ export const Route = createFileRoute("/products/$slug")({
   component: ProductPage,
 });
 
+const variantStockOf = (v: ProductVariant) => v.available_stock ?? v.stock_quantity;
+
+// A product with exactly one in-stock variant has nothing to choose, so it is
+// pre-selected and Add to Cart / Buy It Now work straight away.
+function defaultVariantFor(variants: ProductVariant[] | undefined): ProductVariant | null {
+  return variants?.length === 1 && variantStockOf(variants[0]) > 0 ? variants[0] : null;
+}
+
+type VariantAction = "cart" | "buy" | "wishlist";
+
+function SizeOptions({
+  variants,
+  selectedId,
+  onSelect,
+}: {
+  variants: ProductVariant[];
+  selectedId: string | undefined;
+  onSelect: (v: ProductVariant) => void;
+}) {
+  return (
+    <div className="flex flex-wrap gap-2">
+      {variants.map((v) => {
+        const outOfStock = variantStockOf(v) === 0;
+        const vStatus = v.inventory_status ?? (outOfStock ? "OUT_OF_STOCK" : "IN_STOCK");
+        const isSelected = selectedId === v.id;
+        return (
+          <button
+            key={v.id}
+            type="button"
+            onClick={() => !outOfStock && onSelect(v)}
+            disabled={outOfStock}
+            aria-pressed={isSelected}
+            aria-label={`${v.name}${outOfStock ? " — sold out" : vStatus === "LOW_STOCK" ? " — low stock" : ""}`}
+            className={`px-3.5 py-2 text-xs border transition-all ${
+              isSelected
+                ? "bg-foreground text-background border-foreground"
+                : outOfStock
+                  ? "border-border text-muted-foreground line-through cursor-not-allowed opacity-40"
+                  : "border-border hover:border-foreground"
+            }`}
+          >
+            {v.name}
+            {v.price_adjustment !== 0 && (
+              <span
+                className={`ml-1.5 ${isSelected ? "text-background/70" : "text-muted-foreground"}`}
+              >
+                {v.price_adjustment > 0
+                  ? `+${formatINR(v.price_adjustment)}`
+                  : `−${formatINR(Math.abs(v.price_adjustment))}`}
+              </span>
+            )}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
 function ProductPage() {
   const { product, related, slug } = Route.useLoaderData();
   const search = Route.useSearch();
@@ -124,8 +189,12 @@ function ProductPage() {
   const [active, setActive] = useState(0);
   const [qty, setQty] = useState(1);
   const [tab, setTab] = useState<"details" | "specs" | "reviews">("details");
-  const [selectedVariant, setSelectedVariant] = useState<ProductVariant | null>(null);
+  const [selectedVariant, setSelectedVariant] = useState<ProductVariant | null>(() =>
+    defaultVariantFor(product.variants),
+  );
   const [variantError, setVariantError] = useState(false);
+  // Action waiting on a size choice from the "Select Size" prompt.
+  const [sizePrompt, setSizePrompt] = useState<VariantAction | null>(null);
 
   const add = useCart((s) => s.add);
   const cartQty = useCart((s) => {
@@ -213,11 +282,11 @@ function ProductPage() {
     cartQty,
   });
 
-  // hasVariants products start with no selection (currentVariant === null),
+  // Multi-size products start with no selection (currentVariant === null),
   // which zeroes effectiveStock/bounds.canAdd exactly like a real sold-out
-  // or maxed-out cart line would — needs its own state so the button reads
-  // "Select a Variant" instead of falsely claiming "Max Qty in Cart" before
-  // the shopper has even chosen one.
+  // or maxed-out cart line would — needs its own state so Add to Cart /
+  // Buy It Now stay clickable (and open the "Select Size" prompt) instead of
+  // reading "Max Qty in Cart" before the shopper has even chosen one.
   const needsVariantSelection = hasVariants && currentVariant === null;
 
   // Clamp stepper qty whenever the allowed-remaining changes
@@ -241,6 +310,8 @@ function ProductPage() {
       : null
     : liveAvailableStock > 0;
 
+  const purchaseBlocked = !needsVariantSelection && (displayInStock === false || !bounds.canAdd);
+
   // Customer-display status — never a number. Live store status wins when
   // hydrated; otherwise fall back to the API's own inventory_status, and
   // only derive from a raw count as a last resort for legacy data.
@@ -255,9 +326,18 @@ function ProductPage() {
   useEffect(() => {
     pushRV(product.id);
     setActive(0);
-    setSelectedVariant(null);
-    setVariantError(false);
   }, [product.id, pushRV]);
+
+  // Reset the selection during render (not in the effect above) when the
+  // product changes, so the next product's default variant is in place on
+  // its first paint instead of flashing an unselected state.
+  const [selectionFor, setSelectionFor] = useState(product.id);
+  if (selectionFor !== product.id) {
+    setSelectionFor(product.id);
+    setSelectedVariant(defaultVariantFor(product.variants));
+    setVariantError(false);
+    setSizePrompt(null);
+  }
 
   const queryClient = useQueryClient();
 
@@ -323,71 +403,90 @@ function ProductPage() {
   const galleryLarge = product.galleryLarge ?? gallery;
   const recentlyViewed: Product[] = [];
 
-  const handleAddToCart = () => {
-    if (hasVariants && !currentVariant) {
-      setVariantError(true);
-      return;
-    }
-    if (!bounds.canAdd) return;
-    add(
-      product.id,
-      qty,
-      {
+  // Runs a cart / buy-now / wishlist action for `v`. Takes the variant
+  // explicitly (rather than reading currentVariant) so the "Select Size"
+  // prompt can continue the shopper's action in the same click that picks
+  // the size, before the new selection has re-rendered.
+  const runVariantAction = (action: VariantAction, v: ProductVariant | null) => {
+    const price = product.price + (v?.price_adjustment ?? 0);
+    const sku = v?.sku ?? product.sku;
+    if (action === "wishlist") {
+      wishToggle({
+        id: product.id,
+        slug: product.slug,
         name: product.name,
         image: product.image,
-        slug: product.slug,
-        sku: displaySku,
-        price: displayPrice,
-        variantName: currentVariant?.name,
-      },
-      currentVariant?.id,
-    );
-    // The cart store's own add() already applies the optimistic stock
-    // decrement (and reverses it symmetrically on remove/qty-decrease) —
-    // doing it again here would double-decrement.
-  };
-
-  const handleWishlistToggle = () => {
-    if (hasVariants && !currentVariant) {
-      setVariantError(true);
+        price,
+        sku,
+        variantId: v?.id,
+        variantName: v?.name,
+      });
+      afterWishlistChange();
       return;
     }
-    wishToggle({
-      id: product.id,
-      slug: product.slug,
+    const lineBounds =
+      v?.id === currentVariant?.id
+        ? bounds
+        : computeQuantityBounds({
+            availableStock: v ? variantStockOf(v) : liveAvailableStock,
+            maxOrderQty: liveProduct.maxOrderQty ?? 0,
+            cartQty:
+              useCart
+                .getState()
+                .lines.find(
+                  (l) => cartLineKey(l.productId, l.variantId) === cartLineKey(product.id, v?.id),
+                )?.qty ?? 0,
+          });
+    if (!lineBounds.canAdd) return;
+    const lineQty = Math.max(1, Math.min(qty, lineBounds.remainingAllowed));
+    const snapshot = {
       name: product.name,
       image: product.image,
-      price: displayPrice,
-      sku: displaySku,
-      variantId: currentVariant?.id,
-      variantName: currentVariant?.name,
-    });
-    afterWishlistChange();
-  };
-
-  const handleBuyNow = () => {
-    if (hasVariants && !currentVariant) {
-      setVariantError(true);
+      slug: product.slug,
+      sku,
+      price,
+      variantName: v?.name,
+    };
+    if (action === "cart") {
+      // The cart store's own add() already applies the optimistic stock
+      // decrement (and reverses it symmetrically on remove/qty-decrease) —
+      // doing it again here would double-decrement.
+      add(product.id, lineQty, snapshot, v?.id);
       return;
     }
-    if (!bounds.canAdd) return;
-    useBuyNowStore.getState().setItems([
-      {
-        productId: product.id,
-        qty,
-        snapshot: {
-          name: product.name,
-          image: product.image,
-          slug: product.slug,
-          sku: displaySku,
-          price: displayPrice,
-          variantName: currentVariant?.name,
-        },
-        variantId: currentVariant?.id,
-      },
-    ]);
+    useBuyNowStore
+      .getState()
+      .setItems([{ productId: product.id, qty: lineQty, snapshot, variantId: v?.id }]);
     navigate({ to: "/checkout" });
   };
+
+  // With several sizes and none chosen, ask for one in the "Select Size"
+  // prompt; a lone in-stock size (e.g. restocked since load) is just used.
+  const requestVariantAction = (action: VariantAction) => {
+    if (hasVariants && !currentVariant) {
+      const only = defaultVariantFor(liveProduct.variants);
+      if (only) {
+        selectVariant(only);
+        runVariantAction(action, only);
+        return;
+      }
+      setVariantError(true);
+      setSizePrompt(action);
+      return;
+    }
+    runVariantAction(action, currentVariant);
+  };
+
+  const handleSizePromptPick = (v: ProductVariant) => {
+    const action = sizePrompt;
+    selectVariant(v);
+    setSizePrompt(null);
+    if (action) runVariantAction(action, v);
+  };
+
+  const handleAddToCart = () => requestVariantAction("cart");
+  const handleWishlistToggle = () => requestVariantAction("wishlist");
+  const handleBuyNow = () => requestVariantAction("buy");
 
   const selectVariant = (v: ProductVariant) => {
     setSelectedVariant(v);
@@ -521,7 +620,7 @@ function ProductPage() {
             ) : null}
             {hasVariants && displayInStock === null && !isReserved && (
               <span className="text-xs text-muted-foreground tracking-wide">
-                Select a variant to check availability
+                Select a size to check availability
               </span>
             )}
             {/* Last refreshed indicator */}
@@ -540,11 +639,11 @@ function ProductPage() {
             {product.shortDescription}
           </p>
 
-          {/* ── Variant selector ── */}
+          {/* ── Size (variant) selector ── */}
           {hasVariants && (
             <div className="mt-7">
               <p className="text-[11px] uppercase tracking-[0.22em] text-muted-foreground mb-3">
-                Select variant{" "}
+                Select size{" "}
                 <span className="text-destructive" aria-hidden>
                   *
                 </span>
@@ -554,42 +653,11 @@ function ProductPage() {
                   </span>
                 )}
               </p>
-              <div className="flex flex-wrap gap-2">
-                {liveProduct.variants!.map((v) => {
-                  const vStock = v.available_stock ?? v.stock_quantity;
-                  const outOfStock = vStock === 0;
-                  const vStatus = v.inventory_status ?? (outOfStock ? "OUT_OF_STOCK" : "IN_STOCK");
-                  const isSelected = currentVariant?.id === v.id;
-                  return (
-                    <button
-                      key={v.id}
-                      type="button"
-                      onClick={() => !outOfStock && selectVariant(v)}
-                      disabled={outOfStock}
-                      aria-pressed={isSelected}
-                      aria-label={`${v.name}${outOfStock ? " — sold out" : vStatus === "LOW_STOCK" ? " — low stock" : ""}`}
-                      className={`px-3.5 py-2 text-xs border transition-all ${
-                        isSelected
-                          ? "bg-foreground text-background border-foreground"
-                          : outOfStock
-                            ? "border-border text-muted-foreground line-through cursor-not-allowed opacity-40"
-                            : "border-border hover:border-foreground"
-                      }`}
-                    >
-                      {v.name}
-                      {v.price_adjustment !== 0 && (
-                        <span
-                          className={`ml-1.5 ${isSelected ? "text-background/70" : "text-muted-foreground"}`}
-                        >
-                          {v.price_adjustment > 0
-                            ? `+${formatINR(v.price_adjustment)}`
-                            : `−${formatINR(Math.abs(v.price_adjustment))}`}
-                        </span>
-                      )}
-                    </button>
-                  );
-                })}
-              </div>
+              <SizeOptions
+                variants={liveProduct.variants!}
+                selectedId={currentVariant?.id}
+                onSelect={selectVariant}
+              />
               {currentVariant && variantStatus === "LOW_STOCK" && (
                 <span
                   className="mt-2 inline-flex items-center gap-1 rounded-full text-[12px] leading-none px-2.5 py-1"
@@ -610,7 +678,7 @@ function ProductPage() {
               )}
               {variantError && (
                 <p className="mt-2 text-xs text-destructive" role="alert">
-                  Please select a variant to continue.
+                  Please select a size to continue.
                 </p>
               )}
             </div>
@@ -675,11 +743,11 @@ function ProductPage() {
                 )}
                 <button
                   onClick={handleAddToCart}
-                  disabled={needsVariantSelection || displayInStock === false || !bounds.canAdd}
+                  disabled={purchaseBlocked}
                   className="flex-1 bg-primary text-primary-foreground text-[11px] uppercase tracking-[0.22em] py-3.5 hover:bg-accent hover:text-accent-foreground transition disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   {needsVariantSelection
-                    ? "Select a Variant"
+                    ? "Add to Cart"
                     : displayInStock === false
                       ? "Out of Stock"
                       : !bounds.canAdd
@@ -702,12 +770,40 @@ function ProductPage() {
               )}
               <button
                 onClick={handleBuyNow}
-                disabled={needsVariantSelection || displayInStock === false || !bounds.canAdd}
+                disabled={purchaseBlocked}
                 className="mt-3 w-full border border-foreground text-foreground text-[11px] uppercase tracking-[0.22em] py-3.5 hover:bg-foreground hover:text-background transition disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 Buy It Now
               </button>
             </>
+          )}
+
+          {/* ── "Select Size" prompt (multi-size product, nothing chosen) ── */}
+          {hasVariants && (
+            <Dialog
+              open={sizePrompt !== null}
+              onOpenChange={(open) => !open && setSizePrompt(null)}
+            >
+              <DialogContent className="max-w-md rounded-none sm:rounded-none">
+                <DialogHeader>
+                  <DialogTitle className="font-display text-xl font-normal">
+                    Select Size
+                  </DialogTitle>
+                  <DialogDescription>
+                    {sizePrompt === "buy"
+                      ? "Choose a size to continue to checkout."
+                      : sizePrompt === "wishlist"
+                        ? "Choose a size to add to your wishlist."
+                        : "Choose a size to add to your cart."}
+                  </DialogDescription>
+                </DialogHeader>
+                <SizeOptions
+                  variants={liveProduct.variants!}
+                  selectedId={currentVariant?.id}
+                  onSelect={handleSizePromptPick}
+                />
+              </DialogContent>
+            </Dialog>
           )}
 
           {/* Trust */}
