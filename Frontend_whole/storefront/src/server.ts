@@ -74,7 +74,7 @@ async function normalizeCatastrophicSsrResponse(response: Response): Promise<Res
 
 export default {
   async fetch(request: Request, env: unknown, ctx: unknown) {
-    // robots.txt / sitemap.xml are not app routes; answer them before SSR.
+    // robots.txt / humans.txt / sitemap.xml are not app routes; answer them before SSR.
     const seoResponse = await handleSeoRequest(request);
     if (seoResponse) return seoResponse;
 

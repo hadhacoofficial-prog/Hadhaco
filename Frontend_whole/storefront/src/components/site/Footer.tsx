@@ -62,7 +62,7 @@ export function Footer({ config }: FooterProps) {
     "Hadha Silver Jewellery";
 
   return (
-    <footer className="relative bg-foreground text-background pt-20 pb-8 px-6 md:px-12">
+    <footer className="relative bg-foreground text-background pt-20 pb-24 lg:pb-8 px-6 md:px-12">
       {/* Same jewellery line-art as the navbar, recolored to cream so it reads against the dark footer */}
       <div
         className="absolute inset-0 overflow-hidden pointer-events-none"
@@ -192,8 +192,22 @@ export function Footer({ config }: FooterProps) {
       </div>
 
       <div className="relative z-10 max-w-7xl mx-auto mt-16 pt-6 border-t border-background/15 flex flex-col md:flex-row items-center justify-between gap-3 text-xs text-background/60">
-        <p>
+        <p className="text-center md:text-left">
           © {new Date().getFullYear()} {copyrightName}. All rights reserved.
+          <span className="hidden md:inline mx-2" aria-hidden>
+            ·
+          </span>
+          <span className="block md:inline mt-1 md:mt-0">
+            Crafted by{" "}
+            <a
+              href="https://github.com/Hari-r31"
+              target="_blank"
+              rel="noopener noreferrer nofollow"
+              className="underline-offset-4 hover:underline hover:text-accent"
+            >
+              coDer
+            </a>
+          </span>
         </p>
         <div className="flex items-center gap-5">
           <Link to="/privacy" className="hover:text-accent">

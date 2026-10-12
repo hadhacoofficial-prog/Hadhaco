@@ -25,6 +25,20 @@ export function robotsTxt(): string {
   ].join("\n");
 }
 
+/** humanstxt.org credits for the people behind the site (linked from <head>). */
+export function humansTxt(): string {
+  return [
+    "/* TEAM */",
+    "Developer: coDer",
+    "GitHub: https://github.com/Hari-r31",
+    "",
+    "/* SITE */",
+    "Standards: HTML5, CSS3",
+    "Components: React, TanStack Start, Tailwind CSS, FastAPI, Supabase",
+    "",
+  ].join("\n");
+}
+
 function plain(status: number, body: string, extra: Record<string, string> = {}): Response {
   return new Response(body, {
     status,
@@ -60,7 +74,7 @@ async function sitemapResponse(
 }
 
 /**
- * Returns a Response for /robots.txt and /sitemap.xml, or null so the caller
+ * Returns a Response for /robots.txt, /humans.txt and /sitemap.xml, or null so the caller
  * falls through to the normal app handler.
  */
 export async function handleSeoRequest(
@@ -73,6 +87,12 @@ export async function handleSeoRequest(
   if (pathname === "/robots.txt") {
     return plain(200, request.method === "HEAD" ? "" : robotsTxt(), {
       "cache-control": "public, max-age=3600",
+    });
+  }
+
+  if (pathname === "/humans.txt") {
+    return plain(200, request.method === "HEAD" ? "" : humansTxt(), {
+      "cache-control": "public, max-age=86400",
     });
   }
 

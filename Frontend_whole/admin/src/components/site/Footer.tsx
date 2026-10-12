@@ -150,8 +150,22 @@ export function Footer({ config }: FooterProps) {
       </div>
 
       <div className="max-w-7xl mx-auto mt-16 pt-6 border-t border-background/15 flex flex-col md:flex-row items-center justify-between gap-3 text-xs text-background/60">
-        <p>
+        <p className="text-center md:text-left">
           © {new Date().getFullYear()} {copyrightName}. All rights reserved.
+          <span className="hidden md:inline mx-2" aria-hidden>
+            ·
+          </span>
+          <span className="block md:inline mt-1 md:mt-0">
+            Crafted by{" "}
+            <a
+              href="https://github.com/Hari-r31"
+              target="_blank"
+              rel="noopener noreferrer nofollow"
+              className="underline-offset-4 hover:underline hover:text-accent"
+            >
+              coDer
+            </a>
+          </span>
         </p>
         <div className="flex items-center gap-5">
           <a href="/privacy" className="hover:text-accent">

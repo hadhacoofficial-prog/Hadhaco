@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { handleSeoRequest, robotsTxt } from "../seo-routes";
+import { handleSeoRequest, humansTxt, robotsTxt } from "../seo-routes";
 
 const req = (path: string, method = "GET") => new Request(`https://hadha.co${path}`, { method });
 
@@ -13,6 +13,15 @@ describe("handleSeoRequest", () => {
     expect(body).toContain("Sitemap: https://hadha.co/sitemap.xml");
     expect(body).toContain("Disallow: /checkout");
     expect(body.toLowerCase()).not.toContain("<html");
+  });
+
+  it("serves humans.txt with the developer credit", async () => {
+    const res = await handleSeoRequest(req("/humans.txt"));
+    expect(res?.status).toBe(200);
+    expect(res?.headers.get("content-type")).toContain("text/plain");
+    const body = await res!.text();
+    expect(body).toBe(humansTxt());
+    expect(body).toContain("https://github.com/Hari-r31");
   });
 
   it("proxies a valid sitemap from the API", async () => {

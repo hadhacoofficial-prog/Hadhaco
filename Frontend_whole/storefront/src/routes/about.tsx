@@ -1,7 +1,7 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { SiteLayout } from "@/components/site/SiteLayout";
 import { Breadcrumbs } from "@/components/site/Breadcrumbs";
-import { Sparkles, ShieldCheck, Heart, Award } from "lucide-react";
+import { Sparkles, ShieldCheck, Heart, Award, ArrowUpRight } from "lucide-react";
 import banner from "@/assets/banner.jpg";
 import hero from "@/assets/hero.jpg";
 import { usePublicCompanyConfig } from "@/hooks/company/useCompanyConfig";
@@ -129,6 +129,48 @@ function AboutPage() {
             Contact Us
           </Link>
         </div>
+      </section>
+
+      {/* Maker's mark — signed like a hallmark, with a slow silver glint */}
+      <section className="px-4 pt-10 pb-12 md:pt-12 md:pb-14 flex flex-col items-center text-center">
+        <div className="flex items-center gap-3 text-accent" aria-hidden>
+          <span className="h-px w-14 md:w-24 bg-gradient-to-r from-transparent to-accent/70" />
+          <Sparkles className="size-3.5" />
+          <span className="h-px w-14 md:w-24 bg-gradient-to-l from-transparent to-accent/70" />
+        </div>
+        <p className="mt-4 text-[10px] uppercase tracking-[0.35em] text-muted-foreground">
+          Website designed &amp; crafted by
+        </p>
+        <a
+          href="https://github.com/Hari-r31"
+          target="_blank"
+          rel="noopener noreferrer nofollow"
+          aria-label="coDer on GitHub (opens in a new tab)"
+          className="group mt-2 inline-flex items-start gap-1.5"
+        >
+          <span className="font-display italic text-4xl md:text-5xl leading-none pb-1 bg-[linear-gradient(110deg,var(--foreground)_42%,oklch(0.82_0.012_250)_50%,var(--foreground)_58%)] bg-[length:250%_100%] bg-clip-text text-transparent animate-[shimmer_6s_linear_infinite]">
+            coDer
+          </span>
+          <ArrowUpRight className="size-4 mt-1 text-muted-foreground transition-transform duration-300 group-hover:-translate-y-0.5 group-hover:translate-x-0.5 group-hover:text-accent" />
+        </a>
+        <p className="mt-4 max-w-md text-sm leading-relaxed text-muted-foreground">
+          Every page of this website was designed and engineered end to end — from the storefront
+          you&apos;re browsing to the live stock, checkout and store tools working behind it.
+          Hand-built, line by line, with the same care as the silver it showcases.
+        </p>
+        <ul className="mt-5 flex flex-wrap justify-center gap-x-5 gap-y-2 text-[10px] uppercase tracking-[0.22em] text-foreground/70">
+          {[
+            "Designed from scratch",
+            "Live stock updates",
+            "Secure checkout",
+            "Made for mobile",
+          ].map((h) => (
+            <li key={h} className="flex items-center gap-2">
+              <span className="size-1 rotate-45 bg-accent/80" aria-hidden />
+              {h}
+            </li>
+          ))}
+        </ul>
       </section>
     </SiteLayout>
   );

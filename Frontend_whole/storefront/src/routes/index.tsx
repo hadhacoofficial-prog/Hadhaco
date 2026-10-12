@@ -82,7 +82,7 @@ function Index() {
     <div className="min-h-screen flex flex-col text-foreground">
       <AnnouncementBar config={announcement.config} items={announcement.items} />
       <Header />
-      <main className="flex-1 pb-16 lg:pb-0">
+      <main className="flex-1">
         <Hero config={hero.config} items={hero.items} />
         <div>
           <ShopByGender />
