@@ -1,6 +1,9 @@
 import { useEffect } from "react";
 import { usePublicCompanyConfig } from "@/hooks/company/useCompanyConfig";
 
+/** Pages whose own head() carries product-specific SEO that company defaults must not overwrite. */
+const ROUTE_OWNED_META = /^\/products\/[^/]+/;
+
 /**
  * Dynamically updates document <title>, meta description, author,
  * og:site_name, and theme-color based on Company Settings from the API.
@@ -23,7 +26,12 @@ export function CompanyMeta() {
       "Premium 92.5 Silver Jewellery — handcrafted, traditional, timeless.";
     const themeColor = config.theme_color || "#A8C8E8";
 
-    document.title = title;
+    // The product page's head() already set its own title/description/og:* —
+    // overwriting them with the company defaults would undo its SEO as soon
+    // as this effect runs.
+    const routeOwnsMeta = ROUTE_OWNED_META.test(window.location.pathname);
+
+    if (!routeOwnsMeta) document.title = title;
 
     const setMeta = (nameAttr: string, content: string, property?: string) => {
       let el: HTMLMetaElement | null = null;
@@ -46,10 +54,11 @@ export function CompanyMeta() {
       }
     };
 
-    setMeta("description", description);
     setMeta("author", name);
     setMeta("theme-color", themeColor);
     setMeta("og:site_name", name, "og:site_name");
+    if (routeOwnsMeta) return;
+    setMeta("description", description);
     setMeta("og:title", title, "og:title");
     setMeta("og:description", description, "og:description");
   }, [config]);

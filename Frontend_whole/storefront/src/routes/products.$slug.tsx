@@ -16,6 +16,7 @@ import {
 import { afterReviewSubmit, afterWishlistChange } from "@hadha/shared-api";
 import { SiteLayout } from "@/components/site/SiteLayout";
 import { Breadcrumbs } from "@/components/site/Breadcrumbs";
+import { ShareButton } from "@/components/site/ShareButton";
 import { QuantityStepper } from "@/components/site/QuantityStepper";
 import { ProductGrid } from "@/components/site/ProductGrid";
 import { InventoryBadge } from "@/components/site/InventoryBadge";
@@ -51,6 +52,7 @@ import { formatINR } from "@/lib/format";
 import { api } from "@/lib/api/client";
 import { queryKeys } from "@/lib/api/queryKeys";
 import { toProductDetail, toProduct, toReview } from "@/lib/api/mappers";
+import { buildProductHead, productDescription, productUrl } from "@/lib/productSeo";
 import { supabase } from "@/lib/supabase/client";
 import type { ProductListResponse } from "@/types/admin";
 import type {
@@ -98,15 +100,14 @@ export const Route = createFileRoute("/products/$slug")({
         .slice(0, 4)
         .map(toProduct),
       slug: params.slug,
+      seo: buildProductHead(productDetail),
+      shareText: productDescription(productDetail),
     };
   },
   head: ({ loaderData }) => ({
-    meta: [
-      { title: `${loaderData?.product.name ?? "Product"} · Hadha` },
-      { name: "description", content: loaderData?.product.shortDescription ?? "" },
-      { property: "og:title", content: loaderData?.product.name ?? "" },
-      { property: "og:image", content: loaderData?.product.image ?? "" },
-    ],
+    meta: loaderData?.seo.meta ?? [{ title: "Product · Hadha" }],
+    links: loaderData?.seo.links ?? [],
+    scripts: loaderData?.seo.scripts ?? [],
   }),
   notFoundComponent: () => (
     <SiteLayout>
@@ -194,7 +195,7 @@ function SizeOptions({
 }
 
 function ProductPage() {
-  const { product, related, slug } = Route.useLoaderData();
+  const { product, related, slug, shareText } = Route.useLoaderData();
   const search = Route.useSearch();
   const navigate = useNavigate();
   const { isAuthenticated } = useAuthContext();
@@ -579,7 +580,10 @@ function ProductPage() {
         {/* Info */}
         <div>
           <p className="text-[11px] uppercase tracking-[0.22em] text-amber-600">92.5 Silver</p>
-          <h1 className="font-display text-3xl md:text-4xl mt-2 leading-tight">{product.name}</h1>
+          <div className="mt-2 flex items-start justify-between gap-4">
+            <h1 className="font-display text-3xl md:text-4xl leading-tight">{product.name}</h1>
+            <ShareButton url={productUrl(product.slug)} title={product.name} text={shareText} />
+          </div>
 
           <button
             type="button"
