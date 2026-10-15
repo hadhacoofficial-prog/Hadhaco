@@ -51,6 +51,8 @@
     <td class="pdf-card-body" width="72%">
       <div class="pdf-card-name">{{ company.name }}</div>
       <div class="pdf-card-address">
+        {% if company.address_line_1 %}{{ company.address_line_1 }}<br/>{% endif %}
+        {% if company.address_line_2 %}{{ company.address_line_2 }}<br/>{% endif %}
         {% if company.city %}{{ company.city }}<br/>{% endif %}
         {% if company.state or company.postal_code %}{{ company.state }}{% if company.postal_code %} - {{ company.postal_code }}{% endif %}<br/>{% endif %}
         {{ company.country }}
