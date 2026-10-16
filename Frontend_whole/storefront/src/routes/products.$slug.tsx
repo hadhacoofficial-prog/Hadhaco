@@ -26,6 +26,7 @@ import { useCart, cartLineKey } from "@/stores/cart";
 import { useBuyNowStore } from "@/stores/buyNow";
 import { useInventoryStore, inventoryKey, toCustomerStatus } from "@/stores/inventory";
 import { computeQuantityBounds } from "@/lib/cartQuantity";
+import { isProductSoldOut, variantStockOf } from "@/lib/productStock";
 import { useWishlist } from "@/stores/wishlist";
 import { useRecentlyViewed } from "@/stores/recentlyViewed";
 import { useInventorySync } from "@/hooks/useInventorySync";
@@ -131,8 +132,6 @@ export const Route = createFileRoute("/products/$slug")({
   ),
   component: ProductPage,
 });
-
-const variantStockOf = (v: ProductVariant) => v.available_stock ?? v.stock_quantity;
 
 // A product with exactly one in-stock variant has nothing to choose, so it is
 // pre-selected and Add to Cart / Buy It Now work straight away.
@@ -261,6 +260,10 @@ function ProductPage() {
   const inventoryEntry = useInventoryStore((s) => s.get(product.id, currentVariant?.id ?? null));
 
   const liveAvailableStock = inventoryEntry?.availableStock ?? liveProduct.availableStock;
+
+  // Show the sold-out state when nothing at all can be bought, with or
+  // without variants — not only for variant-less products.
+  const globalSoldOut = isProductSoldOut(liveProduct.variants, liveAvailableStock);
 
   // A SyncBus event (reservation created/expired, inventory changed, order
   // placed/cancelled) drops this entry's confidence to "medium" -- see
@@ -507,7 +510,9 @@ function ProductPage() {
   const isDesktop = useBreakpoint() === "desktop";
 
   const handleAddToCart = () => requestVariantAction("cart");
-  const handleWishlistToggle = () => requestVariantAction("wishlist");
+  // Notify Me on a fully sold-out product has no size to pick (all disabled).
+  const handleWishlistToggle = () =>
+    globalSoldOut ? runVariantAction("wishlist", null) : requestVariantAction("wishlist");
   const handleBuyNow = () => requestVariantAction("buy");
 
   const selectVariant = (v: ProductVariant) => {
@@ -530,9 +535,6 @@ function ProductPage() {
   useEffect(() => {
     if (search.review) scrollToReviews();
   }, [search.review, scrollToReviews]);
-
-  // Show Notify Me / sold-out state when product has no variants and is out of stock
-  const globalSoldOut = !hasVariants && liveAvailableStock === 0;
 
   return (
     <SiteLayout>
@@ -640,10 +642,12 @@ function ProductPage() {
                   </span>
                 )}
               </span>
+            ) : globalSoldOut ? (
+              <InventoryBadge status="OUT_OF_STOCK" />
             ) : displayInStock !== null ? (
               <InventoryBadge status={effectiveStatus} />
             ) : null}
-            {hasVariants && displayInStock === null && !isReserved && (
+            {hasVariants && displayInStock === null && !isReserved && !globalSoldOut && (
               <span className="text-xs text-muted-foreground tracking-wide">
                 Select a size to check availability
               </span>
