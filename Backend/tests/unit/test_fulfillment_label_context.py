@@ -14,6 +14,8 @@ def _make_company(**overrides):
     c = MagicMock()
     c.name = "Hadha Jewellery"
     c.tagline = "Quality First"
+    c.address_line_1 = "ID:1830443198, Bharath Nagar"
+    c.address_line_2 = "Moosapet"
     c.city = "Hyderabad"
     c.state = "Telangana"
     c.postal_code = "500033"
@@ -96,6 +98,11 @@ class TestShippingLabelServiceBuildContext:
         company = _make_company(name="My Brand")
         ctx = await self._ctx(company, _make_order())
         assert ctx["company"]["name"] == "My Brand"
+
+    async def test_company_street_address_lines_included(self):
+        ctx = await self._ctx(_make_company(), _make_order())
+        assert ctx["company"]["address_line_1"] == "ID:1830443198, Bharath Nagar"
+        assert ctx["company"]["address_line_2"] == "Moosapet"
 
     async def test_company_defaults_when_none(self):
         ctx = await self._ctx(None, _make_order())
@@ -205,6 +212,11 @@ class TestPackingSlipServiceBuildContext:
         ctx = await self._ctx(_make_company(), order)
         assert ctx["order"]["subtotal"] == 1010.0
         assert ctx["order"]["tax_amount"] == 18.0
+
+    async def test_company_street_address_lines_included(self):
+        ctx = await self._ctx(_make_company(), _make_order())
+        assert ctx["company"]["address_line_1"] == "ID:1830443198, Bharath Nagar"
+        assert ctx["company"]["address_line_2"] == "Moosapet"
 
     async def test_defaults_when_company_is_none(self):
         ctx = await self._ctx(None, _make_order())

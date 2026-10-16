@@ -562,6 +562,8 @@ class ShippingLabelService(_PdfDocumentService):
             "tagline": (
                 company.tagline if company else "Timeless Beauty, Trusted Quality"
             ),
+            "address_line_1": company.address_line_1 if company else None,
+            "address_line_2": company.address_line_2 if company else None,
             "city": company.city if company else None,
             "state": company.state if company else None,
             "postal_code": company.postal_code if company else None,
@@ -650,6 +652,8 @@ class PackingSlipService(_PdfDocumentService):
             "tagline": (
                 company.tagline if company else "Timeless Beauty, Trusted Quality"
             ),
+            "address_line_1": company.address_line_1 if company else None,
+            "address_line_2": company.address_line_2 if company else None,
             "city": company.city if company else None,
             "state": company.state if company else None,
             "postal_code": company.postal_code if company else None,
