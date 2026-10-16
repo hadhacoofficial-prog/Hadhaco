@@ -1,3 +1,4 @@
+import functools
 import pathlib
 import uuid
 from datetime import datetime
@@ -415,6 +416,54 @@ def _register_unicode_font() -> bool:
     return False
 
 
+# Logos print at <=128pt wide; 640px is ~360dpi at that size. The bundled
+# artwork is 5760px wide, which made every PDF ~650KB and slow to render.
+_LOGO_MAX_WIDTH_PX = 640
+
+
+def _downscale_logo(body: bytes) -> tuple[bytes, str]:
+    """Shrink logo bytes to print resolution. Returns (bytes, mime type);
+    falls back to the untouched input when it cannot be decoded.
+
+    The result is flattened onto white: every document page is white, so the
+    look is unchanged, and it avoids the PDF alpha mask whose edge pixels
+    render as a faint outline once the artwork is downscaled (e.g. the white
+    wordmark on the shipping label, invisible by design).
+    """
+    from PIL import Image
+
+    try:
+        with Image.open(BytesIO(body)) as img:
+            rgba = img.convert("RGBA")
+            if rgba.width > _LOGO_MAX_WIDTH_PX:
+                height = round(rgba.height * _LOGO_MAX_WIDTH_PX / rgba.width)
+                # Premultiplied alpha: resizing straight RGBA bleeds the colour
+                # of fully transparent pixels into the edges (grey halos).
+                rgba = (
+                    rgba.convert("RGBa")
+                    .resize((_LOGO_MAX_WIDTH_PX, height), Image.Resampling.LANCZOS)
+                    .convert("RGBA")
+                )
+            page = Image.new("RGBA", rgba.size, (255, 255, 255, 255))
+            page.alpha_composite(rgba)
+            out = BytesIO()
+            page.convert("RGB").save(out, format="PNG", optimize=True)
+            return out.getvalue(), "image/png"
+    except Exception:
+        return body, "image/png"
+
+
+@functools.cache
+def _bundled_logo_data_uri(filename: str) -> str | None:
+    import base64
+
+    try:
+        body, mime = _downscale_logo((_TEMPLATES_DIR / filename).read_bytes())
+        return f"data:{mime};base64,{base64.b64encode(body).decode()}"
+    except Exception:
+        return None
+
+
 def _logo_data_uri(
     logo_url: str | None = None, default_filename: str = "hadha-logo.png"
 ) -> str | None:
@@ -422,10 +471,9 @@ def _logo_data_uri(
 
     Admin-configured `logo_url` (fetched over HTTP) takes priority; falling
     back to the bundled static asset named by `default_filename` when unset
-    or unreachable. Callers pick the default per document type — e.g.
-    packing slips default to "hadha-logo.png", shipping labels to
-    "hadha-logo-w.png" — so each template gets its own look even before an
-    admin uploads a custom logo.
+    or unreachable. Callers pick the default per document type via
+    `default_filename`; both the packing slip and the shipping label use the
+    dark "hadha-logo.png" since their pages are white.
     """
     import base64
 
@@ -433,19 +481,14 @@ def _logo_data_uri(
         try:
             from app.core.safe_fetch import fetch_public_image
 
-            body, content_type = fetch_public_image(logo_url)
-            data = base64.b64encode(body).decode()
-            return f"data:{content_type};base64,{data}"
+            body, _content_type = fetch_public_image(logo_url)
+            body, mime = _downscale_logo(body)
+            return f"data:{mime};base64,{base64.b64encode(body).decode()}"
         except Exception:
             # Unsafe, unreachable or non-image URL: fall back to the bundled logo.
             pass
 
-    logo = _TEMPLATES_DIR / default_filename
-    try:
-        data = base64.b64encode(logo.read_bytes()).decode()
-        return f"data:image/png;base64,{data}"
-    except Exception:
-        return None
+    return _bundled_logo_data_uri(default_filename)
 
 
 _JINJA_ENV = None
@@ -630,7 +673,7 @@ class ShippingLabelService(_PdfDocumentService):
             "items": items_data,
             "logo_data_uri": _logo_data_uri(
                 company_data["shipping_label_logo_url"],
-                default_filename="hadha-logo-w.png",
+                default_filename="hadha-logo.png",
             ),
             "barcode_b64": barcode_b64,
             "qr_b64": qr_b64,

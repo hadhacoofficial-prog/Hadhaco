@@ -263,6 +263,76 @@ class TestRenderPdfOffEventLoop:
         assert seen["thread"] is not threading.main_thread()
 
 
+# ─── Logo downscaling ────────────────────────────────────────────────────────
+
+
+class TestLogoDownscale:
+    def _png(self, width, height):
+        from io import BytesIO
+
+        from PIL import Image
+
+        buf = BytesIO()
+        Image.new("RGBA", (width, height), (10, 31, 68, 255)).save(buf, format="PNG")
+        return buf.getvalue()
+
+    def test_wide_logo_is_shrunk_keeping_aspect_ratio(self):
+        from io import BytesIO
+
+        from PIL import Image
+
+        from app.modules.fulfillment.service import _downscale_logo
+
+        body, mime = _downscale_logo(self._png(5760, 3240))
+        assert mime == "image/png"
+        with Image.open(BytesIO(body)) as img:
+            assert img.size == (640, 360)
+
+    def test_small_logo_keeps_its_size(self):
+        from io import BytesIO
+
+        from PIL import Image
+
+        from app.modules.fulfillment.service import _downscale_logo
+
+        body, _ = _downscale_logo(self._png(200, 100))
+        with Image.open(BytesIO(body)) as img:
+            assert img.size == (200, 100)
+
+    def test_logo_is_flattened_onto_white(self):
+        from io import BytesIO
+
+        from PIL import Image
+
+        from app.modules.fulfillment.service import _downscale_logo
+
+        src = Image.new("RGBA", (3, 1))
+        # transparent, half-transparent black, opaque dark blue
+        src.putdata([(0, 0, 0, 0), (0, 0, 0, 128), (10, 31, 68, 255)])
+        buf = BytesIO()
+        src.save(buf, format="PNG")
+
+        body, _ = _downscale_logo(buf.getvalue())
+        with Image.open(BytesIO(body)) as out:
+            assert out.mode == "RGB"
+            px = list(out.getdata())
+        assert px[0] == (255, 255, 255)
+        assert px[1] == (127, 127, 127)
+        assert px[2] == (10, 31, 68)
+
+    def test_undecodable_bytes_returned_unchanged(self):
+        from app.modules.fulfillment.service import _downscale_logo
+
+        assert _downscale_logo(b"not an image") == (b"not an image", "image/png")
+
+    def test_bundled_logo_data_uri_is_small(self):
+        from app.modules.fulfillment.service import _bundled_logo_data_uri
+
+        uri = _bundled_logo_data_uri("hadha-logo.png")
+        assert uri is not None and uri.startswith("data:image/png;base64,")
+        assert len(uri) < 200_000
+
+
 # ─── ShippingLabelService._barcode_b64 static method ─────────────────────────
 
 

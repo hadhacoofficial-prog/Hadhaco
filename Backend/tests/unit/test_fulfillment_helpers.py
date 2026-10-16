@@ -7,8 +7,13 @@ from unittest.mock import MagicMock, patch
 
 class TestLogoDataUri:
     def _call(self):
-        from app.modules.fulfillment.service import _logo_data_uri
+        from app.modules.fulfillment.service import (
+            _bundled_logo_data_uri,
+            _logo_data_uri,
+        )
 
+        # The bundled logo is memoised; clear so each test sees its own patch.
+        _bundled_logo_data_uri.cache_clear()
         return _logo_data_uri()
 
     def test_returns_string_starting_with_data_uri_prefix_when_file_exists(self):
