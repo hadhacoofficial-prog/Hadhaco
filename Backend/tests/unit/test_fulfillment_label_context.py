@@ -236,6 +236,33 @@ class TestPackingSlipServiceBuildContext:
         assert "line_total" in item
 
 
+# ─── PDF conversion runs off the event loop ──────────────────────────────────
+
+
+class TestRenderPdfOffEventLoop:
+    async def test_html_to_pdf_runs_on_worker_thread(self):
+        import threading
+
+        from app.modules.fulfillment.service import PackingSlipService
+
+        svc = PackingSlipService()
+        seen = {}
+
+        def fake_html_to_pdf(html):
+            seen["thread"] = threading.current_thread()
+            return b"%PDF-fake"
+
+        with (
+            patch.object(svc, "_build_context", AsyncMock(return_value={})),
+            patch.object(svc, "_render_html", return_value="<html/>"),
+            patch.object(svc, "_html_to_pdf", side_effect=fake_html_to_pdf),
+        ):
+            pdf = await svc.render_pdf(AsyncMock(), _make_order())
+
+        assert pdf == b"%PDF-fake"
+        assert seen["thread"] is not threading.main_thread()
+
+
 # ─── ShippingLabelService._barcode_b64 static method ─────────────────────────
 
 

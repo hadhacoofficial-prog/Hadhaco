@@ -6,6 +6,7 @@ from io import BytesIO
 import qrcode
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.cpu_executor import run_cpu_bound
 from app.modules.fulfillment.models import FulfillmentTimeline
 from app.modules.fulfillment.repository import FulfillmentTimelineRepository
 from app.modules.fulfillment.schemas import DispatchOrderRequest
@@ -499,7 +500,11 @@ class _PdfDocumentService:
 
     async def render_pdf(self, db: AsyncSession, order: Order) -> bytes:
         context = await self._build_context(db, order)
-        return self._html_to_pdf(self._render_html(context))
+        html = self._render_html(context)
+        # xhtml2pdf is synchronous and CPU-heavy (5-14 s on a cold worker).
+        # Run inline it blocks the event loop, so uvicorn's worker health
+        # check times out and kills the worker mid-request -> nginx 502.
+        return await run_cpu_bound(lambda: self._html_to_pdf(html))
 
 
 class ShippingLabelService(_PdfDocumentService):
