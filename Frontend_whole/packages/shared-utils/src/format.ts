@@ -1,6 +1,7 @@
 import { format } from "date-fns";
 
-export const formatINR = (n: number) => `Rs. ${n.toLocaleString("en-IN")}.00`;
+export const formatINR = (n: number) =>
+  `Rs. ${n.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
 export const formatCurrency = (amount: number) => {
   return new Intl.NumberFormat("en-IN", {

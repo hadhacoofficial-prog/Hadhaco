@@ -22,6 +22,7 @@ import { api } from "@/lib/api/client";
 import { queryKeys } from "@/lib/api/queryKeys";
 import { toUserMessage } from "@/lib/api/errors";
 import { formatINR } from "@/lib/format";
+import { gstBreakdown, parseTaxRate } from "@/lib/pricing";
 import {
   UniversalImageEditor,
   CroppedImageView,
@@ -383,7 +384,7 @@ function validateForm(
   if (!form.short_description.trim()) e.short_description = "Short description is required";
   if (!form.description.trim()) e.description = "Description is required";
   if (!form.category_id) e.category_id = "Sub-category is required";
-  if (!form.base_price || parseFloat(form.base_price) <= 0) e.base_price = "Base price must be > 0";
+  if (!form.base_price || parseFloat(form.base_price) <= 0) e.base_price = "Price must be > 0";
   if (pendingImages.length === 0 && savedImages.length === 0)
     e.images = "At least one image is required";
   return e;
@@ -1132,16 +1133,21 @@ function PricingSection({
 }) {
   const base = parseFloat(form.base_price) || 0;
   const compare = parseFloat(form.compare_at_price) || 0;
-  const taxRate = parseFloat(form.tax_rate) || 3;
+  const taxRate = parseTaxRate(form.tax_rate);
   const discountPct =
     compare > base && compare > 0 ? Math.round(((compare - base) / compare) * 100) : 0;
-  const taxAmount = base * (taxRate / 100);
-  const priceIncTax = base + taxAmount;
+  const { gstIncluded, priceBeforeGst } = gstBreakdown(base, taxRate);
 
   return (
     <div className="flex flex-col gap-5 pt-5">
       <div className="grid grid-cols-2 gap-4">
-        <Field label="Base Price (₹)" required error={errors.base_price} id="base_price">
+        <Field
+          label="Selling Price incl. GST (₹)"
+          hint="Customer pays exactly this · GST is included"
+          required
+          error={errors.base_price}
+          id="base_price"
+        >
           <TextInput
             type="number"
             value={form.base_price}
@@ -1169,7 +1175,7 @@ function PricingSection({
             placeholder="0.00"
           />
         </Field>
-        <Field label="GST %" hint="Default 3% for silver jewellery">
+        <Field label="GST %" hint="Included in the selling price · default 3% for silver jewellery">
           <TextInput
             type="number"
             value={form.tax_rate}
@@ -1193,7 +1199,7 @@ function PricingSection({
         <div className="bg-secondary/40 border border-border p-4 flex gap-6 text-sm">
           <div>
             <p className="text-[11px] uppercase tracking-[0.18em] text-muted-foreground">
-              Selling Price
+              Selling Price (incl. GST)
             </p>
             <p className="font-display text-lg mt-0.5">{formatINR(base)}</p>
           </div>
@@ -1207,9 +1213,15 @@ function PricingSection({
           )}
           <div>
             <p className="text-[11px] uppercase tracking-[0.18em] text-muted-foreground">
-              Inc. GST ({taxRate}%)
+              Price before GST
             </p>
-            <p className="font-display text-lg mt-0.5">{formatINR(priceIncTax)}</p>
+            <p className="font-display text-lg mt-0.5">{formatINR(priceBeforeGst)}</p>
+          </div>
+          <div>
+            <p className="text-[11px] uppercase tracking-[0.18em] text-muted-foreground">
+              GST included ({taxRate}%)
+            </p>
+            <p className="font-display text-lg mt-0.5">{formatINR(gstIncluded)}</p>
           </div>
         </div>
       )}
@@ -3162,7 +3174,7 @@ export function ProductForm({ mode, initialProduct, initialCollectionIds }: Prod
       base_price: parseFloat(f.base_price),
       compare_at_price: f.compare_at_price ? parseFloat(f.compare_at_price) : undefined,
       cost_price: f.cost_price ? parseFloat(f.cost_price) : undefined,
-      tax_rate: parseFloat(f.tax_rate) || 3.0,
+      tax_rate: parseTaxRate(f.tax_rate),
       hsn_code: f.hsn_code || undefined,
       track_inventory: f.track_inventory,
       stock_quantity: parseInt(f.stock_quantity) || 0,
