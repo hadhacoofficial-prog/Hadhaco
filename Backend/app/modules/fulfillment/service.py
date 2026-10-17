@@ -471,9 +471,10 @@ def _logo_data_uri(
 
     Admin-configured `logo_url` (fetched over HTTP) takes priority; falling
     back to the bundled static asset named by `default_filename` when unset
-    or unreachable. Callers pick the default per document type via
-    `default_filename`; both the packing slip and the shipping label use the
-    dark "hadha-logo.png" since their pages are white.
+    or unreachable. Callers pick the default per document type — e.g.
+    packing slips default to "hadha-logo.png", shipping labels to
+    "hadha-logo-w.png" — so each template gets its own look even before an
+    admin uploads a custom logo.
     """
     import base64
 
@@ -673,7 +674,7 @@ class ShippingLabelService(_PdfDocumentService):
             "items": items_data,
             "logo_data_uri": _logo_data_uri(
                 company_data["shipping_label_logo_url"],
-                default_filename="hadha-logo.png",
+                default_filename="hadha-logo-w.png",
             ),
             "barcode_b64": barcode_b64,
             "qr_b64": qr_b64,
