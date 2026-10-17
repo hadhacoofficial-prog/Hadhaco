@@ -14,7 +14,12 @@ services:
   nginx:
     image: nginx:stable-alpine
     container_name: hadha-nginx
-    restart: unless-stopped
+    # `always` (not unless-stopped) so nginx comes back after a host reboot even
+    # if Docker flagged it as stopped during shutdown (outage 2026-10-17).
+    restart: always
+    # SIGQUIT drains connections gracefully and overran Docker's 10s stop timeout.
+    stop_signal: SIGTERM
+    stop_grace_period: 5s
     ports:
       - "80:80"
       - "443:443"
