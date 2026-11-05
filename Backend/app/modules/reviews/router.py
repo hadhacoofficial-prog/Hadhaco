@@ -18,6 +18,7 @@ from app.core.cache import (
     add_cache_headers,
     bust_review_cache,
     cache_swr,
+    schedule_all_product_caches_bust,
 )
 from app.core.database import AsyncSessionLocal, get_db
 from app.core.dependencies import (
@@ -46,6 +47,11 @@ _svc = ReviewService()
 # background refresh runs. bust_review_cache hard-deletes on any review change,
 # so this only ever bridges idle expiry, never a stale review after an edit.
 _REVIEW_SWR_WINDOW = 3600
+
+# Browser Cache-Control max-age. Kept well below the Redis TTLs: the server
+# cache is busted on every review change, but a browser copy cannot be, so a
+# long max-age kept newly approved reviews hidden from returning visitors.
+_REVIEW_BROWSER_MAX_AGE = 60
 
 
 # ── Public ────────────────────────────────────────────────────────────────────
@@ -125,7 +131,7 @@ async def list_product_reviews(
     response = JSONResponse(
         content=cached["body"], headers={"X-Total-Count": str(cached["total"])}
     )
-    add_cache_headers(response, TTL_REVIEW_LIST, private=True)
+    add_cache_headers(response, _REVIEW_BROWSER_MAX_AGE, private=True)
     return response
 
 
@@ -172,7 +178,7 @@ async def product_rating_summary(
         fetch_fn=_fetch,
     )
     response = JSONResponse(content=content)
-    add_cache_headers(response, TTL_REVIEW_SUMMARY)
+    add_cache_headers(response, _REVIEW_BROWSER_MAX_AGE)
     return response
 
 
@@ -241,11 +247,15 @@ async def edit_review(
     db: AsyncSession = Depends(get_db),
     user=Depends(get_current_user),
 ):
-    result = await _svc.edit_review(db, review_id=review_id, user_id=user.id, data=data)
+    result, rating_changed = await _svc.edit_review(
+        db, review_id=review_id, user_id=user.id, data=data
+    )
     from app.core.redis import get_redis_pool
 
     redis = get_redis_pool()
     await bust_review_cache(redis, str(result.product_id))
+    if rating_changed:
+        schedule_all_product_caches_bust(redis)
     return ok(result, ResponseCode.REVIEW_UPDATED, "Review updated successfully")
 
 
@@ -261,11 +271,13 @@ async def delete_review(
     if not review:
         raise HTTPException(status_code=404, detail="Review not found")
     product_id = str(review.product_id)
-    await _svc.delete_review(db, review_id=review_id, user_id=user.id)
+    rating_changed = await _svc.delete_review(db, review_id=review_id, user_id=user.id)
     from app.core.redis import get_redis_pool
 
     redis = get_redis_pool()
     await bust_review_cache(redis, product_id)
+    if rating_changed:
+        schedule_all_product_caches_bust(redis)
     return deleted(ResponseCode.REVIEW_DELETED, "Review deleted successfully")
 
 
@@ -416,6 +428,9 @@ async def admin_review_action(
 
     redis = get_redis_pool()
     await bust_review_cache(redis, str(result.product_id))
+    if body.action != "flag":
+        # Approve/reject change products.average_rating / review_count.
+        schedule_all_product_caches_bust(redis)
     return ok(
         result, ResponseCode.REVIEW_ACTION_APPLIED, "Review action applied successfully"
     )
@@ -438,4 +453,5 @@ async def admin_delete_review(
 
     redis = get_redis_pool()
     await bust_review_cache(redis, product_id)
+    schedule_all_product_caches_bust(redis)
     return deleted(ResponseCode.REVIEW_DELETED, "Review deleted successfully")

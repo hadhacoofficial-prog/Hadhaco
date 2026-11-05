@@ -135,11 +135,11 @@ export interface PublicReview {
   images: { id: string; url: string; sort_order: number }[];
 }
 
-/** Response shape from GET /reviews/products/{id} */
-export interface PublicReviewListResponse {
-  items: PublicReview[];
-  total: number;
-}
+/**
+ * Response `data` from GET /reviews/products/{id}: the reviews array itself.
+ * The total match count is sent in the `X-Total-Count` response header.
+ */
+export type PublicReviewListResponse = PublicReview[];
 
 /** Read-only reminder state for the product-page review banner. */
 export interface MyProductReviewStatus {

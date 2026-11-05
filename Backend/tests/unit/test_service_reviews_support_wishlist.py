@@ -153,12 +153,14 @@ class TestReviewService:
         user_id = uuid.uuid4()
         mock_review = MagicMock()
         mock_review.user_id = user_id
+        mock_review.is_approved = True
         mock_updated = MagicMock()
         with (
             patch.object(
                 self.repo_cls, "get_by_id", AsyncMock(return_value=mock_review)
             ),
             patch.object(self.repo_cls, "update", AsyncMock(return_value=mock_updated)),
+            patch.object(self.svc, "_sync_product_rating", AsyncMock()),
         ):
             result = await self.svc.edit_review(
                 db,
@@ -166,7 +168,7 @@ class TestReviewService:
                 user_id=user_id,
                 data=ReviewUpdate(rating=5, title="Great!"),
             )
-        assert result is mock_updated
+        assert result == (mock_updated, True)
 
     async def test_edit_review_no_changes_skips_update(self):
         from app.modules.reviews.schemas import ReviewUpdate
@@ -202,6 +204,7 @@ class TestReviewService:
                 self.repo_cls, "get_by_id", AsyncMock(return_value=mock_review)
             ),
             patch.object(self.repo_cls, "soft_delete", AsyncMock()) as mock_del,
+            patch.object(self.svc, "_sync_product_rating", AsyncMock()),
         ):
             await self.svc.delete_review(db, review_id=uuid.uuid4(), user_id=user_id)
         mock_del.assert_awaited_once()
@@ -791,6 +794,11 @@ class TestReviewServiceImages:
             ),
             patch.object(
                 self.repo_cls, "has_delivered_order_item", AsyncMock(return_value=True)
+            ),
+            patch.object(
+                self.repo_cls,
+                "get_soft_deleted_by_product_user",
+                AsyncMock(return_value=None),
             ),
             patch.object(self.repo_cls, "create", AsyncMock(return_value=mock_review)),
         ):

@@ -5,6 +5,7 @@ from datetime import UTC, datetime
 from typing import Any
 
 from fastapi import HTTPException, UploadFile, status
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.events import ReviewRequestEvent, event_bus
@@ -34,28 +35,46 @@ class ReviewService:
         existing = await self._repo.get_by_product_user(
             db, product_id=data.product_id, user_id=user_id
         )
-        if existing and existing.deleted_at is None:
+        if existing:
             raise HTTPException(
                 status.HTTP_409_CONFLICT, "You have already reviewed this product"
             )
+        # uq_reviews_product_user ignores deleted_at, so a soft-deleted row
+        # would block the insert below: purge it (and its photos) first.
+        stale = await self._repo.get_soft_deleted_by_product_user(
+            db, product_id=data.product_id, user_id=user_id
+        )
+        if stale:
+            await self._delete_images(db, stale)
+            await self._repo.hard_delete(db, stale.id)
 
         is_verified = await self._repo.has_delivered_order_item(
             db, user_id=user_id, product_id=data.product_id
         )
 
-        review = await self._repo.create(
-            db,
-            product_id=data.product_id,
-            user_id=user_id,
-            order_id=data.order_id,
-            customer_name=customer_name,
-            rating=data.rating,
-            title=data.title,
-            body=data.body,
-            is_verified_purchase=is_verified,
-            is_approved=False,
-            is_rejected=False,
-        )
+        try:
+            review = await self._repo.create(
+                db,
+                product_id=data.product_id,
+                user_id=user_id,
+                order_id=data.order_id,
+                customer_name=customer_name,
+                rating=data.rating,
+                title=data.title,
+                body=data.body,
+                is_verified_purchase=is_verified,
+                is_approved=False,
+                is_rejected=False,
+            )
+        except IntegrityError as exc:
+            # Safety net for the check-then-insert race (two concurrent
+            # submits for the same product both pass the guard above). Any
+            # other integrity failure (e.g. unknown product FK) is re-raised.
+            if "uq_reviews_product_user" not in str(exc.orig):
+                raise
+            raise HTTPException(
+                status.HTTP_409_CONFLICT, "You have already reviewed this product"
+            ) from exc
 
         if images:
             from app.modules.media.universal_service import UniversalImageServiceError
@@ -82,25 +101,38 @@ class ReviewService:
         review_id: uuid.UUID,
         user_id: uuid.UUID,
         data: ReviewUpdate,
-    ) -> Review:
+    ) -> tuple[Review, bool]:
+        """Edit and send back to pending. Returns (review, rating_changed):
+        rating_changed is True when an approved review left the product's
+        average_rating / review_count, so callers know to bust product caches.
+        """
         review = await self._get_owned(db, review_id=review_id, user_id=user_id)
         updates = data.model_dump(exclude_unset=True)
+        rating_changed = bool(updates) and review.is_approved
         if updates:
             updates["is_approved"] = False
             updates["is_rejected"] = False
             review = await self._repo.update(db, review, updates)
+        if rating_changed:
+            await self._sync_product_rating(db, review.product_id)
         await db.commit()
         await db.refresh(review)
-        return review
+        return review, rating_changed
 
     # ── Delete ────────────────────────────────────────────────────────────────
 
     async def delete_review(
         self, db: AsyncSession, *, review_id: uuid.UUID, user_id: uuid.UUID
-    ) -> None:
+    ) -> bool:
+        """Soft-delete. Returns True when the review was approved, i.e. the
+        product's average_rating / review_count changed."""
         review = await self._get_owned(db, review_id=review_id, user_id=user_id)
+        rating_changed = review.is_approved
         await self._repo.soft_delete(db, review)
+        if rating_changed:
+            await self._sync_product_rating(db, review.product_id)
         await db.commit()
+        return rating_changed
 
     # ── Listing ───────────────────────────────────────────────────────────────
 
@@ -261,6 +293,7 @@ class ReviewService:
         if not review:
             raise HTTPException(status.HTTP_404_NOT_FOUND, "Review not found")
         product_id = review.product_id
+        await self._delete_images(db, review)
         await self._repo.hard_delete(db, review_id)
         await self._sync_product_rating(db, product_id)
         await db.commit()
@@ -325,6 +358,12 @@ class ReviewService:
         if review.user_id != user_id:
             raise HTTPException(status.HTTP_403_FORBIDDEN, "Not your review")
         return review
+
+    async def _delete_images(self, db: AsyncSession, review: Review) -> None:
+        """Remove a review's photos (storage + image rows) before the review
+        row is hard-deleted; images reference it polymorphically, without FK."""
+        for image in list(review.images):
+            await self._images.delete(db, image=image)
 
     async def _attach_images(
         self,

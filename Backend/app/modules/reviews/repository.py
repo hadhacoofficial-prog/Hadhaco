@@ -127,6 +127,23 @@ class ReviewRepository:
     async def hard_delete(self, db: AsyncSession, review_id: uuid.UUID) -> None:
         await db.execute(delete(Review).where(Review.id == review_id))
 
+    async def get_soft_deleted_by_product_user(
+        self, db: AsyncSession, *, product_id: uuid.UUID, user_id: uuid.UUID
+    ) -> Review | None:
+        """The user's soft-deleted review of this product, if any.
+
+        uq_reviews_product_user ignores deleted_at, so at most one row exists
+        per (product, user) and a soft-deleted one blocks a fresh submit.
+        """
+        result = await db.execute(
+            select(Review).where(
+                Review.product_id == product_id,
+                Review.user_id == user_id,
+                Review.deleted_at.is_not(None),
+            )
+        )
+        return result.scalar_one_or_none()
+
     # ── Listing ───────────────────────────────────────────────────────────────
 
     _PUBLIC_SORTS: dict[str, tuple[Any, ...]] = {

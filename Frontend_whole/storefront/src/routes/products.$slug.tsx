@@ -390,7 +390,7 @@ function ProductPage() {
     staleTime: 2 * 60_000,
     placeholderData: keepPreviousData,
   });
-  const reviews = (reviewsResponse?.items ?? []).map(toReview);
+  const reviews = (reviewsResponse ?? []).map(toReview);
 
   const { data: reviewSummary, refetch: refetchSummary } = useQuery({
     queryKey: queryKeys.reviews.summary(product.id),
