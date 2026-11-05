@@ -70,7 +70,11 @@ jobs:
         # bypass (macOS APFS/HFS+ only) — we never build sdists, and the fix
         # (setuptools>=83) removes pkg_resources, which razorpay==1.4.2 requires
         # at import. Ignored until the razorpay 2.x upgrade drops that need.
-        run: pip-audit -r requirements.txt --ignore-vuln PYSEC-2022-43012 --ignore-vuln PYSEC-2026-3447
+        # GHSA-xmj3-9gf7-h52w: setuptools legacy install_as_egg path traversal
+        # (Windows-only, needs a user to install a crafted wheel; CVSS 1.0) —
+        # servers are Linux, and the fix (setuptools>=84.1) has the same
+        # pkg_resources removal. Same razorpay 2.x upgrade lifts this ignore.
+        run: pip-audit -r requirements.txt --ignore-vuln PYSEC-2022-43012 --ignore-vuln PYSEC-2026-3447 --ignore-vuln GHSA-xmj3-9gf7-h52w
 
   # ── Backend: tests + coverage ─────────────────────────────────────────────
   backend-tests:
