@@ -64,6 +64,10 @@ Jinja2==3.1.6
 
 # ── Background Jobs ──────────────────────────────────────────────────────────
 celery[redis]==5.4.0
+# celery only bounds kombu to <6.0; kombu 5.7.0 requires redis-py>=6.1 and
+# crash-loops every worker against the redis==5.2.1 pin above. Bump both
+# together.
+kombu==5.6.2
 
 # ── Logging ──────────────────────────────────────────────────────────────────
 structlog==24.4.0
