@@ -9,7 +9,8 @@
       "PowerShell(grep -i \"order\")",
       "Bash(python -m py_compile app/modules/fulfillment/models.py app/modules/fulfillment/schemas.py app/modules/fulfillment/repository.py app/modules/fulfillment/service.py app/modules/fulfillment/router.py)",
       "Bash(node node_modules/typescript/bin/tsc --noEmit)",
-      "mcp__codebase-memory-mcp__index_status"
+      "mcp__codebase-memory-mcp__index_status",
+      "Bash(git add *)"
     ]
   }
 }
