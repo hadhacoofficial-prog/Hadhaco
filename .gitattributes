@@ -1,3 +1,13 @@
+# Store every text file with LF endings. Without this, a Windows checkout
+# (core.autocrlf=false) committed CRLF into 155 files, which failed the
+# Prettier lint and blocked the production deploy. Binary files are
+# auto-detected and left untouched.
+* text=auto eol=lf
+# Windows-only scripts keep CRLF.
+*.bat text eol=crlf
+*.cmd text eol=crlf
+*.ps1 text eol=crlf
+
 # Force Unix line endings for shell scripts (prevents Windows CRLF from breaking bash on VPS)
 deploy/scripts/*.sh text eol=lf
 *.sh text eol=lf
