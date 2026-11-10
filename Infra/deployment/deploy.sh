@@ -232,9 +232,11 @@ pull_image_with_retry() {
     (( attempt++ ))
     log "  Pull attempt ${attempt}/${_MAX_RETRIES}: ${image}"
 
-    local output exit_code
+    # Reset every attempt: re-running `local` on an existing local keeps its
+    # old value, so a failed attempt's exit code would mark a later
+    # successful pull as failed.
+    local output="" exit_code=0
     output=$(docker pull "${image}" 2>&1) || exit_code=$?
-    exit_code=${exit_code:-0}
 
     if [[ ${exit_code} -eq 0 ]]; then
       log "  ✓ Pulled successfully: ${image}"
@@ -271,9 +273,8 @@ check_image_manifest() {
     (( attempt++ ))
     log "  Manifest check attempt ${attempt}/${_MAX_RETRIES}"
 
-    local output exit_code
+    local output="" exit_code=0  # reset every attempt (see pull_image_with_retry)
     output=$(docker manifest inspect "${image}" 2>&1) || exit_code=$?
-    exit_code=${exit_code:-0}
 
     if [[ ${exit_code} -eq 0 ]]; then
       log "  ✓ Manifest confirmed: ${image}"
