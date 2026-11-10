@@ -63,45 +63,60 @@ async def check_rate_limit(
     limit: int,
     window: int = 60,
     key_prefix: str = "rl",
+    identity: str | None = None,
+    detail: str = "Too many requests. Please slow down.",
+    record: bool = True,
 ) -> None:
     """
     Sliding window rate limiter.
-    key  = <prefix>:<ip>:<path>
+    key  = <prefix>:<identity or ip>:<path>
     Uses a Redis sorted set: members are timestamps, scored by timestamp.
+
+    ``identity`` (e.g. ``"user:<id>"``) limits per account instead of per IP,
+    for authenticated actions where IPs are shared or rotate.
+
+    ``record=False`` only checks the window without counting this request;
+    pair it with :func:`record_rate_limit_hit` after the action succeeds so
+    failed attempts don't use up the quota.
 
     Fails OPEN: a Redis outage must degrade rate limiting, not take the
     API down with it.
     """
     ip = get_client_ip(request)
     path = request.url.path
-    key = f"{key_prefix}:{ip}:{path}"
+    key = _rate_limit_key(request, key_prefix, identity)
     now = time.time()
     window_start = now - window
 
     try:
         pipe = redis.pipeline()
         pipe.zremrangebyscore(key, 0, window_start)
-        pipe.zadd(key, {str(now): now})
+        if record:
+            pipe.zadd(key, {str(now): now})
         pipe.zcard(key)
-        pipe.expire(key, window)
+        if record:
+            pipe.expire(key, window)
         results = await pipe.execute()
     except Exception as exc:
         log.warning("rate_limit_redis_unavailable", error=str(exc), key=key)
         return
 
-    count: int = results[2]
+    # Recorded: the count includes this request. Unrecorded: it doesn't, so
+    # this request would be hit number count + 1.
+    count: int = results[2] if record else results[1] + 1
     if count > limit:
         log.warning(
             "rate_limit_exceeded",
             key_prefix=key_prefix,
             path=path,
             ip=ip,
+            identity=identity,
             count=count,
             limit=limit,
         )
         raise HTTPException(
             status_code=status.HTTP_429_TOO_MANY_REQUESTS,
-            detail="Too many requests. Please slow down.",
+            detail=detail,
             headers={
                 "Retry-After": str(window),
                 "X-RateLimit-Limit": str(limit),
@@ -109,6 +124,31 @@ async def check_rate_limit(
                 "X-RateLimit-Reset": str(int(now + window)),
             },
         )
+
+
+async def record_rate_limit_hit(
+    request: Request,
+    redis: aioredis.Redis,
+    *,
+    window: int = 60,
+    key_prefix: str = "rl",
+    identity: str | None = None,
+) -> None:
+    """Count one hit against the window checked by
+    ``check_rate_limit(..., record=False)``. Fails open like the check."""
+    key = _rate_limit_key(request, key_prefix, identity)
+    now = time.time()
+    try:
+        pipe = redis.pipeline()
+        pipe.zadd(key, {str(now): now})
+        pipe.expire(key, window)
+        await pipe.execute()
+    except Exception as exc:
+        log.warning("rate_limit_redis_unavailable", error=str(exc), key=key)
+
+
+def _rate_limit_key(request: Request, key_prefix: str, identity: str | None) -> str:
+    return f"{key_prefix}:{identity or get_client_ip(request)}:{request.url.path}"
 
 
 def get_client_ip(request: Request) -> str:

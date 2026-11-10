@@ -789,18 +789,16 @@ class TestReviewServiceImages:
         self.svc._images.upload = AsyncMock(return_value=mock_image)
         self.svc._images.reorder = AsyncMock()
         with (
+            patch.object(self.repo_cls, "lock_product_user", AsyncMock()),
+            patch.object(self.repo_cls, "is_blocked", AsyncMock(return_value=False)),
             patch.object(
-                self.repo_cls, "get_by_product_user", AsyncMock(return_value=None)
+                self.repo_cls, "count_live_by_product_user", AsyncMock(return_value=0)
             ),
             patch.object(
                 self.repo_cls, "has_delivered_order_item", AsyncMock(return_value=True)
             ),
-            patch.object(
-                self.repo_cls,
-                "get_soft_deleted_by_product_user",
-                AsyncMock(return_value=None),
-            ),
             patch.object(self.repo_cls, "create", AsyncMock(return_value=mock_review)),
+            patch.object(self.svc, "_sync_product_rating", AsyncMock()),
         ):
             result = await self.svc.submit_review(
                 db,

@@ -399,7 +399,8 @@ function ProductPage() {
   });
 
   const avgRating = reviewSummary?.average_rating ?? product.rating ?? 0;
-  const reviewCount = reviewSummary?.review_count ?? product.reviewCount ?? 0;
+  const reviewCount =
+    reviewSummary?.total_reviews ?? reviewSummary?.review_count ?? product.reviewCount ?? 0;
 
   // Purchased-and-delivered review reminder banner (read-only state — never
   // gates who may submit a review, see Backend/app/modules/reviews/service.py).
@@ -409,8 +410,17 @@ function ProductPage() {
     enabled: isAuthenticated,
     staleTime: 60_000,
   });
+  // Why this customer can't post a review here right now (shown instead of
+  // the "Write a Review" button); mirrors the submit rules server-side.
+  const writeReviewBlockedReason = myReviewStatus?.is_blocked
+    ? (myReviewStatus.blocked_message ?? "You can't post new reviews for this product.")
+    : myReviewStatus?.reviews_remaining === 0
+      ? "You've reached the review limit for this product. Delete one of your reviews to post another."
+      : undefined;
   const showPurchasedBanner = Boolean(
-    myReviewStatus?.has_purchased_delivered && !myReviewStatus.has_reviewed,
+    myReviewStatus?.has_purchased_delivered &&
+    !myReviewStatus.has_reviewed &&
+    !myReviewStatus.is_blocked,
   );
 
   const [showReviewModal, setShowReviewModal] = useState(false);
@@ -939,9 +949,11 @@ function ProductPage() {
               onSortChange={setReviewSort}
               onRatingChange={setReviewRating}
               onWriteReview={() => setShowReviewModal(true)}
+              writeReviewBlockedReason={writeReviewBlockedReason}
               onRefresh={() => {
                 refetchReviews();
                 refetchSummary();
+                refetchMyReviewStatus();
                 afterReviewSubmit(product.id);
               }}
             />
@@ -1049,6 +1061,7 @@ function ReviewsSection({
   onSortChange,
   onRatingChange,
   onWriteReview,
+  writeReviewBlockedReason,
   onRefresh,
 }: {
   reviews: Review[];
@@ -1060,6 +1073,7 @@ function ReviewsSection({
   onSortChange: (sort: ReviewSort) => void;
   onRatingChange: (rating: number | undefined) => void;
   onWriteReview: () => void;
+  writeReviewBlockedReason: string | undefined;
   onRefresh: () => void;
 }) {
   const [currentUserId, setCurrentUserId] = useState<string | undefined>(undefined);
@@ -1083,7 +1097,7 @@ function ReviewsSection({
         [1, summary.one_star],
       ]
     : [];
-  const totalApproved = summary?.review_count ?? approvedReviews.length;
+  const totalApproved = summary?.total_reviews ?? summary?.review_count ?? approvedReviews.length;
   // Controls only earn their space once there's something to sort / narrow.
   const showControls = totalApproved > 1;
 
@@ -1097,14 +1111,20 @@ function ReviewsSection({
               ? `${approvedReviews.length} of ${totalApproved} reviews · ${rating}★`
               : `${totalApproved} review${totalApproved > 1 ? "s" : ""}`}
         </p>
-        <button
-          type="button"
-          onClick={onWriteReview}
-          className="inline-flex items-center gap-2 border border-foreground text-foreground text-[11px] uppercase tracking-[0.22em] px-4 py-2.5 hover:bg-foreground hover:text-background transition"
-        >
-          <Pencil className="size-3.5" />
-          Write a Review
-        </button>
+        {writeReviewBlockedReason ? (
+          <p role="status" className="text-sm text-muted-foreground max-w-sm sm:text-right">
+            {writeReviewBlockedReason}
+          </p>
+        ) : (
+          <button
+            type="button"
+            onClick={onWriteReview}
+            className="inline-flex items-center gap-2 border border-foreground text-foreground text-[11px] uppercase tracking-[0.22em] px-4 py-2.5 hover:bg-foreground hover:text-background transition"
+          >
+            <Pencil className="size-3.5" />
+            Write a Review
+          </button>
+        )}
       </div>
       {showControls && (
         <div className="flex flex-wrap items-center justify-between gap-3 mb-6 border-y border-border py-3">

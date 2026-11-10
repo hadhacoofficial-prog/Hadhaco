@@ -148,6 +148,12 @@ export interface MyProductReviewStatus {
   has_reviewed: boolean;
   review_id: string | null;
   rating: number | null;
+  /** An admin removed one of this customer's reviews; no new ones allowed. */
+  is_blocked: boolean;
+  /** Customer-facing explanation when is_blocked, else null. */
+  blocked_message: string | null;
+  /** Reviews of this product the customer may still post (0 when blocked). */
+  reviews_remaining: number;
 }
 
 export interface ReviewSummary {
@@ -159,6 +165,8 @@ export interface ReviewSummary {
   three_star: number;
   two_star: number;
   one_star: number;
+  /** Every published review; rating fields count each customer's newest only. */
+  total_reviews?: number;
 }
 
 // ── Search ────────────────────────────────────────────────────────────────────

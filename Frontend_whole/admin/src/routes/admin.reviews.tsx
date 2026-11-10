@@ -2,7 +2,7 @@ import { useCallback, useMemo } from "react";
 import { createFileRoute } from "@tanstack/react-router";
 import { z } from "zod";
 import { useQuery, useMutation, useQueryClient, keepPreviousData } from "@tanstack/react-query";
-import { Star, Check, X, Trash2, Loader2 } from "lucide-react";
+import { Star, Trash2, Loader2, Undo2 } from "lucide-react";
 import { toast } from "sonner";
 import { api } from "@/lib/api/client";
 import { queryKeys } from "@/lib/api/queryKeys";
@@ -31,37 +31,34 @@ import {
   urlText,
   useUrlSearchText,
 } from "@/lib/tableUrlState";
-import type { ReviewAction, ReviewDto, ReviewListResponse } from "@/types/admin";
+import type { ReviewDto, ReviewListResponse } from "@/types/admin";
 
-type StatusFilter = "all" | "pending" | "approved" | "rejected";
+// Reviews publish immediately; admins can only remove them. A removed review
+// blocks its author from reviewing that product again until unblocked.
+type StatusFilter = "all" | "removed";
 
 const STATUS_TABS: { key: StatusFilter; label: string }[] = [
-  { key: "all", label: "All" },
-  { key: "pending", label: "Pending" },
-  { key: "approved", label: "Approved" },
-  { key: "rejected", label: "Rejected" },
+  { key: "all", label: "Published" },
+  { key: "removed", label: "Removed" },
 ];
 
-function statusBadge(r: ReviewDto) {
-  if (r.is_approved) {
-    return (
-      <span className="text-[10px] uppercase tracking-[0.18em] px-2 py-0.5 bg-accent/10 text-accent border border-accent/20">
-        Approved
-      </span>
-    );
-  }
-  if (r.is_rejected) {
+function statusBadge(r: ReviewDto, tab: StatusFilter) {
+  if (tab === "removed") {
     return (
       <span className="text-[10px] uppercase tracking-[0.18em] px-2 py-0.5 bg-destructive/10 text-destructive border border-destructive/20">
-        Rejected
+        Removed · customer blocked
       </span>
     );
   }
-  return (
-    <span className="text-[10px] uppercase tracking-[0.18em] px-2 py-0.5 bg-amber-50 text-amber-700 border border-amber-200">
-      Pending
-    </span>
-  );
+  // Only legacy rows from the old moderation flow can still be unpublished.
+  if (!r.is_approved) {
+    return (
+      <span className="text-[10px] uppercase tracking-[0.18em] px-2 py-0.5 bg-amber-50 text-amber-700 border border-amber-200">
+        Hidden
+      </span>
+    );
+  }
+  return null;
 }
 
 // Combined sort options — a card list has no column headers to click.
@@ -77,7 +74,7 @@ type SortValue = (typeof SORT_OPTIONS)[number]["value"];
 const DEFAULT_SORT: SortValue = "created_at:desc";
 
 const reviewsSearchSchema = z.object({
-  status: urlEnum(["pending", "approved", "rejected"]),
+  status: urlEnum(["removed"]),
   q: urlText,
   rating: z.coerce.number().int().min(1).max(5).optional().catch(undefined),
   verified: urlBool,
@@ -201,21 +198,20 @@ function AdminReviews() {
     queryClient.invalidateQueries({ queryKey: ["admin", "reviews"] });
   };
 
-  const actionMutation = useMutation({
-    mutationFn: ({ id, action }: { id: string; action: Exclude<ReviewAction, "delete"> }) =>
-      api.post<ReviewDto>(`/reviews/admin/${id}/action`, { body: { action } }),
-    onSuccess: (_, vars) => {
-      invalidate();
-      toast.success(`Review ${vars.action}d successfully.`);
-    },
-    onError: (e) => toast.error(toUserMessage(e)),
-  });
-
   const deleteMutation = useMutation({
     mutationFn: (id: string) => api.delete(`/reviews/admin/${id}`),
     onSuccess: () => {
       invalidate();
-      toast.success("Review deleted.");
+      toast.success("Review removed. The customer can't post new reviews for this product.");
+    },
+    onError: (e) => toast.error(toUserMessage(e)),
+  });
+
+  const unblockMutation = useMutation({
+    mutationFn: (id: string) => api.post(`/reviews/admin/${id}/unblock`),
+    onSuccess: () => {
+      invalidate();
+      toast.success("Customer unblocked. They can review this product again.");
     },
     onError: (e) => toast.error(toUserMessage(e)),
   });
@@ -230,18 +226,11 @@ function AdminReviews() {
   );
   const total = data?.total ?? 0;
 
-  const pendingCount = list.filter((r) => !r.is_approved && !r.is_rejected).length;
-
   return (
     <div>
       <header className="mb-6">
         <p className="text-[11px] uppercase tracking-[0.3em] text-muted-foreground">Moderation</p>
-        <h1 className="font-display text-4xl mt-1">
-          Reviews{" "}
-          {pendingCount > 0 && activeTab === "all" && (
-            <span className="text-amber-600 text-2xl">({pendingCount} pending)</span>
-          )}
-        </h1>
+        <h1 className="font-display text-4xl mt-1">Reviews</h1>
       </header>
 
       {/* Tabs */}
@@ -312,13 +301,9 @@ function AdminReviews() {
       >
         {!isLoading &&
           list.map((r) => {
-            const isActionPending =
-              actionMutation.isPending && actionMutation.variables?.id === r.id;
-            const isApprovePending =
-              isActionPending && actionMutation.variables?.action === "approve";
-            const isRejectPending =
-              isActionPending && actionMutation.variables?.action === "reject";
             const isDeletePending = deleteMutation.isPending && deleteMutation.variables === r.id;
+            const isUnblockPending =
+              unblockMutation.isPending && unblockMutation.variables === r.id;
             return (
               <article
                 key={r.id}
@@ -329,7 +314,7 @@ function AdminReviews() {
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 flex-wrap mb-1">
                       <span className="font-medium text-sm">{r.customer_name ?? "Customer"}</span>
-                      {statusBadge(r)}
+                      {statusBadge(r, activeTab)}
                       {r.is_verified_purchase && (
                         <span className="text-[10px] uppercase tracking-[0.18em] px-2 py-0.5 bg-secondary text-muted-foreground border border-border">
                           Verified
@@ -383,53 +368,51 @@ function AdminReviews() {
 
                   {/* Actions */}
                   <div className="flex gap-2 shrink-0 flex-wrap">
-                    {!r.is_approved && (
+                    {activeTab === "removed" ? (
                       <button
-                        onClick={() => actionMutation.mutate({ id: r.id, action: "approve" })}
-                        disabled={isActionPending}
-                        aria-busy={isApprovePending}
+                        onClick={() => {
+                          if (
+                            confirm(
+                              "Unblock this customer? Every review of theirs removed from this product is permanently deleted, and they can post new reviews for it again.",
+                            )
+                          ) {
+                            unblockMutation.mutate(r.id);
+                          }
+                        }}
+                        disabled={isUnblockPending}
+                        aria-busy={isUnblockPending}
                         className="inline-flex items-center gap-1 border border-border px-3 py-2 text-xs uppercase tracking-[0.18em] hover:bg-accent hover:text-accent-foreground hover:border-accent disabled:opacity-50 transition"
                       >
-                        {isApprovePending ? (
+                        {isUnblockPending ? (
                           <Loader2 className="size-3.5 animate-spin" />
                         ) : (
-                          <Check className="size-3.5" />
+                          <Undo2 className="size-3.5" />
                         )}
-                        {isApprovePending ? "Approving..." : "Approve"}
+                        {isUnblockPending ? "Unblocking..." : "Unblock"}
                       </button>
-                    )}
-                    {!r.is_approved && !r.is_rejected && (
+                    ) : (
                       <button
-                        onClick={() => actionMutation.mutate({ id: r.id, action: "reject" })}
-                        disabled={isActionPending}
-                        aria-busy={isRejectPending}
+                        onClick={() => {
+                          if (
+                            confirm(
+                              "Remove this review? It disappears from the product page, and this customer can't post new reviews for this product until you unblock them (their other reviews stay).",
+                            )
+                          ) {
+                            deleteMutation.mutate(r.id);
+                          }
+                        }}
+                        disabled={isDeletePending}
+                        aria-busy={isDeletePending}
                         className="inline-flex items-center gap-1 border border-border px-3 py-2 text-xs uppercase tracking-[0.18em] hover:bg-destructive hover:text-destructive-foreground hover:border-destructive disabled:opacity-50 transition"
                       >
-                        {isRejectPending ? (
+                        {isDeletePending ? (
                           <Loader2 className="size-3.5 animate-spin" />
                         ) : (
-                          <X className="size-3.5" />
+                          <Trash2 className="size-3.5" />
                         )}
-                        {isRejectPending ? "Rejecting..." : "Reject"}
+                        {isDeletePending ? "Removing..." : "Remove"}
                       </button>
                     )}
-                    <button
-                      onClick={() => {
-                        if (confirm("Permanently delete this review?")) {
-                          deleteMutation.mutate(r.id);
-                        }
-                      }}
-                      disabled={isDeletePending}
-                      aria-busy={isDeletePending}
-                      className="inline-flex items-center gap-1 border border-border px-3 py-2 text-xs uppercase tracking-[0.18em] hover:bg-destructive hover:text-destructive-foreground hover:border-destructive disabled:opacity-50 transition"
-                    >
-                      {isDeletePending ? (
-                        <Loader2 className="size-3.5 animate-spin" />
-                      ) : (
-                        <Trash2 className="size-3.5" />
-                      )}
-                      {isDeletePending ? "Deleting..." : "Delete"}
-                    </button>
                   </div>
                 </div>
 
@@ -454,7 +437,7 @@ function AdminReviews() {
           })}
         {!isLoading && list.length === 0 && (
           <p className="text-center text-muted-foreground text-sm py-12">
-            No {activeTab !== "all" ? activeTab : ""} reviews
+            No {activeTab === "removed" ? "removed" : ""} reviews
             {chips.length ? " match these filters" : ""}.{" "}
             {chips.length > 0 && (
               <button

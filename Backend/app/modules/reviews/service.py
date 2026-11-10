@@ -5,15 +5,22 @@ from datetime import UTC, datetime
 from typing import Any
 
 from fastapi import HTTPException, UploadFile, status
-from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.config import settings
 from app.core.events import ReviewRequestEvent, event_bus
 from app.core.exceptions import HTTP_422
 from app.modules.media.universal_service import UniversalImageService
 from app.modules.reviews.models import Review, ReviewVote
 from app.modules.reviews.repository import ReviewRepository
 from app.modules.reviews.schemas import AdminReviewOut, ReviewCreate, ReviewUpdate
+
+# Shown to a customer an admin blocked from reviewing a product (submit 403
+# and the product page), so both read the same.
+BLOCKED_MESSAGE = (
+    "Our team removed one of your reviews of this product, so you can't post "
+    "new reviews for it."
+)
 
 
 class ReviewService:
@@ -32,49 +39,43 @@ class ReviewService:
         data: ReviewCreate,
         images: list[UploadFile] | None = None,
     ) -> Review:
-        existing = await self._repo.get_by_product_user(
+        # Held to commit: concurrent submits by this customer for this product
+        # run one at a time, so the cap below can't be raced past.
+        await self._repo.lock_product_user(
             db, product_id=data.product_id, user_id=user_id
         )
-        if existing:
+        if await self._repo.is_blocked(db, product_id=data.product_id, user_id=user_id):
+            raise HTTPException(status.HTTP_403_FORBIDDEN, BLOCKED_MESSAGE)
+        max_reviews = settings.REVIEW_MAX_PER_PRODUCT
+        live = await self._repo.count_live_by_product_user(
+            db, product_id=data.product_id, user_id=user_id
+        )
+        if live >= max_reviews:
             raise HTTPException(
-                status.HTTP_409_CONFLICT, "You have already reviewed this product"
+                status.HTTP_409_CONFLICT,
+                f"You can have up to {max_reviews} reviews of this product. "
+                "Delete one to post another.",
             )
-        # uq_reviews_product_user ignores deleted_at, so a soft-deleted row
-        # would block the insert below: purge it (and its photos) first.
-        stale = await self._repo.get_soft_deleted_by_product_user(
-            db, product_id=data.product_id, user_id=user_id
-        )
-        if stale:
-            await self._delete_images(db, stale)
-            await self._repo.hard_delete(db, stale.id)
 
         is_verified = await self._repo.has_delivered_order_item(
             db, user_id=user_id, product_id=data.product_id
         )
 
-        try:
-            review = await self._repo.create(
-                db,
-                product_id=data.product_id,
-                user_id=user_id,
-                order_id=data.order_id,
-                customer_name=customer_name,
-                rating=data.rating,
-                title=data.title,
-                body=data.body,
-                is_verified_purchase=is_verified,
-                is_approved=False,
-                is_rejected=False,
-            )
-        except IntegrityError as exc:
-            # Safety net for the check-then-insert race (two concurrent
-            # submits for the same product both pass the guard above). Any
-            # other integrity failure (e.g. unknown product FK) is re-raised.
-            if "uq_reviews_product_user" not in str(exc.orig):
-                raise
-            raise HTTPException(
-                status.HTTP_409_CONFLICT, "You have already reviewed this product"
-            ) from exc
+        review = await self._repo.create(
+            db,
+            product_id=data.product_id,
+            user_id=user_id,
+            order_id=data.order_id,
+            customer_name=customer_name,
+            rating=data.rating,
+            title=data.title,
+            body=data.body,
+            is_verified_purchase=is_verified,
+            # Published immediately; admins can only remove afterwards.
+            is_approved=True,
+            is_rejected=False,
+            approved_at=datetime.now(UTC),
+        )
 
         if images:
             from app.modules.media.universal_service import UniversalImageServiceError
@@ -88,6 +89,7 @@ class ReviewService:
             except UniversalImageServiceError as exc:
                 raise HTTPException(HTTP_422, str(exc)) from exc
 
+        await self._sync_product_rating(db, review.product_id)
         await db.commit()
         await db.refresh(review)
         return review
@@ -102,16 +104,22 @@ class ReviewService:
         user_id: uuid.UUID,
         data: ReviewUpdate,
     ) -> tuple[Review, bool]:
-        """Edit and send back to pending. Returns (review, rating_changed):
-        rating_changed is True when an approved review left the product's
-        average_rating / review_count, so callers know to bust product caches.
+        """Edit in place; the review stays published. Returns
+        (review, rating_changed): rating_changed is True when the product's
+        average_rating / review_count moved, so callers know to bust product
+        caches.
+
+        A legacy review still pending from the old moderation flow is
+        published by its first edit; a legacy rejected one stays hidden.
         """
         review = await self._get_owned(db, review_id=review_id, user_id=user_id)
         updates = data.model_dump(exclude_unset=True)
-        rating_changed = bool(updates) and review.is_approved
+        publishes = bool(updates) and not review.is_approved and not review.is_rejected
+        rating_changed = publishes or ("rating" in updates and review.is_approved)
+        if publishes:
+            updates["is_approved"] = True
+            updates["approved_at"] = datetime.now(UTC)
         if updates:
-            updates["is_approved"] = False
-            updates["is_rejected"] = False
             review = await self._repo.update(db, review, updates)
         if rating_changed:
             await self._sync_product_rating(db, review.product_id)
@@ -165,14 +173,20 @@ class ReviewService:
     async def my_review_status(
         self, db: AsyncSession, *, product_id: uuid.UUID, user_id: uuid.UUID
     ) -> dict[str, Any]:
-        """Reminder visibility for the product-page review banner. Read-only:
-        reports purchased-and-delivered / already-reviewed state and never
-        gates who may submit a review."""
-        review = await self._repo.get_by_product_user(
+        """Product-page review state for the viewer. Read-only: mirrors the
+        submit rules (block, per-product cap) so the page can explain them
+        instead of failing on submit; review_id/rating are the newest review."""
+        review = await self._repo.get_latest_by_product_user(
             db, product_id=product_id, user_id=user_id
         )
         has_purchased = await self._repo.has_delivered_order_item(
             db, user_id=user_id, product_id=product_id
+        )
+        is_blocked = await self._repo.is_blocked(
+            db, product_id=product_id, user_id=user_id
+        )
+        live = await self._repo.count_live_by_product_user(
+            db, product_id=product_id, user_id=user_id
         )
         return {
             "product_id": product_id,
@@ -180,6 +194,11 @@ class ReviewService:
             "has_reviewed": review is not None,
             "review_id": review.id if review else None,
             "rating": review.rating if review else None,
+            "is_blocked": is_blocked,
+            "blocked_message": BLOCKED_MESSAGE if is_blocked else None,
+            "reviews_remaining": (
+                0 if is_blocked else max(0, settings.REVIEW_MAX_PER_PRODUCT - live)
+            ),
         }
 
     # ── Votes ─────────────────────────────────────────────────────────────────
@@ -210,26 +229,22 @@ class ReviewService:
     async def _sync_product_rating(
         self, db: AsyncSession, product_id: uuid.UUID
     ) -> None:
-        """Recalculate and cache average_rating + review_count on the product."""
+        """Recalculate and cache average_rating + review_count on the product
+        (newest published review per customer — see repository.rating_summary)."""
         from sqlalchemy import text as sql
 
-        row = (
-            await db.execute(
-                sql("""
-                    SELECT
-                        COUNT(*) AS review_count,
-                        ROUND(AVG(rating)::NUMERIC, 1) AS average_rating
-                    FROM reviews
-                    WHERE product_id = :pid
-                      AND is_approved = true
-                      AND deleted_at IS NULL
-                """),
-                {"pid": product_id},
-            )
-        ).fetchone()
-        if row is None:
-            return
-        mapping = dict(row._mapping)
+        # Serialize concurrent syncs for this product (e.g. two simultaneous
+        # submits): without the lock each aggregate misses the other's
+        # uncommitted review and the last UPDATE leaves a stale count. The
+        # lock waits for the other transaction, then the aggregate below (a
+        # new READ COMMITTED snapshot) sees its row. NO KEY UPDATE, not
+        # UPDATE: a review insert already holds FOR KEY SHARE on the product
+        # via the FK, which FOR UPDATE would conflict with (deadlock).
+        await db.execute(
+            sql("SELECT 1 FROM products WHERE id = :pid FOR NO KEY UPDATE"),
+            {"pid": product_id},
+        )
+        summary = await self._repo.rating_summary(db, product_id)
         await db.execute(
             sql("""
                 UPDATE products
@@ -237,8 +252,8 @@ class ReviewService:
                 WHERE id = :pid
             """),
             {
-                "avg": mapping.get("average_rating"),
-                "cnt": int(mapping.get("review_count") or 0),
+                "avg": summary["average_rating"] if summary else None,
+                "cnt": int(summary["review_count"]) if summary else 0,
                 "pid": product_id,
             },
         )
@@ -289,13 +304,39 @@ class ReviewService:
         return review
 
     async def admin_delete(self, db: AsyncSession, *, review_id: uuid.UUID) -> None:
+        """Remove a review and block its author from reviewing the product
+        again. The row is kept (soft-deleted + admin_removed_at) as the block
+        marker; its photos are deleted. Undo with admin_unblock."""
         review = await self._repo.get_by_id(db, review_id)
         if not review:
             raise HTTPException(status.HTTP_404_NOT_FOUND, "Review not found")
         product_id = review.product_id
+        now = datetime.now(UTC)
         await self._delete_images(db, review)
-        await self._repo.hard_delete(db, review_id)
+        await self._repo.update(
+            db,
+            review,
+            {
+                "deleted_at": now,
+                "admin_removed_at": now,
+                "is_approved": False,
+                "is_flagged": False,
+            },
+        )
         await self._sync_product_rating(db, product_id)
+        await db.commit()
+
+    async def admin_unblock(self, db: AsyncSession, *, review_id: uuid.UUID) -> None:
+        """Lift the block left by admin_delete so the customer may post new
+        reviews of that product. Every review an admin removed from this
+        customer on the product is purged (not restored) — any one of them
+        would keep the block."""
+        review = await self._repo.get_removed_by_id(db, review_id)
+        if not review:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "Removed review not found")
+        await self._repo.delete_admin_removed(
+            db, product_id=review.product_id, user_id=review.user_id
+        )
         await db.commit()
 
     async def list_pending(

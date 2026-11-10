@@ -62,7 +62,7 @@ class ReviewRepository:
             return set()
         result = await db.execute(
             select(Review.order_id)
-            .where(Review.order_id.in_(order_ids), Review.deleted_at.is_(None))
+            .where(Review.order_id.in_(order_ids), self._counts_as_reviewed())
             .distinct()
         )
         return {r for r in result.scalars().all() if r is not None}
@@ -73,30 +73,98 @@ class ReviewRepository:
         """Return the user's reviews across the given products in one query.
 
         Read-only helper for post-delivery review reminders (orders page /
-        product page); never used to gate review submission.
+        product page); never used to gate review submission. A customer may
+        have several reviews per product; rows come oldest first.
         """
         if not product_ids:
             return []
         result = await db.execute(
-            select(Review).where(
+            select(Review)
+            .where(
                 Review.product_id.in_(product_ids),
                 Review.user_id == user_id,
-                Review.deleted_at.is_(None),
+                self._counts_as_reviewed(),
             )
+            .order_by(Review.created_at.asc(), Review.id)
         )
         return list(result.scalars().all())
 
-    async def get_by_product_user(
-        self, db: AsyncSession, *, product_id: uuid.UUID, user_id: uuid.UUID
+    @staticmethod
+    def _counts_as_reviewed() -> ColumnElement[bool]:
+        """Live reviews, plus ones an admin removed: the customer may not
+        post new reviews for that product, so reminders must not prompt them."""
+        return or_(Review.deleted_at.is_(None), Review.admin_removed_at.is_not(None))
+
+    async def get_removed_by_id(
+        self, db: AsyncSession, review_id: uuid.UUID
     ) -> Review | None:
+        """A review an admin removed (soft-deleted + admin_removed_at)."""
         result = await db.execute(
             select(Review).where(
+                Review.id == review_id,
+                Review.deleted_at.is_not(None),
+                Review.admin_removed_at.is_not(None),
+            )
+        )
+        return result.scalar_one_or_none()
+
+    async def get_latest_by_product_user(
+        self, db: AsyncSession, *, product_id: uuid.UUID, user_id: uuid.UUID
+    ) -> Review | None:
+        """The customer's newest live review of the product, if any."""
+        result = await db.execute(
+            select(Review)
+            .where(
+                Review.product_id == product_id,
+                Review.user_id == user_id,
+                Review.deleted_at.is_(None),
+            )
+            .order_by(Review.created_at.desc(), Review.id.desc())
+            .limit(1)
+        )
+        return result.scalar_one_or_none()
+
+    async def count_live_by_product_user(
+        self, db: AsyncSession, *, product_id: uuid.UUID, user_id: uuid.UUID
+    ) -> int:
+        """Live (not deleted) reviews the customer has on the product."""
+        result = await db.execute(
+            select(func.count())
+            .select_from(Review)
+            .where(
                 Review.product_id == product_id,
                 Review.user_id == user_id,
                 Review.deleted_at.is_(None),
             )
         )
-        return result.scalar_one_or_none()
+        return int(result.scalar_one())
+
+    async def is_blocked(
+        self, db: AsyncSession, *, product_id: uuid.UUID, user_id: uuid.UUID
+    ) -> bool:
+        """True when an admin removed one of the customer's reviews of the
+        product: no new reviews until an admin unblocks them."""
+        result = await db.execute(
+            select(Review.id)
+            .where(
+                Review.product_id == product_id,
+                Review.user_id == user_id,
+                Review.admin_removed_at.is_not(None),
+            )
+            .limit(1)
+        )
+        return result.scalar_one_or_none() is not None
+
+    async def lock_product_user(
+        self, db: AsyncSession, *, product_id: uuid.UUID, user_id: uuid.UUID
+    ) -> None:
+        """Serialize one customer's concurrent submits for one product until
+        the transaction ends, so the per-product cap can't be raced past.
+        Advisory, so nothing else (other customers, product writes) waits."""
+        await db.execute(
+            text("SELECT pg_advisory_xact_lock(hashtextextended(:key, 0))"),
+            {"key": f"review-submit:{product_id}:{user_id}"},
+        )
 
     # ── CRUD ─────────────────────────────────────────────────────────────────
 
@@ -127,22 +195,18 @@ class ReviewRepository:
     async def hard_delete(self, db: AsyncSession, review_id: uuid.UUID) -> None:
         await db.execute(delete(Review).where(Review.id == review_id))
 
-    async def get_soft_deleted_by_product_user(
+    async def delete_admin_removed(
         self, db: AsyncSession, *, product_id: uuid.UUID, user_id: uuid.UUID
-    ) -> Review | None:
-        """The user's soft-deleted review of this product, if any.
-
-        uq_reviews_product_user ignores deleted_at, so at most one row exists
-        per (product, user) and a soft-deleted one blocks a fresh submit.
-        """
-        result = await db.execute(
-            select(Review).where(
+    ) -> None:
+        """Hard-delete every admin-removed review the customer has on the
+        product — lifts the block (see is_blocked)."""
+        await db.execute(
+            delete(Review).where(
                 Review.product_id == product_id,
                 Review.user_id == user_id,
-                Review.deleted_at.is_not(None),
+                Review.admin_removed_at.is_not(None),
             )
         )
-        return result.scalar_one_or_none()
 
     # ── Listing ───────────────────────────────────────────────────────────────
 
@@ -282,8 +346,17 @@ class ReviewRepository:
         sort_by: str = "created_at",
         sort_dir: str = "desc",
     ) -> tuple[list[tuple[Review, str | None]], int]:
-        """Admin: paginated list of all reviews with product name and total count."""
-        filters: list[ColumnElement[bool]] = [Review.deleted_at.is_(None)]
+        """Admin: paginated list of all reviews with product name and total count.
+
+        ``status="removed"`` lists reviews an admin removed (the customer is
+        blocked from re-reviewing that product); every other status lists
+        live rows only.
+        """
+        filters: list[ColumnElement[bool]] = (
+            [Review.deleted_at.is_not(None), Review.admin_removed_at.is_not(None)]
+            if status == "removed"
+            else [Review.deleted_at.is_(None)]
+        )
         if rating is not None:
             filters.append(Review.rating == rating)
         if verified is not None:
@@ -348,22 +421,36 @@ class ReviewRepository:
     async def rating_summary(
         self, db: AsyncSession, product_id: uuid.UUID
     ) -> dict[str, Any] | None:
+        """Rating aggregate for a product, or None when it has no published
+        reviews. A customer may post several reviews of a product; only their
+        newest published one counts toward the rating (review_count, average,
+        star buckets). total_reviews counts every published review."""
         row = await db.execute(
             text("""
+                WITH published AS (
+                    SELECT id, user_id, rating, created_at
+                    FROM reviews
+                    WHERE product_id = :product_id
+                      AND is_approved = true
+                      AND deleted_at IS NULL
+                ),
+                latest AS (
+                    SELECT DISTINCT ON (user_id) rating
+                    FROM published
+                    ORDER BY user_id, created_at DESC, id DESC
+                )
                 SELECT
-                    product_id,
+                    CAST(:product_id AS uuid)                   AS product_id,
                     COUNT(*)                                    AS review_count,
                     ROUND(AVG(rating)::NUMERIC, 1)              AS average_rating,
                     COUNT(*) FILTER (WHERE rating = 5)          AS five_star,
                     COUNT(*) FILTER (WHERE rating = 4)          AS four_star,
                     COUNT(*) FILTER (WHERE rating = 3)          AS three_star,
                     COUNT(*) FILTER (WHERE rating = 2)          AS two_star,
-                    COUNT(*) FILTER (WHERE rating = 1)          AS one_star
-                FROM reviews
-                WHERE product_id = :product_id
-                  AND is_approved = true
-                  AND deleted_at IS NULL
-                GROUP BY product_id
+                    COUNT(*) FILTER (WHERE rating = 1)          AS one_star,
+                    (SELECT COUNT(*) FROM published)            AS total_reviews
+                FROM latest
+                HAVING COUNT(*) > 0
                 """),
             {"product_id": product_id},
         )

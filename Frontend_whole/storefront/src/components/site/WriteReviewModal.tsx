@@ -90,7 +90,7 @@ export function WriteReviewModal({
       if (image) form.append("images", image);
 
       await api.upload("/reviews", form);
-      toast.success("Review submitted! It will appear after approval.");
+      toast.success("Review posted!");
       onSuccess();
       onClose();
     } catch (err: unknown) {
@@ -118,7 +118,7 @@ export function WriteReviewModal({
         <h2 className="font-display text-2xl mb-1">Write a Review</h2>
         {productName && <p className="text-sm font-medium mb-1">{productName}</p>}
         <p className="text-sm text-muted-foreground mb-6">
-          Your review will be visible after admin approval.
+          Your review will be posted on the product page right away.
         </p>
         <form onSubmit={handleSubmit} className="space-y-5">
           <div>

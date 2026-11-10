@@ -102,6 +102,7 @@ class ResponseCode(StrEnum):
     REVIEW_PENDING_LISTED = "REVIEW_PENDING_LISTED"
     REVIEW_ALL_LISTED = "REVIEW_ALL_LISTED"
     REVIEW_ACTION_APPLIED = "REVIEW_ACTION_APPLIED"
+    REVIEW_UNBLOCKED = "REVIEW_UNBLOCKED"
 
     # ── CMS ──────────────────────────────────────────────────────────────────
     CMS_HOME_FETCHED = "CMS_HOME_FETCHED"

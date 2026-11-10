@@ -5,7 +5,16 @@ import uuid
 from datetime import datetime
 
 import redis.asyncio as aioredis
-from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile
+from fastapi import (
+    APIRouter,
+    Depends,
+    File,
+    Form,
+    HTTPException,
+    Query,
+    Request,
+    UploadFile,
+)
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.common.response_codes import ResponseCode
@@ -20,13 +29,15 @@ from app.core.cache import (
     cache_swr,
     schedule_all_product_caches_bust,
 )
+from app.core.config import settings
 from app.core.database import AsyncSessionLocal, get_db
 from app.core.dependencies import (
     get_current_user,
     get_current_user_optional,
     require_admin,
 )
-from app.core.redis import get_redis
+from app.core.redis import get_redis, get_redis_pool
+from app.middleware.rate_limit import check_rate_limit, record_rate_limit_hit
 from app.modules.reviews.schemas import (
     AdminReviewAction,
     MyProductReviewStatus,
@@ -52,6 +63,10 @@ _REVIEW_SWR_WINDOW = 3600
 # cache is busted on every review change, but a browser copy cannot be, so a
 # long max-age kept newly approved reviews hidden from returning visitors.
 _REVIEW_BROWSER_MAX_AGE = 60
+
+# Review posting quota window (limit: settings.REVIEW_SUBMIT_LIMIT_PER_HOUR).
+_REVIEW_SUBMIT_WINDOW = 3600
+_REVIEW_SUBMIT_RL_PREFIX = "rl:review:submit"
 
 
 # ── Public ────────────────────────────────────────────────────────────────────
@@ -206,6 +221,7 @@ async def my_review_status(
 
 @router.post("", response_model=BaseSuccessResponse[ReviewOut], status_code=201)
 async def submit_review(
+    request: Request,
     product_id: uuid.UUID = Form(...),
     rating: int = Form(..., ge=1, le=5),
     body: str | None = Form(None),
@@ -216,6 +232,22 @@ async def submit_review(
     user=Depends(get_current_user),
 ):
     from app.common.responses import created
+
+    # Reviews publish without moderation, so cap posting per account. Only
+    # successful posts count (recorded below), so a rejected attempt (409/403/
+    # 422) or a 429 retry never uses up the quota.
+    limit = settings.REVIEW_SUBMIT_LIMIT_PER_HOUR
+    identity = f"user:{user.id}"
+    await check_rate_limit(
+        request,
+        get_redis_pool(),
+        limit=limit,
+        window=_REVIEW_SUBMIT_WINDOW,
+        key_prefix=_REVIEW_SUBMIT_RL_PREFIX,
+        identity=identity,
+        detail=f"You can post up to {limit} reviews per hour. Please try again later.",
+        record=False,
+    )
 
     data = ReviewCreate(
         product_id=product_id,
@@ -231,10 +263,17 @@ async def submit_review(
         data=data,
         images=images or None,
     )
-    from app.core.redis import get_redis_pool
-
     redis = get_redis_pool()
+    await record_rate_limit_hit(
+        request,
+        redis,
+        window=_REVIEW_SUBMIT_WINDOW,
+        key_prefix=_REVIEW_SUBMIT_RL_PREFIX,
+        identity=identity,
+    )
     await bust_review_cache(redis, str(data.product_id))
+    # Published immediately, so the product's rating changed.
+    schedule_all_product_caches_bust(redis)
     return created(
         result, ResponseCode.REVIEW_SUBMITTED, "Review submitted successfully"
     )
@@ -250,8 +289,6 @@ async def edit_review(
     result, rating_changed = await _svc.edit_review(
         db, review_id=review_id, user_id=user.id, data=data
     )
-    from app.core.redis import get_redis_pool
-
     redis = get_redis_pool()
     await bust_review_cache(redis, str(result.product_id))
     if rating_changed:
@@ -272,8 +309,6 @@ async def delete_review(
         raise HTTPException(status_code=404, detail="Review not found")
     product_id = str(review.product_id)
     rating_changed = await _svc.delete_review(db, review_id=review_id, user_id=user.id)
-    from app.core.redis import get_redis_pool
-
     redis = get_redis_pool()
     await bust_review_cache(redis, product_id)
     if rating_changed:
@@ -299,7 +334,9 @@ async def vote_review(
 
 @router.get("/admin/reviews", response_model=BaseSuccessResponse[ReviewListResponse])
 async def list_all_reviews(
-    status: str | None = Query(None, description="pending | approved | rejected"),
+    status: str | None = Query(
+        None, description="pending | approved | rejected | removed"
+    ),
     page: int = Query(1, ge=1),
     page_size: int = Query(15, ge=1, le=200),
     rating: int | None = Query(None, ge=1, le=5),
@@ -424,8 +461,6 @@ async def admin_review_action(
     result = await _svc.admin_action(
         db, review_id=review_id, action=body.action, admin_identifier=admin_id
     )
-    from app.core.redis import get_redis_pool
-
     redis = get_redis_pool()
     await bust_review_cache(redis, str(result.product_id))
     if body.action != "flag":
@@ -449,9 +484,22 @@ async def admin_delete_review(
         raise HTTPException(status_code=404, detail="Review not found")
     product_id = str(review.product_id)
     await _svc.admin_delete(db, review_id=review_id)
-    from app.core.redis import get_redis_pool
-
     redis = get_redis_pool()
     await bust_review_cache(redis, product_id)
     schedule_all_product_caches_bust(redis)
     return deleted(ResponseCode.REVIEW_DELETED, "Review deleted successfully")
+
+
+@router.post(
+    "/admin/{review_id}/unblock",
+    response_model=BaseSuccessResponse[None],
+    status_code=200,
+)
+async def admin_unblock_review(
+    review_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    _=Depends(require_admin),
+):
+    """Let the author of an admin-removed review post a new one."""
+    await _svc.admin_unblock(db, review_id=review_id)
+    return ok(None, ResponseCode.REVIEW_UNBLOCKED, "Customer can review again")

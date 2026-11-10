@@ -126,6 +126,14 @@ class MyProductReviewStatus(BaseModel):
     has_reviewed: bool
     review_id: uuid.UUID | None = None
     rating: int | None = None
+    # An admin removed one of this customer's reviews of the product; they may
+    # not post new ones until an admin unblocks them.
+    is_blocked: bool = False
+    # Customer-facing explanation when is_blocked, else None.
+    blocked_message: str | None = None
+    # How many more reviews of this product the customer may post now
+    # (per-product cap minus live reviews; 0 when blocked).
+    reviews_remaining: int = 0
 
 
 # ── Rating summary ────────────────────────────────────────────────────────────
@@ -133,6 +141,7 @@ class MyProductReviewStatus(BaseModel):
 
 class ProductRatingSummary(BaseModel):
     product_id: uuid.UUID
+    # Rating fields count each customer's newest published review only.
     review_count: int
     average_rating: float
     five_star: int
@@ -140,6 +149,8 @@ class ProductRatingSummary(BaseModel):
     three_star: int
     two_star: int
     one_star: int
+    # Every published review (customers may post several per product).
+    total_reviews: int = 0
 
 
 # ── Vote ──────────────────────────────────────────────────────────────────────

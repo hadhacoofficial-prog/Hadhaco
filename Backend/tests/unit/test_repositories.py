@@ -479,10 +479,10 @@ class TestReviewRepository:
         result = await self.repo.has_any_review(db, order_id=uuid.uuid4())
         assert result is False
 
-    async def test_get_by_product_user_returns_review(self):
+    async def test_get_latest_by_product_user_returns_review(self):
         mock_rev = MagicMock()
         db = _db(_scalar_one_or_none(mock_rev))
-        result = await self.repo.get_by_product_user(
+        result = await self.repo.get_latest_by_product_user(
             db, product_id=uuid.uuid4(), user_id=uuid.uuid4()
         )
         assert result is mock_rev
@@ -824,3 +824,124 @@ class TestCategoryRepository:
         db = _db(_first(None))  # result.first() → None
         result = await self.repo.has_active_products(db, uuid.uuid4())
         assert result is False
+
+
+class TestReviewRepositoryRemovedFilters:
+    """SQL shape of the admin-removed (blocked) review queries."""
+
+    @staticmethod
+    def _sql(db: AsyncMock) -> str:
+        from sqlalchemy.dialects import postgresql
+
+        stmt = db.execute.await_args.args[0]
+        return str(stmt.compile(dialect=postgresql.dialect()))
+
+    async def test_admin_list_removed_status_selects_soft_deleted_rejected(self):
+        from app.modules.reviews.repository import ReviewRepository
+
+        db = AsyncMock()
+        db.execute = AsyncMock(return_value=MagicMock())
+        db.execute.return_value.all.return_value = []
+        await ReviewRepository().list_all_paginated(db, status="removed")
+        sql = self._sql(db)
+        assert "reviews.deleted_at IS NOT NULL" in sql
+        assert "reviews.admin_removed_at IS NOT NULL" in sql
+
+    async def test_admin_list_default_excludes_removed(self):
+        from app.modules.reviews.repository import ReviewRepository
+
+        db = AsyncMock()
+        db.execute = AsyncMock(return_value=MagicMock())
+        db.execute.return_value.all.return_value = []
+        await ReviewRepository().list_all_paginated(db)
+        sql = self._sql(db)
+        assert "reviews.deleted_at IS NULL" in sql
+        assert "IS NOT NULL" not in sql
+
+    async def test_reminders_treat_admin_removed_as_reviewed(self):
+        from app.modules.reviews.repository import ReviewRepository
+
+        db = AsyncMock()
+        db.execute = AsyncMock(return_value=MagicMock())
+        db.execute.return_value.scalars.return_value.all.return_value = []
+        await ReviewRepository().list_by_products_user(
+            db, product_ids=[uuid.uuid4()], user_id=uuid.uuid4()
+        )
+        sql = self._sql(db)
+        assert (
+            "reviews.deleted_at IS NULL OR reviews.admin_removed_at IS NOT NULL" in sql
+        )
+
+    async def _run(self, method: str, result: MagicMock, **kwargs):
+        from app.modules.reviews.repository import ReviewRepository
+
+        db = AsyncMock()
+        db.execute = AsyncMock(return_value=result)
+        value = await getattr(ReviewRepository(), method)(db, **kwargs)
+        return value, self._sql(db)
+
+    async def test_is_blocked_keys_on_admin_removed_at(self):
+        result = MagicMock()
+        result.scalar_one_or_none.return_value = uuid.uuid4()
+        blocked, sql = await self._run(
+            "is_blocked", result, product_id=uuid.uuid4(), user_id=uuid.uuid4()
+        )
+        assert blocked is True
+        assert "reviews.admin_removed_at IS NOT NULL" in sql
+        assert "is_rejected" not in sql
+
+    async def test_count_live_excludes_deleted(self):
+        result = MagicMock()
+        result.scalar_one.return_value = 3
+        count, sql = await self._run(
+            "count_live_by_product_user",
+            result,
+            product_id=uuid.uuid4(),
+            user_id=uuid.uuid4(),
+        )
+        assert count == 3
+        assert "count(*)" in sql
+        assert "reviews.deleted_at IS NULL" in sql
+
+    async def test_latest_orders_newest_first(self):
+        result = MagicMock()
+        result.scalar_one_or_none.return_value = None
+        _, sql = await self._run(
+            "get_latest_by_product_user",
+            result,
+            product_id=uuid.uuid4(),
+            user_id=uuid.uuid4(),
+        )
+        assert "ORDER BY reviews.created_at DESC" in sql
+        assert "LIMIT" in sql
+
+    async def test_delete_admin_removed_only_targets_removed_rows(self):
+        _, sql = await self._run(
+            "delete_admin_removed",
+            MagicMock(),
+            product_id=uuid.uuid4(),
+            user_id=uuid.uuid4(),
+        )
+        assert sql.startswith("DELETE FROM reviews")
+        assert "reviews.admin_removed_at IS NOT NULL" in sql
+
+    async def test_rating_summary_counts_newest_review_per_customer(self):
+        result = MagicMock()
+        result.fetchone.return_value = None
+        summary, sql = await self._run(
+            "rating_summary", result, product_id=uuid.uuid4()
+        )
+        assert summary is None
+        assert "DISTINCT ON (user_id)" in sql
+        assert "ORDER BY user_id, created_at DESC" in sql
+        assert "total_reviews" in sql
+        assert "HAVING COUNT(*) > 0" in sql
+
+    async def test_lock_product_user_uses_transaction_advisory_lock(self):
+        _, sql = await self._run(
+            "lock_product_user",
+            MagicMock(),
+            product_id=uuid.uuid4(),
+            user_id=uuid.uuid4(),
+        )
+        assert "pg_advisory_xact_lock" in sql

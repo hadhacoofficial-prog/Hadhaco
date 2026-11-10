@@ -229,6 +229,10 @@ class Settings(BaseSettings):
     RATE_LIMIT_API: int = 200
     RATE_LIMIT_UPLOAD: int = 20
     RATE_LIMIT_WEBHOOK: int = 500
+    # Per customer across all products, sliding one-hour window.
+    REVIEW_SUBMIT_LIMIT_PER_HOUR: int = 5
+    # Live (not deleted) reviews one customer may have on a single product.
+    REVIEW_MAX_PER_PRODUCT: int = 5
 
     # ── Worker / admin trigger settings ─────────────────────────────────────
     REVIEW_REMINDER_DELAY_HOURS: int = 48

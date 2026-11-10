@@ -26,7 +26,9 @@ class Review(Base):
     __tablename__ = "reviews"
     __table_args__ = (
         CheckConstraint("rating BETWEEN 1 AND 5", name="ck_reviews_rating"),
-        UniqueConstraint("product_id", "user_id", name="uq_reviews_product_user"),
+        # A customer may post several reviews of a product (capped in the
+        # service), so (product_id, user_id) is indexed, not unique.
+        Index("idx_reviews_product_user", "product_id", "user_id", "created_at"),
         Index("idx_reviews_product_id", "product_id"),
         Index("idx_reviews_user_id", "user_id"),
         Index("idx_reviews_rating", "rating"),
@@ -75,6 +77,11 @@ class Review(Base):
         onupdate=lambda: datetime.now(UTC),
     )
     deleted_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True, default=None
+    )
+    # Set (with deleted_at) when an admin removes the review; while the row
+    # exists its author may not review this product again.
+    admin_removed_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True, default=None
     )
 

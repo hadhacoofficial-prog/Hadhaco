@@ -20,6 +20,60 @@ class TestOrderServiceReviewEnrichment:
 
         self.svc = OrderService()
 
+    async def test_enrich_prefers_newest_live_review_over_older_and_removed(self):
+        """Several reviews of one product: newest live one wins; a removed one
+        never hides a live one (rows arrive oldest first)."""
+        pid = uuid.uuid4()
+        item = MagicMock(product_id=pid)
+        response = MagicMock(items=[item])
+        db = AsyncMock()
+        db.execute = AsyncMock(
+            return_value=MagicMock(
+                fetchall=MagicMock(return_value=[MagicMock(id=pid, slug="p")])
+            )
+        )
+        older = MagicMock(product_id=pid, id=uuid.uuid4(), rating=2, deleted_at=None)
+        newer = MagicMock(product_id=pid, id=uuid.uuid4(), rating=5, deleted_at=None)
+        removed = MagicMock(
+            product_id=pid, id=uuid.uuid4(), rating=1, deleted_at=datetime.now(UTC)
+        )
+        with patch(
+            "app.modules.reviews.repository.ReviewRepository.list_by_products_user",
+            AsyncMock(return_value=[older, newer, removed]),
+        ):
+            await self.svc._enrich_review_states(db, response, uuid.uuid4())
+
+        assert item.is_reviewed is True
+        assert item.review_id == newer.id
+        assert item.review_rating == 5
+
+    async def test_enrich_admin_removed_review_counts_as_reviewed_without_details(
+        self,
+    ):
+        """An admin-removed review blocks re-reviewing, so the item reads as
+        reviewed — but it isn't on the product page, so no id/rating leak."""
+        pid = uuid.uuid4()
+        item = MagicMock(product_id=pid)
+        response = MagicMock(items=[item])
+        db = AsyncMock()
+        db.execute = AsyncMock(
+            return_value=MagicMock(
+                fetchall=MagicMock(return_value=[MagicMock(id=pid, slug="p")])
+            )
+        )
+        removed = MagicMock(
+            product_id=pid, id=uuid.uuid4(), rating=1, deleted_at=datetime.now(UTC)
+        )
+        with patch(
+            "app.modules.reviews.repository.ReviewRepository.list_by_products_user",
+            AsyncMock(return_value=[removed]),
+        ):
+            await self.svc._enrich_review_states(db, response, uuid.uuid4())
+
+        assert item.is_reviewed is True
+        assert item.review_id is None
+        assert item.review_rating is None
+
     async def test_enrich_review_states_marks_reviewed_and_unreviewed_items(self):
         """Delivered-order items get product_slug + review state attached, one
         bulk slug query and one bulk review query regardless of item count."""
@@ -42,7 +96,9 @@ class TestOrderServiceReviewEnrichment:
             )
         )
 
-        review = MagicMock(product_id=pid_reviewed, id=review_id, rating=5)
+        review = MagicMock(
+            product_id=pid_reviewed, id=review_id, rating=5, deleted_at=None
+        )
         with patch(
             "app.modules.reviews.repository.ReviewRepository.list_by_products_user",
             AsyncMock(return_value=[review]),

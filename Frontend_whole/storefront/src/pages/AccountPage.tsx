@@ -705,7 +705,7 @@ function OrderDetailExpanded({ order }: { order: CustomerOrderResponse }) {
                     </p>
                   )}
                 </div>
-                {item.product_slug && (
+                {item.product_slug && item.review_id && (
                   <Link
                     to="/products/$slug"
                     params={{ slug: item.product_slug }}

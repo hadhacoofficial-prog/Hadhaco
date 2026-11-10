@@ -5,7 +5,6 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from fastapi import HTTPException
-from sqlalchemy.exc import IntegrityError
 
 from app.modules.reviews.repository import ReviewRepository
 from app.modules.reviews.schemas import ReviewCreate, ReviewUpdate
@@ -17,170 +16,91 @@ class TestReviewServiceSubmit:
 
         self.svc = ReviewService()
 
-    async def test_submit_raises_409_for_duplicate_review(self):
-        db = AsyncMock()
-        existing_review = MagicMock()
-        existing_review.deleted_at = None
-        with patch.object(
-            ReviewRepository,
-            "get_by_product_user",
-            AsyncMock(return_value=existing_review),
-        ):
-            with pytest.raises(HTTPException) as exc:
-                await self.svc.submit_review(
-                    db,
-                    user_id=uuid.uuid4(),
-                    customer_name=None,
-                    data=ReviewCreate(
-                        product_id=uuid.uuid4(),
-                        rating=5,
-                        title="Great",
-                        body="Loved it",
-                    ),
-                )
-        assert exc.value.status_code == 409
-
-    async def test_submit_succeeds_for_new_review(self):
+    async def _submit(self, *, blocked: bool = False, live: int = 0, calls=None):
+        """Submit with every repo call mocked; returns (result|exc, mocks)."""
+        calls = calls if calls is not None else []
         db = AsyncMock()
         mock_review = MagicMock()
-        mock_review.id = uuid.uuid4()
+        mocks = {
+            "lock": AsyncMock(side_effect=lambda *a, **k: calls.append("lock")),
+            "blocked": AsyncMock(
+                side_effect=lambda *a, **k: calls.append("blocked") or blocked
+            ),
+            "count": AsyncMock(
+                side_effect=lambda *a, **k: calls.append("count") or live
+            ),
+            "create": AsyncMock(
+                side_effect=lambda *a, **k: calls.append("create") or mock_review
+            ),
+            "sync": AsyncMock(),
+        }
         with (
+            patch.object(ReviewRepository, "lock_product_user", mocks["lock"]),
+            patch.object(ReviewRepository, "is_blocked", mocks["blocked"]),
             patch.object(
-                ReviewRepository, "get_by_product_user", AsyncMock(return_value=None)
+                ReviewRepository, "count_live_by_product_user", mocks["count"]
             ),
             patch.object(
                 ReviewRepository,
                 "has_delivered_order_item",
                 AsyncMock(return_value=True),
             ),
-            patch.object(
-                ReviewRepository,
-                "get_soft_deleted_by_product_user",
-                AsyncMock(return_value=None),
-            ),
-            patch.object(
-                ReviewRepository, "create", AsyncMock(return_value=mock_review)
-            ),
+            patch.object(ReviewRepository, "create", mocks["create"]),
+            patch.object(self.svc, "_sync_product_rating", mocks["sync"]),
         ):
-            db.commit = AsyncMock()
-            db.refresh = AsyncMock()
-            result = await self.svc.submit_review(
-                db,
-                user_id=uuid.uuid4(),
-                customer_name=None,
-                data=ReviewCreate(
-                    product_id=uuid.uuid4(), rating=5, title="Great", body="Loved it"
-                ),
-            )
-        assert result is mock_review
-
-    async def test_submit_purges_soft_deleted_review_before_create(self):
-        # get_by_product_user ignores soft-deleted rows, but the unique
-        # (product_id, user_id) constraint does not — the stale row and its
-        # photos must be purged before insert or resubmitting raises a 500.
-        db = AsyncMock()
-        product_id = uuid.uuid4()
-        user_id = uuid.uuid4()
-        stale = MagicMock()
-        stale.id = uuid.uuid4()
-        stale_image = MagicMock()
-        stale.images = [stale_image]
-        mock_review = MagicMock()
-        calls: list[str] = []
-        delete_image = AsyncMock(side_effect=lambda *a, **k: calls.append("image"))
-        hard_delete = AsyncMock(side_effect=lambda *a, **k: calls.append("purge"))
-        create = AsyncMock(
-            side_effect=lambda *a, **k: calls.append("create") or mock_review
-        )
-        with (
-            patch.object(
-                ReviewRepository, "get_by_product_user", AsyncMock(return_value=None)
-            ),
-            patch.object(
-                ReviewRepository,
-                "get_soft_deleted_by_product_user",
-                AsyncMock(return_value=stale),
-            ),
-            patch.object(
-                ReviewRepository,
-                "has_delivered_order_item",
-                AsyncMock(return_value=False),
-            ),
-            patch.object(ReviewRepository, "hard_delete", hard_delete),
-            patch.object(ReviewRepository, "create", create),
-            patch.object(self.svc._images, "delete", delete_image),
-        ):
-            result = await self.svc.submit_review(
-                db,
-                user_id=user_id,
-                customer_name=None,
-                data=ReviewCreate(
-                    product_id=product_id, rating=3, title="OK", body="Meh"
-                ),
-            )
-        assert result is mock_review
-        delete_image.assert_awaited_once_with(db, image=stale_image)
-        hard_delete.assert_awaited_once_with(db, stale.id)
-        assert calls == ["image", "purge", "create"]
-
-    async def test_submit_409_does_not_purge(self):
-        db = AsyncMock()
-        lookup = AsyncMock()
-        with (
-            patch.object(
-                ReviewRepository,
-                "get_by_product_user",
-                AsyncMock(return_value=MagicMock()),
-            ),
-            patch.object(ReviewRepository, "get_soft_deleted_by_product_user", lookup),
-        ):
-            with pytest.raises(HTTPException) as exc:
-                await self.svc.submit_review(
+            try:
+                result = await self.svc.submit_review(
                     db,
                     user_id=uuid.uuid4(),
                     customer_name=None,
-                    data=ReviewCreate(product_id=uuid.uuid4(), rating=5, body="x"),
+                    data=ReviewCreate(
+                        product_id=uuid.uuid4(), rating=5, title="Great", body="Loved"
+                    ),
                 )
-        assert exc.value.status_code == 409
-        lookup.assert_not_awaited()
+            except HTTPException as exc:
+                result = exc
+        return db, mock_review, result, mocks
 
-    async def _submit_with_create_error(self, exc: Exception):
-        db = AsyncMock()
-        with (
-            patch.object(
-                ReviewRepository, "get_by_product_user", AsyncMock(return_value=None)
-            ),
-            patch.object(
-                ReviewRepository,
-                "get_soft_deleted_by_product_user",
-                AsyncMock(return_value=None),
-            ),
-            patch.object(
-                ReviewRepository,
-                "has_delivered_order_item",
-                AsyncMock(return_value=False),
-            ),
-            patch.object(ReviewRepository, "create", AsyncMock(side_effect=exc)),
-        ):
-            await self.svc.submit_review(
-                db,
-                user_id=uuid.uuid4(),
-                customer_name=None,
-                data=ReviewCreate(product_id=uuid.uuid4(), rating=5, body="x"),
-            )
+    async def test_submit_publishes_immediately(self):
+        db, mock_review, result, mocks = await self._submit()
+        assert result is mock_review
+        kwargs = mocks["create"].await_args.kwargs
+        assert kwargs["is_approved"] is True
+        assert kwargs["is_rejected"] is False
+        assert kwargs["approved_at"] is not None
+        mocks["sync"].assert_awaited_once_with(db, mock_review.product_id)
+        db.commit.assert_awaited_once()
 
-    async def test_submit_concurrent_duplicate_maps_to_409(self):
-        err = IntegrityError(
-            "INSERT", {}, Exception('violates "uq_reviews_product_user"')
-        )
-        with pytest.raises(HTTPException) as exc:
-            await self._submit_with_create_error(err)
-        assert exc.value.status_code == 409
+    async def test_submit_locks_before_checking_block_and_cap(self):
+        calls: list[str] = []
+        await self._submit(calls=calls)
+        assert calls == ["lock", "blocked", "count", "create"]
 
-    async def test_submit_other_integrity_error_is_reraised(self):
-        err = IntegrityError("INSERT", {}, Exception('violates "reviews_product_fk"'))
-        with pytest.raises(IntegrityError):
-            await self._submit_with_create_error(err)
+    async def test_submit_allows_another_review_of_same_product(self):
+        _, mock_review, result, mocks = await self._submit(live=4)
+        assert result is mock_review
+        mocks["create"].assert_awaited_once()
+
+    async def test_submit_409_at_per_product_cap(self):
+        from app.core.config import settings
+
+        db, _, result, mocks = await self._submit(live=settings.REVIEW_MAX_PER_PRODUCT)
+        assert isinstance(result, HTTPException)
+        assert result.status_code == 409
+        assert str(settings.REVIEW_MAX_PER_PRODUCT) in result.detail
+        mocks["create"].assert_not_awaited()
+        db.commit.assert_not_awaited()
+
+    async def test_submit_403_with_message_when_blocked(self):
+        from app.modules.reviews.service import BLOCKED_MESSAGE
+
+        db, _, result, mocks = await self._submit(blocked=True)
+        assert isinstance(result, HTTPException)
+        assert result.status_code == 403
+        assert result.detail == BLOCKED_MESSAGE
+        mocks["count"].assert_not_awaited()
+        mocks["create"].assert_not_awaited()
+        db.commit.assert_not_awaited()
 
 
 class TestReviewServiceVote:
@@ -376,10 +296,8 @@ class TestReviewServiceOwned:
         review.is_approved = approved
         return review
 
-    async def test_edit_approved_review_resyncs_product_rating(self):
+    async def _edit(self, review: MagicMock, data: ReviewUpdate):
         db = AsyncMock()
-        user_id = uuid.uuid4()
-        review = self._owned_review(user_id, approved=True)
         update = AsyncMock(return_value=review)
         sync = AsyncMock()
         with (
@@ -387,29 +305,52 @@ class TestReviewServiceOwned:
             patch.object(ReviewRepository, "update", update),
             patch.object(self.svc, "_sync_product_rating", sync),
         ):
-            result, rating_changed = await self.svc.edit_review(
-                db, review_id=uuid.uuid4(), user_id=user_id, data=ReviewUpdate(rating=2)
+            result = await self.svc.edit_review(
+                db, review_id=uuid.uuid4(), user_id=review.user_id, data=data
             )
+        return db, update, sync, result
+
+    async def test_edit_rating_keeps_review_published_and_resyncs(self):
+        review = self._owned_review(uuid.uuid4(), approved=True)
+        review.is_rejected = False
+        db, update, sync, (result, rating_changed) = await self._edit(
+            review, ReviewUpdate(rating=2)
+        )
         assert result is review
         assert rating_changed is True
-        updates = update.await_args.args[2]
-        assert updates["is_approved"] is False
+        assert update.await_args.args[2] == {"rating": 2}
         sync.assert_awaited_once_with(db, review.product_id)
         db.commit.assert_awaited_once()
 
-    async def test_edit_pending_review_skips_resync(self):
-        db = AsyncMock()
-        user_id = uuid.uuid4()
-        review = self._owned_review(user_id, approved=False)
-        sync = AsyncMock()
-        with (
-            patch.object(ReviewRepository, "get_by_id", AsyncMock(return_value=review)),
-            patch.object(ReviewRepository, "update", AsyncMock(return_value=review)),
-            patch.object(self.svc, "_sync_product_rating", sync),
-        ):
-            _, rating_changed = await self.svc.edit_review(
-                db, review_id=uuid.uuid4(), user_id=user_id, data=ReviewUpdate(rating=2)
-            )
+    async def test_edit_text_only_skips_resync(self):
+        review = self._owned_review(uuid.uuid4(), approved=True)
+        review.is_rejected = False
+        _, update, sync, (_, rating_changed) = await self._edit(
+            review, ReviewUpdate(body="Updated text")
+        )
+        assert rating_changed is False
+        assert update.await_args.args[2] == {"body": "Updated text"}
+        sync.assert_not_awaited()
+
+    async def test_edit_publishes_legacy_pending_review(self):
+        review = self._owned_review(uuid.uuid4(), approved=False)
+        review.is_rejected = False
+        db, update, sync, (_, rating_changed) = await self._edit(
+            review, ReviewUpdate(body="Updated text")
+        )
+        updates = update.await_args.args[2]
+        assert updates["is_approved"] is True
+        assert updates["approved_at"] is not None
+        assert rating_changed is True
+        sync.assert_awaited_once_with(db, review.product_id)
+
+    async def test_edit_keeps_legacy_rejected_review_hidden(self):
+        review = self._owned_review(uuid.uuid4(), approved=False)
+        review.is_rejected = True
+        _, update, sync, (_, rating_changed) = await self._edit(
+            review, ReviewUpdate(rating=5)
+        )
+        assert "is_approved" not in update.await_args.args[2]
         assert rating_changed is False
         sync.assert_not_awaited()
 
@@ -467,7 +408,7 @@ class TestReviewServiceOwned:
         sync.assert_not_awaited()
         db.commit.assert_awaited_once()
 
-    async def test_admin_delete_removes_images_then_row(self):
+    async def test_admin_delete_removes_images_and_blocks_author(self):
         db = AsyncMock()
         review = MagicMock()
         review.id = uuid.uuid4()
@@ -476,17 +417,131 @@ class TestReviewServiceOwned:
         review.images = [image]
         calls: list[str] = []
         delete_image = AsyncMock(side_effect=lambda *a, **k: calls.append("image"))
-        hard_delete = AsyncMock(side_effect=lambda *a, **k: calls.append("row"))
+        update = AsyncMock(side_effect=lambda *a, **k: calls.append("update"))
+        hard_delete = AsyncMock()
+        sync = AsyncMock()
         with (
             patch.object(ReviewRepository, "get_by_id", AsyncMock(return_value=review)),
+            patch.object(ReviewRepository, "update", update),
             patch.object(ReviewRepository, "hard_delete", hard_delete),
             patch.object(self.svc._images, "delete", delete_image),
-            patch.object(self.svc, "_sync_product_rating", AsyncMock()),
+            patch.object(self.svc, "_sync_product_rating", sync),
         ):
             await self.svc.admin_delete(db, review_id=review.id)
         delete_image.assert_awaited_once_with(db, image=image)
-        hard_delete.assert_awaited_once_with(db, review.id)
-        assert calls == ["image", "row"]
+        # Row kept as the block marker, not hard-deleted.
+        hard_delete.assert_not_awaited()
+        changes = update.await_args.args[2]
+        assert changes["deleted_at"] is not None
+        assert changes["admin_removed_at"] == changes["deleted_at"]
+        assert changes["is_approved"] is False
+        assert "is_rejected" not in changes
+        assert calls == ["image", "update"]
+        sync.assert_awaited_once_with(db, review.product_id)
+        db.commit.assert_awaited_once()
+
+    async def test_admin_unblock_purges_all_removed_reviews_of_customer(self):
+        db = AsyncMock()
+        removed = MagicMock()
+        removed.id = uuid.uuid4()
+        delete_removed = AsyncMock()
+        with (
+            patch.object(
+                ReviewRepository, "get_removed_by_id", AsyncMock(return_value=removed)
+            ),
+            patch.object(ReviewRepository, "delete_admin_removed", delete_removed),
+        ):
+            await self.svc.admin_unblock(db, review_id=removed.id)
+        delete_removed.assert_awaited_once_with(
+            db, product_id=removed.product_id, user_id=removed.user_id
+        )
+        db.commit.assert_awaited_once()
+
+    async def test_admin_unblock_404_when_not_removed(self):
+        db = AsyncMock()
+        with patch.object(
+            ReviewRepository, "get_removed_by_id", AsyncMock(return_value=None)
+        ):
+            with pytest.raises(HTTPException) as exc:
+                await self.svc.admin_unblock(db, review_id=uuid.uuid4())
+        assert exc.value.status_code == 404
+        db.commit.assert_not_awaited()
+
+    async def _my_status(self, *, latest, blocked: bool, live: int):
+        with (
+            patch.object(
+                ReviewRepository,
+                "get_latest_by_product_user",
+                AsyncMock(return_value=latest),
+            ),
+            patch.object(
+                ReviewRepository,
+                "has_delivered_order_item",
+                AsyncMock(return_value=True),
+            ),
+            patch.object(
+                ReviewRepository, "is_blocked", AsyncMock(return_value=blocked)
+            ),
+            patch.object(
+                ReviewRepository,
+                "count_live_by_product_user",
+                AsyncMock(return_value=live),
+            ),
+        ):
+            return await self.svc.my_review_status(
+                AsyncMock(), product_id=uuid.uuid4(), user_id=uuid.uuid4()
+            )
+
+    async def test_my_status_blocked_explains_and_allows_none(self):
+        from app.modules.reviews.service import BLOCKED_MESSAGE
+
+        status = await self._my_status(latest=None, blocked=True, live=0)
+        assert status["is_blocked"] is True
+        assert status["blocked_message"] == BLOCKED_MESSAGE
+        assert status["reviews_remaining"] == 0
+
+    async def test_my_status_reports_remaining_and_newest_review(self):
+        from app.core.config import settings
+
+        latest = MagicMock(rating=4)
+        status = await self._my_status(latest=latest, blocked=False, live=2)
+        assert status["has_reviewed"] is True
+        assert status["review_id"] == latest.id
+        assert status["rating"] == 4
+        assert status["is_blocked"] is False
+        assert status["blocked_message"] is None
+        assert status["reviews_remaining"] == settings.REVIEW_MAX_PER_PRODUCT - 2
+
+    async def test_my_status_zero_remaining_at_cap(self):
+        from app.core.config import settings
+
+        status = await self._my_status(
+            latest=MagicMock(), blocked=False, live=settings.REVIEW_MAX_PER_PRODUCT
+        )
+        assert status["reviews_remaining"] == 0
+
+    async def test_sync_product_rating_without_reviews_resets_product(self):
+        db = AsyncMock()
+        pid = uuid.uuid4()
+        with patch.object(
+            ReviewRepository, "rating_summary", AsyncMock(return_value=None)
+        ):
+            await self.svc._sync_product_rating(db, pid)
+        params = db.execute.await_args_list[-1].args[1]
+        assert params == {"avg": None, "cnt": 0, "pid": pid}
+
+    async def test_sync_product_rating_locks_product_row_first(self):
+        db = AsyncMock()
+        agg = MagicMock()
+        agg.fetchone.return_value = MagicMock(
+            _mapping={"review_count": 1, "average_rating": 4.0}
+        )
+        db.execute = AsyncMock(side_effect=[MagicMock(), agg, MagicMock()])
+        await self.svc._sync_product_rating(db, uuid.uuid4())
+        statements = [str(c.args[0]) for c in db.execute.await_args_list]
+        assert "FOR NO KEY UPDATE" in statements[0]
+        assert "AVG(rating)" in statements[1]
+        assert statements[2].strip().startswith("UPDATE products")
 
     async def test_list_product_reviews_returns_list(self):
         db = AsyncMock()

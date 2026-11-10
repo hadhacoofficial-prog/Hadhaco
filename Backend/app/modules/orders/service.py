@@ -936,6 +936,7 @@ class OrderService:
         Two bulk queries (slugs, reviews) regardless of item count. Read-only:
         this only reports state and never gates who may submit a review.
         """
+        from app.modules.reviews.models import Review
         from app.modules.reviews.repository import ReviewRepository
 
         product_ids = [i.product_id for i in response.items if i.product_id]
@@ -951,16 +952,31 @@ class OrderService:
         reviews = await ReviewRepository().list_by_products_user(
             db, product_ids=product_ids, user_id=user_id
         )
-        reviews_by_product = {r.product_id: r for r in reviews}
+        # Several reviews per product are possible (oldest first): keep the
+        # newest live one, falling back to an admin-removed one only if the
+        # customer has no live review there.
+        reviews_by_product: dict[uuid.UUID, Review] = {}
+        for r in reviews:
+            current = reviews_by_product.get(r.product_id)
+            if (
+                current is None
+                or r.deleted_at is None
+                or current.deleted_at is not None
+            ):
+                reviews_by_product[r.product_id] = r
 
         for item in response.items:
             if not item.product_id:
                 continue
             review = reviews_by_product.get(item.product_id)
+            # An admin-removed review still counts as reviewed (the customer
+            # can't post another), but it is not on the product page, so
+            # don't expose its id/rating as "your review".
+            live = review if review is not None and review.deleted_at is None else None
             item.product_slug = slugs.get(item.product_id)
             item.is_reviewed = review is not None
-            item.review_id = review.id if review else None
-            item.review_rating = review.rating if review else None
+            item.review_id = live.id if live else None
+            item.review_rating = live.rating if live else None
 
     async def list_my_orders(
         self,
