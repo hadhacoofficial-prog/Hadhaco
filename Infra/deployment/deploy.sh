@@ -199,7 +199,7 @@ CONTAINERS_RESTARTED=false
 # ── Failure classification ────────────────────────────────────────────────────
 classify_failure() {
   local output="$1"
-  if   echo "${output}" | grep -qi "unauthorized\|403\|authentication required"; then
+  if   echo "${output}" | grep -qi "unauthorized\|403\|authentication required\|denied"; then
     echo "AUTHENTICATION"
   elif echo "${output}" | grep -qi "manifest unknown\|not found\|404"; then
     echo "MANIFEST_MISSING"
@@ -253,6 +253,46 @@ pull_image_with_retry() {
     if (( attempt >= _MAX_RETRIES )); then
       log "  ✗ All ${_MAX_RETRIES} pull attempts failed for: ${image}"
       log "  Final failure class: ${failure_class}"
+      return 1
+    fi
+
+    local delay="${_BACKOFFS[$((attempt - 1))]}"
+    log "  Waiting ${delay}s before attempt $((attempt + 1))/${_MAX_RETRIES}..."
+    sleep "${delay}"
+  done
+  return 1
+}
+
+# Transient network errors (e.g. "TLS handshake timeout" to ghcr.io) are
+# retried with the pull backoff; rejected credentials fail immediately.
+ghcr_login_with_retry() {
+  local attempt=0
+
+  while (( attempt < _MAX_RETRIES )); do
+    (( attempt++ ))
+    log "  Login attempt ${attempt}/${_MAX_RETRIES}"
+
+    local output="" exit_code=0
+    output=$(echo "${GHCR_TOKEN}" | docker login ghcr.io \
+      -u "${GHCR_USERNAME:-${GHCR_ORG}}" --password-stdin 2>&1) || exit_code=$?
+    echo "${output}" >> "${LOG_FILE}"
+
+    if [[ ${exit_code} -eq 0 ]]; then
+      log "  ✓ Logged in to ghcr.io"
+      return 0
+    fi
+
+    log "  Registry response: $(echo "${output}" | tail -3 | tr '\n' '|')"
+    local failure_class
+    failure_class=$(classify_failure "${output}")
+    log "  Failure class  : ${failure_class}"
+
+    if [[ ${failure_class} == "AUTHENTICATION" ]]; then
+      log "  ✗ Credentials rejected — not retrying (check the GHCR_TOKEN secret)"
+      return 1
+    fi
+    if (( attempt >= _MAX_RETRIES )); then
+      log "  ✗ All ${_MAX_RETRIES} login attempts failed"
       return 1
     fi
 
@@ -500,8 +540,7 @@ step_end
 # STEP 3: GHCR authentication
 # =============================================================================
 step_start "GHCR authentication"
-if ! echo "${GHCR_TOKEN}" | docker login ghcr.io \
-    -u "${GHCR_USERNAME:-${GHCR_ORG}}" --password-stdin 2>&1 | tee -a "${LOG_FILE}"; then
+if ! ghcr_login_with_retry; then
   rollback_and_exit "GHCR login failed"
 fi
 step_end
