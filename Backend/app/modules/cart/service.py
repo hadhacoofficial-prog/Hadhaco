@@ -12,6 +12,7 @@ from app.modules.cart.schemas import (
     AddToCartRequest,
     CartItemResponse,
     CartSummary,
+    ReplaceCartItemsRequest,
     UpdateCartItemRequest,
 )
 from app.modules.inventory.reservation_service import ACTIVE_OR_CHECKOUT_STATUSES
@@ -281,6 +282,65 @@ class CartService:
         user_id: uuid.UUID | None = None,
         session_id: str | None = None,
     ) -> CartSummary:
+        variant_id, unit_price = await self._validate_add_item(db, payload, user_id)
+        cart = await self._get_or_create(db, user_id, session_id)
+        await _repo.upsert_item(
+            db,
+            cart.id,
+            payload.product_id,
+            variant_id,
+            payload.quantity,
+            unit_price,
+        )
+        cart = await _repo.get_by_id(db, cart.id)  # type: ignore[assignment]
+        assert cart is not None
+        return _build_summary(cart)
+
+    async def replace_items(
+        self,
+        db: AsyncSession,
+        payload: ReplaceCartItemsRequest,
+        user_id: uuid.UUID | None = None,
+        session_id: str | None = None,
+    ) -> CartSummary:
+        """Replace the whole cart in one request (equivalent to clear + add each).
+
+        Every line is validated before anything is written, so a rejected line
+        leaves the existing cart untouched. Duplicate product/variant lines are
+        rejected: upsert_item sums quantities, which would otherwise let a
+        caller bypass the per-line stock and max_order_quantity checks.
+        """
+        validated: list[tuple[AddToCartRequest, uuid.UUID, float]] = []
+        seen: set[tuple[uuid.UUID, uuid.UUID]] = set()
+        for item in payload.items:
+            variant_id, unit_price = await self._validate_add_item(db, item, user_id)
+            key = (item.product_id, variant_id)
+            if key in seen:
+                raise ValidationError("Duplicate items in cart.")
+            seen.add(key)
+            validated.append((item, variant_id, unit_price))
+
+        cart = await self._get_or_create(db, user_id, session_id)
+        await _repo.clear_items(db, cart.id)
+        await _repo.update_cart(db, cart.id, {"coupon_code": None, "discount": 0})
+        for item, variant_id, unit_price in validated:
+            await _repo.upsert_item(
+                db, cart.id, item.product_id, variant_id, item.quantity, unit_price
+            )
+        cart = await _repo.get_by_id(db, cart.id)  # type: ignore[assignment]
+        assert cart is not None
+        return _build_summary(cart)
+
+    async def _validate_add_item(
+        self,
+        db: AsyncSession,
+        payload: AddToCartRequest,
+        user_id: uuid.UUID | None,
+    ) -> tuple[uuid.UUID, float]:
+        """Stock, max_order_quantity and price checks for one line.
+
+        Returns the resolved variant_id and the unit price to persist.
+        """
         # Resolve once so the same variant is used for validation, the
         # persisted cart row, and reservation lookups — never left NULL for
         # a product the customer added without explicitly picking a variant.
@@ -310,19 +370,7 @@ class CartService:
             raise ValidationError(
                 f"Maximum {max_qty} item(s) allowed per order for this product."
             )
-
-        cart = await self._get_or_create(db, user_id, session_id)
-        await _repo.upsert_item(
-            db,
-            cart.id,
-            payload.product_id,
-            variant_id,
-            payload.quantity,
-            unit_price,
-        )
-        cart = await _repo.get_by_id(db, cart.id)  # type: ignore[assignment]
-        assert cart is not None
-        return _build_summary(cart)
+        return variant_id, unit_price
 
     async def update_item(
         self,

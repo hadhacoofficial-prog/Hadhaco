@@ -10,6 +10,7 @@ from app.core.dependencies import get_current_user_optional
 from app.modules.cart.schemas import (
     AddToCartRequest,
     CartSummary,
+    ReplaceCartItemsRequest,
     UpdateCartItemRequest,
 )
 from app.modules.cart.service import CartService
@@ -50,6 +51,20 @@ async def add_to_cart(
         db, payload, user_id=user_id, session_id=session_id
     )
     return ok(result, ResponseCode.CART_ITEM_ADDED, "Item added to cart")
+
+
+@router.put("/cart/items", response_model=BaseSuccessResponse[CartSummary])
+async def replace_cart_items(
+    payload: ReplaceCartItemsRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user=Depends(get_current_user_optional),
+    x_session_id: str | None = Header(None, alias="X-Session-ID"),
+):
+    user_id, session_id = _resolve_identity(current_user, x_session_id)
+    result = await _service.replace_items(
+        db, payload, user_id=user_id, session_id=session_id
+    )
+    return ok(result, ResponseCode.CART_REPLACED, "Cart replaced")
 
 
 @router.patch(

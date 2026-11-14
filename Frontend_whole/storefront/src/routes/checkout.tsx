@@ -63,18 +63,26 @@ export const Route = createFileRoute("/checkout")({
   component: CheckoutPage,
 });
 
+// Shared in-flight load so the mount-time preload and the Place Order click
+// don't each inject their own <script> tag.
+let razorpayScriptPromise: Promise<void> | null = null;
+
 function loadRazorpayScript(): Promise<void> {
-  return new Promise((resolve, reject) => {
-    if (window.Razorpay) {
-      resolve();
-      return;
-    }
+  if (window.Razorpay) return Promise.resolve();
+  if (razorpayScriptPromise) return razorpayScriptPromise;
+  razorpayScriptPromise = new Promise<void>((resolve, reject) => {
     const script = document.createElement("script");
     script.src = "https://checkout.razorpay.com/v1/checkout.js";
     script.onload = () => resolve();
-    script.onerror = () => reject(new Error("Failed to load Razorpay SDK"));
+    script.onerror = () => {
+      // Drop the failed tag and cached promise so a later call can retry.
+      script.remove();
+      razorpayScriptPromise = null;
+      reject(new Error("Failed to load Razorpay SDK"));
+    };
     document.head.appendChild(script);
   });
+  return razorpayScriptPromise;
 }
 
 function CheckoutPage() {
@@ -170,6 +178,13 @@ function CheckoutPage() {
     queryFn: () => api.get<{ value: boolean }>("/settings/flags/complimentary_gift_enabled"),
     staleTime: 60_000,
   });
+
+  // Start fetching the Razorpay SDK as soon as checkout mounts so it is
+  // usually ready by the time the payment intent comes back. A failure here
+  // is ignored — requestIntentAndOpen retries the load and reports errors.
+  useEffect(() => {
+    loadRazorpayScript().catch(() => {});
+  }, []);
 
   const addressInitialized = useRef(false);
   useEffect(() => {
@@ -314,20 +329,25 @@ function CheckoutPage() {
         }
       }
 
-      await api.delete<void>("/cart");
-      await Promise.all(
-        lines.map((l) =>
-          api.post<void>("/cart/items", {
-            body: { product_id: l.productId, quantity: l.qty, variant_id: l.variantId ?? null },
-          }),
-        ),
-      );
+      // One round trip that replaces the server cart (validated server-side
+      // before anything is written) instead of DELETE + one POST per line.
+      await api.put<void>("/cart/items", {
+        body: {
+          items: lines.map((l) => ({
+            product_id: l.productId,
+            quantity: l.qty,
+            variant_id: l.variantId ?? null,
+          })),
+        },
+      });
 
       try {
         return await api.post<CreatePaymentIntentResponse>("/orders/create-payment", { body });
       } finally {
         if (buyNowActive && savedCartItems.length > 0) {
-          await Promise.all(
+          // Not awaited: create-payment has already read the server cart, so
+          // the restore doesn't need to delay opening the payment modal.
+          void Promise.all(
             savedCartItems.map((item) =>
               api.post<void>("/cart/items", {
                 body: {
