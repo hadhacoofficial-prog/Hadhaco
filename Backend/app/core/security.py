@@ -1,3 +1,4 @@
+import functools
 import secrets
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
@@ -155,11 +156,32 @@ def decrypt_value(ciphertext: str) -> str:
 # ── Razorpay ─────────────────────────────────────────────────────────────────
 
 
+# (connect, read) seconds. The Razorpay SDK passes no timeout to requests, so
+# a stalled Razorpay API would otherwise hang the calling thread indefinitely.
+RAZORPAY_HTTP_TIMEOUT = (5, 15)
+
+
+@functools.lru_cache(maxsize=1)
 def get_razorpay_client() -> "razorpay.Client":
+    """Process-wide Razorpay client.
+
+    Reusing one client keeps its requests.Session (and the pooled TLS
+    connection to api.razorpay.com) alive across checkouts instead of paying
+    a fresh TCP + TLS handshake on every order/refund call. requests.Session
+    is safe to share across the executor threads these calls run on: the SDK
+    sends no cookies and urllib3's connection pool is thread-safe.
+    """
     import razorpay
+    import requests
+
+    class _TimeoutSession(requests.Session):
+        def request(self, *args, **kwargs):  # type: ignore[no-untyped-def]
+            kwargs.setdefault("timeout", RAZORPAY_HTTP_TIMEOUT)
+            return super().request(*args, **kwargs)
 
     return razorpay.Client(
-        auth=(settings.RAZORPAY_KEY_ID, settings.RAZORPAY_KEY_SECRET)
+        session=_TimeoutSession(),
+        auth=(settings.RAZORPAY_KEY_ID, settings.RAZORPAY_KEY_SECRET),
     )
 
 

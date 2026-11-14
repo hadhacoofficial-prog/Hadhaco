@@ -65,6 +65,7 @@ class ResponseCode(StrEnum):
     CART_ITEM_REMOVED = "CART_ITEM_REMOVED"
     CART_CLEARED = "CART_CLEARED"
     CART_MERGED = "CART_MERGED"
+    CART_REPLACED = "CART_REPLACED"
 
     # ── Wishlist ─────────────────────────────────────────────────────────────
     WISHLIST_FETCHED = "WISHLIST_FETCHED"

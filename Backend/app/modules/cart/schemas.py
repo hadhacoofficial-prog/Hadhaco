@@ -44,6 +44,10 @@ class AddToCartRequest(BaseModel):
     quantity: int = Field(default=1, ge=1, le=100)
 
 
+class ReplaceCartItemsRequest(BaseModel):
+    items: list[AddToCartRequest] = Field(default_factory=list, max_length=50)
+
+
 class UpdateCartItemRequest(BaseModel):
     quantity: int = Field(..., ge=1, le=100)
 
