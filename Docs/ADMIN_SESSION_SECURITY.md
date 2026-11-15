@@ -1,7 +1,7 @@
 # Admin Session & 2FA Security
 
-Reference for the admin authentication/2FA/session system: Supabase Auth (JWT)
-+ FastAPI backend enforcement + a server-side `AdminSession` table. This
+Reference for the admin authentication/2FA/session system: first-party auth
+(HttpOnly-cookie sessions, HS256 access token) + FastAPI backend enforcement + a server-side `AdminSession` table. This
 document does not change the architecture described in the original 2FA
 audit — it covers the operational hygiene and dashboard features layered on
 top of it.
@@ -10,12 +10,12 @@ top of it.
 
 `AdminSession` (`app/modules/profiles/models.py`) is the single source of
 truth for whether a given login session has completed 2FA. One row exists
-per (admin user, Supabase `session_id`) — the session id comes from a claim
-inside the Supabase-signed JWT and cannot be forged by the client.
+per (admin user, login session) — the session id is the `sid` claim of the
+signed access token (`auth_sessions.id`) and cannot be forged by the client.
 
 | Column | Purpose |
 |---|---|
-| `supabase_session_id` | Correlates the row to one login session; stable across access-token refresh |
+| `supabase_session_id` | Correlates the row to one login session (`auth_sessions.id`, the token's `sid` claim); stable across access-token refresh. The column name is historical |
 | `is_2fa_verified` / `verified_at` / `expires_at` | Set by `POST /auth/admin/2fa/validate`; `expires_at` is `verified_at + 12h` (absolute, not idle-based) |
 | `last_activity_at` / `last_seen_ip` / `last_seen_user_agent` | Throttled activity tracking (see below) for the security dashboard |
 | `device_name` / `browser_name` / `os_name` | Best-effort, regex-based UA parsing — no external dependency |
@@ -26,7 +26,7 @@ Creation/update is a single `INSERT ... ON CONFLICT (user_id, supabase_session_i
 
 **Row deletion** (any of):
 - Logout (`POST /auth/logout`) — deletes only that one session's row.
-- Force-logout (`POST /auth/force-logout/{user_id}`, super-admin only) — deletes every row for the target user and revokes their Supabase sessions.
+- Force-logout (`POST /auth/force-logout/{user_id}`, super-admin only) — deletes every row for the target user and revokes all their login sessions.
 - 2FA disabled or reset (self-service or super-admin force-reset) — deletes every row for the user, so a stale "verified" row can't silently satisfy the gate again the moment 2FA is re-enabled.
 - **Admin deactivation** (`ProfileService.set_status(is_active=False)`) — deletes every row for the user. Deactivated accounts are already rejected earlier, at `get_current_user` (before they'd ever reach the 2FA gate); this is pure hygiene plus an audit trail (`admin_sessions_revoked_on_deactivation`), not a new authorization check.
 - **Hourly cleanup worker** (see below).
@@ -74,9 +74,9 @@ Every place that records or reasons about a client IP — `AdminSession.ip_addre
 - **Active Sessions** (`ActiveSessionsPanel`) — every `AdminSession` row for the current user (2FA-tracked or not, see above), current session flagged, device/browser/OS/IP/last-activity/expiry shown. Actions: log out one other session, log out all other sessions, log out everywhere (including the current tab — full sign-out, redirects to `/admin/login`).
 - **Recent Activity** (`LoginHistoryPanel`) — reuses the existing `/admin/audit-logs` endpoint filtered to the current admin's own `actor_id`, paginated. No second logging/listing system — every event below is already written through the existing `AuditService`.
 
-### Active Sessions without 2FA
+### Revoking sessions
 
-Single-session and "log out others" are backed only by deleting the local `AdminSession` row — for a 2FA-enabled account this genuinely restricts admin-panel access (`require_admin` checks that row every request), but **for an account with 2FA disabled it's cosmetic only**: `require_admin` never consults `AdminSession` at all when `Admin2FA.is_enabled` is false, so deleting the row removes it from the list without ending that session's actual access. "Log Out All Sessions" is different — it always genuinely works regardless of 2FA status, because it calls Supabase's own admin logout API directly rather than relying on the `AdminSession` row. The frontend (`ActiveSessionsPanel`) shows this distinction explicitly via `is2faEnabled`-conditional copy in both the panel note and the confirmation dialogs — it does not silently imply a single-session revoke does something it can't.
+Revoking a session (single, "others" or all) revokes the underlying login session as well as deleting the local `AdminSession` row: the `auth_sessions` row is marked revoked (no refresh is possible any more) and the session id is put on a Redis deny-list, so the access token already in that browser stops working on its next request. This holds for accounts with and without 2FA. If Redis is unavailable the deny-list write is skipped (fail-open), so an already-issued access token can stay valid until it expires (at most `AUTH_ACCESS_TTL_SECONDS`, 15 minutes); the session can no longer be refreshed.
 
 ## Session revocation endpoints
 
@@ -87,7 +87,7 @@ All under `/auth/admin/sessions`, rate-limited (`rate_limit_admin_sessions`, 30/
 | `GET /auth/admin/sessions` | List this user's sessions, `is_current` flagged against the request's own `session_id` |
 | `DELETE /auth/admin/sessions/{session_row_id}` | Revoke one session by its row id. Ownership-checked (404 if it doesn't belong to the caller — same response whether the id is someone else's or simply doesn't exist, no existence leak). **Refuses to delete the caller's own current session** (`403 CANNOT_REVOKE_CURRENT_SESSION`) — that must go through `/revoke-all` or `/logout` instead, so a session can't be torn down by accident via what looks like "log out one other device". |
 | `POST /auth/admin/sessions/revoke-others` | Revoke every session except the caller's own |
-| `POST /auth/admin/sessions/revoke-all` | Revoke every session, including the caller's own, and call Supabase's admin logout |
+| `POST /auth/admin/sessions/revoke-all` | Revoke every session of this user, including the caller's own, and clear the caller's cookies |
 
 `session_row_id` is typed as `uuid.UUID` in the route signature (as are the
 `user_id` path params on `force_logout` and `force_reset_2fa`) — FastAPI
@@ -98,18 +98,7 @@ column would otherwise surface as an uncaught `asyncpg` type-cast error
 
 Repeated `DELETE` calls for an already-deleted session id are safe —
 standard idempotent-DELETE semantics: 200 the first time, 404 every time
-after (the row is equally gone either way, no side effects on retry). The
-admin UI states the platform limitation below directly in the Security page
-copy, not just in code comments.
-
-**Known platform limitation**: Supabase's admin API can only revoke *every*
-session for a user at once — there's no per-session revoke at the Supabase
-level. Deleting one `AdminSession` row immediately revokes that session's
-*admin-panel* access (next request re-hits the 2FA gate and gets 403
-`2FA_REQUIRED`), but the underlying Supabase JWT stays technically valid
-until it naturally expires. This is documented, not silently overpromised —
-both in `AuthService.revoke_admin_session`'s docstring and as visible copy
-under the Active Sessions list in the admin UI.
+after (the row is equally gone either way, no side effects on retry). 
 
 ## Login history / audit flow
 
@@ -181,13 +170,13 @@ implemented here).
 
 `get_client_ip` (`app/middleware/rate_limit.py`) only honors `X-Real-IP`/`X-Forwarded-For` when the request's *direct* TCP peer (`request.client.host`) is itself a recognized reverse proxy — private/loopback ranges by default, plus anything in `TRUSTED_PROXY_IPS` (comma-separated). If the API is ever reachable directly (bypassing the reverse proxy) from an address outside that set, forwarding headers are ignored entirely and the real socket peer is used. Without this, any client that could reach the API directly could spoof its own rate-limit key, its own audit-log IP, and defeat `is_new_device`'s location check by claiming to be an IP it has "seen before."
 
-## JWKS graceful degradation
+## Access token verification
 
-`JWKSCache._try_refresh` (`app/core/jwks.py`): a refresh failure (Supabase JWKS endpoint unreachable, network timeout) no longer wipes the cache and hard-fails every request for the rest of the TTL window — it logs a warning and keeps serving the last-known-good keys, exactly the standard graceful-degradation pattern for JWKS caching. Only fails closed (raises, rejecting the token) when there are no cached keys at all — a brand-new deployment's first fetch failing, or every key having aged out with no successful refresh since. Supabase doesn't rotate signing keys on a schedule shorter than this cache's TTL, so serving a briefly-stale key set during a transient outage is safe.
+`verify_access_token` (`app/core/security.py`) checks the HS256 signature (key derived from `SECRET_KEY`), issuer, audience, expiry and the presence of `sub`/`sid`; there is no external key fetch, so no upstream outage can affect verification. Revocation is checked separately against the Redis deny-list (`is_session_revoked`) by the request dependency.
 
-## Supabase outage isolation on logout
+## Logout revocation is best-effort
 
-`AuthService.logout` (also used by `force_logout` and `revoke-all`) now wraps the Supabase admin-API revocation call in its own try/except and logs a warning on failure rather than propagating. Routers call this *before* clearing the local `AdminSession` row — previously, a Supabase outage during logout would raise, the request would 500, and the local 2FA-verified session row would never get cleared even though the user asked to log out. Best-effort: the local security state (what our own `require_admin` gate actually checks) is now guaranteed to clear regardless of whether the upstream Supabase-side revocation could be confirmed.
+`AuthService.logout` (also used by `force_logout` and `revoke-all`) revokes the user's login sessions inside a SAVEPOINT and logs a warning on failure rather than propagating. Routers call this *before* clearing the local `AdminSession` row, so the local security state (what our own `require_admin` gate checks) clears even if the revocation itself fails.
 
 ## Replay vs. wrong-code in the audit trail
 
@@ -195,7 +184,7 @@ implemented here).
 
 ## JWT / rate-limit observability
 
-`verify_supabase_jwt` now logs a warning (never the raw token — only the failure reason and, where available, the key id) on every rejection path: undecodable header, bad header (`alg`/`kid`), JWKS lookup failure, invalid signature. Expired-token rejections log at `info` rather than `warning`, since tokens naturally and routinely expire — that alone isn't suspicious the way a signature/format failure is. `check_rate_limit` now logs `rate_limit_exceeded` (key prefix, path, IP, count, limit) when a client is actually throttled — previously the only rate-limit log line fired when *Redis itself* was unavailable, never when a client actually hit the limit.
+`verify_access_token` logs a warning (never the raw token — only the failure reason) on every rejection path: invalid or malformed token, bad signature, wrong issuer/audience, missing claims. Expired-token rejections log at `info` rather than `warning`, since tokens naturally and routinely expire — that alone isn't suspicious the way a signature/format failure is. `check_rate_limit` now logs `rate_limit_exceeded` (key prefix, path, IP, count, limit) when a client is actually throttled — previously the only rate-limit log line fired when *Redis itself* was unavailable, never when a client actually hit the limit.
 
 ## Time synchronization
 

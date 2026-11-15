@@ -1,6 +1,6 @@
 # Hadha.co — Silver Jewellery E-Commerce Backend
 
-Production-grade FastAPI backend for **Hadha.co**, an Indian silver jewellery e-commerce platform. Built with async Python, PostgreSQL (Supabase), Redis, Cloudflare R2, Razorpay, and Delivery One. Ships as a containerised service behind Nginx.
+Production-grade FastAPI backend for **Hadha.co**, an Indian silver jewellery e-commerce platform. Built with async Python, PostgreSQL, Redis, Cloudflare R2, Razorpay, and Delivery One. Ships as a containerised service behind Nginx.
 
 ---
 
@@ -43,8 +43,8 @@ Production-grade FastAPI backend for **Hadha.co**, an Indian silver jewellery e-
 | Web framework | FastAPI 0.115 |
 | Data validation | Pydantic V2 |
 | ORM | SQLAlchemy 2.x (async) |
-| Database | PostgreSQL via Supabase (asyncpg driver) |
-| Auth | Supabase JWT (HS256) |
+| Database | PostgreSQL 17 (asyncpg driver; `hadha-postgres` container in production) |
+| Auth | First-party: HttpOnly-cookie sessions, HS256 access token, bcrypt passwords, Google OIDC |
 | Cache / Rate limiting | Redis 7 |
 | Object storage | Cloudflare R2 (S3-compatible, boto3) |
 | Payment gateway | Razorpay |
@@ -114,7 +114,7 @@ Production-grade FastAPI backend for **Hadha.co**, an Indian silver jewellery e-
 
 **Status:** Fully Implemented
 
-Supabase JWT verification on every protected endpoint. Token decoded server-side using `SUPABASE_JWT_SECRET` (HS256, audience: `authenticated`). Admin 2FA implemented with TOTP (pyotp), backup codes (bcrypt-hashed), and Fernet-encrypted secrets.
+Access-token verification on every protected endpoint. The token comes from the HttpOnly session cookie (browser apps) or an `Authorization: Bearer` header (API clients) and is verified server-side (HS256, key derived from `SECRET_KEY`, issuer `hadha-auth`, audience `hadha-api`); cookie-borne writes also need an `X-CSRF-Token` header and an allowed `Origin`. Sessions are rows in `auth_sessions` with rotating refresh tokens and can be revoked instantly (Redis deny-list). Admin 2FA implemented with TOTP (pyotp), backup codes (bcrypt-hashed), and Fernet-encrypted secrets.
 
 | Evidence | File |
 |---|---|
@@ -382,7 +382,7 @@ APScheduler (async-compatible) with configurable intervals via env vars:
 
 **Status:** Not Implemented (10%)
 
-`GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` are declared in `Settings` and `.env.example`, but no OAuth login route, callback handler, or user provisioning flow exists. Supabase can handle Google OAuth on the client side, but the backend has no explicit Google OAuth endpoint.
+Google sign-in is implemented by the backend as an OpenID Connect authorization-code flow with PKCE: `GET /api/v1/auth/google/start` redirects to Google and `GET /api/v1/auth/google/callback` signs the user in (creating or linking the account). Requires `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` and the redirect URI `{API_BASE_URL}/api/v1/auth/google/callback` registered in Google Cloud Console.
 
 ---
 
@@ -687,12 +687,12 @@ All endpoints are prefixed with `/api/v1`. Auth column: `public` = no auth requi
 
 ## Database Schema
 
-All tables provisioned by `supabase/sql/setup.sql`. Alembic baseline (`0001_baseline.py`) marks the DB as in sync without running DDL — migrations are handled directly in Supabase SQL.
+The base schema comes from `supabase/sql/setup.sql` (a plain-PostgreSQL schema script; the folder name is historical). Alembic baseline (`0001_baseline.py`) marks the DB as in sync without running DDL; all later changes are Alembic migrations (`alembic upgrade head`, e.g. `0070_self_auth` adds the auth tables).
 
 ### Tables & Key Columns
 
 #### profiles
-Synced from Supabase `auth.users`. Stores application-level user data.
+One row per user (the user's id is the primary key referenced by every business table). Credentials live in `user_credentials`, Google links in `oauth_identities`, login sessions in `auth_sessions`.
 
 | Column | Type | Notes |
 |---|---|---|
@@ -820,10 +820,8 @@ collections ──── collection_products ──── products
 |---|---|
 | `SECRET_KEY` | 64-char hex for internal signing — `python -c "import secrets; print(secrets.token_hex(32))"` |
 | `ENCRYPTION_KEY` | 32-byte Fernet key for field encryption — `python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"` |
-| `SUPABASE_URL` | Supabase project URL |
-| `SUPABASE_KEY` | Publishable/anon key |
-| `SUPABASE_SERVICE_ROLE_KEY` | Service role key for admin operations |
-| `SUPABASE_JWT_SECRET` | JWT signing secret from Supabase project settings |
+| `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` | Google OAuth client (optional; enables Google sign-in) |
+| `API_BASE_URL` | Public API origin (used for the Google redirect URI); `https://api.hadha.co` in production |
 | `DATABASE_URL` | `postgresql+asyncpg://user:pass@host:5432/db` |
 | `REDIS_URL` | `redis://host:6379/0` |
 | `CLOUDFLARE_ACCOUNT_ID` | R2 account ID |
@@ -908,7 +906,7 @@ collections ──── collection_products ──── products
 
 | Integration | Purpose | Status | Notes |
 |---|---|---|---|
-| **Supabase** | Auth + PostgreSQL | ✅ Configured | JWT verification + asyncpg DB |
+| **PostgreSQL** | Application database | ✅ Configured | `hadha-postgres` container; hourly encrypted backups to an S3 bucket (Supabase Storage) |
 | **Cloudflare R2** | Object storage | ✅ Configured | Products images, avatars, invoices, shipping labels |
 | **Razorpay** | Payments | ✅ Configured | Orders, payment verification, refunds, webhooks |
 | **Delivery One** | Shipping / logistics | ✅ Configured | Shipment creation, tracking, rates, webhooks |
@@ -1033,7 +1031,7 @@ Tests use an in-process ASGI client (no live server). Database calls are mocked 
 
 8. **CI/CD pipeline** — GitHub Actions workflows are in place (`.github/workflows/ci.yml` and `production.yml`). Deploy automation is handled by `deploy/scripts/deploy.sh`.
 
-9. **Alembic migrations are a stub** — The baseline migration is an empty placeholder. Any future schema changes must be managed manually in Supabase SQL or a proper Alembic migration must be set up.
+9. **Alembic migrations are a stub** — The baseline migration is an empty placeholder. (Superseded: schema changes are now Alembic migrations.)
 
 ### Unused / Partial
 
@@ -1064,8 +1062,8 @@ Tests use an in-process ASGI client (no live server). Database calls are mocked 
 | Item | Status | Notes |
 |---|---|---|
 | Environment Variables | ✅ Ready | `.env.example` documents all vars; validation runs at startup via `validate_required_settings()` |
-| Database Migrations | ⚠️ Manual | Schema via `supabase/sql/setup.sql`; Alembic baseline stamps the version; future changes need migrations |
-| Authentication | ✅ Ready | Supabase JWT, RBAC, admin 2FA all implemented |
+| Database Migrations | ✅ Alembic | Base schema via `supabase/sql/setup.sql`; every later change is an Alembic migration |
+| Authentication | ✅ Ready | First-party cookie sessions, Google OIDC, RBAC, admin 2FA all implemented |
 | Authorization | ✅ Ready | Role-based dependencies enforced on all protected endpoints |
 | Payments | ✅ Ready | Razorpay integrated with signature verification; webhooks configured |
 | Structured Logging | ✅ Ready | `structlog` with JSON output; request ID propagation; Docker logs via Dozzle |
@@ -1104,8 +1102,8 @@ Backend/
 │   │   ├── exceptions.py               # HadhaException hierarchy + global handlers
 │   │   ├── logging.py                  # structlog configuration
 │   │   ├── redis.py                    # Redis connection pool
-│   │   ├── security.py                 # JWT verify, Fernet encrypt, HMAC webhook verify
-│   │   └── supabase_client.py          # Supabase admin client
+│   │   ├── security.py                 # Access tokens, passwords, CSRF, Fernet encrypt, HMAC webhook verify
+│   │   └── auth_cookies.py             # Session cookies, surface detection, CSRF
 │   ├── middleware/
 │   │   ├── audit_middleware.py         # Request audit logging
 │   │   ├── rate_limit.py               # Redis sliding window rate limiter
@@ -1188,7 +1186,7 @@ Each module under `app/modules/` follows the same structure:
 
 - Python 3.12+
 - Redis 7+ (local or hosted)
-- PostgreSQL via Supabase project
+- PostgreSQL 17 (a local container or instance; production uses `hadha-postgres`)
 - Cloudflare R2 bucket created
 - Razorpay account (test mode for development)
 - Delivery One account
@@ -1218,11 +1216,9 @@ Edit `.env` with your actual values. Minimum required for local development:
 ```env
 SECRET_KEY=<64-char hex>
 ENCRYPTION_KEY=<fernet key>
-SUPABASE_URL=https://xxxxx.supabase.co
-SUPABASE_KEY=<anon key>
-SUPABASE_SERVICE_ROLE_KEY=<service role key>
-SUPABASE_JWT_SECRET=<jwt secret>
-DATABASE_URL=postgresql+asyncpg://postgres:<password>@db.xxxxx.supabase.co:5432/postgres
+DATABASE_URL=postgresql+asyncpg://postgres:postgres@localhost:5432/hadha_dev
+FRONTEND_URL=http://localhost:3000
+ADMIN_URL=http://localhost:5173
 REDIS_URL=redis://localhost:6379/0
 CLOUDFLARE_ACCOUNT_ID=...
 CLOUDFLARE_R2_BUCKET=hadha-media
@@ -1249,8 +1245,9 @@ ADMIN_URL=http://localhost:3001
 ### 3. Provision the database
 
 ```bash
-# Apply the full schema to your Supabase project
-psql $DATABASE_URL -f supabase/sql/setup.sql
+# Apply the base schema to your local PostgreSQL. setup.sql still references auth.users, so
+# create a stub `auth` schema first (CI does this); migration 0070 then removes that dependency
+psql "$DATABASE_URL" -f supabase/sql/setup.sql
 
 # Stamp Alembic baseline (schema is already applied above)
 alembic stamp 0001_baseline
@@ -1396,12 +1393,11 @@ curl http://localhost/health/ready
 - Analytics data export (CSV/PDF)
 - Sales and inventory reports as downloadable files
 - Push notifications (FCM/APNs)
-- Proper Alembic migration files (current setup uses Supabase SQL directly)
 
 ### Recommended Next Tasks
 
 1. **Extend CI/CD** — Add end-to-end test gate to production workflow before container restart
-2. **Implement Google OAuth login** — Add `/auth/google/callback` route, provision Supabase user from Google profile, return JWT
+2. **Local dev database bootstrap script** — one command that creates the local PostgreSQL schema (base SQL + Alembic)
 3. **Add WhatsApp notifications** — Wire Twilio WhatsApp Business API in `notifications/service.py` alongside existing SMS channel
 4. **Add Alembic migration workflow** — Auto-generate migrations from ORM models for future schema changes without manual SQL
 5. **Type the search and analytics response schemas** — Replace `BaseSuccessResponse[dict]` with proper Pydantic models for OpenAPI accuracy

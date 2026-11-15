@@ -255,18 +255,23 @@ cmd_rollback() {
 
 # ── cutover ──────────────────────────────────────────────────────────────────
 cmd_cutover() {
+  # Confirm first: later docker calls inherit stdin and would swallow a piped
+  # answer. Non-interactive runs set CONFIRM_CUTOVER=CUTOVER instead.
+  local answer="${CONFIRM_CUTOVER:-}"
+  if [[ -z "${answer}" ]]; then
+    echo
+    echo "This stops the API and workers, copies Supabase -> ${PG_CONTAINER}, and switches the app."
+    echo "Supabase is not modified. Type CUTOVER to continue:"
+    read -r answer
+  fi
+  [[ "${answer}" == "CUTOVER" ]] || die "aborted"
+
   require_state; load_source_url
   [[ "$(env_get DATABASE_URL "${ENV_FILE}")" == *supabase* ]] || die "app already points at the local database"
   local ts t0 existing; ts=$(date +%Y%m%d-%H%M%S); t0=$(date +%s)
 
   existing="$(psql_new "${NEW_DB}" -A -t -c "select count(*) from information_schema.tables where table_schema='public' and table_type='BASE TABLE'")"
   [[ "${existing}" == "0" ]] || die "target database ${NEW_DB} already has ${existing} tables — refusing to overwrite"
-
-  echo
-  echo "This stops the API and workers, copies Supabase -> ${PG_CONTAINER}, and switches the app."
-  echo "Supabase is not modified. Type CUTOVER to continue:"
-  read -r answer
-  [[ "${answer}" == "CUTOVER" ]] || die "aborted"
 
   # Record what to restart (and roll back to) before anything is stopped.
   docker inspect -f '{{.Config.Image}}' hadha-backend    > "${WORK}/images.backend"
