@@ -195,6 +195,13 @@ async def logout(
     surface = surface_for_request(request)
     bearer = request.headers.get("Authorization", "").startswith("Bearer ")
     if not bearer:
+        if not (read_access_cookie(request) or read_refresh_cookie(request)):
+            # Nothing identifies a session: nothing to sign out of.
+            raise HTTPException(
+                status_code=401,
+                detail="Not authenticated",
+                headers={"WWW-Authenticate": "Bearer"},
+            )
         # Cookie-borne: only our own sites may sign the user out.
         enforce_origin(request)
 

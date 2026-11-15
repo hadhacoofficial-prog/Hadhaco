@@ -256,6 +256,13 @@ describe("auth actions", () => {
     });
   });
 
+  it("signOut treats 401 (cookies already gone) as success", async () => {
+    setSession(session);
+    fetchMock.mockResolvedValue(json({ detail: "Not authenticated" }, 401));
+    await expect(signOut()).resolves.toBeUndefined();
+    expect(getCachedSession()).toBeNull();
+  });
+
   it("signOut clears local state even when the request fails", async () => {
     setSession(session);
     fetchMock.mockRejectedValue(new TypeError("offline"));

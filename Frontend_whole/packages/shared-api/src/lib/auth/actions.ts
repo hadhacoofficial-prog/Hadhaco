@@ -5,6 +5,7 @@
  * callers can surface them via toasts.
  */
 import { api } from "../api/client";
+import { isApiError } from "../api/errors";
 import { ENV } from "../../config/env";
 import { markSessionHint, setSession } from "./store";
 import {
@@ -96,6 +97,9 @@ export function signInWithGoogle(
 export async function signOut(): Promise<void> {
   try {
     await api.post<null>("/auth/logout", { skipAuth: true });
+  } catch (err) {
+    // 401 = the cookies were already gone: the user is signed out either way.
+    if (!(isApiError(err) && err.status === 401)) throw err;
   } finally {
     // Even if the request failed the user asked to sign out: drop local state.
     setSession(null);
