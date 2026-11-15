@@ -1244,14 +1244,19 @@ ADMIN_URL=http://localhost:3001
 
 ### 3. Provision the database
 
-```bash
-# Apply the base schema to your local PostgreSQL. setup.sql still references auth.users, so
-# create a stub `auth` schema first (CI does this); migration 0070 then removes that dependency
-psql "$DATABASE_URL" -f supabase/sql/setup.sql
+The root `docker-compose.yml` starts a dev PostgreSQL (`hadha-postgres-dev`, `127.0.0.1:5432`, database `hadha_dev`) and fills it from the newest production backup in the S3 bucket:
 
-# Stamp Alembic baseline (schema is already applied above)
-alembic stamp 0001_baseline
+```bash
+# needs BACKUP_S3_* and BACKUP_ENCRYPTION_KEY in Backend/.env
+docker compose up postgres db-restore     # first run: download -> decrypt -> restore -> scrub
+docker compose up                         # whole stack (runs migrations, then the backend)
+
+FORCE_RESTORE=1 docker compose up db-restore   # refresh from the latest backup (wipes the dev DB)
 ```
+
+`db-restore` skips itself when the dev database is already restored. The restore **scrubs personal data** (`Infra/dev/scrub.sql`): emails, names, phones and addresses are replaced, logs/sessions/tokens/2FA secrets are dropped, and every account gets the password `DevPass123!` (admins become `admin1@hadha.test`, ...). Never point this at a database that holds real data you want to keep, and keep the S3 access key and `BACKUP_ENCRYPTION_KEY` out of version control.
+
+Without S3 access, build an empty database instead: create a stub `auth` schema, apply `supabase/sql/setup.sql`, `alembic stamp 0001_baseline`, then `alembic upgrade head`.
 
 ### 4. Start Redis
 
@@ -1397,7 +1402,7 @@ curl http://localhost/health/ready
 ### Recommended Next Tasks
 
 1. **Extend CI/CD** — Add end-to-end test gate to production workflow before container restart
-2. **Local dev database bootstrap script** — one command that creates the local PostgreSQL schema (base SQL + Alembic)
+2. **Seed data for contributors without S3 access** — a small synthetic dataset so the dev DB does not depend on the backup bucket
 3. **Add WhatsApp notifications** — Wire Twilio WhatsApp Business API in `notifications/service.py` alongside existing SMS channel
 4. **Add Alembic migration workflow** — Auto-generate migrations from ORM models for future schema changes without manual SQL
 5. **Type the search and analytics response schemas** — Replace `BaseSuccessResponse[dict]` with proper Pydantic models for OpenAPI accuracy
