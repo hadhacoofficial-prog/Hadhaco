@@ -71,7 +71,7 @@
               "host": ["{{base_url}}"],
               "path": ["api", "v1", "dev", "login"]
             },
-            "description": "Authenticate with Supabase credentials. Only works for ADMIN or SUPER_ADMIN users. Automatically stores access_token and refresh_token into collection variables."
+            "description": "Authenticate with email and password. Only works for ADMIN or SUPER_ADMIN users. Automatically stores access_token and refresh_token into collection variables."
           },
           "response": [
             {
@@ -137,7 +137,7 @@
               "status": "OK",
               "code": 200,
               "header": [{ "key": "Content-Type", "value": "application/json" }],
-              "body": "{\n  \"success\": true,\n  \"code\": \"DEV_AUTH_ME\",\n  \"message\": \"Token is valid\",\n  \"error\": null,\n  \"data\": {\n    \"user_id\": \"00000000-0000-0000-0000-000000000001\",\n    \"supabase_uid\": \"00000000-0000-0000-0000-000000000001\",\n    \"email\": \"admin@hadha.co\",\n    \"role\": \"super_admin\",\n    \"is_active\": true,\n    \"session_expires_at\": null,\n    \"permissions\": [\n      \"read:own_profile\",\n      \"read:products\",\n      \"write:own_orders\",\n      \"write:own_cart\",\n      \"admin:read_all\",\n      \"admin:write_products\",\n      \"admin:write_orders\",\n      \"admin:write_users\",\n      \"admin:write_cms\",\n      \"super_admin:manage_roles\",\n      \"super_admin:force_logout\",\n      \"super_admin:manage_settings\"\n    ]\n  }\n}"
+              "body": "{\n  \"success\": true,\n  \"code\": \"DEV_AUTH_ME\",\n  \"message\": \"Token is valid\",\n  \"error\": null,\n  \"data\": {\n    \"user_id\": \"00000000-0000-0000-0000-000000000001\",\n    \"email\": \"admin@hadha.co\",\n    \"role\": \"super_admin\",\n    \"is_active\": true,\n    \"session_expires_at\": null,\n    \"permissions\": [\n      \"read:own_profile\",\n      \"read:products\",\n      \"write:own_orders\",\n      \"write:own_cart\",\n      \"admin:read_all\",\n      \"admin:write_products\",\n      \"admin:write_orders\",\n      \"admin:write_users\",\n      \"admin:write_cms\",\n      \"super_admin:manage_roles\",\n      \"super_admin:force_logout\",\n      \"super_admin:manage_settings\"\n    ]\n  }\n}"
             },
             {
               "name": "401 — Missing or expired token",

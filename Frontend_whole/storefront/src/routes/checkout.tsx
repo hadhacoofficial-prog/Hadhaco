@@ -30,7 +30,7 @@ import { api } from "@/lib/api/client";
 import { queryKeys } from "@/lib/api/queryKeys";
 import { toUserMessage } from "@/lib/api/errors";
 import { formatINR } from "@/lib/format";
-import { supabase } from "@/lib/supabase/client";
+import { getSession } from "@hadha/shared-api";
 import hadhaLogo from "@/assets/hadha-logo.png";
 import type {
   AddressResponse,
@@ -53,8 +53,8 @@ const GIFT_ELIGIBILITY_THRESHOLD = 2000;
 export const Route = createFileRoute("/checkout")({
   beforeLoad: async ({ location }) => {
     if (typeof window === "undefined") return;
-    const { data } = await supabase.auth.getSession();
-    if (!data.session) {
+    const session = await getSession();
+    if (!session) {
       const redirectUrl = getAuthRedirectUrl(location);
       throw redirect({ to: "/account/login", search: { redirect: redirectUrl } });
     }
@@ -613,9 +613,9 @@ function CheckoutPage() {
       return;
     }
 
-    const { data: sessionData } = await supabase.auth.getSession();
-    const user = sessionData?.session?.user;
-    openRazorpay(intent, user?.email ?? "", user?.user_metadata?.full_name ?? "");
+    const session = await getSession();
+    const user = session?.user;
+    openRazorpay(intent, user?.email ?? "", user?.full_name ?? "");
   };
 
   // Retry payment with the same intent (reservation still alive)
@@ -640,10 +640,10 @@ function CheckoutPage() {
       toast.error("Could not load payment gateway.");
       return;
     }
-    const { data: sessionData } = await supabase.auth.getSession();
-    const user = sessionData?.session?.user;
+    const session = await getSession();
+    const user = session?.user;
     setCheckoutState("payment_open");
-    openRazorpay(intent, user?.email ?? "", user?.user_metadata?.full_name ?? "");
+    openRazorpay(intent, user?.email ?? "", user?.full_name ?? "");
   };
 
   const handleReservationExpired = () => {

@@ -1,8 +1,13 @@
+import asyncio
 import functools
+import hashlib
+import hmac
 import secrets
+import time
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
+import bcrypt
 import jwt
 import structlog
 from cryptography.fernet import Fernet, MultiFernet
@@ -10,14 +15,17 @@ from fastapi import HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
 
 from app.core.config import settings
-from app.core.jwks import get_public_key
 
 if TYPE_CHECKING:
     import razorpay
 
 log = structlog.get_logger(__name__)
 
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl=f"{settings.API_V1_PREFIX}/auth/token")
+# auto_error=False: the token may arrive in a cookie instead of the Bearer
+# header; `get_access_token` (dependencies.py) decides and raises the 401.
+oauth2_scheme = OAuth2PasswordBearer(
+    tokenUrl=f"{settings.API_V1_PREFIX}/auth/login", auto_error=False
+)
 
 _fernet: MultiFernet | None = None
 
@@ -38,12 +46,21 @@ def _get_fernet() -> MultiFernet:
     return _fernet
 
 
-# ── JWT payload ────────────────────────────────────────────────────────────────
+# ── Access token (first-party, HS256) ──────────────────────────────────────────
+
+ACCESS_TOKEN_ISSUER = "hadha-auth"
+ACCESS_TOKEN_AUDIENCE = "hadha-api"
+
+
+def _derived_key(purpose: bytes) -> bytes:
+    """Per-purpose 32-byte key derived from SECRET_KEY (domain separation, so a
+    value signed for one purpose can never be replayed as another)."""
+    return hmac.new(settings.SECRET_KEY.encode(), purpose, hashlib.sha256).digest()
 
 
 @dataclass(frozen=True, slots=True)
 class JWTPayload:
-    """Strongly typed, immutable Supabase JWT payload returned after verification."""
+    """Strongly typed, immutable access-token payload returned after verification."""
 
     sub: str
     email: str | None
@@ -51,85 +68,71 @@ class JWTPayload:
     aud: str | list[str]
     exp: int
     iat: int
-    # Supabase's stable per-login session identifier (`session_id` claim).
-    # Persists across access-token refreshes within the same login session,
-    # so it's used to correlate an AdminSession row to "this browser login"
-    # for admin 2FA session-verification gating.
+    # The AuthSession id (`sid` claim). Persists across access-token refreshes
+    # within the same login, so it correlates an AdminSession row to "this
+    # browser login" for admin 2FA session-verification gating.
     session_id: str | None
 
 
-# ── Supabase JWT — ES256 + JWKS ───────────────────────────────────────────────
+def create_access_token(
+    *, user_id: str, email: str | None, role: str, session_id: str
+) -> tuple[str, int]:
+    """Sign a short-lived access token. Returns (token, expires_in_seconds)."""
+    now = int(time.time())
+    ttl = settings.AUTH_ACCESS_TTL_SECONDS
+    token = jwt.encode(
+        {
+            "iss": ACCESS_TOKEN_ISSUER,
+            "aud": ACCESS_TOKEN_AUDIENCE,
+            "sub": user_id,
+            "email": email,
+            "role": role,
+            "sid": session_id,
+            "iat": now,
+            "exp": now + ttl,
+        },
+        _derived_key(b"hadha:auth:access:v1"),
+        algorithm="HS256",
+    )
+    return token, ttl
 
 
-async def verify_supabase_jwt(token: str) -> JWTPayload:
+def _unauthorized(detail: str) -> HTTPException:
+    return HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail=detail,
+        headers={"WWW-Authenticate": "Bearer"},
+    )
+
+
+def verify_access_token(token: str) -> JWTPayload:
     """
-    Verify a Supabase-issued JWT using ES256 and cached JWKS public keys.
+    Verify an access token minted by `create_access_token`.
 
-    Validates: algorithm (ES256), kid presence, JWKS signature, issuer,
-    audience, expiration, issued-at, and not-before (if present).
-    Returns a typed JWTPayload; raises HTTP 401 on any failure.
+    Validates algorithm (HS256 only — `alg: none` and key-confusion are
+    rejected), signature, issuer, audience, expiration, issued-at and the
+    presence of `sub` and `sid`. Raises HTTP 401 on any failure.
 
-    Never calls the Supabase JWKS endpoint more than once per TTL window.
-    On an unknown kid it refreshes once (handles key rotation), then fails.
+    Revocation (logout / password change) is checked separately against the
+    Redis deny-list by the request dependency — see `is_session_revoked`.
     """
-    # Never log the raw token anywhere below — only the failure reason and,
-    # where available, the (public, non-secret) key id.
-    try:
-        header = jwt.get_unverified_header(token)
-    except jwt.DecodeError as exc:
-        log.warning("jwt_verify_failed", reason="undecodable_header")
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid token",
-            headers={"WWW-Authenticate": "Bearer"},
-        ) from exc
-
-    kid: str | None = header.get("kid")
-    alg: str = header.get("alg", "")
-    if not kid or alg != "ES256":
-        log.warning(
-            "jwt_verify_failed", reason="bad_header", alg=alg, has_kid=bool(kid)
-        )
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid token header",
-            headers={"WWW-Authenticate": "Bearer"},
-        )
-
-    try:
-        public_key = await get_public_key(kid)
-    except Exception as exc:
-        log.warning("jwt_verify_failed", reason="jwks_lookup_failed", kid=kid)
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid token",
-            headers={"WWW-Authenticate": "Bearer"},
-        ) from exc
-
+    # Never log the raw token — only the failure reason.
     try:
         payload = jwt.decode(
             token,
-            public_key,
-            algorithms=["ES256"],
-            audience="authenticated",
-            issuer=settings.supabase_issuer,
-            options={"require": ["exp", "iat", "sub"]},
-            leeway=60,  # tolerate up to 60 s of clock skew between server and Supabase
+            _derived_key(b"hadha:auth:access:v1"),
+            algorithms=["HS256"],
+            audience=ACCESS_TOKEN_AUDIENCE,
+            issuer=ACCESS_TOKEN_ISSUER,
+            options={"require": ["exp", "iat", "sub", "sid"]},
+            leeway=10,
         )
     except jwt.ExpiredSignatureError as exc:
-        log.info("jwt_verify_failed", reason="expired", kid=kid)
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Token expired",
-            headers={"WWW-Authenticate": "Bearer"},
-        ) from exc
+        log.info("jwt_verify_failed", reason="expired")
+        raise _unauthorized("Token expired") from exc
     except jwt.InvalidTokenError as exc:
-        log.warning("jwt_verify_failed", reason="invalid", kid=kid)
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid token",
-            headers={"WWW-Authenticate": "Bearer"},
-        ) from exc
+        log.warning("jwt_verify_failed", reason="invalid")
+        raise _unauthorized("Invalid token") from exc
 
     return JWTPayload(
         sub=payload["sub"],
@@ -138,8 +141,109 @@ async def verify_supabase_jwt(token: str) -> JWTPayload:
         aud=payload.get("aud", ""),
         exp=payload.get("exp", 0),
         iat=payload.get("iat", 0),
-        session_id=payload.get("session_id"),
+        session_id=payload.get("sid"),
     )
+
+
+_REVOKED_KEY = "auth:revoked:{session_id}"
+
+
+async def mark_sessions_revoked(session_ids: list[str]) -> None:
+    """Deny-list sessions for the access-token lifetime so logout takes effect
+    immediately instead of when the access token expires. Best-effort: if Redis
+    is down the session row is still revoked, so no refresh can succeed."""
+    if not session_ids:
+        return
+    from app.core.redis import get_redis_pool, safe_redis_setex
+
+    redis = get_redis_pool()
+    ttl = settings.AUTH_ACCESS_TTL_SECONDS + 60
+    for sid in session_ids:
+        await safe_redis_setex(redis, _REVOKED_KEY.format(session_id=sid), ttl, "1")
+
+
+async def is_session_revoked(session_id: str | None) -> bool:
+    if not session_id:
+        return False
+    from app.core.redis import get_redis_pool, safe_redis_get
+
+    raw = await safe_redis_get(
+        get_redis_pool(), _REVOKED_KEY.format(session_id=session_id)
+    )
+    return raw is not None
+
+
+# ── CSRF (cookie-authenticated unsafe requests) ───────────────────────────────
+
+
+def make_csrf_token(session_id: str) -> str:
+    """Stateless CSRF token bound to a session. The JS app receives it in the
+    JSON body of login/refresh/session (cookies are host-only on the API host,
+    so a double-submit cookie is unreadable from the site's origin) and echoes
+    it in `X-CSRF-Token`."""
+    return hmac.new(
+        _derived_key(b"hadha:auth:csrf:v1"), session_id.encode(), hashlib.sha256
+    ).hexdigest()
+
+
+def verify_csrf_token(session_id: str, provided: str | None) -> bool:
+    if not provided:
+        return False
+    return secrets.compare_digest(make_csrf_token(session_id), provided)
+
+
+# ── Opaque one-time / refresh tokens ──────────────────────────────────────────
+
+
+def generate_opaque_token() -> str:
+    """256-bit URL-safe random token (refresh tokens, email links)."""
+    return secrets.token_urlsafe(32)
+
+
+def hash_opaque_token(token: str) -> str:
+    """SHA-256 hex. Sufficient (no salt/stretching) because the input is 256
+    bits of CSPRNG output, not a human-chosen secret."""
+    return hashlib.sha256(token.encode()).hexdigest()
+
+
+# ── User passwords (bcrypt — compatible with imported Supabase `$2a$` hashes) ──
+
+# bcrypt only reads the first 72 bytes; longer input is rejected up front
+# instead of being silently truncated.
+PASSWORD_MAX_BYTES = 72
+_BCRYPT_ROUNDS = 12
+# Verified against when the account does not exist, so "unknown email" and
+# "wrong password" cost the same time (no account-enumeration timing signal).
+_DUMMY_HASH = bcrypt.hashpw(
+    b"not-a-real-password", bcrypt.gensalt(_BCRYPT_ROUNDS)
+).decode()
+
+
+def _bcrypt_hash(password: str) -> str:
+    return bcrypt.hashpw(
+        password.encode(), bcrypt.gensalt(rounds=_BCRYPT_ROUNDS)
+    ).decode()
+
+
+def _bcrypt_verify(password: str, hashed: str) -> bool:
+    try:
+        return bcrypt.checkpw(password.encode(), hashed.encode())
+    except ValueError:
+        # Malformed stored hash — treat as a non-match, never a 500.
+        return False
+
+
+async def hash_password(password: str) -> str:
+    return await asyncio.to_thread(_bcrypt_hash, password)
+
+
+async def verify_password(password: str, hashed: str | None) -> bool:
+    """Constant-ish time: always performs one bcrypt comparison, even when
+    there is no stored hash."""
+    if len(password.encode()) > PASSWORD_MAX_BYTES:
+        return False
+    ok = await asyncio.to_thread(_bcrypt_verify, password, hashed or _DUMMY_HASH)
+    return ok and hashed is not None
 
 
 # ── Encryption (TOTP secrets, sensitive fields) ────────────────────────────────

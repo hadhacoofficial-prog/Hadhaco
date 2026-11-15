@@ -246,6 +246,27 @@ rate_limit_2fa_validate = _make_policy_dependency(
 rate_limit_dev_login = _make_policy_dependency(
     _RateLimitPolicy(limit=5, window=60, key_prefix="rl:auth:dev-login")
 )
+# Public auth endpoints — per client IP; account-level lockout lives in
+# IdentityService on top of these.
+rate_limit_login = _make_policy_dependency(
+    _RateLimitPolicy(limit=10, window=60, key_prefix="rl:auth:login")
+)
+rate_limit_register = _make_policy_dependency(
+    _RateLimitPolicy(limit=5, window=60, key_prefix="rl:auth:register")
+)
+rate_limit_refresh = _make_policy_dependency(
+    _RateLimitPolicy(limit=30, window=60, key_prefix="rl:auth:refresh")
+)
+# Each of these sends an email or consumes a one-time token.
+rate_limit_auth_email = _make_policy_dependency(
+    _RateLimitPolicy(limit=3, window=60, key_prefix="rl:auth:email")
+)
+rate_limit_auth_token = _make_policy_dependency(
+    _RateLimitPolicy(limit=10, window=60, key_prefix="rl:auth:token")
+)
+rate_limit_change_password = _make_policy_dependency(
+    _RateLimitPolicy(limit=5, window=60, key_prefix="rl:auth:change-password")
+)
 # Admin session list/revoke: security-dashboard traffic, moderate frequency.
 rate_limit_admin_sessions = _make_policy_dependency(
     _RateLimitPolicy(limit=30, window=60, key_prefix="rl:auth:admin-sessions")

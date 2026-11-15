@@ -9,7 +9,7 @@ import {
 import { useEffect, useState, useCallback } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { getAuthRedirectUrl } from "@hadha/shared-utils";
-import { getSession } from "@/lib/supabase/session";
+import { getSession } from "@hadha/shared-api";
 import { roleSatisfies } from "@/types/auth";
 import { api } from "@/lib/api/client";
 import { queryKeys } from "@/lib/api/queryKeys";

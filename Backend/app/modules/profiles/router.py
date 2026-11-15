@@ -93,9 +93,8 @@ async def get_my_profile(
             ip_address=get_client_ip(request),
             user_agent=request.headers.get("user-agent"),
         )
-    # Registration is client-side (Supabase) — the first /me after signup is
-    # where the backend first sees a new user, so the welcome email hooks in
-    # here. Idempotent + failure-proof; see notifications/welcome.py.
+    # The first /me after signup (or email verification) is where a new user
+    # first appears as signed in, so the welcome email hooks in here. Idempotent + failure-proof; see notifications/welcome.py.
     from app.modules.notifications.welcome import maybe_publish_welcome
 
     await maybe_publish_welcome(db, redis, current_user)

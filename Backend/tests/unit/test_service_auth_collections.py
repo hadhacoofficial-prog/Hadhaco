@@ -939,18 +939,20 @@ class TestAuthService2FA:
 
         assert result == 2
 
-    async def test_logout_revokes_auth_sessions_in_savepoint(self):
+    async def test_logout_revokes_user_sessions_in_savepoint(self):
         db = AsyncMock()
         nested_cm = AsyncMock()
         nested_cm.__aenter__ = AsyncMock(return_value=None)
         nested_cm.__aexit__ = AsyncMock(return_value=False)
         db.begin_nested = MagicMock(return_value=nested_cm)
         uid = str(uuid.uuid4())
-        await self.svc.logout(db, uid)
-        db.execute.assert_awaited_once()
-        stmt, params = db.execute.await_args.args
-        assert "auth.sessions" in str(stmt)
-        assert params == {"uid": uid}
+        with patch(
+            "app.modules.auth.service.IdentityService.revoke_user_sessions",
+            AsyncMock(return_value=2),
+        ) as revoke:
+            await self.svc.logout(db, uid)
+        revoke.assert_awaited_once_with(db, uid)
+        db.begin_nested.assert_called_once()
 
     async def test_logout_swallows_revocation_failure_without_raising(self):
         """A revocation failure must never prevent logout — routers call this

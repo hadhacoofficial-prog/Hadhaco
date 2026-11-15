@@ -167,21 +167,7 @@ export function ActiveSessionsPanel({ is2faEnabled }: { is2faEnabled: boolean })
 
       {others.length > 0 && (
         <p className="text-xs text-muted-foreground mt-4">
-          {is2faEnabled ? (
-            <>
-              "Log out" on another session ends its admin access immediately, but Supabase can only
-              fully revoke every session for an account at once — not a single one. If a device may
-              be compromised, use "Log Out All Sessions" instead.
-            </>
-          ) : (
-            <>
-              2FA is off on this account, so "Log out" here only removes a session from this list —
-              it doesn't end that session's access, since there's no per-session check to enforce
-              without 2FA. Only "Log Out All Sessions" actually ends access elsewhere (it signs out
-              of Supabase directly). Enable two-factor authentication above for real per-device
-              control.
-            </>
-          )}
+          "Log out" on another session signs that device out immediately.
         </p>
       )}
 
@@ -198,9 +184,7 @@ export function ActiveSessionsPanel({ is2faEnabled }: { is2faEnabled: boolean })
                 ? is2faEnabled
                   ? "This signs you out of this browser too — you'll need to sign in and complete 2FA again."
                   : "This signs you out of this browser too — you'll need to sign in again."
-                : is2faEnabled
-                  ? "Every other browser/device currently signed in will need to complete 2FA again to get back in. This one stays signed in."
-                  : 'This removes other sessions from this list, but since 2FA is off, it doesn\'t actually end their access — their sign-in stays valid. Use "Log Out All Sessions" to actually sign out everywhere.'}
+                : "Every other browser/device currently signed in will be signed out immediately. This one stays signed in."}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

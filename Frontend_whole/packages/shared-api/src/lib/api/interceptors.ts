@@ -6,7 +6,7 @@
  * and individually testable.
  */
 import { ENV } from "../../config/env";
-import { getAccessToken } from "../supabase/session";
+import { getCsrfToken } from "../auth/store";
 import type { QueryParams } from "@hadha/shared-types";
 
 /**
@@ -39,12 +39,13 @@ export function buildUrl(path: string, params?: QueryParams): string {
 }
 
 /**
- * Resolve the Authorization header from the current Supabase session.
- * Returns an empty object when signed out so public endpoints still work.
+ * CSRF header for cookie-authenticated writes. Safe methods need none, and a
+ * signed-out browser has no token (public endpoints still work).
  */
-export async function authHeader(): Promise<Record<string, string>> {
-  const token = await getAccessToken();
-  return token ? { Authorization: `Bearer ${token}` } : {};
+export function csrfHeader(method: string): Record<string, string> {
+  if (method === "GET" || method === "HEAD" || method === "OPTIONS") return {};
+  const token = getCsrfToken();
+  return token ? { "X-CSRF-Token": token } : {};
 }
 
 const reqStart = new WeakMap<object, number>();

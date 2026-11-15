@@ -51,7 +51,7 @@ export function buildCsp(nonce: string): string {
     "img-src 'self' data: blob: https:",
     "font-src 'self' data: https://fonts.gstatic.com",
     "media-src 'self' https://videos.pexels.com https://cdn.hadha.co",
-    "connect-src 'self' https://api.hadha.co https://cdn.hadha.co https://*.supabase.co wss://*.supabase.co https://errors.hadha.co https://*.razorpay.com https://www.google-analytics.com https://*.google-analytics.com https://*.analytics.google.com https://*.googletagmanager.com",
+    "connect-src 'self' https://api.hadha.co https://cdn.hadha.co https://errors.hadha.co https://*.razorpay.com https://www.google-analytics.com https://*.google-analytics.com https://*.analytics.google.com https://*.googletagmanager.com",
     "frame-src 'self' https://api.razorpay.com https://*.razorpay.com",
     "worker-src 'self' blob:",
     "object-src 'none'",

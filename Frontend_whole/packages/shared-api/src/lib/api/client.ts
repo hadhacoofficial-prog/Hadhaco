@@ -3,7 +3,8 @@
  *
  * Responsibilities (single place for all of them):
  *   â€¢ Base URL join + query serialization
- *   â€¢ Authorization: Bearer <Supabase JWT> injection (read fresh per request)
+ *   • Cookie session: credentials are sent with every request, an `X-CSRF-Token`
+ *     header is added to writes, and an expired access cookie is refreshed once
  *   â€¢ Response-envelope unwrapping â†’ callers get `T`, never `{ data }`
  *   â€¢ Error normalization â†’ always throws `ApiError`
  *   â€¢ Multipart (FormData) support
@@ -15,9 +16,9 @@
  *   const order = await api.post<OrderResponse>("/orders", { body });
  */
 import { ApiError } from "./errors";
-import { authHeader, buildUrl, logRequest, logResponse } from "./interceptors";
+import { csrfHeader, buildUrl, logRequest, logResponse } from "./interceptors";
 import type { ApiEnvelope, QueryParams } from "@hadha/shared-types";
-import { supabase } from "../supabase/client";
+import { ensureCsrfToken, refreshSession } from "../auth/refresh";
 
 export interface RequestOptions {
   params?: QueryParams;
@@ -30,7 +31,10 @@ export interface RequestOptions {
   timeoutMs?: number;
   /** Max retry attempts for transient failures. Default 2 (GET only). */
   retries?: number;
-  /** Skip the Authorization header (for strictly public endpoints). */
+  /**
+   * Skip session handling (CSRF header and the 401 → refresh retry). For the
+   * auth endpoints themselves and strictly public calls.
+   */
   skipAuth?: boolean;
   /**
    * HTTP cache mode for the underlying `fetch`. Defaults to the browser's
@@ -170,7 +174,9 @@ async function request<T>(
     Accept: "application/json",
     ...options.headers,
   };
-  const auth = options.skipAuth ? {} : await authHeader();
+  const isWrite = method !== "GET";
+  if (!options.skipAuth && isWrite) await ensureCsrfToken();
+  const auth = options.skipAuth ? {} : csrfHeader(method);
 
   let body: BodyInit | undefined;
   if (options.body !== undefined && options.body !== null) {
@@ -196,22 +202,35 @@ async function request<T>(
         body,
         signal,
         cache: options.cache,
+        // Session cookies are HttpOnly and set by the API origin.
+        credentials: "include",
       });
       logResponse(method, url, res.status, tag);
 
-      // 401 silent-refresh: if the access token just expired, ask Supabase to
-      // refresh it and retry the request once with the new token.  _retried
-      // prevents infinite loops if the backend keeps returning 401 even after
-      // a successful token refresh (e.g. the account was revoked server-side).
+      // 401 silent-refresh: if the access cookie just expired, rotate the
+      // session once and retry. _retried prevents infinite loops if the
+      // backend keeps returning 401 after a successful refresh (e.g. the
+      // account was revoked server-side). When the refresh fails the store is
+      // cleared, AuthProvider flips to "unauthenticated" and protected routes
+      // redirect.
       if (res.status === 401 && !options.skipAuth && !_retried) {
-        const { data } = await supabase.auth.refreshSession();
-        if (data.session) {
-          // Fresh session obtained â€” retry once with the new token.
+        if (await refreshSession()) {
           return request<T>(method, path, options, true);
         }
-        // Refresh failed (refresh token expired / session revoked).
-        // Supabase has signed out the user; AuthProvider's onAuthStateChange
-        // will set status="unauthenticated" and protected routes will redirect.
+      }
+
+      // 403 CSRF_FAILED: our in-memory token is stale (the session was replaced
+      // in another tab). Re-read it once and retry the write.
+      if (res.status === 403 && isWrite && !options.skipAuth && !_retried) {
+        const code = await res
+          .clone()
+          .json()
+          .then((b: { code?: string }) => b?.code)
+          .catch(() => undefined);
+        if (code === "CSRF_FAILED") {
+          await ensureCsrfToken(true);
+          return request<T>(method, path, options, true);
+        }
       }
 
       return await parseEnvelope<T>(res, method, url);

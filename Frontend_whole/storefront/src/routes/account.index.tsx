@@ -38,8 +38,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { api } from "@/lib/api/client";
 import { toUserMessage } from "@/lib/api/errors";
 import { queryKeys } from "@/lib/api/queryKeys";
-import { getSession } from "@/lib/supabase/session";
-import { supabase } from "@/lib/supabase/client";
+import { getSession } from "@hadha/shared-api";
 import { useAuthContext } from "@/providers/auth-context";
 import { Field, PhoneField, isValidIndianMobile } from "@/components/common/FormField";
 import { useWishlist } from "@/stores/wishlist";
@@ -163,7 +162,7 @@ function AccountPage() {
     );
   }
 
-  const displayName = user.user_metadata?.full_name ?? user.email ?? "";
+  const displayName = user.full_name ?? user.email ?? "";
   const firstName = displayName.split(" ")[0];
 
   const handleSignOut = async () => {
@@ -259,7 +258,7 @@ function OverviewTab({
   user,
 }: {
   onNavigate: (t: Tab) => void;
-  user: { created_at?: string; user_metadata?: Record<string, unknown> };
+  user: { created_at?: string | null };
 }) {
   const { data: ordersData, isLoading: ordersLoading } = useQuery({
     queryKey: queryKeys.orders.list({}),
@@ -1257,10 +1256,10 @@ function ProfileTab() {
 
   useEffect(() => {
     if (profile) {
-      setName(profile.full_name ?? user?.user_metadata?.full_name ?? "");
+      setName(profile.full_name ?? user?.full_name ?? "");
       setPhone(profile.phone ?? "");
     } else if (user) {
-      setName(user.user_metadata?.full_name ?? "");
+      setName(user.full_name ?? "");
     }
   }, [profile, user]);
 
@@ -1532,6 +1531,9 @@ function ProfileTab() {
 // ── Security tab ───────────────────────────────────────────────────────────────
 
 function SecurityTab() {
+  const { session, changePassword } = useAuthContext();
+  // Google-only accounts have no password yet, so there is nothing to confirm.
+  const hasPassword = session?.hasPassword ?? true;
   const [currentPw, setCurrentPw] = useState("");
   const [newPw, setNewPw] = useState("");
   const [confirmPw, setConfirmPw] = useState("");
@@ -1552,15 +1554,13 @@ function SecurityTab() {
     }
     setLoading(true);
     try {
-      const { error } = await supabase.auth.updateUser({ password: newPw });
-      if (error) throw error;
+      await changePassword(hasPassword ? currentPw : null, newPw);
       toast.success("Password updated successfully");
       setCurrentPw("");
       setNewPw("");
       setConfirmPw("");
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : "Failed to update password";
-      toast.error(msg);
+      toast.error(toUserMessage(err));
     } finally {
       setLoading(false);
     }
@@ -1573,27 +1573,29 @@ function SecurityTab() {
         onSubmit={submit}
         className="bg-card border border-border rounded-2xl p-6 shadow-sm space-y-5"
       >
-        <div className="space-y-1.5">
-          <label className="text-[11px] uppercase tracking-[0.18em] text-muted-foreground">
-            Current Password
-          </label>
-          <div className="relative">
-            <Field
-              type={showCurrent ? "text" : "password"}
-              value={currentPw}
-              onChange={(e) => setCurrentPw(e.target.value)}
-              placeholder="Current password"
-              required
-            />
-            <button
-              type="button"
-              onClick={() => setShowCurrent((v) => !v)}
-              className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition"
-            >
-              {showCurrent ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
-            </button>
+        {hasPassword && (
+          <div className="space-y-1.5">
+            <label className="text-[11px] uppercase tracking-[0.18em] text-muted-foreground">
+              Current Password
+            </label>
+            <div className="relative">
+              <Field
+                type={showCurrent ? "text" : "password"}
+                value={currentPw}
+                onChange={(e) => setCurrentPw(e.target.value)}
+                placeholder="Current password"
+                required
+              />
+              <button
+                type="button"
+                onClick={() => setShowCurrent((v) => !v)}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition"
+              >
+                {showCurrent ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
+              </button>
+            </div>
           </div>
-        </div>
+        )}
 
         <div className="space-y-1.5">
           <label className="text-[11px] uppercase tracking-[0.18em] text-muted-foreground">

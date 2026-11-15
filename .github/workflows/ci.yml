@@ -110,10 +110,6 @@ jobs:
           ENCRYPTION_KEY: ScMKcnTeUAIxkeKkhFe-n7BTVisJRW2qpeNc3vqdah0=
           ALLOWED_ORIGINS: http://localhost:3000
           ALLOWED_HOSTS: "localhost,127.0.0.1"
-          SUPABASE_URL: https://test.supabase.co
-          SUPABASE_KEY: test_anon_key
-          SUPABASE_ANON_KEY: test_anon_key
-          SUPABASE_SERVICE_ROLE_KEY: test_service_role_key
           DATABASE_URL: postgresql+asyncpg://postgres:postgres@localhost:5432/hadha_test
           REDIS_URL: redis://localhost:6379/15
           CLOUDFLARE_ACCOUNT_ID: test_account
@@ -370,8 +366,6 @@ jobs:
           NITRO_PRESET: node
           NODE_ENV: production
           VITE_API_BASE_URL: https://api.hadha.co/api/v1
-          VITE_SUPABASE_URL: https://placeholder.supabase.co
-          VITE_SUPABASE_ANON_KEY: placeholder_anon_key
         run: npm -w storefront run build
 
   admin-build:
@@ -406,8 +400,6 @@ jobs:
           NITRO_PRESET: node
           NODE_ENV: production
           VITE_API_BASE_URL: https://api.hadha.co/api/v1
-          VITE_SUPABASE_URL: https://placeholder.supabase.co
-          VITE_SUPABASE_ANON_KEY: placeholder_anon_key
         run: npm -w admin run build
 
   # ── Docker: build validation (no push) ───────────────────────────────────
@@ -447,8 +439,6 @@ jobs:
           build-args: |
             NITRO_PRESET=node
             VITE_API_BASE_URL=https://api.hadha.co/api/v1
-            VITE_SUPABASE_URL=https://placeholder.supabase.co
-            VITE_SUPABASE_PUBLISHABLE_KEY=placeholder_anon_key
             VITE_SENTRY_DSN=https://placeholder@errors.hadha.co/0
           tags: hadha-storefront:ci-test
 
@@ -464,8 +454,6 @@ jobs:
           build-args: |
             NITRO_PRESET=node
             VITE_API_BASE_URL=https://api.hadha.co/api/v1
-            VITE_SUPABASE_URL=https://placeholder.supabase.co
-            VITE_SUPABASE_PUBLISHABLE_KEY=placeholder_anon_key
             VITE_SENTRY_DSN=https://placeholder@errors.hadha.co/0
           tags: hadha-admin:ci-test
 
@@ -509,8 +497,6 @@ jobs:
           NITRO_PRESET: node
           NODE_ENV: production
           VITE_API_BASE_URL: https://api.hadha.co/api/v1
-          VITE_SUPABASE_URL: ${{ secrets.SUPABASE_URL || 'https://placeholder.supabase.co' }}
-          VITE_SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY || 'placeholder' }}
         run: npm run build
 
       - name: Start Redis

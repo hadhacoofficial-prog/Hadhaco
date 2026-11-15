@@ -30,6 +30,7 @@ import { Route as CheckoutSuccessRouteImport } from './routes/checkout_.success'
 import { Route as CheckoutStockChangedRouteImport } from './routes/checkout_.stock-changed'
 import { Route as CheckoutReservationExpiredRouteImport } from './routes/checkout_.reservation-expired'
 import { Route as CheckoutPaymentFailedRouteImport } from './routes/checkout_.payment-failed'
+import { Route as AccountVerifyEmailRouteImport } from './routes/account.verify-email'
 import { Route as AccountResetPasswordRouteImport } from './routes/account.reset-password'
 import { Route as AccountRegisterRouteImport } from './routes/account.register'
 import { Route as AccountLoginRouteImport } from './routes/account.login'
@@ -141,6 +142,11 @@ const CheckoutPaymentFailedRoute = CheckoutPaymentFailedRouteImport.update({
   path: '/checkout/payment-failed',
   getParentRoute: () => rootRouteImport,
 } as any)
+const AccountVerifyEmailRoute = AccountVerifyEmailRouteImport.update({
+  id: '/account/verify-email',
+  path: '/account/verify-email',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const AccountResetPasswordRoute = AccountResetPasswordRouteImport.update({
   id: '/account/reset-password',
   path: '/account/reset-password',
@@ -179,6 +185,7 @@ export interface FileRoutesByFullPath {
   '/account/login': typeof AccountLoginRoute
   '/account/register': typeof AccountRegisterRoute
   '/account/reset-password': typeof AccountResetPasswordRoute
+  '/account/verify-email': typeof AccountVerifyEmailRoute
   '/checkout/payment-failed': typeof CheckoutPaymentFailedRoute
   '/checkout/reservation-expired': typeof CheckoutReservationExpiredRoute
   '/checkout/stock-changed': typeof CheckoutStockChangedRoute
@@ -206,6 +213,7 @@ export interface FileRoutesByTo {
   '/account/login': typeof AccountLoginRoute
   '/account/register': typeof AccountRegisterRoute
   '/account/reset-password': typeof AccountResetPasswordRoute
+  '/account/verify-email': typeof AccountVerifyEmailRoute
   '/checkout/payment-failed': typeof CheckoutPaymentFailedRoute
   '/checkout/reservation-expired': typeof CheckoutReservationExpiredRoute
   '/checkout/stock-changed': typeof CheckoutStockChangedRoute
@@ -234,6 +242,7 @@ export interface FileRoutesById {
   '/account/login': typeof AccountLoginRoute
   '/account/register': typeof AccountRegisterRoute
   '/account/reset-password': typeof AccountResetPasswordRoute
+  '/account/verify-email': typeof AccountVerifyEmailRoute
   '/checkout_/payment-failed': typeof CheckoutPaymentFailedRoute
   '/checkout_/reservation-expired': typeof CheckoutReservationExpiredRoute
   '/checkout_/stock-changed': typeof CheckoutStockChangedRoute
@@ -263,6 +272,7 @@ export interface FileRouteTypes {
     | '/account/login'
     | '/account/register'
     | '/account/reset-password'
+    | '/account/verify-email'
     | '/checkout/payment-failed'
     | '/checkout/reservation-expired'
     | '/checkout/stock-changed'
@@ -290,6 +300,7 @@ export interface FileRouteTypes {
     | '/account/login'
     | '/account/register'
     | '/account/reset-password'
+    | '/account/verify-email'
     | '/checkout/payment-failed'
     | '/checkout/reservation-expired'
     | '/checkout/stock-changed'
@@ -317,6 +328,7 @@ export interface FileRouteTypes {
     | '/account/login'
     | '/account/register'
     | '/account/reset-password'
+    | '/account/verify-email'
     | '/checkout_/payment-failed'
     | '/checkout_/reservation-expired'
     | '/checkout_/stock-changed'
@@ -345,6 +357,7 @@ export interface RootRouteChildren {
   AccountLoginRoute: typeof AccountLoginRoute
   AccountRegisterRoute: typeof AccountRegisterRoute
   AccountResetPasswordRoute: typeof AccountResetPasswordRoute
+  AccountVerifyEmailRoute: typeof AccountVerifyEmailRoute
   CheckoutPaymentFailedRoute: typeof CheckoutPaymentFailedRoute
   CheckoutReservationExpiredRoute: typeof CheckoutReservationExpiredRoute
   CheckoutStockChangedRoute: typeof CheckoutStockChangedRoute
@@ -505,6 +518,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof CheckoutPaymentFailedRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/account/verify-email': {
+      id: '/account/verify-email'
+      path: '/account/verify-email'
+      fullPath: '/account/verify-email'
+      preLoaderRoute: typeof AccountVerifyEmailRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/account/reset-password': {
       id: '/account/reset-password'
       path: '/account/reset-password'
@@ -553,6 +573,7 @@ const rootRouteChildren: RootRouteChildren = {
   AccountLoginRoute: AccountLoginRoute,
   AccountRegisterRoute: AccountRegisterRoute,
   AccountResetPasswordRoute: AccountResetPasswordRoute,
+  AccountVerifyEmailRoute: AccountVerifyEmailRoute,
   CheckoutPaymentFailedRoute: CheckoutPaymentFailedRoute,
   CheckoutReservationExpiredRoute: CheckoutReservationExpiredRoute,
   CheckoutStockChangedRoute: CheckoutStockChangedRoute,

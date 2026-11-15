@@ -1,7 +1,8 @@
 from __future__ import annotations
 
+import redis.asyncio as aioredis
 import structlog
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.common.response_codes import ResponseCode
@@ -10,7 +11,8 @@ from app.core.config import settings
 from app.core.database import get_db
 from app.core.dependencies import get_current_user
 from app.core.exceptions import NotFoundError
-from app.middleware.rate_limit import rate_limit_dev_login
+from app.core.redis import get_redis
+from app.middleware.rate_limit import get_client_ip, rate_limit_dev_login
 from app.modules.dev_auth.schemas import (
     DevLoginRequest,
     DevLoginResponse,
@@ -70,22 +72,31 @@ def _check_dev_enabled() -> None:
 @router.post(
     "/login",
     response_model=BaseSuccessResponse[DevLoginResponse],
-    summary="[DEV ONLY] Authenticate with email/password and receive a Supabase JWT",
+    summary="[DEV ONLY] Authenticate with email/password and receive a bearer token",
     description=(
         "**Development and QA use only.** Disabled in production. "
-        "Authenticates against Supabase and verifies the user is an active admin "
-        "in the application database. Returns the full session payload suitable "
+        "Authenticates against the application's own auth and verifies the user is an "
+        "active admin. Returns the full session payload suitable "
         "for use with Postman collection variables."
     ),
     dependencies=[Depends(rate_limit_dev_login)],
 )
 async def dev_login(
     body: DevLoginRequest,
+    request: Request,
     db: AsyncSession = Depends(get_db),
+    redis: aioredis.Redis = Depends(get_redis),
 ) -> BaseSuccessResponse[DevLoginResponse]:
     _check_dev_enabled()
     log.info("dev_auth_login_attempt", email=body.email)
-    result = await _svc.login(db, body.email, body.password)
+    result = await _svc.login(
+        db,
+        redis,
+        body.email,
+        body.password,
+        ip=get_client_ip(request),
+        user_agent=request.headers.get("user-agent"),
+    )
     return ok(result, ResponseCode.DEV_AUTH_LOGIN, "Authentication successful")
 
 
@@ -111,7 +122,6 @@ async def dev_me(
 
     me = DevMeResponse(
         user_id=str(current_user.id),
-        supabase_uid=str(current_user.id),
         email=current_user.email,
         role=current_user.role,
         is_active=current_user.is_active,

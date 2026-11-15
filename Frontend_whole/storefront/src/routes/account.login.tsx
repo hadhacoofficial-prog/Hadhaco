@@ -4,16 +4,26 @@ import { useMutation } from "@tanstack/react-query";
 import { z } from "zod";
 import { Lock, Mail } from "lucide-react";
 import { toast } from "sonner";
+import { getSession } from "@hadha/shared-api";
 import { sanitizeRedirect } from "@hadha/shared-utils";
 
 import { SiteLayout } from "@/components/site/SiteLayout";
 import { GoogleAuthButton } from "@/components/common/GoogleAuthButton";
-import { toUserMessage } from "@/lib/api/errors";
-import { getSession } from "@/lib/supabase/session";
+import { isApiError, toUserMessage } from "@/lib/api/errors";
 import { useAuthContext } from "@/providers/auth-context";
 
+const GOOGLE_ERRORS: Record<string, string> = {
+  google_cancelled: "Google sign-in was cancelled.",
+  google_expired: "Your Google sign-in expired. Please try again.",
+  google_email_unverified: "Your Google email address is not verified.",
+  account_inactive: "This account is inactive.",
+};
+
 export const Route = createFileRoute("/account/login")({
-  validateSearch: z.object({ redirect: z.string().optional() }),
+  validateSearch: z.object({
+    redirect: z.string().optional(),
+    auth_error: z.string().optional(),
+  }),
   beforeLoad: async () => {
     if (typeof window === "undefined") return; // SSR: getSession() returns null, skip redirect
     const session = await getSession();
@@ -24,14 +34,21 @@ export const Route = createFileRoute("/account/login")({
 });
 
 function LoginPage() {
-  const { redirect: redirectTo } = Route.useSearch();
+  const { redirect: redirectTo, auth_error: authError } = Route.useSearch();
   const navigate = useNavigate();
-  const { login, initialized, isAuthenticated } = useAuthContext();
+  const { login, resendVerification, initialized, isAuthenticated } = useAuthContext();
 
   const safeRedirect = sanitizeRedirect(redirectTo as string | undefined);
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [needsVerification, setNeedsVerification] = useState(false);
+
+  // Google sign-in sends failures back here as ?auth_error=<code>.
+  useEffect(() => {
+    if (authError)
+      toast.error(GOOGLE_ERRORS[authError] ?? "Google sign-in failed. Please try again.");
+  }, [authError]);
 
   // Recovery: the server may have redirected an authenticated user here because
   // localStorage is unavailable during SSR and getSession() returned null.
@@ -48,8 +65,15 @@ function LoginPage() {
       navigate({ to: safeRedirect });
     },
     onError: (e) => {
+      setNeedsVerification(isApiError(e) && e.code === "EMAIL_NOT_VERIFIED");
       toast.error(toUserMessage(e));
     },
+  });
+
+  const resendMutation = useMutation({
+    mutationFn: () => resendVerification(email),
+    onSuccess: () => toast.success("If that account needs verification, a new link is on its way."),
+    onError: (e) => toast.error(toUserMessage(e)),
   });
 
   const submit = (e: React.FormEvent) => {
@@ -101,6 +125,20 @@ function LoginPage() {
               Forgot password?
             </Link>
           </div>
+
+          {needsVerification && (
+            <p className="text-xs text-muted-foreground">
+              Your email address is not verified yet.{" "}
+              <button
+                type="button"
+                onClick={() => resendMutation.mutate()}
+                disabled={resendMutation.isPending || !email}
+                className="text-accent underline disabled:opacity-60"
+              >
+                Resend verification email
+              </button>
+            </p>
+          )}
 
           <button
             disabled={loginMutation.isPending}

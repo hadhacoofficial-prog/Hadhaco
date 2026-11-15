@@ -35,7 +35,6 @@ class DevLoginResponse(BaseModel):
 
 class DevMeResponse(BaseModel):
     user_id: str
-    supabase_uid: str
     email: str | None
     role: str
     is_active: bool

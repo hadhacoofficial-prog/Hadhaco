@@ -19,7 +19,7 @@ Provides:
 
 2FA session verification is backed by the `admin_sessions` table (see
 app.modules.profiles.models.AdminSession), correlated to the caller via the
-Supabase JWT's `session_id` claim. There is no separate session store —
+access token's `sid` (AuthSession id) claim. There is no separate session store —
 this reuses the existing AdminSession architecture end to end.
 """
 
@@ -34,11 +34,17 @@ import structlog
 from fastapi import Depends, HTTPException, Request, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.auth_cookies import enforce_csrf, read_access_cookie
 from app.core.constants import UserRole
 from app.core.database import get_db
 from app.core.exceptions import AuthorizationError
 from app.core.redis import get_redis, safe_redis_get, safe_redis_setex
-from app.core.security import JWTPayload, oauth2_scheme, verify_supabase_jwt
+from app.core.security import (
+    JWTPayload,
+    is_session_revoked,
+    oauth2_scheme,
+    verify_access_token,
+)
 from app.middleware.rate_limit import get_client_ip
 
 # Forward declaration — resolved at runtime to avoid circular imports
@@ -152,9 +158,52 @@ async def _load_profile(user_id: str, db: AsyncSession, redis: aioredis.Redis):
     return profile
 
 
-async def get_jwt_payload(token: str = Depends(oauth2_scheme)) -> JWTPayload:
-    """Verify the Supabase JWT once per request (FastAPI caches by dependable)."""
-    return await verify_supabase_jwt(token)
+async def get_access_token(
+    request: Request, bearer: str | None = Depends(oauth2_scheme)
+) -> str:
+    """Access token from the Authorization header (API clients, k6) or, for the
+    browser apps, the HttpOnly session cookie. The header wins when both exist."""
+    if bearer:
+        request.state.auth_via_cookie = False
+        return bearer
+    cookie = read_access_cookie(request)
+    if cookie:
+        request.state.auth_via_cookie = True
+        return cookie
+    raise HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail="Not authenticated",
+        headers={"WWW-Authenticate": "Bearer"},
+    )
+
+
+async def authenticate_token(
+    request: Request, token: str, *, via_cookie: bool
+) -> JWTPayload:
+    """Verify signature/claims, reject revoked sessions and, for cookie-borne
+    writes, enforce CSRF."""
+    payload = verify_access_token(token)
+    if await is_session_revoked(payload.session_id):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Session revoked",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    if via_cookie:
+        assert payload.session_id is not None  # `sid` is a required claim
+        enforce_csrf(request, payload.session_id)
+    return payload
+
+
+async def get_jwt_payload(
+    request: Request, token: str = Depends(get_access_token)
+) -> JWTPayload:
+    """Authenticate once per request (FastAPI caches by dependable)."""
+    return await authenticate_token(
+        request,
+        token,
+        via_cookie=bool(getattr(request.state, "auth_via_cookie", False)),
+    )
 
 
 async def get_current_user(
@@ -163,7 +212,7 @@ async def get_current_user(
     redis: aioredis.Redis = Depends(get_redis),
 ):
     """
-    Verify the Supabase JWT, load the profile from Redis/DB, and return it.
+    Verify the access token, load the profile from Redis/DB, and return it.
     Raises 401 if the token is invalid or the profile does not exist/is inactive.
     """
     user_id: str = payload.sub
@@ -197,16 +246,23 @@ async def get_current_user_optional(
     redis: aioredis.Redis = Depends(get_redis),
 ):
     """
-    Attempt to load the current user from the Authorization header.
+    Attempt to load the current user from the Authorization header or session cookie.
     Returns None instead of raising if the token is missing or invalid.
     Used by public endpoints that optionally enrich responses for logged-in users.
     """
     auth_header = request.headers.get("Authorization", "")
-    if not auth_header.startswith("Bearer "):
+    via_cookie = False
+    if auth_header.startswith("Bearer "):
+        token: str | None = auth_header.removeprefix("Bearer ").strip()
+    else:
+        token = read_access_cookie(request)
+        via_cookie = True
+    if not token:
         return None
-    token = auth_header.removeprefix("Bearer ").strip()
     try:
-        payload: JWTPayload = await verify_supabase_jwt(token)
+        payload: JWTPayload = await authenticate_token(
+            request, token, via_cookie=via_cookie
+        )
         user_id = payload.sub
         if not user_id:
             return None
@@ -258,7 +314,7 @@ async def _ensure_2fa_session(
     """
     Backend-enforced 2FA gate, backed by the `admin_sessions` table.
 
-    If the account has 2FA enabled, this request's Supabase session must have
+    If the account has 2FA enabled, this request's login session must have
     already completed the TOTP challenge (POST /auth/admin/2fa/validate) —
     frontend routing/sessionStorage is never the source of truth. If the
     account has 2FA disabled, `required=False` callers (require_admin /

@@ -1,5 +1,5 @@
 // k6 helpers — Authentication via Dev Auth endpoint
-// Uses POST /api/v1/dev/login to obtain a Supabase JWT
+// Uses POST /api/v1/dev/login to obtain a bearer access token
 // Only available when ENABLE_DEV_AUTH=true or is_development
 
 import { apiPost, apiUrl } from "./http.js";

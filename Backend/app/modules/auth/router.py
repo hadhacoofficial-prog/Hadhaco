@@ -2,11 +2,18 @@ import uuid
 
 import redis.asyncio as aioredis
 import structlog
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.common.response_codes import ResponseCode
 from app.common.responses import BaseSuccessResponse, ok
+from app.core.auth_cookies import (
+    clear_auth_cookies,
+    enforce_origin,
+    read_access_cookie,
+    read_refresh_cookie,
+    surface_for_request,
+)
 from app.core.database import get_db
 from app.core.dependencies import (
     get_current_user,
@@ -17,7 +24,7 @@ from app.core.dependencies import (
 )
 from app.core.exceptions import AuthorizationError, NotFoundError
 from app.core.redis import get_redis
-from app.core.security import JWTPayload
+from app.core.security import JWTPayload, verify_access_token
 from app.middleware.rate_limit import (
     get_client_ip,
     rate_limit_2fa_setup,
@@ -29,6 +36,7 @@ from app.middleware.rate_limit import (
     rate_limit_verify_token,
 )
 from app.modules.audit.service import AuditService
+from app.modules.auth.identity_service import IdentityService
 from app.modules.auth.schemas import (
     AdminSessionListResponse,
     AdminSessionOut,
@@ -47,9 +55,12 @@ from app.modules.auth.schemas import (
 from app.modules.auth.service import AuthService
 from app.modules.media.repository import ImageRepository
 from app.modules.profiles.models import Profile
+from app.modules.profiles.repository import ProfileRepository
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 _svc = AuthService()
+_identity = IdentityService()
+_profiles = ProfileRepository()
 _image_repo = ImageRepository()
 _audit = AuditService()
 _log = structlog.get_logger(__name__)
@@ -114,7 +125,7 @@ async def _notify_security_event(
 @router.post(
     "/verify-token",
     response_model=BaseSuccessResponse[VerifyTokenResponse],
-    summary="Validate a Supabase JWT and return the profile",
+    summary="Validate the access token and return the profile",
     dependencies=[Depends(rate_limit_verify_token)],
 )
 async def verify_token(
@@ -170,30 +181,68 @@ async def verify_token(
 @router.post(
     "/logout",
     response_model=BaseSuccessResponse[None],
-    summary="Revoke the current Supabase session",
+    summary="Sign out this device: revoke the session and clear its cookies",
     dependencies=[Depends(rate_limit_logout)],
 )
 async def logout(
     request: Request,
-    current_user: Profile = Depends(get_current_user),
-    payload: JWTPayload = Depends(get_jwt_payload),
+    response: Response,
     db: AsyncSession = Depends(get_db),
 ) -> BaseSuccessResponse[None]:
-    await _svc.logout(db, str(current_user.id))
-    await _svc.clear_admin_session_2fa(db, str(current_user.id), payload.session_id)
-    if current_user.role in ("admin", "super_admin"):
-        ip, ua = _client_meta(request)
-        await _audit.log(
-            db,
-            actor_id=str(current_user.id),
-            actor_email=current_user.email,
-            actor_role=current_user.role,
-            action="admin_logout",
-            resource_type="profile",
-            resource_id=str(current_user.id),
-            ip_address=ip,
-            user_agent=ua,
-        )
+    """Works with an expired access token too: the session is identified from
+    the access token when it still verifies, otherwise from the refresh
+    cookie. Always clears the cookies, even if there was nothing to revoke."""
+    surface = surface_for_request(request)
+    bearer = request.headers.get("Authorization", "").startswith("Bearer ")
+    if not bearer:
+        if not (read_access_cookie(request) or read_refresh_cookie(request)):
+            # Nothing identifies a session: nothing to sign out of.
+            raise HTTPException(
+                status_code=401,
+                detail="Not authenticated",
+                headers={"WWW-Authenticate": "Bearer"},
+            )
+        # Cookie-borne: only our own sites may sign the user out.
+        enforce_origin(request)
+
+    session_id: str | None = None
+    user_id: str | None = None
+    token = (
+        request.headers["Authorization"][7:].strip()
+        if bearer
+        else read_access_cookie(request)
+    )
+    if token:
+        try:
+            claims = verify_access_token(token)
+            session_id, user_id = claims.session_id, claims.sub
+        except HTTPException:
+            pass
+    if session_id is None:
+        refresh = read_refresh_cookie(request)
+        if refresh:
+            row = await _identity.session_for_refresh(db, refresh)
+            if row is not None:
+                session_id, user_id = str(row.id), str(row.user_id)
+
+    if session_id and user_id:
+        await _identity.revoke_session(db, session_id)
+        await _svc.clear_admin_session_2fa(db, user_id, session_id)
+        profile = await _profiles.get_by_id(db, user_id)
+        if profile is not None and profile.role in ("admin", "super_admin"):
+            ip, ua = _client_meta(request)
+            await _audit.log(
+                db,
+                actor_id=str(profile.id),
+                actor_email=profile.email,
+                actor_role=profile.role,
+                action="admin_logout",
+                resource_type="profile",
+                resource_id=str(profile.id),
+                ip_address=ip,
+                user_agent=ua,
+            )
+    clear_auth_cookies(response, surface)
     return ok(None, ResponseCode.AUTH_LOGOUT_SUCCESS, "Logged out successfully")
 
 
@@ -619,19 +668,19 @@ async def revoke_other_admin_sessions(
 @router.post(
     "/admin/sessions/revoke-all",
     response_model=BaseSuccessResponse[RevokeSessionResponse],
-    summary="Revoke every admin session, including this one, and sign out of Supabase",
+    summary="Revoke every session of this admin, including this one",
     dependencies=[Depends(rate_limit_admin_sessions)],
 )
 async def revoke_all_admin_sessions(
     request: Request,
+    response: Response,
     current_user: Profile = Depends(require_admin),
     db: AsyncSession = Depends(get_db),
 ) -> BaseSuccessResponse[RevokeSessionResponse]:
     count = await _svc.clear_all_admin_sessions_2fa(db, str(current_user.id))
-    # Supabase's admin API only supports revoking every session for a user at
-    # once (not one specific session) — this is the strongest option
-    # available and matches "logout everywhere".
+    # Logout everywhere: every login session of this user, this device included.
     await _svc.logout(db, str(current_user.id))
+    clear_auth_cookies(response, surface_for_request(request))
     ip, ua = _client_meta(request)
     await _audit.log(
         db,

@@ -1,5 +1,6 @@
 """
-Admin session cleanup worker — runs hourly.
+Admin session cleanup worker — runs hourly (also prunes expired login
+sessions and one-time auth tokens).
 
 Batch-deletes AdminSession rows whose 2FA verification expired more than an
 hour ago. Expired sessions are already rejected at request time by the 2FA
@@ -24,9 +25,12 @@ async def run() -> None:
 
 
 async def _cleanup_expired_sessions(db) -> None:
+    from app.modules.auth.identity_service import IdentityService
     from app.modules.auth.service import AuthService
 
     deleted = await AuthService().cleanup_expired_admin_sessions(db)
+    # Same hygiene for login sessions / one-time tokens past their lifetime.
+    deleted += await IdentityService().cleanup_expired_sessions(db)
     if deleted:
         log.info("admin_sessions_cleaned_up", count=deleted)
     else:

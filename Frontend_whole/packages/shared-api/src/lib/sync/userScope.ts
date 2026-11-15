@@ -12,7 +12,7 @@
  * scope (userId/userIds, even empty) is only relevant when it names the
  * current user.
  */
-import { getUserId } from "../supabase/session";
+import { getUserId } from "../auth/session";
 
 /** A single user id or a list of user ids an event belongs to. */
 export type UserScope = string | string[] | undefined;

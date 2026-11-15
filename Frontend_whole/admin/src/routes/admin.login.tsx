@@ -4,20 +4,14 @@ import { Loader2 } from "lucide-react";
 import { sanitizeRedirect } from "@hadha/shared-utils";
 import { useAuthContext } from "@/providers/auth-context";
 import { api } from "@/lib/api/client";
+import { isApiError, toUserMessage } from "@/lib/api/errors";
 import { queryKeys } from "@/lib/api/queryKeys";
-import { getSession } from "@/lib/supabase/session";
+import { getSession } from "@hadha/shared-api";
 import { roleSatisfies } from "@/types/auth";
 import type { ProfileDto } from "@/types/profile";
 import type { TwoFactorStatus } from "@/types/admin";
 import logoAsset from "@/assets/hadha-logo.png";
 import markAsset from "@/assets/hadha-mark.png";
-
-// Small helper: wait for Supabase to fully persist the session to localStorage
-// before the API client reads it. Without this, api.get() races the SDK's
-// internal _saveSession() and goes out without an Authorization header.
-function waitForSession(ms = 200): Promise<void> {
-  return new Promise((res) => setTimeout(res, ms));
-}
 
 export const Route = createFileRoute("/admin/login")({
   validateSearch: (search: Record<string, unknown>) => ({
@@ -27,7 +21,7 @@ export const Route = createFileRoute("/admin/login")({
     const session = await getSession();
     if (!session) return; // Not logged in — show the login form
 
-    // Already have a Supabase session — verify admin role
+    // Already signed in — verify admin role
     try {
       const profile = await queryClient.fetchQuery({
         queryKey: queryKeys.profile.me,
@@ -69,14 +63,10 @@ function AdminLoginPage() {
     setLoading(true);
 
     try {
-      // 1. Authenticate via Supabase
+      // 1. Authenticate (the backend sets the session cookies)
       await login(email, password);
 
-      // 2. Give the Supabase SDK a tick to persist the session so the API
-      //    client can read the token from the freshly-written localStorage entry.
-      await waitForSession();
-
-      // 3. Verify this account has admin-level role
+      // 2. Verify this account has admin-level role
       let profile: ProfileDto | null = null;
       try {
         profile = await api.get<ProfileDto>("/me");
@@ -97,7 +87,7 @@ function AdminLoginPage() {
         return;
       }
 
-      // 5. Check if 2FA is enabled — redirect to challenge page if so
+      // 3. Check if 2FA is enabled — redirect to challenge page if so
       try {
         const tfStatus = await api.get<TwoFactorStatus>("/auth/admin/2fa/status");
         if (tfStatus.is_enabled) {
@@ -114,15 +104,14 @@ function AdminLoginPage() {
         // If 2FA status check fails, continue normally (don't block login)
       }
 
-      // 6. Navigate to the originally requested admin page (or dashboard)
+      // 4. Navigate to the originally requested admin page (or dashboard)
       const target = sanitizeRedirect(redirectTo, "/admin");
       navigate({ to: target });
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : "Login failed. Please try again.";
-      if (msg.includes("Invalid login credentials") || msg.includes("invalid_credentials")) {
+      if (isApiError(err) && err.code === "INVALID_CREDENTIALS") {
         setError("Invalid email or password.");
       } else {
-        setError(msg);
+        setError(toUserMessage(err));
       }
     } finally {
       setLoading(false);

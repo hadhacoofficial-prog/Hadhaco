@@ -34,7 +34,7 @@ export function humansTxt(): string {
     "",
     "/* SITE */",
     "Standards: HTML5, CSS3",
-    "Components: React, TanStack Start, Tailwind CSS, FastAPI, Supabase",
+    "Components: React, TanStack Start, Tailwind CSS, FastAPI, PostgreSQL",
     "",
   ].join("\n");
 }

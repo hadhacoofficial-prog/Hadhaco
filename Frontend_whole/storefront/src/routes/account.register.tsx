@@ -3,11 +3,11 @@ import { createFileRoute, useNavigate, Link, redirect } from "@tanstack/react-ro
 import { useMutation } from "@tanstack/react-query";
 import { Lock, Mail, User } from "lucide-react";
 import { toast } from "sonner";
+import { getSession } from "@hadha/shared-api";
 
 import { SiteLayout } from "@/components/site/SiteLayout";
 import { GoogleAuthButton } from "@/components/common/GoogleAuthButton";
 import { toUserMessage } from "@/lib/api/errors";
-import { getSession } from "@/lib/supabase/session";
 import { useAuthContext } from "@/providers/auth-context";
 
 export const Route = createFileRoute("/account/register")({
@@ -29,7 +29,7 @@ function RegisterPage() {
   const registerMutation = useMutation({
     mutationFn: () => register(name, email, password),
     onSuccess: () => {
-      toast.success("Account created! Check your email to confirm, then sign in.");
+      toast.success("Account created! Check your email to verify your address, then sign in.");
       navigate({ to: "/account/login" });
     },
     onError: (e) => {
@@ -78,7 +78,9 @@ function RegisterPage() {
             icon={<Lock className="size-4" />}
             label="Password"
             type="password"
-            minLength={6}
+            minLength={8}
+            maxLength={72}
+            autoComplete="new-password"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
             required

@@ -243,7 +243,7 @@ def create_app() -> FastAPI:
         allow_origins=settings.allowed_origins_list,
         allow_credentials=True,
         allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-        allow_headers=["Authorization", "Content-Type", "X-Request-ID"],
+        allow_headers=["Authorization", "Content-Type", "X-Request-ID", "X-CSRF-Token"],
         expose_headers=["X-Request-ID"],
     )
 
@@ -260,6 +260,7 @@ def _mount_routers(app: FastAPI) -> None:
     from app.modules.admin.router import router as admin_router
     from app.modules.analytics.router import router as analytics_router
     from app.modules.auth.router import router as auth_router
+    from app.modules.auth.session_router import router as auth_session_router
     from app.modules.cart.router import router as cart_router
     from app.modules.catalog.router import router as catalog_router
     from app.modules.categories.router import router as categories_router
@@ -295,6 +296,7 @@ def _mount_routers(app: FastAPI) -> None:
     from app.modules.wishlist.router import router as wishlist_router
 
     app.include_router(dev_auth_router, prefix=prefix, tags=["dev-auth"])
+    app.include_router(auth_session_router, prefix=prefix, tags=["auth"])
     app.include_router(auth_router, prefix=prefix, tags=["auth"])
     app.include_router(profiles_router, prefix=prefix, tags=["profiles"])
     app.include_router(categories_router, prefix=prefix, tags=["categories"])
