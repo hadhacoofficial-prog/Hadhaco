@@ -1,4 +1,7 @@
 # HADHA.CO — MASTER PRODUCTION ARCHITECTURE SPECIFICATION
+
+> **Status update (2026-11-15):** this is the original design specification. Two platform decisions have since changed and the text below is updated where it matters: **authentication is first-party** (HttpOnly-cookie sessions, bcrypt passwords, Google OIDC — no Supabase Auth) and **the database is a self-hosted PostgreSQL 17 container** (`hadha-postgres`) with hourly encrypted backups to S3 (no Supabase database). Sections that still describe Supabase Dashboard tasks, `auth.users` triggers or RLS-for-`supabase-js` are kept as design history and are marked *(historical)*. Current operations docs: `DEVOPS.md`, `Infra/docs/DATABASE_CONNECTIVITY.md`, `Docs/ADMIN_SESSION_SECURITY.md`.
+
 > Version 1.0 | Silver Jewellery Ecommerce Platform | Production Grade
 
 # HADHA.CO — MASTER ARCHITECTURE SPECIFICATION INDEX
@@ -47,8 +50,8 @@
 
 ### Tech Stack Summary
 - **Backend:** FastAPI 0.110 · Python 3.12 · SQLAlchemy 2 Async · Alembic · Pydantic V2
-- **Database:** Supabase PostgreSQL · Redis
-- **Auth:** Supabase Auth (JWT) · TOTP 2FA for admins
+- **Database:** PostgreSQL 17 (self-hosted container) · Redis
+- **Auth:** First-party cookie sessions (HS256 access token, rotating refresh) · Google OIDC · TOTP 2FA for admins
 - **Storage:** Cloudflare R2 + CDN
 - **Payments:** Razorpay
 - **Shipping:** Delivery One
@@ -75,7 +78,7 @@ These instructions govern every file, every module, and every line of code gener
 - Do NOT simplify schema for brevity.
 - Do NOT omit SQL DDL.
 - Do NOT omit Alembic migrations.
-- Do NOT omit Supabase RLS policies.
+- Do NOT omit row-level-security defaults (RLS enabled on every table; the backend connects as the table owner).
 - Do NOT omit indexes.
 - Do NOT omit database views.
 - Do NOT omit triggers.
@@ -87,9 +90,9 @@ These instructions govern every file, every module, and every line of code gener
 - Do NOT omit input validation.
 - Do NOT omit authorization checks.
 - Do NOT trust any value from the frontend for price, tax, discount, or shipping.
-- Do NOT implement custom JWT issuance — Supabase Auth is the sole JWT authority.
-- Do NOT implement custom password hashing.
-- Do NOT implement custom session storage.
+- Access tokens are issued only by the auth module (`app/modules/auth`, `app/core/security.py`); never mint tokens elsewhere.
+- Password hashing is bcrypt via `app/core/security.py` only.
+- Sessions live in `auth_sessions` only (hashed rotating refresh tokens).
 - Do NOT implement custom refresh token storage.
 - Every API must include request schema, response schema, validation, error handling, authorization, and audit logging.
 - Every generated file must be immediately deployable to production.
@@ -107,8 +110,8 @@ These instructions govern every file, every module, and every line of code gener
 | ORM | SQLAlchemy 2.0 Async |
 | Migrations | Alembic |
 | Validation | Pydantic V2 |
-| Database | PostgreSQL via Supabase |
-| Auth | Supabase Auth (JWT) |
+| Database | PostgreSQL 17 (self-hosted, asyncpg) |
+| Auth | First-party (HttpOnly cookies, HS256 access token) |
 | Cache | Redis (upstash or self-hosted) |
 | Background Jobs | APScheduler (abstracted behind QueueService interface) |
 | Storage | Cloudflare R2 |
@@ -130,12 +133,12 @@ These instructions govern every file, every module, and every line of code gener
 | Framework | React (Vite + TypeScript) |
 | Router | TanStack Router |
 | Data Fetching | TanStack Query |
-| Auth Client | supabase-js |
+| Auth Client | `@hadha/shared-api` (cookie session + CSRF) |
 
 ### Database
 | Component | Technology |
 |-----------|-----------|
-| Primary DB | Supabase PostgreSQL (managed) |
+| Primary DB | PostgreSQL 17 (`hadha-postgres` container) |
 | Extensions | pgcrypto, uuid-ossp, pg_trgm, unaccent, btree_gin |
 
 ---
@@ -151,7 +154,7 @@ Service Layer (Business Logic)
       ↓
 Repository Layer (Database Access via SQLAlchemy)
       ↓
-Database (Supabase PostgreSQL)
+Database (PostgreSQL 17, hadha-postgres)
 ```
 
 ### Rules
@@ -188,7 +191,7 @@ hadha-backend/
 │   ├── main.py                          # FastAPI app factory, middleware registration, router mounting
 │   ├── core/
 │   │   ├── config.py                    # Pydantic Settings — typed env vars, startup validation
-│   │   ├── security.py                  # Supabase JWT verification, RBAC dependencies
+│   │   ├── security.py                  # Access tokens, passwords, CSRF, RBAC helpers
 │   │   ├── database.py                  # Async SQLAlchemy engine, session factory
 │   │   ├── redis.py                     # Redis client factory
 │   │   ├── logging.py                   # structlog configuration, JSON formatter
@@ -474,16 +477,15 @@ hadha-backend/
 
 ---
 
-## 1.5 SUPABASE STRATEGY
+## 1.5 DATABASE STRATEGY
 
 ### Philosophy
-Supabase is the database host AND the authentication provider. The entire schema is managed as versioned SQL files — never through the Supabase dashboard UI. Running `setup.sql` must create the complete database from scratch, including all tables, indexes, views, RLS policies, triggers, and seed data.
+PostgreSQL 17 runs as the container `hadha-postgres` on the production VPS (its own compose project, internal network only). The schema is managed as versioned SQL (`supabase/sql/*`, the folder name is historical) plus Alembic migrations for every later change (`alembic upgrade head`, run by the deploy). Credentials never leave `/opt/hadha/.env.postgres`.
 
 ### Database Access Pattern
-- FastAPI connects to Supabase PostgreSQL via the **direct connection string** (port 5432) using SQLAlchemy async.
-- The **service role key** is used server-side for all backend operations that bypass RLS (e.g., admin service layer).
-- The **anon key** is used only in the frontend via `supabase-js`.
-- RLS policies enforce data isolation at the database level as a second layer of defense.
+- FastAPI connects directly to PostgreSQL (`hadha-postgres:5432`, no pooler) using SQLAlchemy async + asyncpg.
+- The backend connects as the table owner, which bypasses RLS; RLS stays enabled on all tables with no policies so nothing else can read them.
+- Backups: hourly encrypted `pg_dump` to a private S3 bucket plus a verified backup before every deploy (see `Infra/docs/DATABASE_CONNECTIVITY.md`).
 
 ### SQL File Execution Order
 ```
@@ -513,74 +515,55 @@ Supabase is the database host AND the authentication provider. The entire schema
 023_seed_data.sql       → roles, admin user, categories, settings, CMS defaults
 ```
 
-### Required Manual Supabase Dashboard Tasks
-Only the following require manual dashboard configuration. Everything else is automated via SQL.
-
-1. Enable Google OAuth provider — paste Google Client ID and Secret
-2. Configure SMTP settings — use Resend SMTP credentials
-3. Set Auth redirect URLs — `https://hadha.co/auth/callback`, `https://hadha.co/auth/reset-password`
-4. Configure Resend domain for transactional email
-5. Configure Razorpay webhook endpoint — `https://api.hadha.co/webhooks/razorpay`
-6. Configure Delivery One webhook endpoint — `https://api.hadha.co/webhooks/delivery-one`
-7. Enable `pg_cron` extension if periodic DB-level cleanup jobs are needed
+### Required manual setup (everything else is automated)
+1. Google Cloud Console — OAuth client with redirect URI `https://api.hadha.co/api/v1/auth/google/callback`
+2. Resend domain for transactional e-mail (verification and password-reset links are sent through it)
+3. Razorpay webhook endpoint — `https://api.hadha.co/webhooks/razorpay`
+4. Delivery One webhook endpoint — `https://api.hadha.co/webhooks/delivery-one`
+5. A private S3 bucket and access key for database backups (`/opt/hadha/.env.backup`)
 
 ---
 
 ## 1.6 AUTHENTICATION MODULE
 
 ### Provider
-Supabase Auth is the exclusive authentication provider. FastAPI does NOT issue JWTs, does NOT hash passwords, does NOT store sessions, and does NOT store refresh tokens.
+Authentication is first-party. The backend hashes passwords (bcrypt), issues short-lived access tokens, stores hashed rotating refresh tokens in `auth_sessions`, and sends verification / reset e-mails. Google sign-in is an OpenID Connect authorization-code flow with PKCE implemented by the backend.
 
 ### Supported Authentication Methods
-- Email + Password (with email verification gate)
-- Magic Link (passwordless email login)
-- Google OAuth (via Supabase OAuth flow)
-- Password Reset (via Supabase)
+- Email + Password (with an e-mail verification gate)
+- Google sign-in (OIDC + PKCE; links to an existing verified account by e-mail)
+- Password reset by e-mailed single-use link (signs out every device)
 
 ### Authentication Flow
 ```
-User submits credentials (browser/app)
+Browser app  --POST /auth/login-->  FastAPI verifies bcrypt password
         ↓
-supabase-js calls Supabase Auth
+FastAPI creates an auth_sessions row and sets HttpOnly cookies on the API host:
+  access  (HS256 JWT, 15 min, SameSite=Lax)  +  refresh (opaque, rotating, SameSite=Strict)
         ↓
-Supabase validates and issues JWT (access_token) + refresh_token
+Response body carries the user and a CSRF token (never a bearer token)
         ↓
-Frontend stores tokens (memory or httpOnly cookie — NOT localStorage)
+API request: cookies sent automatically (credentials: "include");
+             writes add X-CSRF-Token and must come from an allowed Origin
         ↓
-API request: Authorization: Bearer <access_token>
-        ↓
-FastAPI middleware: verify JWT signature using SUPABASE_JWT_SECRET
-        ↓
-Extract sub (user UUID), email, role from JWT claims
-        ↓
-Fetch profile from profiles table
-        ↓
-Inject CurrentUser into request context
+FastAPI: verify signature/claims -> check the Redis revocation deny-list -> load profile
         ↓
 RBAC dependency enforces role requirements
         ↓
-Business logic executes
+On 401 the client calls POST /auth/refresh once (refresh token rotates; reuse revokes the session)
 ```
+API clients (k6, Postman) may send `Authorization: Bearer <access token>` instead of cookies (no CSRF needed).
 
-### JWT Verification (FastAPI)
+### Token Verification (FastAPI)
 ```python
 # app/core/security.py
-import jwt
-from app.core.config import settings
-
-async def verify_supabase_jwt(token: str) -> dict:
-    try:
-        payload = jwt.decode(
-            token,
-            settings.SUPABASE_JWT_SECRET,
-            algorithms=["HS256"],
-            audience="authenticated",
-        )
-        return payload
-    except jwt.ExpiredSignatureError:
-        raise HTTPException(status_code=401, detail="Token expired")
-    except jwt.InvalidTokenError:
-        raise HTTPException(status_code=401, detail="Invalid token")
+def verify_access_token(token: str) -> JWTPayload:
+    payload = jwt.decode(
+        token, _derived_key(b"hadha:auth:access:v1"),   # derived from SECRET_KEY
+        algorithms=["HS256"], audience="hadha-api", issuer="hadha-auth",
+        options={"require": ["exp", "iat", "sub", "sid"]},
+    )
+    # sid = auth_sessions.id; revocation is checked separately (Redis deny-list)
 ```
 
 ### CurrentUser Dependency
@@ -589,8 +572,8 @@ async def get_current_user(
     token: str = Depends(oauth2_scheme),
     db: AsyncSession = Depends(get_db),
 ) -> Profile:
-    payload = await verify_supabase_jwt(token)
-    user_id = payload.get("sub")
+    payload = verify_access_token(token)
+    user_id = payload.sub
     profile = await profile_repository.get_by_id(db, user_id)
     if not profile or not profile.is_active:
         raise HTTPException(status_code=401, detail="User not found or inactive")
@@ -651,7 +634,7 @@ CREATE INDEX idx_admin_sessions_ip ON admin_sessions(ip_address);
 ### Auth APIs
 
 #### POST /auth/verify-token
-Validates a Supabase JWT and returns the profile. Used by frontend on app load.
+Validates the access token (cookie or Bearer) and returns the profile.
 
 **Request:** `Authorization: Bearer <token>`
 
@@ -682,7 +665,7 @@ Validates TOTP code on every admin login attempt.
 **Auth:** `require_admin`
 
 #### POST /auth/logout
-Revokes Supabase session (calls Supabase sign-out API via service role).
+Revokes the caller's login session (marks `auth_sessions` revoked, adds it to the Redis deny-list) and clears the cookies.
 **Auth:** `get_current_user`
 
 #### POST /auth/force-logout/{user_id}
@@ -694,9 +677,9 @@ Forces session revocation for any user.
 ## 1.7 PROFILES MODULE
 
 ### Responsibilities
-- Maintain extended user profile data linked to `auth.users`.
+- Maintain user profile data; credentials live in `user_credentials`, Google links in `oauth_identities`.
 - Serve as the authority for role, display name, avatar, and account status.
-- Automatically created via database trigger on Supabase Auth signup.
+- Created by the backend on registration or first Google sign-in (previously a database trigger on `auth.users`, removed by migration 0070).
 
 ### Profile Table
 ```sql
@@ -854,8 +837,8 @@ SMSProvider (Twilio)
 | Event | Email | SMS | Notes |
 |-------|-------|-----|-------|
 | UserRegistered | ✓ | — | Welcome email |
-| EmailVerification | ✓ | — | Supabase handles |
-| PasswordReset | ✓ | — | Supabase handles |
+| EmailVerification | ✓ | — | Sent by `app/modules/auth/emails.py` |
+| PasswordReset | ✓ | — | Sent by `app/modules/auth/emails.py` |
 | OrderCreated | ✓ | ✓ | SMS only after payment confirmed |
 | PaymentReceived | ✓ | — | Payment receipt email |
 | OrderProcessing | ✓ | — | |
@@ -1006,17 +989,9 @@ ALLOWED_ORIGINS=http://localhost:3000,http://localhost:5173
 ALLOWED_HOSTS=localhost,127.0.0.1
 
 # ─────────────────────────────────────────────
-# SUPABASE
-# ─────────────────────────────────────────────
-SUPABASE_URL=
-SUPABASE_ANON_KEY=
-SUPABASE_SERVICE_ROLE_KEY=
-SUPABASE_JWT_SECRET=
-
-# ─────────────────────────────────────────────
 # DATABASE
 # ─────────────────────────────────────────────
-DATABASE_URL=postgresql+asyncpg://postgres:password@db.xxxx.supabase.co:5432/postgres
+DATABASE_URL=postgresql+asyncpg://hadha:password@hadha-postgres:5432/hadha
 DATABASE_POOL_SIZE=20
 DATABASE_MAX_OVERFLOW=10
 DATABASE_POOL_TIMEOUT=30
@@ -1096,7 +1071,7 @@ ADMIN_URL=http://localhost:3001
 # ─────────────────────────────────────────────
 # AUTH CALLBACKS
 # ─────────────────────────────────────────────
-SUPABASE_AUTH_REDIRECT_URL=http://localhost:3000/auth/callback
+API_BASE_URL=http://localhost:8000
 GOOGLE_CLIENT_ID=
 GOOGLE_CLIENT_SECRET=
 
@@ -1149,11 +1124,9 @@ class Settings(BaseSettings):
     DATABASE_POOL_SIZE: int = 20
     DATABASE_MAX_OVERFLOW: int = 10
 
-    # Supabase
-    SUPABASE_URL: str
-    SUPABASE_ANON_KEY: str
-    SUPABASE_SERVICE_ROLE_KEY: str
-    SUPABASE_JWT_SECRET: str
+    # Auth
+    AUTH_ACCESS_TTL_SECONDS: int = 900
+    AUTH_REFRESH_TTL_DAYS: int = 30
 
     # Redis
     REDIS_URL: str
@@ -4046,9 +4019,9 @@ Returns a concise KPI snapshot for the admin home screen.
 ## 4.5 SECURITY
 
 ### JWT Security
-- All protected routes verify the Supabase JWT on every request — no caching of token validity.
-- JWT expiry is enforced; expired tokens return `401`.
-- JWT secret (`SUPABASE_JWT_SECRET`) is never logged or exposed.
+- All protected routes verify the access token on every request and check the session revocation deny-list.
+- Token expiry is enforced; expired tokens return `401` and the client refreshes once.
+- The signing key is derived from `SECRET_KEY` and is never logged or exposed; cookie-borne writes require a CSRF token and an allowed Origin.
 
 ### Rate Limiting
 Redis-backed sliding window rate limiter applied per endpoint category:
@@ -4241,7 +4214,7 @@ CREATE INDEX idx_audit_logs_created       ON audit_logs(created_at DESC);
 | `auth.login` | Successful JWT verification |
 | `auth.logout` | POST /auth/logout |
 | `auth.login_failed` | JWT invalid or user inactive |
-| `auth.password_reset` | Supabase password reset callback |
+| `auth.password_reset` | POST /auth/reset-password |
 | `auth.2fa_enabled` | Admin 2FA setup completed |
 | `user.role_changed` | PATCH /admin/users/{id}/role |
 | `user.status_changed` | PATCH /admin/users/{id}/status |
@@ -4297,8 +4270,8 @@ CREATE INDEX idx_audit_logs_created       ON audit_logs(created_at DESC);
 ### Connection Pooling
 - SQLAlchemy async engine with `pool_size=20`, `max_overflow=10`, `pool_timeout=30`.
 - Use `asyncpg` driver.
-- Supabase connection pooler (PgBouncer) at port 5432 in session mode — use for transactional workloads.
-- For direct migrations (Alembic), connect directly to port 5432 (not through PgBouncer).
+- Direct connection to `hadha-postgres:5432` — no pooler, so prepared statements and `SET`/`LISTEN` work.
+- Migrations (Alembic) use the same host with `NullPool` in a one-shot container.
 
 ---
 
@@ -4316,7 +4289,7 @@ CREATE EXTENSION IF NOT EXISTS "btree_gin";
 ### setup.sql (master script)
 ```sql
 -- HADHA.CO — Master Database Setup Script
--- Run this entire file in Supabase SQL Editor to create the complete schema.
+-- Run this file against an empty PostgreSQL database to create the base schema.
 -- Execution order is mandatory.
 
 \i sql/000_extensions.sql
@@ -4350,7 +4323,7 @@ SELECT schemaname, tablename FROM pg_tables WHERE schemaname = 'public' ORDER BY
 
 ---
 
-## 5.3 SUPABASE SETUP
+## 5.3 SUPABASE SETUP *(historical — no longer applied)*
 
 ### Auth Configuration (via SQL where possible)
 ```sql
@@ -4707,7 +4680,7 @@ CREATE INDEX idx_search_history_query   ON search_history USING GIN(query gin_tr
 All triggers defined in `022_triggers.sql`.
 
 ```sql
--- ── 1. Auto-create profile on Supabase Auth signup ──────────────────────────
+-- ── 1. Auto-create profile on Supabase Auth signup (historical: removed by migration 0070; the backend now creates the profile) ──
 CREATE OR REPLACE FUNCTION handle_new_user()
 RETURNS TRIGGER LANGUAGE plpgsql SECURITY DEFINER
 SET search_path = public AS $$
@@ -4844,7 +4817,7 @@ $$;
 
 ## 5.7 RLS POLICIES
 
-All policies defined in `021_rls.sql`. The backend uses `service_role` key which bypasses RLS. These policies protect direct Supabase client access (e.g. from `supabase-js` in the frontend).
+All policies defined in `021_rls.sql`. The backend connects as the table owner, which bypasses RLS. These policies were written for direct Supabase client access (`supabase-js`) and were **dropped by migration 0070** (they depend on `auth.uid()`); RLS stays enabled on every table with no policies.
 
 ```sql
 -- ─── PROFILES ────────────────────────────────────────────────────────────────
@@ -5251,12 +5224,12 @@ jobs:
 
 ## 5.11 BACKUP STRATEGY
 
-### Supabase Managed Backups (Primary)
-- Supabase Pro/Team plan: daily automated backups with 7-day retention.
-- Point-in-Time Recovery (PITR) enabled: allows restore to any second within retention window.
-- No manual configuration needed — enabled via Supabase dashboard.
+### Automated Backups (Primary)
+- `scripts/db-backup.sh` runs hourly (cron, `deploy` user): validated `pg_dump -Fc`, kept 48 hourly + 14 daily locally, AES-256-encrypted and uploaded to a private S3 bucket (Supabase Storage, S3 protocol).
+- Before every deploy `db-backup.sh --pre-deploy` uploads, downloads, decrypts and test-restores a dump; a failure aborts the deploy before migrations.
+- Restore: decrypt the dump, then `pg_restore --clean --if-exists` into `hadha-postgres` (see `DEVOPS.md`).
 
-### Manual Backup Script (Secondary)
+### Manual Backup Script (Secondary, historical)
 ```bash
 #!/bin/bash
 # Runs daily via cron; stores backup in R2
@@ -5545,18 +5518,14 @@ Build in this exact sequence. Each phase must be fully complete — tables, mode
 
 ---
 
-## APPENDIX: REQUIRED MANUAL SUPABASE DASHBOARD TASKS
+## APPENDIX: REQUIRED MANUAL SETUP
 
-The following CANNOT be automated via SQL and must be done manually in the Supabase Dashboard after running `setup.sql`:
+Supabase Dashboard tasks no longer apply (Supabase Auth and the Supabase database are not used). One-time manual setup that remains:
 
-1. **Enable Google OAuth** — Authentication → Providers → Google → paste `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET`
-2. **Configure SMTP** — Authentication → Email → Custom SMTP → enter Resend SMTP credentials (host: smtp.resend.com, port: 587)
-3. **Set Auth Redirect URLs** — Authentication → URL Configuration:
-   - Site URL: `https://hadha.co`
-   - Redirect URLs: `https://hadha.co/auth/callback`, `https://hadha.co/auth/reset-password`
-4. **Configure Resend Domain** — Verify `hadha.co` in Resend dashboard + add DNS records
-5. **Configure Razorpay Webhook** — Razorpay Dashboard → Webhooks → Add endpoint `https://api.hadha.co/webhooks/razorpay` with events: `payment.authorized`, `payment.captured`, `payment.failed`, `order.paid`, `refund.created`, `refund.processed`
-6. **Configure Delivery One Webhook** — Delivery One Dashboard → Webhooks → Add endpoint `https://api.hadha.co/webhooks/delivery-one`
-7. **Enable `pg_cron` extension** — Supabase Dashboard → Database → Extensions → enable `pg_cron` (required for materialized view refresh schedules)
+1. **Google sign-in** — Google Cloud Console → Credentials → Web client: authorized redirect URI `https://api.hadha.co/api/v1/auth/google/callback`; put the client ID/secret in `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` (GitHub secrets, written to the server env by the deploy).
+2. **Resend domain** — verify `hadha.co` in the Resend dashboard and add the DNS records (verification and reset e-mails are sent through it).
+3. **Razorpay webhook** — Razorpay Dashboard → Webhooks → `https://api.hadha.co/webhooks/razorpay` with events: `payment.authorized`, `payment.captured`, `payment.failed`, `order.paid`, `refund.created`, `refund.processed`.
+4. **Delivery One webhook** — `https://api.hadha.co/webhooks/delivery-one`.
+5. **Backup bucket** — a private S3 bucket + access key, configured in `/opt/hadha/.env.backup` on the VPS.
 
 ---

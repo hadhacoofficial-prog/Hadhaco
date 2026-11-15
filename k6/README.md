@@ -176,7 +176,7 @@ k6 run smoke/health.js
 
 ### Architecture
 - **Backend**: FastAPI async + SQLAlchemy 2.0 async + PostgreSQL + Redis
-- **Auth**: Supabase Auth (JWT ES256 verification, JWKS caching)
+- **Auth**: first-party sessions (HS256 access token verification, cookie or Bearer)
 - **Payments**: Razorpay (2-phase: create intent → verify)
 - **Inventory**: SELECT FOR UPDATE with deadlock prevention (sorted locking)
 - **Cache**: Redis with SHA256-hashed param keys for product listings

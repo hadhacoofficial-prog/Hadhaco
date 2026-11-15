@@ -193,9 +193,8 @@ Set these in **Settings → Secrets → Actions → New repository secret**:
 
 | Secret | Description |
 |--------|-------------|
-| `SUPABASE_URL` | Supabase project URL |
-| `SUPABASE_ANON_KEY` | Supabase publishable key |
-| `SUPABASE_SERVICE_ROLE_KEY` | Supabase service role key |
+| `GOOGLE_CLIENT_ID` | Google OAuth client ID (sign-in) |
+| `GOOGLE_CLIENT_SECRET` | Google OAuth client secret |
 | `JWT_SECRET` | 64-char random hex |
 | `REDIS_PASSWORD` | Redis authentication password |
 
@@ -230,8 +229,11 @@ Set these in **Settings → Secrets → Actions → New repository secret**:
 4. SSH into production VPS
 5. backup.sh              — snapshot image metadata, Redis volume, compose file,
                              nginx config, .env checksums
+5a. db-backup.sh --pre-deploy — dump the database, upload it encrypted to the S3
+                             bucket, download it back and prove it restores;
+                             any failure stops the deploy BEFORE migrations
 6. Pull new images from GHCR
-7. alembic upgrade head   — runs in isolated container against Supabase PostgreSQL
+7. alembic upgrade head   — runs in isolated container against the local PostgreSQL (hadha-postgres)
 8. docker compose up -d   — zero-downtime restart
 9. healthcheck.sh         — checks backend/frontend/redis/nginx + external HTTP probe
 9a. Success → notify.sh success
@@ -320,7 +322,15 @@ docker compose -f /opt/hadha/docker-compose.production.yml restart hadha-redis
 
 ### Database recovery
 
-The database is in Supabase — use the Supabase dashboard for point-in-time recovery.
+The database is the local PostgreSQL container `hadha-postgres` (own compose project, data on the `hadha_postgres_data` volume). Recovery is from the encrypted dumps in the `db_backup` bucket (hourly, plus one before every deploy):
+
+```bash
+# download hadha-<ts>.dump.enc (or predeploy-<ts>-<tag>.dump.enc) from the bucket, then:
+BACKUP_ENCRYPTION_KEY=... openssl enc -d -aes-256-cbc -pbkdf2 -pass env:BACKUP_ENCRYPTION_KEY -in X.dump.enc -out X.dump
+docker exec -i hadha-postgres pg_restore --clean --if-exists --no-owner -U hadha -d hadha < X.dump
+```
+
+Local copies are also kept in `/opt/hadha/backups/db`.
 Redis is a cache and rate-limit store; losing it is non-fatal.
 
 ---
@@ -398,35 +408,34 @@ docker stats --no-stream
 
 ## Database Connection Architecture
 
-Supabase exposes three ways to connect to its PostgreSQL server.
+The application database is PostgreSQL 17 running as the container `hadha-postgres`
+on the VPS. It is its own compose project (`Infra/database/docker-compose.database.yml`),
+so release deploys never restart it. It is reachable only on the internal `hadha`
+Docker network (no published port); credentials are in `/opt/hadha/.env.postgres`
+(mode 600, generated once by `scripts/db-setup.sh`).
 
-### Connection mode comparison
-
-| Mode | Host/Port | PgBouncer mode | Supports SET / PREPARE / LISTEN |
-|------|-----------|---------------|--------------------------------|
-| **Direct** | `db.PROJECT.supabase.co:5432` | Bypassed | Yes |
-| **Session Pooler** | `*.pooler.supabase.com:5432` | Session mode | Yes |
-| **Transaction Pooler** | `*.pooler.supabase.com:6543` | Transaction mode | No |
-
-### FastAPI uses the Session Pooler (`DATABASE_URL`, port 5432)
-
-The application uses SQLAlchemy's `AsyncEngine` with a client-side connection pool (`pool_size=5, max_overflow=2`). Session mode is correct because asyncpg caches named prepared statements per connection.
-
-### Alembic uses the Transaction Pooler (`ALEMBIC_DATABASE_URL`, port 6543)
-
-Migrations use `NullPool` and run as a one-shot Docker container. This prevents connection slot contention with the running FastAPI pool.
+There is no connection pooler: asyncpg connects directly, so named prepared
+statements and `SET`/`LISTEN` work. The runtime uses a client-side SQLAlchemy pool
+(`DATABASE_POOL_SIZE` / `DATABASE_MAX_OVERFLOW`); migrations use `NullPool` and run
+as a one-shot container.
 
 ### Configuration
 
-Add both URLs to `/opt/hadha/.env.production`:
+`/opt/hadha/.env.production` (written by `scripts/db-cutover.sh`):
 
 ```env
-# Session Pooler — used by the FastAPI runtime
-DATABASE_URL=postgresql+asyncpg://postgres.PROJECT_REF:PASSWORD@aws-0-REGION.pooler.supabase.com:5432/postgres
-
-# Transaction Pooler — used only by Alembic migrations
-ALEMBIC_DATABASE_URL=postgresql+asyncpg://postgres.PROJECT_REF:PASSWORD@aws-0-REGION.pooler.supabase.com:6543/postgres
+DATABASE_URL=postgresql+asyncpg://hadha:PASSWORD@hadha-postgres:5432/hadha
+ALEMBIC_DATABASE_URL=postgresql+psycopg://hadha:PASSWORD@hadha-postgres:5432/hadha
 ```
+
+### Backups
+
+- `scripts/db-backup.sh` runs hourly from `/etc/cron.d/hadha-db-backup` (as the `deploy` user): validated `pg_dump -Fc`, kept 48 hourly + 14 daily locally, encrypted and uploaded to the private `db_backup` bucket (Supabase Storage, S3 protocol; config in `/opt/hadha/.env.backup`).
+- `deploy.sh` runs `db-backup.sh --pre-deploy <tag>` before migrations (upload + download + decrypt + restore check). A failure aborts the deploy; emergency bypass for a manual deploy: `SKIP_PREDEPLOY_BACKUP=1`.
+
+### Moving data between databases
+
+`scripts/db-cutover.sh rehearse|cutover|rollback` was used for the one-time move from Supabase and is kept as the tool for any future database move.
 
 ---
 

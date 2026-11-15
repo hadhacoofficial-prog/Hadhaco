@@ -210,7 +210,7 @@ After `docker compose up --build`:
 - [ ] `http://localhost:8082` opens Redis Commander
 - [ ] `http://localhost:8081` opens Dozzle with all container logs
 - [ ] `docker compose exec hadha-redis redis-cli ping` → `PONG`
-- [ ] Backend logs show `Connected to Supabase` (no ENETUNREACH)
+- [ ] Backend logs show a healthy database connection to `hadha-postgres` (no connection errors)
 - [ ] Backend logs show Redis connected (no connection errors)
 - [ ] Editing a `.py` file triggers uvicorn reload in backend logs
 - [ ] Editing a `src/` file triggers HMR in browser console

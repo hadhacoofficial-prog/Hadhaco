@@ -7,6 +7,7 @@ name: hadha
 #   8000 → backend         FastAPI / uvicorn --reload
 #   8080 → storefront      Vite dev server
 #   8081 → admin           Vite dev server
+#   5432 → postgres        dev database (127.0.0.1 only)
 #   6379 → redis           direct access for local debugging
 #   8082 → redis-commander
 #   8083 → dozzle
@@ -22,6 +23,80 @@ name: hadha
 
 services:
 
+  # ── Dev database ─────────────────────────────────────────────────────────────
+  # Filled on first start from the newest production backup in S3, scrubbed of
+  # personal data (see db-restore below). Data persists in the postgres_dev_data
+  # volume: `docker compose down` keeps it, `docker compose down -v` resets it.
+  postgres:
+    image: postgres:17.6-alpine
+    container_name: hadha-postgres-dev
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: hadha_dev
+    ports:
+      - "127.0.0.1:5432:5432"
+    volumes:
+      - postgres_dev_data:/var/lib/postgresql/data
+    networks:
+      - hadha-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d hadha_dev"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 5s
+
+  # ── One-shot: pull the latest backup from S3, restore it, scrub it ───────────
+  # Needs BACKUP_S3_* and BACKUP_ENCRYPTION_KEY in Backend/.env. Skips itself
+  # when the dev database already has data.
+  #   refresh:  FORCE_RESTORE=1 docker compose up db-restore
+  db-restore:
+    image: postgres:17.6-alpine
+    container_name: hadha-db-restore
+    restart: "no"
+    entrypoint: ["sh", "/dev-db/restore-from-s3.sh"]
+    env_file: ./Backend/.env
+    environment:
+      PGHOST: hadha-postgres-dev
+      PGUSER: postgres
+      PGPASSWORD: postgres
+      PGDATABASE: hadha_dev
+      FORCE_RESTORE: "${FORCE_RESTORE:-0}"
+      BACKUP_KEY: "${BACKUP_KEY:-}"
+    volumes:
+      - ./Infra/dev:/dev-db:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - hadha-network
+    # Same IPv6 workaround as the backend: a dead AAAA route would stall apk/curl.
+    sysctls:
+      net.ipv6.conf.all.disable_ipv6: "1"
+
+  # ── One-shot: bring the restored schema up to the current migrations ─────────
+  migrate:
+    build:
+      context: ./Backend
+      dockerfile: Dockerfile
+      target: development
+    container_name: hadha-migrate
+    restart: "no"
+    env_file: ./Backend/.env
+    environment:
+      DATABASE_URL: "postgresql+asyncpg://postgres:postgres@hadha-postgres-dev:5432/hadha_dev"
+      ALEMBIC_DATABASE_URL: "postgresql+psycopg://postgres:postgres@hadha-postgres-dev:5432/hadha_dev"
+    command: ["alembic", "-c", "alembic/alembic.ini", "upgrade", "head"]
+    volumes:
+      - ./Backend:/app
+    depends_on:
+      db-restore:
+        condition: service_completed_successfully
+    networks:
+      - hadha-network
+
   # ── FastAPI backend ──────────────────────────────────────────────────────────
   backend:
     build:
@@ -33,6 +108,8 @@ services:
     env_file: ./Backend/.env
     environment:
       REDIS_URL: "redis://:${REDIS_PASSWORD:-}@hadha-redis:6379/0"
+      DATABASE_URL: "postgresql+asyncpg://postgres:postgres@hadha-postgres-dev:5432/hadha_dev"
+      ALEMBIC_DATABASE_URL: "postgresql+psycopg://postgres:postgres@hadha-postgres-dev:5432/hadha_dev"
       ALLOWED_ORIGINS: "http://localhost:8080,http://localhost:8081,http://localhost:5173,http://www.localhost:8080,http://www.localhost:8081,http://www.localhost:5173"
       ALLOWED_HOSTS: "localhost,127.0.0.1,hadha-backend"
     volumes:
@@ -42,6 +119,8 @@ services:
     depends_on:
       hadha-redis:
         condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
     networks:
       - hadha-network
       - hadha-monitoring
@@ -65,6 +144,8 @@ services:
     env_file: ./Backend/.env
     environment:
       REDIS_URL: "redis://:${REDIS_PASSWORD:-}@hadha-redis:6379/0"
+      DATABASE_URL: "postgresql+asyncpg://postgres:postgres@hadha-postgres-dev:5432/hadha_dev"
+      ALEMBIC_DATABASE_URL: "postgresql+psycopg://postgres:postgres@hadha-postgres-dev:5432/hadha_dev"
       # Smaller per-process pool than the API — each Celery worker slot holds
       # one DB session at a time, not one per HTTP request (plan §13).
       DATABASE_POOL_SIZE: "1"
@@ -83,6 +164,8 @@ services:
     depends_on:
       hadha-redis:
         condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
     networks:
       - hadha-network
     healthcheck:
@@ -103,6 +186,8 @@ services:
     env_file: ./Backend/.env
     environment:
       REDIS_URL: "redis://:${REDIS_PASSWORD:-}@hadha-redis:6379/0"
+      DATABASE_URL: "postgresql+asyncpg://postgres:postgres@hadha-postgres-dev:5432/hadha_dev"
+      ALEMBIC_DATABASE_URL: "postgresql+psycopg://postgres:postgres@hadha-postgres-dev:5432/hadha_dev"
       DATABASE_POOL_SIZE: "1"
       DATABASE_MAX_OVERFLOW: "1"
     command:
@@ -118,6 +203,8 @@ services:
     depends_on:
       hadha-redis:
         condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
     networks:
       - hadha-network
     healthcheck:
@@ -138,6 +225,8 @@ services:
     env_file: ./Backend/.env
     environment:
       REDIS_URL: "redis://:${REDIS_PASSWORD:-}@hadha-redis:6379/0"
+      DATABASE_URL: "postgresql+asyncpg://postgres:postgres@hadha-postgres-dev:5432/hadha_dev"
+      ALEMBIC_DATABASE_URL: "postgresql+psycopg://postgres:postgres@hadha-postgres-dev:5432/hadha_dev"
     command:
       [
         "celery", "-A", "app.celery_app", "beat",
@@ -149,6 +238,8 @@ services:
     depends_on:
       hadha-redis:
         condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
     networks:
       - hadha-network
     # No meaningful liveness probe beyond "process is running" — Beat has no
@@ -633,6 +724,7 @@ services:
 # Volumes
 # ─────────────────────────────────────────────────────────────────────────────
 volumes:
+  postgres_dev_data:
   redis_data:
   storefront_node_modules:
   admin_node_modules:

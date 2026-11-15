@@ -30,11 +30,13 @@ All secrets are injected via GitHub Secrets and passed to the VPS at deploy time
 |--------|-------------|-----------------|
 | `SECRET_KEY` | Application secret key | `python -c "import secrets; print(secrets.token_hex(32))"` |
 | `ENCRYPTION_KEY` | Fernet encryption key | `python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"` |
-| `DATABASE_URL` | Supabase session pooler URL | Supabase Dashboard → Settings → Database → Connection string → Session mode |
-| `ALEMBIC_DATABASE_URL` | Supabase direct connection URL | Supabase Dashboard → Settings → Database → Connection string → Direct connection |
-| `SUPABASE_URL` | Supabase project URL | Supabase Dashboard → Settings → API → Project URL |
-| `SUPABASE_ANON_KEY` | Supabase publishable/anon key | Supabase Dashboard → Settings → API → anon public |
-| `SUPABASE_SERVICE_ROLE_KEY` | Supabase service role key | Supabase Dashboard → Settings → API → service_role (secret) |
+| `GOOGLE_CLIENT_ID` | Google OAuth client ID (sign-in) | Google Cloud Console → Credentials → Web client. Authorized redirect URI: `https://api.hadha.co/api/v1/auth/google/callback` |
+| `GOOGLE_CLIENT_SECRET` | Google OAuth client secret | Same client → Add secret (shown once) |
+| `BACKUP_S3_ENDPOINT`, `BACKUP_S3_REGION`, `BACKUP_S3_BUCKET` | Off-site database backup target (private bucket in Supabase Storage, S3 protocol) | Supabase Dashboard → Storage → S3 Configuration |
+| `BACKUP_S3_ACCESS_KEY`, `BACKUP_S3_SECRET_KEY` | Access key for that bucket | Supabase Dashboard → Storage → S3 Configuration → New access key |
+| `BACKUP_ENCRYPTION_KEY` | Passphrase that encrypts every uploaded dump (keep a copy off the server) | `openssl rand -base64 36` |
+
+`DATABASE_URL` / `ALEMBIC_DATABASE_URL` are **not** GitHub secrets: they point at the local PostgreSQL container (`hadha-postgres`) and live in `/opt/hadha/.env.production` on the VPS. The backup values are read from `/opt/hadha/.env.backup` on the VPS.
 
 ### Redis
 

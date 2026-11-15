@@ -29,7 +29,7 @@
 18. [Monitoring](#18-monitoring)
 19. [Backup & Disaster Recovery](#19-backup--disaster-recovery)
 20. [Scaling Guide](#20-scaling-guide)
-21. [Supabase Plan Recommendation](#21-supabase-plan-recommendation)
+21. [Database Sizing](#21-database-sizing)
 22. [Operational Costs](#22-operational-costs)
 23. [Maintenance Guide](#23-maintenance-guide)
 24. [Environment Variables](#24-environment-variables)
@@ -41,7 +41,7 @@
 
 ## 1. Executive Summary
 
-Hadha.co is a full-stack enterprise e-commerce platform built for a jewelry business. The system comprises a Python/FastAPI backend, two React/TypeScript frontends (storefront + admin panel), PostgreSQL database via Supabase, Redis caching, Docker containerization, and Nginx reverse proxy.
+Hadha.co is a full-stack enterprise e-commerce platform built for a jewelry business. The system comprises a Python/FastAPI backend, two React/TypeScript frontends (storefront + admin panel), self-hosted PostgreSQL database, first-party authentication, Redis caching, Docker containerization, and Nginx reverse proxy.
 
 ### Key Metrics at a Glance
 
@@ -59,7 +59,7 @@ Hadha.co is a full-stack enterprise e-commerce platform built for a jewelry busi
 | E2E Tests | **23** (Playwright) |
 | K6 Load Tests | **70** scenarios |
 | Frontend Components | **~140** unique (Shadcn/UI) |
-| Third-party Integrations | **5** (Supabase, Resend, Razorpay, Meta WhatsApp, Cloudflare R2) |
+| Third-party Integrations | **5** (Google sign-in, Resend, Razorpay, Meta WhatsApp, Cloudflare R2) |
 
 ---
 
@@ -90,14 +90,14 @@ Hadha.co is a full-stack enterprise e-commerce platform built for a jewelry busi
                  └──────┬──────┘  └───────┬───────┘  └──────┬──────┘
                         │                 │                  │
                         │          ┌──────▼──────┐    ┌──────▼──────┐
-                        │          │  Supabase   │    │    Redis    │
-                        │          │  Auth       │    │   :6379     │
+                        │          │  Google     │    │    Redis    │
+                        │          │  OIDC       │    │   :6379     │
                         │          └─────────────┘    │  (Cache +   │
                         │                             │   Sessions) │
                         │                             └──────┬──────┘
                         │                                    │
                  ┌──────▼──────────────────────────────▼──────▼──────┐
-                 │              PostgreSQL (Supabase)                 │
+                 │        PostgreSQL 17 (hadha-postgres container)    │
                  │         48 tables + 16 partitions                 │
                  │         130+ indexes                              │
                  └──────────────────────────────────────────────────┘
@@ -127,9 +127,9 @@ Hadha.co is a full-stack enterprise e-commerce platform built for a jewelry busi
 | **Backend Framework** | FastAPI | Python 3.11+, async/await throughout |
 | **ORM** | SQLAlchemy | Async mode with `asyncpg` driver |
 | **Migrations** | Alembic | 54 sequential migrations (Jun–Jul 2026) |
-| **Database** | PostgreSQL | Via Supabase (managed) |
+| **Database** | PostgreSQL | Self-hosted container on the VPS (hourly encrypted backups to S3) |
 | **Cache** | Redis | In-memory with circuit breaker, zlib compression |
-| **Auth** | Supabase Auth | JWT (ES256 + JWKS), Admin 2FA (TOTP) |
+| **Auth** | First-party | HttpOnly-cookie sessions (HS256 access token + rotating refresh), Google OIDC, Admin 2FA (TOTP) |
 | **Frontend Framework** | React 18 | TypeScript, TanStack Router (file-based) |
 | **State Management** | TanStack Query + Zustand | Server + client state |
 | **UI Library** | Shadcn/UI | 46 base components, Tailwind CSS |
@@ -259,7 +259,7 @@ Project/
 │   │       ├── pages/                # 21 page layouts
 │   │       └── components/           # Site + shared UI components
 │   └── packages/                     # Shared monorepo packages
-│       ├── shared-api/               # API client + Supabase integration
+│       ├── shared-api/               # API client + auth session handling
 │       ├── shared-media/             # Image crop engine + responsive images
 │       ├── shared-types/             # 15 TypeScript type definitions
 │       ├── shared-ui/                # 46 Shadcn/UI components
@@ -582,7 +582,7 @@ Managed by `partition_manager` worker (monthly cron: 1st of month at 00:10 UTC).
 
 ## 10. Capacity Estimates
 
-> **Assumptions:** Single VPS (4 vCPU, 8GB RAM), Supabase Free/Pro, Redis 256MB, Cloudflare R2.
+> **Assumptions:** Single VPS (4 vCPU, 8GB RAM), PostgreSQL on the same VPS, Redis 256MB, Cloudflare R2.
 
 | Metric | Estimate | Basis |
 |:-------|:---------|:------|
@@ -690,9 +690,9 @@ All workers run in-process via APScheduler within the FastAPI application lifecy
 
 | Mechanism | Implementation |
 |:----------|:---------------|
-| **User Auth** | Supabase Auth (email/password, magic link) |
-| **JWT Validation** | ES256 algorithm, JWKS endpoint, Supabase JWT secret |
-| **Session Management** | Supabase session tokens + Redis-cached profiles |
+| **User Auth** | Email/password (bcrypt) with e-mail verification, Google sign-in (OIDC + PKCE) |
+| **Token Validation** | HS256 access token (15 min, key derived from `SECRET_KEY`), cookie or Bearer |
+| **Session Management** | `auth_sessions` rows with rotating refresh tokens, instant revocation via Redis deny-list, CSRF token + Origin check on cookie writes, Redis-cached profiles |
 | **Admin 2FA** | TOTP (RFC 6238) via `pyotp`, Fernet-encrypted secrets |
 | **Backup Codes** | 10 bcrypt-hashed codes per admin, single-use |
 | **Replay Protection** | `last_used_counter` (BIGINT) on TOTP time-step |
@@ -704,7 +704,7 @@ All workers run in-process via APScheduler within the FastAPI application lifecy
 
 | Aspect | Detail |
 |:-------|:-------|
-| Hashing | Supabase Auth handles (bcrypt by default) |
+| Hashing | bcrypt (cost 12); legacy `$2a$` hashes imported from Supabase still verify |
 | Backup codes | bcrypt-hashed, stored in `admin_2fa.backup_codes` JSONB |
 | TOTP secrets | Fernet symmetric encryption (key from `TOTP_ENCRYPTION_KEY` env var) |
 
@@ -1085,8 +1085,8 @@ Each event type has independent email/WhatsApp toggles, priority levels, retry p
 
 | Component | Method | Frequency | Retention |
 |:----------|:-------|:----------|:----------|
-| PostgreSQL | Supabase managed backups | Daily (Free: 7 days, Pro: 30 days) | 7–30 days |
-| PostgreSQL | `backup.sh` manual snapshot | On deployment | Last 5 deployments |
+| PostgreSQL | `db-backup.sh` encrypted dump to the `db_backup` S3 bucket (+ local copy) | Hourly | 48 hourly + 14 daily |
+| PostgreSQL | `db-backup.sh --pre-deploy` (upload + verified restore, gates the deploy) | Before every deploy | Newest 15 |
 | Redis | Volume snapshot | On deployment | Last 5 deployments |
 | Nginx config | File copy | On deployment | Last 5 deployments |
 | Environment | Checksum comparison | On deployment | Alerts on drift |
@@ -1098,11 +1098,11 @@ Each event type has independent email/WhatsApp toggles, priority levels, retry p
 | Scenario | Recovery Steps | RTO | RPO |
 |:---------|:---------------|:----|:----|
 | Backend crash | Docker auto-restart (unless-stopped) | < 30s | 0 |
-| Database corruption | Restore from Supabase backup | < 1 hour | 1 day (Free) / 1 hour (Pro) |
+| Database corruption | Restore the latest dump from the S3 bucket (`pg_restore`) | < 1 hour | Up to 1 hour |
 | Bad deployment | `rollback.sh` → instant revert | < 2 minutes | Last deploy |
 | Redis data loss | Cache rebuilt from DB on next read | < 5 minutes | 0 (cache is rebuildable) |
-| VPS failure | Provision new VPS → `bootstrap.sh` → `deploy.sh` | < 30 minutes | Last backup |
-| Complete outage | Rebuild from GHCR + Supabase + R2 | < 1 hour | Last backup |
+| VPS failure | Provision new VPS → `bootstrap.sh` → `db-setup.sh` → restore latest dump → `deploy.sh` | < 1 hour | Up to 1 hour |
+| Complete outage | Rebuild from GHCR + the S3 backup bucket + R2 | < 1 hour | Last backup |
 
 ---
 
@@ -1112,20 +1112,20 @@ Each event type has independent email/WhatsApp toggles, priority levels, retry p
 
 | Users | DB | Backend | Redis | Storage | Email | VPS | Notes |
 |:------|:---|:--------|:------|:--------|:------|:----|:------|
-| **100** | Supabase Free | 1× (1 CPU, 768MB) | 256MB | R2 Free | Resend Free | 2 vCPU, 4 GB | Current baseline |
-| **500** | Supabase Free | 1× (1 CPU, 768MB) | 256MB | R2 Free | Resend Free | 2 vCPU, 4 GB | Cache hit rate critical |
-| **1,000** | Supabase Pro ($25/mo) | 1× (2 CPU, 1.5GB) | 512MB | R2 Pro ($5/mo) | Resend Free | 4 vCPU, 8 GB | Upgrade DB for connections |
-| **5,000** | Supabase Pro | 2× (2 CPU, 1.5GB) | 1GB | R2 Pro | Resend Pro ($20/mo) | 8 vCPU, 16 GB | Add read replica |
-| **10,000** | Supabase Pro | 2–3× (4 CPU, 2GB) | 2GB | R2 Pro | Resend Pro | 8 vCPU, 16 GB | CDN for static assets |
-| **25,000** | Supabase Team ($599/mo) | 3–4× (4 CPU, 2GB) | 4GB | R2 Business ($200/mo) | Resend Pro | 16 vCPU, 32 GB | Dedicated DB, queue service |
-| **50,000** | Supabase Enterprise | 4–6× | 8GB | R2 Business | Resend Scale | 32 vCPU, 64 GB | Microservice split |
+| **100** | Local PostgreSQL | 1× (1 CPU, 768MB) | 256MB | R2 Free | Resend Free | 2 vCPU, 4 GB | Current baseline |
+| **500** | Local PostgreSQL | 1× (1 CPU, 768MB) | 256MB | R2 Free | Resend Free | 2 vCPU, 4 GB | Cache hit rate critical |
+| **1,000** | Local PostgreSQL | 1× (2 CPU, 1.5GB) | 512MB | R2 Pro ($5/mo) | Resend Free | 4 vCPU, 8 GB | Upgrade DB for connections |
+| **5,000** | Local PostgreSQL + replica | 2× (2 CPU, 1.5GB) | 1GB | R2 Pro | Resend Pro ($20/mo) | 8 vCPU, 16 GB | Add read replica |
+| **10,000** | Local PostgreSQL + replica | 2–3× (4 CPU, 2GB) | 2GB | R2 Pro | Resend Pro | 8 vCPU, 16 GB | CDN for static assets |
+| **25,000** | Dedicated PostgreSQL host | 3–4× (4 CPU, 2GB) | 4GB | R2 Business ($200/mo) | Resend Pro | 16 vCPU, 32 GB | Dedicated DB, queue service |
+| **50,000** | Dedicated PostgreSQL cluster | 4–6× | 8GB | R2 Business | Resend Scale | 32 vCPU, 64 GB | Microservice split |
 | **100,000** | Dedicated PostgreSQL | 8+× | 16GB+ | R2 Enterprise | Custom | Multi-server | Full distributed architecture |
 
 ### Key Upgrade Triggers
 
 | Metric | Threshold | Action |
 |:-------|:----------|:-------|
-| DB connections | > 80% of limit | Upgrade Supabase plan |
+| DB connections | > 80% of `max_connections` (100) | Raise `max_connections` / pool sizes, or add RAM |
 | Redis memory | > 80% of 256MB | Increase maxmemory or upgrade |
 | CPU utilization | > 70% sustained | Add backend replicas |
 | Response latency P95 | > 500ms sustained | Optimize queries, add cache |
@@ -1134,38 +1134,17 @@ Each event type has independent email/WhatsApp toggles, priority levels, retry p
 
 ---
 
-## 21. Supabase Plan Recommendation
+## 21. Database Sizing
 
-### Current Implementation Assessment
+The database is PostgreSQL 17 in the `hadha-postgres` container on the VPS (`max_connections=100`, `shared_buffers=256MB`, 1 GB memory limit, data on the `hadha_postgres_data` volume). Current size is tens of MB.
 
-| Feature | Usage | Plan Requirement |
-|:--------|:------|:-----------------|
-| Database | 48 tables, ~180 indexes, partitioned | Free tier sufficient for < 500MB |
-| Auth | Email/password, JWT | Free: 50,000 MAU |
-| Storage | Via R2 (not Supabase Storage) | N/A |
-| Realtime | Not used | N/A |
-| Edge Functions | Not used | N/A |
-| Extensions | pg_trgm, unaccent, btree_gin, pgcrypto, uuid-ossp | All available on Free |
-| Connections | Session pooler configured | Free: 60 connections |
-
-### Plan Recommendations
-
-| Phase | Plan | Cost | Trigger |
-|:------|:-----|:-----|:--------|
-| **Launch → 500 users** | Free | $0/month | Current state |
-| **500–1,000 users** | Pro | $25/month | DB connection exhaustion, need for daily backups, compute upgrade |
-| **1,000–10,000 users** | Pro + Compute Add-on | $25–$75/month | Query performance, need for dedicated compute |
-| **10,000+ users** | Team | $599/month | Multi-region, SOC2, priority support, custom domains |
-
-### Upgrade Trigger Metrics
-
-| Metric | Free Limit | Pro Benefit |
-|:-------|:-----------|:------------|
-| Database size | 500 MB | 8 GB |
-| Connections | 60 | 200+ (pooler) |
-| Backups | 7-day PITR | 30-day PITR |
-| Compute | Shared | Dedicated (4+ CPU, 8+ GB RAM) |
-| Branching | No | Preview branches |
+| Concern | Today | When to act |
+|:--------|:------|:------------|
+| Size | Tens of MB, 77 tables | > 5 GB: review retention, move to a larger VPS disk |
+| Connections | API 2 workers x (6+4) + Celery ~18 of 100 | Pool waits in the perf log: raise pool sizes / `max_connections` |
+| Memory | 1 GB container limit | Raise `shared_buffers` and the limit together when the VPS is upsized |
+| Backups | Hourly encrypted dump to S3 + one before every deploy | Add WAL archiving (point-in-time recovery) if the hourly RPO is not enough |
+| Failover | None (single node) | Add a streaming replica or move to a dedicated DB host |
 
 ---
 
@@ -1176,7 +1155,7 @@ Each event type has independent email/WhatsApp toggles, priority levels, retry p
 | Service | Plan | Monthly Cost |
 |:--------|:-----|:-------------|
 | VPS (Hetzner/DigitalOcean) | 4 vCPU, 8 GB | $20–$40 |
-| Supabase | Free | $0 |
+| PostgreSQL (self-hosted on the VPS) | Included in the VPS | $0 |
 | Cloudflare R2 | Free (10 GB storage, 10M reads) | $0 |
 | Resend | Free (100 emails/day) | $0 |
 | Meta WhatsApp | Free tier (1,000 conversations) | $0 |
@@ -1190,7 +1169,7 @@ Each event type has independent email/WhatsApp toggles, priority levels, retry p
 | Service | Plan | Monthly Cost |
 |:--------|:-----|:-------------|
 | VPS | 8 vCPU, 16 GB | $60–$120 |
-| Supabase | Pro | $25 |
+| PostgreSQL | Larger VPS / replica | Included in the VPS tier |
 | Cloudflare R2 | Pro | $5 |
 | Resend | Pro (50K emails) | $20 |
 | Meta WhatsApp | Pay-per-conversation | $10–$50 |
@@ -1208,7 +1187,7 @@ Each event type has independent email/WhatsApp toggles, priority levels, retry p
 |:-----|:----------|:---------------|
 | Check health endpoints | Daily | `curl https://api.hadha.co/health` |
 | Review error logs | Weekly | Dozzle UI at `logs.hadha.co` |
-| Database backup verification | Monthly | Restore test from Supabase dashboard |
+| Database backup verification | Monthly | Download a dump from the S3 bucket, decrypt and `pg_restore` it into a scratch database |
 | Dependency updates | Monthly | `pip-audit`, `npm audit` |
 | SSL certificate renewal | Auto (Let's Encrypt) | Certbot auto-renewal |
 | Partition management | Monthly | Auto (partition_manager worker) |
@@ -1220,7 +1199,7 @@ Each event type has independent email/WhatsApp toggles, priority levels, retry p
 
 | Task | Frequency | Method |
 |:-----|:----------|:-------|
-| VACUUM ANALYZE | Weekly (auto on Supabase) | PostgreSQL autovacuum |
+| VACUUM ANALYZE | Weekly (auto) | PostgreSQL autovacuum |
 | Partition creation | Monthly | `partition_manager` worker |
 | Sequence counter verification | Monthly | `GET /health/metrics` → check for gaps |
 | Stale reservation cleanup | Every 60s | `reservation_expiry` worker |
@@ -1279,10 +1258,8 @@ docker compose up -d backend
 
 | Variable | Required | Description |
 |:---------|:---------|:------------|
-| `SUPABASE_URL` | Yes | Supabase project URL |
-| `SUPABASE_ANON_KEY` | Yes | Supabase anonymous key |
-| `SUPABASE_SERVICE_ROLE_KEY` | Yes | Supabase admin key |
-| `SUPABASE_JWT_SECRET` | Yes | JWT verification secret |
+| `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` | No | Google OAuth client (enables Google sign-in) |
+| `API_BASE_URL` | Yes (production) | Public API origin, used for the Google redirect URI |
 | `TOTP_ENCRYPTION_KEY` | Yes | Fernet key for TOTP encryption |
 
 ### Payment (Razorpay)
@@ -1349,7 +1326,7 @@ docker compose up -d backend
 | 3 | No message queue (Celery/RQ) | Background jobs tied to backend process | Jobs are short-lived; introduce queue at > 1,000 orders/day |
 | 4 | Polymorphic image FKs (no DB constraint) | Orphan images possible if logic is bypassed | Application-level integrity via service layer |
 | 5 | No CDN for API responses | Static assets served via Nginx only | Add Cloudflare proxy for edge caching |
-| 6 | Supabase Auth dependency | Auth provider lock-in | JWT-based; migration path exists |
+| 6 | Single-node database | No automatic failover | Hourly encrypted backups + pre-deploy backup; replica is a future step |
 | 7 | No WebSocket/Realtime | No live order tracking | polling-based status refresh; WebSocket is a future enhancement |
 | 8 | Email template rendering in Python | Template changes require deployment | CMS-based template editing possible via notification_templates table |
 | 9 | No automated load testing in CI | Performance regressions possible | k6 scripts exist; integrate into CI pipeline |
@@ -1385,7 +1362,7 @@ docker compose up -d backend
 
 | Credential | Location | Access |
 |:-----------|:---------|:-------|
-| Supabase Dashboard | supabase.com | Project owner email |
+| Supabase Dashboard (backup bucket only) | supabase.com | Project owner email |
 | Razorpay Dashboard | dashboard.razorpay.com | Business email |
 | Resend Dashboard | resend.com | Business email |
 | Meta Business Suite | business.facebook.com | Business email |
@@ -1410,7 +1387,7 @@ docker compose up -d backend
 - [ ] Test rollback procedure
 - [ ] Document any custom DNS records for email (SPF, DKIM, DMARC)
 - [ ] Confirm Razorpay settlement schedule
-- [ ] Review and accept Supabase Terms of Service
+- [ ] Keep the Supabase project alive (it hosts the `db_backup` bucket) or move backups to another private S3 bucket
 
 ### Key Contacts
 
