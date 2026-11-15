@@ -8,7 +8,7 @@ from datetime import UTC, datetime, timedelta
 import pyotp
 import qrcode
 import redis.asyncio as aioredis
-from sqlalchemy import cast, delete, exists, false, or_, select, text, update
+from sqlalchemy import cast, delete, exists, false, or_, select, update
 from sqlalchemy.dialects.postgresql import INET
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -28,6 +28,7 @@ from app.core.security import (
     hash_backup_code,
     verify_backup_code,
 )
+from app.modules.auth.identity_service import IdentityService
 from app.modules.profiles.models import Admin2FA, AdminSession, Profile
 
 # How long a completed TOTP challenge stays valid for a given admin session
@@ -318,32 +319,25 @@ class AuthService:
 
     async def logout(self, db: AsyncSession, user_id: str) -> None:
         """
-        Revoke the user's Supabase Auth sessions (and with them their refresh
-        tokens) by deleting their rows from ``auth.sessions`` — refresh tokens
-        cascade. GoTrue has no documented admin "logout user by id" endpoint,
-        so the previous HTTP call could silently do nothing.
+        Revoke every session of the user (and with them their refresh tokens):
+        rows in ``auth_sessions`` are marked revoked and the session ids are
+        put on the Redis deny-list, so already-issued access tokens stop
+        working immediately rather than at expiry.
 
         Best-effort: runs in a SAVEPOINT and never raises. Routers call this
         *before* clear_admin_session_2fa/clear_all_admin_sessions_2fa, so a
         failure here must not leave the local 2FA-verified row in place even
-        though the user asked to log out. Already-issued access JWTs stay valid
-        until they expire, but the admin 2FA gate is backed by local
-        admin_sessions rows that the callers clear.
+        though the user asked to log out.
         """
         import structlog
 
         log = structlog.get_logger(__name__)
         try:
             async with db.begin_nested():
-                await db.execute(
-                    text(
-                        "DELETE FROM auth.sessions WHERE user_id = CAST(:uid AS uuid)"
-                    ),
-                    {"uid": user_id},
-                )
+                await IdentityService().revoke_user_sessions(db, user_id)
         except Exception:
             log.warning(
-                "supabase_logout_revocation_failed",
+                "session_revocation_failed",
                 user_id=user_id,
                 exc_info=True,
             )
@@ -396,16 +390,6 @@ class AuthService:
         existing row — only mark_admin_session_2fa_verified may set those —
         so this presence-only touch can never regress an already-verified
         session back to unverified, regardless of call order.
-
-        For accounts without 2FA enabled, this row is informational: the
-        require_admin gate does not consult AdminSession at all when the
-        account has no 2FA enabled, so deleting this row (via the single-
-        session or "others" revoke endpoints) removes it from the list but
-        does not end the underlying access — only "Log Out All Sessions"
-        does, since that calls Supabase's real session-revocation API
-        directly, independent of 2FA status. The frontend must say this
-        plainly rather than imply a single-session revoke works the same
-        way for both cases.
         """
         user_agent = _sanitize_user_agent(user_agent)
         browser_name, os_name = _parse_user_agent(user_agent)
@@ -662,12 +646,8 @@ class AuthService:
         always looks identical to a session that doesn't exist (no IDOR,
         no existence leak either way).
 
-        Note on scope: Supabase's admin API can only revoke *every* session
-        for a user at once (used by force_logout/logout/revoke-all), not one
-        specific session. Deleting the row here immediately revokes that
-        session's access to the admin panel (the next request re-hits the
-        2FA gate and gets 403 2FA_REQUIRED) even though the underlying
-        Supabase JWT stays technically valid until it naturally expires.
+        The underlying login session is revoked too, so the other device is
+        signed out outright (not just re-challenged for 2FA).
         """
         result = await db.execute(
             select(AdminSession).where(
@@ -687,6 +667,8 @@ class AuthService:
             return False, True
 
         await db.execute(delete(AdminSession).where(AdminSession.id == record.id))
+        if record.supabase_session_id:
+            await IdentityService().revoke_session(db, record.supabase_session_id)
         return True, False
 
     async def revoke_other_admin_sessions(
@@ -697,6 +679,9 @@ class AuthService:
         if current_session_id:
             conditions.append(AdminSession.supabase_session_id != current_session_id)
         result = await db.execute(delete(AdminSession).where(*conditions))
+        await IdentityService().revoke_user_sessions(
+            db, user_id, except_session_id=current_session_id
+        )
         return result.rowcount
 
     async def cleanup_expired_admin_sessions(self, db: AsyncSession) -> int:

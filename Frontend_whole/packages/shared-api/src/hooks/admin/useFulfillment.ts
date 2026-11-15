@@ -1,7 +1,7 @@
 ﻿import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "../../lib/api/client";
 import { queryKeys } from "../../lib/api/queryKeys";
-import { authHeader, buildUrl } from "../../lib/api/interceptors";
+import { buildUrl } from "../../lib/api/interceptors";
 import type {
   DispatchOrderPayload,
   FulfillmentTimelineResponse,
@@ -55,8 +55,7 @@ export const useGenerateShippingLabel = () => {
       const url = buildUrl(`/admin/orders/${orderId}/fulfillment/shipping-label`, {
         format: "pdf",
       });
-      const auth = await authHeader();
-      const res = await fetch(url, { method: "GET", headers: auth });
+      const res = await fetch(url, { method: "GET", credentials: "include" });
       if (!res.ok) throw new Error("Failed to generate shipping label");
       const blob = await res.blob();
       return {
@@ -84,8 +83,7 @@ export const useGeneratePackingSlip = () => {
       const url = buildUrl(`/admin/orders/${orderId}/fulfillment/packing-slip`, {
         format: "pdf",
       });
-      const auth = await authHeader();
-      const res = await fetch(url, { method: "GET", headers: auth });
+      const res = await fetch(url, { method: "GET", credentials: "include" });
       if (!res.ok) throw new Error("Failed to generate packing slip");
       const blob = await res.blob();
       return {

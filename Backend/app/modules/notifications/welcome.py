@@ -1,8 +1,8 @@
 """Welcome-email bridge.
 
-Registration happens entirely client-side (Supabase `auth.signUp`; a DB
-trigger creates the `profiles` row), so no backend code runs at signup and
-`UserRegisteredEvent` had no publisher. This bridge publishes it on the first
+Registration (password or Google) creates the `profiles` row in the auth
+module without publishing `UserRegisteredEvent`, and password signups are not
+signed in until they verify their email. This bridge publishes it on the first
 authenticated request (`GET /me`, which every session start calls) for
 profiles created within the last 48 hours.
 

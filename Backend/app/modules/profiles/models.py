@@ -114,7 +114,7 @@ class AdminSession(Base):
     device_hash: Mapped[str | None] = mapped_column(String(64), nullable=True)
     location: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
-    # Supabase JWT `session_id` claim — correlates this row to one login
+    # Access-token `sid` claim (AuthSession.id) — correlates this row to one login
     # session so the 2FA gate in app.core.dependencies can look it up per
     # request. Stable across access-token refreshes within the same session.
     supabase_session_id: Mapped[str | None] = mapped_column(String(255), nullable=True)

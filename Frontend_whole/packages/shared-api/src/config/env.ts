@@ -17,15 +17,9 @@ export const ENV = {
   apiBaseUrl: isSsr
     ? (process.env["SERVER_API_BASE_URL"] ?? DEFAULT_API_BASE_URL)
     : ((import.meta.env.VITE_API_BASE_URL as string | undefined) ?? DEFAULT_API_BASE_URL),
-  supabaseUrl: import.meta.env.VITE_SUPABASE_URL as string | undefined,
-  supabasePublishableKey: import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY as string | undefined,
-  supabaseProjectId: import.meta.env.VITE_SUPABASE_PROJECT_ID as string | undefined,
   isDev: import.meta.env.DEV,
   isProd: import.meta.env.PROD,
 } as const;
-
-/** Returns true when Supabase env is wired up. Used by auth + the repository factory. */
-export const hasSupabase = (): boolean => Boolean(ENV.supabaseUrl && ENV.supabasePublishableKey);
 
 /** Returns true when the backend API base URL is configured. */
 export const hasApi = (): boolean => Boolean(ENV.apiBaseUrl);

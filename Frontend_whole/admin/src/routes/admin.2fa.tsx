@@ -4,7 +4,7 @@ import { sanitizeRedirect, getAuthRedirectUrl } from "@hadha/shared-utils";
 import { useAuthContext } from "@/providers/auth-context";
 import { api } from "@/lib/api/client";
 import { queryKeys } from "@/lib/api/queryKeys";
-import { getSession } from "@/lib/supabase/session";
+import { getSession } from "@hadha/shared-api";
 import { roleSatisfies } from "@/types/auth";
 import type { ProfileDto } from "@/types/profile";
 import {

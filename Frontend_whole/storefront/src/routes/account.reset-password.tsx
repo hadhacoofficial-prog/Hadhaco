@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
+import { z } from "zod";
 import { useMutation } from "@tanstack/react-query";
 import { Lock } from "lucide-react";
 import { toast } from "sonner";
@@ -9,12 +10,14 @@ import { toUserMessage } from "@/lib/api/errors";
 import { useAuthContext } from "@/providers/auth-context";
 
 export const Route = createFileRoute("/account/reset-password")({
+  validateSearch: z.object({ token: z.string().optional() }),
   head: () => ({ meta: [{ title: "Reset password · Hadha" }] }),
   component: ResetPasswordPage,
 });
 
 function ResetPasswordPage() {
-  const { setPassword } = useAuthContext();
+  const { resetPassword } = useAuthContext();
+  const { token } = Route.useSearch();
   const navigate = useNavigate();
   const [password, setPasswordValue] = useState("");
   const [confirm, setConfirm] = useState("");
@@ -22,7 +25,8 @@ function ResetPasswordPage() {
   const mutation = useMutation({
     mutationFn: () => {
       if (password !== confirm) throw new Error("Passwords do not match.");
-      return setPassword(password);
+      if (!token) throw new Error("This reset link is incomplete. Request a new one.");
+      return resetPassword(token, password);
     },
     onSuccess: () => {
       toast.success("Password updated. Please sign in.");
@@ -51,7 +55,8 @@ function ResetPasswordPage() {
             label="New password"
             type="password"
             autoComplete="new-password"
-            minLength={6}
+            minLength={8}
+            maxLength={72}
             value={password}
             onChange={(e) => setPasswordValue(e.target.value)}
             required
@@ -61,7 +66,8 @@ function ResetPasswordPage() {
             label="Confirm password"
             type="password"
             autoComplete="new-password"
-            minLength={6}
+            minLength={8}
+            maxLength={72}
             value={confirm}
             onChange={(e) => setConfirm(e.target.value)}
             required

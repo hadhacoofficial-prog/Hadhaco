@@ -15,6 +15,7 @@ from starlette.requests import Request
 from starlette.responses import Response
 from starlette.types import ASGIApp
 
+from app.core.auth_cookies import read_access_cookie
 from app.middleware.rate_limit import get_client_ip
 
 log = structlog.get_logger(__name__)
@@ -26,21 +27,24 @@ _DEV_AUTH_PREFIX = "/api/v1/dev"
 
 
 def _extract_user_id(request: Request) -> str | None:
-    """Best-effort extraction of the user ID from the Authorization header.
+    """Best-effort extraction of the user ID from the Authorization header or
+    session cookie.
 
     Returns None when the token is missing, malformed, or cannot be decoded.
     This is deliberately lenient — the middleware is observational only and
     must never block a request.
     """
     auth_header = request.headers.get("Authorization", "")
-    if not auth_header.startswith("Bearer "):
+    token = auth_header[7:] if auth_header.startswith("Bearer ") else None
+    if token is None:
+        token = read_access_cookie(request)
+    if not token:
         return None
-    token = auth_header[7:]
     try:
         payload = jwt.decode(
             token,
             options={"verify_signature": False},
-            algorithms=["HS256", "ES256"],
+            algorithms=["HS256"],
         )
         return payload.get("sub")
     except (jwt.DecodeError, jwt.InvalidTokenError):

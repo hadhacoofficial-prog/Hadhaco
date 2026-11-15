@@ -16,7 +16,7 @@ export function GoogleAuthButton({
   const onClick = async () => {
     setLoading(true);
     try {
-      // Supabase redirects the browser to Google and back; no programmatic navigation needed.
+      // Full-page redirect to Google (via the API) and back; the session cookies arrive on return.
       await loginWithGoogle();
     } catch (e) {
       toast.error(toUserMessage(e));

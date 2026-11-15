@@ -289,19 +289,6 @@ check_external_services() {
     warn "Cannot reach Resend API — email notifications will fail"
   fi
 
-  # Supabase API
-  if [[ -f "${ENV_FILE}" ]]; then
-    local supabase_url
-    supabase_url=$(grep -E '^SUPABASE_URL=' "${ENV_FILE}" 2>/dev/null | head -1 | cut -d= -f2-)
-    if [[ -n "${supabase_url}" ]]; then
-      if curl -sf --max-time 10 "${supabase_url}/rest/v1/" -o /dev/null 2>/dev/null; then
-        pass "Supabase API (${supabase_url})"
-      else
-        warn "Cannot reach Supabase API — auth/storage may fail"
-      fi
-    fi
-  fi
-
   # Cloudflare R2
   if [[ -f "${ENV_FILE}" ]]; then
     local r2_endpoint

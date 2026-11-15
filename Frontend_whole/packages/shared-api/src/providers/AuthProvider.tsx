@@ -1,40 +1,43 @@
-﻿/**
+/**
  * AuthProvider — the single source of truth for authentication state.
  *
- * Flow (per integration spec):
- *   App start → restore Supabase session → listen for changes → expose
- *   session/user/role + auth actions to the whole app.
+ * Flow:
+ *   App start → ask the backend who the cookies belong to → listen for
+ *   changes → expose session/user/role + auth actions to the whole app.
  *
  * Cross-tab session synchronization:
  *   - Uses the centralized sync engine (`afterLogout` / `onSyncEvent`) so
  *     logout, cart, inventory, and other events propagate across tabs
- *     through a single BroadcastChannel ("hadha:sync").
+ *     through a single BroadcastChannel ("hadha:sync"). The cookies themselves
+ *     are shared by the browser, so a login in one tab only needs the others
+ *     to re-read the session.
  */
-import type { Session, User } from "@supabase/supabase-js";
 import type { QueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 
 import {
-  onAuthStateChange,
-  resetPasswordForEmail,
+  changePassword,
+  requestPasswordReset,
+  resendVerification,
+  resetPassword,
   signInWithGoogle,
   signInWithPassword,
   signOut,
   signUpWithPassword,
-  updatePassword,
-} from "../lib/supabase/auth";
-import { getSession } from "../lib/supabase/session";
-import { afterLogin, afterLogout, onSyncEvent, SyncEventType } from "../lib/sync";
+  verifyEmail,
+} from "../lib/auth/actions";
+import { getSession, reloadSession } from "../lib/auth/session";
+import { setSession, subscribeSession } from "../lib/auth/store";
+import type { AuthSession } from "../lib/auth/types";
+import {
+  afterLogin,
+  afterLogout,
+  onSyncEvent,
+  SyncEventType,
+} from "../lib/sync";
 import type { AppRole } from "@hadha/shared-types";
 
 import { AuthContext, type AuthContextValue } from "./auth-context";
-
-/** Provisional role read from Supabase metadata before the backend profile loads. */
-function metadataRole(user: User | null): AppRole | null {
-  const raw = (user?.app_metadata?.role ?? user?.user_metadata?.role) as string | undefined;
-  if (raw === "customer" || raw === "admin" || raw === "super_admin") return raw;
-  return null;
-}
 
 export interface AuthProviderProps {
   children: ReactNode;
@@ -47,7 +50,7 @@ export interface AuthProviderProps {
 }
 
 export function AuthProvider({ children, queryClient }: AuthProviderProps) {
-  const [session, setSession] = useState<Session | null>(null);
+  const [session, setSessionState] = useState<AuthSession | null>(null);
   const [status, setStatus] = useState<AuthContextValue["status"]>("loading");
   const [role, setRole] = useState<AppRole | null>(null);
   const [initialized, setInitialized] = useState(false);
@@ -60,16 +63,9 @@ export function AuthProvider({ children, queryClient }: AuthProviderProps) {
     const unsub = onSyncEvent((event) => {
       if (event === SyncEventType.LOGOUT) {
         setSession(null);
-        setRole(null);
-        setStatus("unauthenticated");
       } else if (event === SyncEventType.LOGIN) {
-        // Another tab logged in — refetch session
-        getSession().then((s) => {
-          if (!mounted.current) return;
-          setSession(s);
-          setRole(metadataRole(s?.user ?? null));
-          setStatus(s ? "authenticated" : "unauthenticated");
-        });
+        // Another tab signed in — the cookies are shared, re-read who we are.
+        void reloadSession();
       }
     });
     return unsub;
@@ -78,12 +74,21 @@ export function AuthProvider({ children, queryClient }: AuthProviderProps) {
   useEffect(() => {
     mounted.current = true;
 
-    // 1) Restore any persisted session on boot.
+    // Every session change (sign-in/out, refresh failure, another tab) funnels
+    // through the store, so this is the only place React state is updated.
+    const unsubscribe = subscribeSession((s) => {
+      if (!mounted.current) return;
+      setSessionState(s);
+      setRole(s?.user.role ?? null);
+      setStatus(s ? "authenticated" : "unauthenticated");
+    });
+
+    // Restore the session on boot (no network call for anonymous browsers).
     getSession()
       .then((s) => {
         if (!mounted.current) return;
-        setSession(s);
-        setRole(metadataRole(s?.user ?? null));
+        setSessionState(s);
+        setRole(s?.user.role ?? null);
         setStatus(s ? "authenticated" : "unauthenticated");
         setInitialized(true);
       })
@@ -94,19 +99,10 @@ export function AuthProvider({ children, queryClient }: AuthProviderProps) {
         }
       });
 
-    // 2) Subscribe to all future auth transitions (sign-in/out, token refresh).
-    const unsubscribe = onAuthStateChange((s) => {
-      if (!mounted.current) return;
-      setSession(s);
-      setRole((prev) => (s ? (prev ?? metadataRole(s.user)) : null));
-      setStatus(s ? "authenticated" : "unauthenticated");
-    });
-
     return () => {
       mounted.current = false;
       unsubscribe();
     };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const value = useMemo<AuthContextValue>(
@@ -118,27 +114,22 @@ export function AuthProvider({ children, queryClient }: AuthProviderProps) {
       user: session?.user ?? null,
       role,
       login: async (email, password) => {
-        const { session: newSession } = await signInWithPassword(email, password);
-        if (mounted.current && newSession) {
-          setSession(newSession);
-          setRole((prev) => prev ?? metadataRole(newSession.user));
-          setStatus("authenticated");
-          afterLogin();
-        }
+        await signInWithPassword(email, password);
+        afterLogin();
       },
-      register: async (name, email, password) => {
-        await signUpWithPassword(name, email, password);
+      register: (name, email, password) =>
+        signUpWithPassword(name, email, password),
+      verifyEmail: async (token) => {
+        const verified = await verifyEmail(token);
+        afterLogin();
+        return verified;
       },
+      resendVerification: (email) => resendVerification(email),
       loginWithGoogle: async (redirectTo) => {
-        await signInWithGoogle(redirectTo);
+        signInWithGoogle(redirectTo);
       },
       logout: async () => {
         await signOut();
-        if (mounted.current) {
-          setSession(null);
-          setRole(null);
-          setStatus("unauthenticated");
-        }
         // Drop the admin 2FA UX flag.
         try {
           sessionStorage.removeItem("hadha:2fa_verified");
@@ -148,15 +139,12 @@ export function AuthProvider({ children, queryClient }: AuthProviderProps) {
         // ── Centralized sync: clears query cache + broadcasts to other tabs ──
         afterLogout();
       },
-      requestPasswordReset: async (email) => {
-        await resetPasswordForEmail(email);
-      },
-      setPassword: async (newPassword) => {
-        await updatePassword(newPassword);
-      },
+      requestPasswordReset: (email) => requestPasswordReset(email),
+      resetPassword: (token, newPassword) => resetPassword(token, newPassword),
+      changePassword: (currentPassword, newPassword) =>
+        changePassword(currentPassword, newPassword),
       setRole,
     }),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
     [initialized, status, session, role],
   );
 

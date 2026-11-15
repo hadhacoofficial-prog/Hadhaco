@@ -4,7 +4,7 @@ export type { RequestOptions, ApiClient } from "./lib/api/client";
 export { ApiError, isApiError, toUserMessage } from "./lib/api/errors";
 export type { ApiErrorKind } from "./lib/api/errors";
 export { queryKeys } from "./lib/api/queryKeys";
-export { ENV, hasSupabase, hasApi } from "./config/env";
+export { ENV, hasApi } from "./config/env";
 
 // Centralized synchronization engine
 export {
@@ -34,23 +34,23 @@ export { SyncEventType } from "./lib/sync";
 export type { SyncEvent, SyncEventPayloads } from "./lib/sync";
 export type { SyncBus } from "./lib/sync";
 
-// Supabase client
-export { supabase } from "./lib/supabase/client";
-
-// Supabase auth actions
+// Auth actions (first-party, HttpOnly-cookie sessions)
 export {
   signInWithPassword,
   signUpWithPassword,
   signInWithGoogle,
   signOut,
-  resetPasswordForEmail,
-  updatePassword,
-  onAuthStateChange,
-} from "./lib/supabase/auth";
-export type { AuthResult } from "./lib/supabase/auth";
+  requestPasswordReset,
+  resetPassword,
+  changePassword,
+  verifyEmail,
+  resendVerification,
+} from "./lib/auth/actions";
+export { subscribeSession as onAuthStateChange } from "./lib/auth/store";
+export type { AuthSession, AuthUser, AuthSurface, RegisterResult } from "./lib/auth/types";
 
-// Supabase session helpers
-export { getSession, getAccessToken, getUserId } from "./lib/supabase/session";
+// Session helpers
+export { getSession, getUserId } from "./lib/auth/session";
 
 // Auth providers
 export { AuthProvider } from "./providers/AuthProvider";

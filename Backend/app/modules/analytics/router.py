@@ -24,12 +24,15 @@ async def track_event(
 ):
     user_id: str | None = None
     try:
-        auth = request.headers.get("Authorization", "")
-        if auth.startswith("Bearer "):
-            from app.core.security import verify_supabase_jwt
+        from app.core.auth_cookies import read_access_cookie
+        from app.core.security import verify_access_token
 
-            payload = await verify_supabase_jwt(auth[7:])
-            user_id = payload.sub
+        auth = request.headers.get("Authorization", "")
+        token = auth[7:] if auth.startswith("Bearer ") else read_access_cookie(request)
+        if token:
+            # Read-only attribution of the event: no CSRF/revocation needed, and
+            # any failure just records the event as anonymous.
+            user_id = verify_access_token(token).sub
     except Exception:
         pass
     ip = request.client.host if request.client else None

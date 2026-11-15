@@ -1,20 +1,10 @@
-﻿// Mock supabase client before any imports to prevent initialization errors
-vi.mock("../supabase/client", () => ({
-  supabase: {
-    auth: {
-      getSession: vi.fn().mockResolvedValue({ data: { session: null } }),
-    },
-  },
-}));
-
-// Control the API base URL for deterministic URL tests
+﻿// Control the API base URL for deterministic URL tests
 vi.mock("../../config/env", () => ({
   ENV: {
     apiBaseUrl: "https://api.example.com/v1",
     isDev: false,
     isProd: false,
   },
-  hasSupabase: () => false,
   hasApi: () => true,
 }));
 

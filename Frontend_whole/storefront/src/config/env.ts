@@ -1,1 +1,1 @@
-﻿export { ENV, hasSupabase, hasApi } from "@hadha/shared-api";
+﻿export { ENV, hasApi } from "@hadha/shared-api";

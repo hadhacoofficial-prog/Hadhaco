@@ -54,7 +54,7 @@ import { api } from "@/lib/api/client";
 import { queryKeys } from "@/lib/api/queryKeys";
 import { toProductDetail, toProduct, toReview } from "@/lib/api/mappers";
 import { buildProductHead, productDescription, productUrl } from "@/lib/productSeo";
-import { supabase } from "@/lib/supabase/client";
+import { getSession } from "@hadha/shared-api";
 import type { ProductListResponse } from "@/types/admin";
 import type {
   MyProductReviewStatus,
@@ -1079,9 +1079,7 @@ function ReviewsSection({
   const [currentUserId, setCurrentUserId] = useState<string | undefined>(undefined);
 
   useEffect(() => {
-    import("@/lib/supabase/session").then(({ getSession }) => {
-      getSession().then((s) => setCurrentUserId(s?.user?.id));
-    });
+    getSession().then((s) => setCurrentUserId(s?.user.id));
   }, []);
 
   const approvedReviews = reviews.filter((r) => r.isApproved);

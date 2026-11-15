@@ -166,8 +166,6 @@ jobs:
             NITRO_PRESET=node
             NODE_ENV=production
             VITE_API_BASE_URL=https://api.hadha.co/api/v1
-            VITE_SUPABASE_URL=${{ secrets.SUPABASE_URL }}
-            VITE_SUPABASE_PUBLISHABLE_KEY=${{ secrets.SUPABASE_ANON_KEY }}
             VITE_SENTRY_DSN=${{ secrets.GLITCHTIP_FRONTEND_DSN }}
           tags: ${{ steps.tags.outputs.storefront_tags }}
           labels: |
@@ -189,8 +187,6 @@ jobs:
             NITRO_PRESET=node
             NODE_ENV=production
             VITE_API_BASE_URL=https://api.hadha.co/api/v1
-            VITE_SUPABASE_URL=${{ secrets.SUPABASE_URL }}
-            VITE_SUPABASE_PUBLISHABLE_KEY=${{ secrets.SUPABASE_ANON_KEY }}
             VITE_SENTRY_DSN=${{ secrets.GLITCHTIP_FRONTEND_DSN }}
           tags: ${{ steps.tags.outputs.admin_tags }}
           labels: |
@@ -322,12 +318,14 @@ jobs:
           GLITCHTIP_FRONTEND_DSN: ${{ secrets.GLITCHTIP_FRONTEND_DSN }}
           MONITORING_USERNAME: ${{ secrets.MONITORING_USERNAME }}
           MONITORING_PASSWORD: ${{ secrets.MONITORING_PASSWORD }}
+          GOOGLE_CLIENT_ID: ${{ secrets.GOOGLE_CLIENT_ID }}
+          GOOGLE_CLIENT_SECRET: ${{ secrets.GOOGLE_CLIENT_SECRET }}
         with:
           host: ${{ secrets.SSH_HOST }}
           port: ${{ secrets.SSH_PORT || 22 }}
           username: ${{ secrets.SSH_USER }}
           key: ${{ secrets.SSH_PRIVATE_KEY }}
-          envs: BACKEND_IMAGE,STOREFRONT_IMAGE,ADMIN_IMAGE,IMAGE_TAG,GHCR_USERNAME,GHCR_TOKEN,GIT_COMMIT_SHA,GIT_COMMIT_AUTHOR,REDIS_PASSWORD,REDIS_UI_USERNAME,REDIS_UI_PASSWORD,DOZZLE_USERNAME,DOZZLE_PASSWORD,RESEND_API_KEY,RESEND_FROM_EMAIL,RESEND_TO_EMAIL,GRAFANA_USERNAME,GRAFANA_PASSWORD,GLITCHTIP_DB_PASSWORD,GLITCHTIP_SECRET_KEY,GLITCHTIP_DSN,GLITCHTIP_FRONTEND_DSN,MONITORING_USERNAME,MONITORING_PASSWORD
+          envs: BACKEND_IMAGE,STOREFRONT_IMAGE,ADMIN_IMAGE,IMAGE_TAG,GHCR_USERNAME,GHCR_TOKEN,GIT_COMMIT_SHA,GIT_COMMIT_AUTHOR,REDIS_PASSWORD,REDIS_UI_USERNAME,REDIS_UI_PASSWORD,DOZZLE_USERNAME,DOZZLE_PASSWORD,RESEND_API_KEY,RESEND_FROM_EMAIL,RESEND_TO_EMAIL,GRAFANA_USERNAME,GRAFANA_PASSWORD,GLITCHTIP_DB_PASSWORD,GLITCHTIP_SECRET_KEY,GLITCHTIP_DSN,GLITCHTIP_FRONTEND_DSN,MONITORING_USERNAME,MONITORING_PASSWORD,GOOGLE_CLIENT_ID,GOOGLE_CLIENT_SECRET
           timeout: 600s
           command_timeout: 10m
           script: |
@@ -378,6 +376,25 @@ jobs:
                      "${APP_DIR}/monitoring/promtail/promtail-config.yml"; do
               if [ -d "$f" ]; then rm -rf "$f" 2>/dev/null || true; fi
             done
+
+            # ── Backend auth secrets → /opt/hadha/.env.production ───────────
+            # Upsert only when the secret is set, so a missing GitHub secret
+            # never blanks a value already on the server. printf (no sed
+            # replacement string) so the value needs no escaping; `cat >`
+            # rewrites in place and keeps the file's owner/mode.
+            upsert_env() {
+              local key="$1" val="$2" file="${APP_DIR}/.env.production" tmp
+              [ -n "$val" ] || return 0
+              tmp="$(mktemp)"
+              grep -v "^${key}=" "$file" > "$tmp" || true
+              printf '%s=%s\n' "$key" "$val" >> "$tmp"
+              cat "$tmp" > "$file"
+              rm -f "$tmp"
+            }
+            # Public API origin: the Google OAuth redirect URI is built from it.
+            upsert_env API_BASE_URL "https://api.hadha.co"
+            upsert_env GOOGLE_CLIENT_ID "${GOOGLE_CLIENT_ID:-}"
+            upsert_env GOOGLE_CLIENT_SECRET "${GOOGLE_CLIENT_SECRET:-}"
 
             # ── Execute deployment ──────────────────────────────────────────
             echo "[$(date +'%H:%M:%S')] Executing deploy.sh..."

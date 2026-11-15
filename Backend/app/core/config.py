@@ -70,29 +70,19 @@ class Settings(BaseSettings):
     # without any configuration.
     TRUSTED_PROXY_IPS: str = ""
 
-    # ── Supabase ───────────────────────────────────────────────────────────────
-    SUPABASE_URL: str
-    SUPABASE_ANON_KEY: str = ""  # legacy var name
-    SUPABASE_KEY: str = ""  # publishable/anon key (new format: sb_publishable_*)
-    SUPABASE_SERVICE_ROLE_KEY: str
-
-    # ── JWT / JWKS ─────────────────────────────────────────────────────────────
-    JWKS_CACHE_TTL: int = 600  # seconds between JWKS refreshes (10 minutes)
-
-    @property
-    def supabase_anon_key(self) -> str:
-        """Return whichever of SUPABASE_KEY / SUPABASE_ANON_KEY is set."""
-        return self.SUPABASE_KEY or self.SUPABASE_ANON_KEY
-
-    @property
-    def supabase_issuer(self) -> str:
-        """JWT issuer claim issued by Supabase Auth."""
-        return f"{self.SUPABASE_URL}/auth/v1"
-
-    @property
-    def supabase_jwks_url(self) -> str:
-        """URL of the Supabase JWKS endpoint."""
-        return f"{self.SUPABASE_URL}/auth/v1/.well-known/jwks.json"
+    # ── Auth (first-party, HttpOnly-cookie sessions) ───────────────────────────
+    AUTH_ACCESS_TTL_SECONDS: int = 900  # access token lifetime (15 minutes)
+    AUTH_REFRESH_TTL_DAYS: int = 30  # storefront session lifetime
+    AUTH_ADMIN_REFRESH_TTL_DAYS: int = 7  # admin session lifetime
+    # A just-rotated refresh token is still honoured this long so two tabs that
+    # refresh at once do not trip reuse detection and kill the session.
+    AUTH_REFRESH_GRACE_SECONDS: int = 30
+    AUTH_VERIFY_TTL_HOURS: int = 24  # email-verification link lifetime
+    AUTH_RESET_TTL_MINUTES: int = 60  # password-reset link lifetime
+    # Empty = host-only cookies on the API host (preferred; enables the
+    # __Host- prefix in production). Set e.g. ".hadha.co" only if server-side
+    # rendered pages must read the session cookie.
+    AUTH_COOKIE_DOMAIN: str = ""
 
     # ── Database ───────────────────────────────────────────────────────────────
     # FastAPI runtime: must use postgresql+asyncpg:// (async, session pooler).
@@ -219,8 +209,9 @@ class Settings(BaseSettings):
     FRONTEND_URL: str
     ADMIN_URL: str
 
-    # ── Auth callbacks ────────────────────────────────────────────────────────
-    SUPABASE_AUTH_REDIRECT_URL: str = "https://hadha.co/auth/callback"
+    # ── Google sign-in ────────────────────────────────────────────────────────
+    # Redirect URI to register in Google Cloud Console:
+    #   {API_BASE_URL}{API_V1_PREFIX}/auth/google/callback
     GOOGLE_CLIENT_ID: str = ""
     GOOGLE_CLIENT_SECRET: str = ""
 
@@ -324,9 +315,6 @@ def validate_required_settings(s: Settings) -> None:
     required: list[tuple[str, str]] = [
         ("SECRET_KEY", s.SECRET_KEY),
         ("ENCRYPTION_KEY", s.ENCRYPTION_KEY),
-        ("SUPABASE_URL", s.SUPABASE_URL),
-        ("SUPABASE_KEY or SUPABASE_ANON_KEY", s.supabase_anon_key),
-        ("SUPABASE_SERVICE_ROLE_KEY", s.SUPABASE_SERVICE_ROLE_KEY),
         ("DATABASE_URL", s.DATABASE_URL),
         ("REDIS_URL", s.REDIS_URL),
         ("CLOUDFLARE_ACCOUNT_ID", s.CLOUDFLARE_ACCOUNT_ID),
@@ -424,19 +412,19 @@ def validate_production_safety(s: Settings) -> None:
             "Set ALLOWED_ORIGINS to your actual domain(s)."
         )
 
+    # Google sign-in builds its redirect URI from API_BASE_URL; a localhost/http
+    # value makes Google reject every login with redirect_uri_mismatch.
+    if s.GOOGLE_CLIENT_ID and not s.API_BASE_URL.startswith("https://"):
+        violations.append(
+            f"API_BASE_URL='{s.API_BASE_URL}' is not https:// while Google sign-in "
+            "is configured — set it to the public API origin (https://api.hadha.co)."
+        )
+
     # Wildcard host is insecure.
     if "*" in s.allowed_hosts_list:
         violations.append(
             "ALLOWED_HOSTS contains '*' — accepts any Host header. "
             "Set ALLOWED_HOSTS to your actual domain(s)."
-        )
-
-    # JWT issuer / JWKS URL must resolve — a misconfigured Supabase URL means
-    # every JWT verification silently fails or hits the wrong server.
-    if not s.SUPABASE_URL.startswith("https://"):
-        violations.append(
-            f"SUPABASE_URL='{s.SUPABASE_URL}' does not start with 'https://'. "
-            "JWT verification requires a valid Supabase project URL."
         )
 
     # Secret keys must not use obvious placeholder/default values.

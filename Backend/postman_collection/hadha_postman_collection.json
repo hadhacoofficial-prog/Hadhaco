@@ -2,7 +2,7 @@
   "info": {
     "_postman_id": "8b6ba7b3-7d4c-4108-a5b9-8aac863f2bdd",
     "name": "Hadha.co Backend API",
-    "description": "Production-ready Postman Collection auto-generated from Hadha.co FastAPI backend source code. Covers all 135 routes across 27 modules. Uses collection variables for ID chaining and per-request auth overrides.\n\nSetup:\n1. Set access_token = your Supabase JWT\n2. Set admin_access_token = admin user JWT\n3. Set super_admin_access_token = super_admin JWT\n4. Run 'Verify Token' to populate user_id\n5. Follow End To End Flow folders for guided journeys.",
+    "description": "Production-ready Postman Collection auto-generated from Hadha.co FastAPI backend source code. Covers all 135 routes across 27 modules. Uses collection variables for ID chaining and per-request auth overrides.\n\nSetup:\n1. Set access_token = the access_token returned by POST /dev/login\n2. Set admin_access_token = admin user JWT\n3. Set super_admin_access_token = super_admin JWT\n4. Run 'Verify Token' to populate user_id\n5. Follow End To End Flow folders for guided journeys.",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "variable": [
@@ -171,7 +171,7 @@
                 "verify-token"
               ]
             },
-            "description": "Send Supabase JWT as Bearer. No body. Saves user_id."
+            "description": "Send the access token as Bearer. No body. Saves user_id."
           },
           "event": [
             {

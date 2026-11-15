@@ -2,7 +2,7 @@ import { describe, expect, it, beforeEach, vi } from "vitest";
 
 const { getUserId } = vi.hoisted(() => ({ getUserId: vi.fn() }));
 
-vi.mock("../../supabase/session", () => ({ getUserId }));
+vi.mock("../../auth/session", () => ({ getUserId }));
 
 import { isEventForCurrentUser } from "../userScope";
 
