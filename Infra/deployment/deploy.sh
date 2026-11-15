@@ -74,6 +74,17 @@ preflight_database() {
 
   log "  Database host: ${db_host}:${db_port}"
 
+  # The local PostgreSQL container is only resolvable on the Docker network, so
+  # ask the container itself instead of resolving its name from the host.
+  if [[ "${db_host}" == "hadha-postgres" ]]; then
+    if docker exec hadha-postgres pg_isready -q 2>/dev/null; then
+      log "  ✓ local PostgreSQL container is accepting connections"
+      return 0
+    fi
+    log "  ✗ hadha-postgres is not accepting connections"
+    return 1
+  fi
+
   # Try TCP connectivity — prefer IPv4 if available, fallback through methods
   local tcp_ok=false
 
@@ -136,6 +147,7 @@ INFRA_IMAGES=(
   "louislam/uptime-kuma:2.0.2"
   "glitchtip/glitchtip:6.2.2"
   "postgres:16-alpine"
+  "postgres:17.6-alpine"
 )
 
 # ── Compose wrappers ──────────────────────────────────────────────────────────
@@ -698,17 +710,48 @@ step_start "Database pre-flight check"
 
 # Source DATABASE_URL from env file for the pre-flight check
 DATABASE_URL=$(grep -E '^DATABASE_URL=' "${ENV_FILE}" 2>/dev/null | head -1 | cut -d= -f2-)
+
+# The local PostgreSQL container is its own compose project, so releases never
+# restart it. db-setup.sh is idempotent: it only (re)starts it if it is down
+# and keeps the extensions/backup cron in place. Skipped until the database has
+# been provisioned (scripts/db-setup.sh run once).
+if [[ -f "${APP_DIR}/.env.postgres" && -x "${SCRIPTS_DIR}/db-setup.sh" ]]; then
+  if "${SCRIPTS_DIR}/db-setup.sh" 2>&1 | tee -a "${LOG_FILE}"; then
+    log "  ✓ local PostgreSQL container ensured"
+  elif [[ "${DATABASE_URL}" == *"@hadha-postgres:"* ]]; then
+    rollback_and_exit "Local PostgreSQL container could not be started"
+  else
+    log "  [WARN] local PostgreSQL provisioning failed (app still uses an external database)"
+  fi
+fi
+
 if ! preflight_database; then
-  rollback_and_exit "Database pre-flight failed — cannot reach Supabase PostgreSQL"
+  rollback_and_exit "Database pre-flight failed — cannot reach PostgreSQL"
 fi
 
 log "  ✓ Database reachable"
 step_end
 
 # =============================================================================
+# STEP 7.8: Pre-deploy database backup (gate — nothing below runs without it)
+# =============================================================================
+# Dump the database the app uses right now, upload it encrypted off-site, then
+# download it back and prove it restores. Any failure stops the deploy BEFORE
+# migrations touch the schema. Emergency bypass: SKIP_PREDEPLOY_BACKUP=1.
+step_start "Pre-deploy database backup"
+if [[ -x "${SCRIPTS_DIR}/db-backup.sh" ]]; then
+  if ! "${SCRIPTS_DIR}/db-backup.sh" --pre-deploy "${IMAGE_TAG}" 2>&1 | tee -a "${LOG_FILE}"; then
+    rollback_and_exit "Pre-deploy database backup failed — stopped before migrations"
+  fi
+else
+  rollback_and_exit "db-backup.sh missing from ${SCRIPTS_DIR} — refusing to migrate without a backup"
+fi
+step_end
+
+# =============================================================================
 # STEP 8: Database migrations
 # =============================================================================
-step_start "Database migrations (Supabase)"
+step_start "Database migrations"
 DEPLOYMENT_STATE="MIGRATING"
 
 # Remove any stale migration container from previous runs
