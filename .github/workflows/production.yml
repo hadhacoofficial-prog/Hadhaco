@@ -7,7 +7,7 @@ name: Production Deploy
 # Repository layout:
 #   infrastructure/  — bootstrap, docker compose (infra), monitoring, nginx, ssl
 #   application/     — docker compose (app)
-#   deployment/      — deploy, rollback, verify, backup, restore, smoke-tests
+#   deployment/      — deploy, rollback, verify, backup, restore, smoke-tests, db-*
 #   monitoring/      — grafana dashboards, prometheus configs
 #   Backend/         — Python FastAPI source
 #   Frontend_whole/  — React monorepo (storefront + admin)
@@ -346,6 +346,9 @@ jobs:
 
             # ── Deploy application compose ──────────────────────────────────
             cp -f "${DEPLOY_SRC}/Infra/application/docker-compose.application.yml" "${APP_DIR}/"
+
+            # ── Deploy database compose (own project; deploy.sh never restarts it)
+            cp -f "${DEPLOY_SRC}/Infra/database/docker-compose.database.yml" "${APP_DIR}/"
 
             # ── Deploy nginx configs ────────────────────────────────────────
             mkdir -p "${APP_DIR}/nginx/conf.d"
