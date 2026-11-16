@@ -93,6 +93,10 @@ class Image(Base):
         back_populates="image",
         cascade="all, delete-orphan",
         order_by="ImageVariant.breakpoint, ImageVariant.variant_name, ImageVariant.dpr",
+        # Images reached through a relationship (Review.images) are serialized
+        # with their variants; a lazy load there raises MissingGreenlet under
+        # AsyncSession. Explicit loader options on queries still take priority.
+        lazy="selectin",
     )
 
 
