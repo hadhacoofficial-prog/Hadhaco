@@ -131,22 +131,9 @@ LOG_FILE="${APP_DIR}/deploy.log"
 PREVIOUS_IMAGES_FILE="${APP_DIR}/.previous_images"
 IMAGE_RETENTION="${IMAGE_RETENTION:-168h}"
 
-# Infrastructure images that must be present before compose up.
-INFRA_IMAGES=(
-  "redis:7-alpine"
-  "rediscommander/redis-commander:latest"
-  "oliver006/redis_exporter:v1.61.0"
-  "amir20/dozzle:v8"
-  "nginx:stable-alpine"
-  "prom/prometheus:v2.53.0"
-  "grafana/grafana:11.1.0"
-  "grafana/loki:3.1.0"
-  "grafana/promtail:3.1.0"
-  "prom/node-exporter:v1.8.1"
-  "ghcr.io/google/cadvisor:latest"
-  "louislam/uptime-kuma:2.0.2"
-  "glitchtip/glitchtip:6.2.2"
-  "postgres:16-alpine"
+# Images pulled alongside the infrastructure compose images (read from
+# ${INFRA_COMPOSE} at pull time): the database stack, started by db-setup.sh.
+EXTRA_INFRA_IMAGES=(
   "postgres:17.6-alpine"
 )
 
@@ -586,6 +573,14 @@ step_start "Pull all images"
 DEPLOYMENT_STATE="PULLING"
 
 log "── Infrastructure images ──"
+# Infra starts with --pull never, so pull exactly the refs the compose file
+# names (tag@digest pins included); a hand-kept list drifts from it.
+if ! compose_images=$(dc_infra config --images); then
+  rollback_and_exit "Could not list infrastructure images from ${INFRA_COMPOSE}"
+fi
+mapfile -t INFRA_IMAGES < <(
+  printf '%s\n' ${compose_images} "${EXTRA_INFRA_IMAGES[@]}" | sort -u
+)
 for img in "${INFRA_IMAGES[@]}"; do
   if ! pull_image_with_retry "${img}"; then
     rollback_and_exit "Failed to pull infrastructure image: ${img}"
