@@ -11,6 +11,7 @@ from app.core.config import settings
 from app.core.events import ReviewRequestEvent, event_bus
 from app.core.exceptions import HTTP_422
 from app.modules.media.universal_service import UniversalImageService
+from app.modules.media.validation import ImageValidationError
 from app.modules.reviews.models import Review, ReviewVote
 from app.modules.reviews.repository import ReviewRepository
 from app.modules.reviews.schemas import AdminReviewOut, ReviewCreate, ReviewUpdate
@@ -21,6 +22,15 @@ BLOCKED_MESSAGE = (
     "Our team removed one of your reviews of this product, so you can't post "
     "new reviews for it."
 )
+
+
+def _customer_photo_error(exc: Exception) -> str:
+    """Plain-language reason a review photo was rejected; the detailed
+    validation message is meant for staff, not shoppers."""
+    cause = exc.__cause__
+    if isinstance(cause, ImageValidationError):
+        return cause.customer_message
+    return "We couldn't use one of your photos. Please try a different one."
 
 
 class ReviewService:
@@ -87,7 +97,7 @@ class ReviewService:
                     images=images,
                 )
             except UniversalImageServiceError as exc:
-                raise HTTPException(HTTP_422, str(exc)) from exc
+                raise HTTPException(HTTP_422, _customer_photo_error(exc)) from exc
 
         await self._sync_product_rating(db, review.product_id)
         await db.commit()

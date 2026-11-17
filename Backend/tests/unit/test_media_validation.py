@@ -38,6 +38,46 @@ class TestValidateUpload:
         with pytest.raises(ImageValidationError):
             validate_upload(content, "photo.jpg", "image/jpeg", preset)
 
+    @pytest.mark.parametrize(
+        ("width", "height"),
+        [(480, 270), (300, 400), (200, 200)],
+        ids=["16:9-landscape", "portrait", "at-minimum"],
+    )
+    def test_review_photo_accepts_small_photos_in_any_orientation(
+        self, width: int, height: int
+    ):
+        preset = PRESET_REGISTRY["review_photo"]
+        content = _jpeg_bytes(width, height)
+        validate_upload(content, "review.jpg", "image/jpeg", preset)  # no raise
+
+    def test_review_photo_rejects_photo_below_minimum(self):
+        preset = PRESET_REGISTRY["review_photo"]  # min 200x200
+        content = _jpeg_bytes(480, 150)
+        with pytest.raises(ImageValidationError, match="480x150") as exc_info:
+            validate_upload(content, "review.jpg", "image/jpeg", preset)
+        assert exc_info.value.customer_message == (
+            "This photo is too small. Please choose one at least 200x200 pixels."
+        )
+
+    @pytest.mark.parametrize(
+        ("content", "content_type", "customer_message"),
+        [
+            (b"not an image", "image/jpeg", "We couldn't read this photo."),
+            (_jpeg_bytes(900, 900), "image/heic", "Please choose a JPG, PNG or WebP"),
+            (b"0" * (9 * 1024 * 1024), "image/jpeg", "larger than 8 MB"),
+        ],
+        ids=["unreadable", "unsupported-type", "too-large"],
+    )
+    def test_review_photo_errors_have_plain_customer_wording(
+        self, content: bytes, content_type: str, customer_message: str
+    ):
+        preset = PRESET_REGISTRY["review_photo"]
+        with pytest.raises(ImageValidationError) as exc_info:
+            validate_upload(content, "review.jpg", content_type, preset)
+        assert customer_message in exc_info.value.customer_message
+        # Staff keep the detailed reason.
+        assert customer_message not in str(exc_info.value)
+
     def test_rejects_oversized_file(self):
         preset = PRESET_REGISTRY["avatar"]  # 5 MB limit
         content = b"0" * (6 * 1024 * 1024)

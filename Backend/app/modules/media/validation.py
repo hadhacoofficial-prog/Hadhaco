@@ -28,7 +28,31 @@ Image.MAX_IMAGE_PIXELS = MAX_IMAGE_PIXELS
 
 
 class ImageValidationError(ValueError):
-    pass
+    """``str(exc)`` is the detailed message staff see in the admin;
+    ``customer_message`` says the same in plain words for shoppers."""
+
+    def __init__(self, message: str, *, customer_message: str) -> None:
+        super().__init__(message)
+        self.customer_message = customer_message
+
+
+_UNREADABLE_PHOTO = (
+    "We couldn't read this photo. Please choose a JPG, PNG or WebP image."
+)
+
+
+_TYPE_NAMES = {"jpeg": "JPG", "png": "PNG", "webp": "WebP", "svg": "SVG"}
+
+
+def _readable_types(mime_types: list[str]) -> str:
+    """["image/jpeg", "image/png", "image/webp"] -> "JPG, PNG or WebP"."""
+    names = [
+        _TYPE_NAMES.get(sub, sub.upper())
+        for sub in (m.split("/")[-1].split("+")[0] for m in mime_types)
+    ]
+    if len(names) == 1:
+        return names[0]
+    return f"{', '.join(names[:-1])} or {names[-1]}"
 
 
 # Elements/attributes an uploaded SVG could use to run script in whatever
@@ -48,7 +72,10 @@ def sanitize_svg(file_bytes: bytes) -> bytes:
     try:
         root = SafeET.fromstring(file_bytes)
     except (ET.ParseError, DefusedXmlException) as exc:
-        raise ImageValidationError(f"File is not a valid SVG: {exc}") from exc
+        raise ImageValidationError(
+            f"File is not a valid SVG: {exc}",
+            customer_message="We couldn't read this SVG file. Please choose another.",
+        ) from exc
 
     parent_map = {child: parent for parent in root.iter() for child in parent}
     for el in list(root.iter()):
@@ -80,11 +107,16 @@ def assert_pixel_budget(file_bytes: bytes) -> None:
         with Image.open(io.BytesIO(file_bytes)) as probe:
             width, height = probe.size
     except Exception as exc:  # unreadable / decompression bomb header
-        raise ImageValidationError(f"File is not a valid image: {exc}") from exc
+        raise ImageValidationError(
+            f"File is not a valid image: {exc}", customer_message=_UNREADABLE_PHOTO
+        ) from exc
     if width * height > MAX_IMAGE_PIXELS:
         raise ImageValidationError(
             f"Image is {width}x{height} ({width * height / 1e6:.0f} MP), "
-            f"exceeds the {MAX_IMAGE_PIXELS // 1_000_000} MP limit"
+            f"exceeds the {MAX_IMAGE_PIXELS // 1_000_000} MP limit",
+            customer_message=(
+                "This photo's resolution is too high. Please choose a smaller one."
+            ),
         )
 
 
@@ -105,13 +137,21 @@ def validate_upload(
     if size_mb > rules.max_file_mb:
         raise ImageValidationError(
             f"File is {size_mb:.1f} MB, exceeds the {rules.max_file_mb} MB limit "
-            f"for {preset.label}"
+            f"for {preset.label}",
+            customer_message=(
+                f"This photo is larger than {rules.max_file_mb} MB. "
+                "Please choose a smaller one."
+            ),
         )
 
     if content_type not in rules.allowed_mime:
         raise ImageValidationError(
             f"File type {content_type!r} is not allowed for {preset.label}; "
-            f"allowed types: {', '.join(rules.allowed_mime)}"
+            f"allowed types: {', '.join(rules.allowed_mime)}",
+            customer_message=(
+                "This file type isn't supported. Please choose a "
+                f"{_readable_types(rules.allowed_mime)} image."
+            ),
         )
 
     if content_type == "image/svg+xml":
@@ -124,7 +164,9 @@ def validate_upload(
         img = Image.open(io.BytesIO(file_bytes))
         img.verify()
     except Exception as exc:
-        raise ImageValidationError(f"File is not a valid image: {exc}") from exc
+        raise ImageValidationError(
+            f"File is not a valid image: {exc}", customer_message=_UNREADABLE_PHOTO
+        ) from exc
 
     # Re-open after verify() (which leaves the file object unusable for
     # further operations) to read dimensions.
@@ -137,7 +179,11 @@ def validate_upload(
     ):
         raise ImageValidationError(
             f"Image is {width}x{height}, below the minimum "
-            f"{smallest_min[0]}x{smallest_min[1]} required for {preset.label}"
+            f"{smallest_min[0]}x{smallest_min[1]} required for {preset.label}",
+            customer_message=(
+                "This photo is too small. Please choose one at least "
+                f"{smallest_min[0]}x{smallest_min[1]} pixels."
+            ),
         )
 
 

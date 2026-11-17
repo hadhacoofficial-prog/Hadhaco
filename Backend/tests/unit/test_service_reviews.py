@@ -564,3 +564,28 @@ class TestReviewServiceOwned:
         ):
             result = await self.svc.rating_summary(db, uuid.uuid4())
         assert result == mock_summary
+
+
+class TestCustomerPhotoError:
+    def test_uses_the_validation_errors_customer_wording(self):
+        from app.modules.media.universal_service import UniversalImageServiceError
+        from app.modules.media.validation import ImageValidationError
+        from app.modules.reviews.service import _customer_photo_error
+
+        cause = ImageValidationError(
+            "Image is 480x150, below the minimum 200x200 required for Review Photo",
+            customer_message="This photo is too small.",
+        )
+        try:
+            raise UniversalImageServiceError(str(cause)) from cause
+        except UniversalImageServiceError as exc:
+            assert _customer_photo_error(exc) == "This photo is too small."
+
+    def test_falls_back_to_plain_wording_without_a_validation_cause(self):
+        from app.modules.media.universal_service import UniversalImageServiceError
+        from app.modules.reviews.service import _customer_photo_error
+
+        exc = UniversalImageServiceError("Cannot set an unattached image as primary")
+        assert _customer_photo_error(exc) == (
+            "We couldn't use one of your photos. Please try a different one."
+        )
