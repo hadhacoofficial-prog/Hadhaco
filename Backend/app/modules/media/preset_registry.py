@@ -340,7 +340,10 @@ PRESET_REGISTRY: dict[str, CropPreset] = {
         label="Review Photo",
         shape=ShapeType.CONTAIN,
         aspect_ratio={Breakpoint.ALL: None},
-        min_resolution={Breakpoint.ALL: _res(400, 300)},
+        # Customer photos come in any orientation and size (16:9 screenshots,
+        # portrait phone shots); a landscape 400x300 floor rejected ordinary
+        # ones like 480x270. Only require enough for the 150px thumb.
+        min_resolution={Breakpoint.ALL: _res(200, 200)},
         max_zoom=1.0,
         breakpoints=[Breakpoint.ALL],
         output_variants=[
