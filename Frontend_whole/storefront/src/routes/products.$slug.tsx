@@ -12,6 +12,8 @@ import {
   RefreshCw,
   AlertTriangle,
   Pencil,
+  ChevronLeft,
+  ChevronRight,
 } from "lucide-react";
 import { afterReviewSubmit, afterWishlistChange } from "@hadha/shared-api";
 import { SiteLayout } from "@/components/site/SiteLayout";
@@ -992,7 +994,11 @@ function ProductPage() {
 // ── Reviews section ────────────────────────────────────────────────────────────
 
 function ReviewCard({ review }: { review: Review }) {
-  const [imgIdx, setImgIdx] = useState(0);
+  // Index of the photo open in the lightbox; null while it is closed.
+  const [viewerIdx, setViewerIdx] = useState<number | null>(null);
+  const images = review.images ?? [];
+  const showPhoto = (step: number) =>
+    setViewerIdx((i) => (i === null ? i : (i + step + images.length) % images.length));
 
   return (
     <div className="border-b border-border pb-6">
@@ -1020,24 +1026,71 @@ function ReviewCard({ review }: { review: Review }) {
         )}
       </div>
       {review.text && <p className="text-sm text-foreground/80 leading-relaxed">{review.text}</p>}
-      {(review.images?.length ?? 0) > 0 && (
+      {images.length > 0 && (
         <div className="mt-3 flex gap-2 flex-wrap">
-          {review.images!.map((img, i) => (
+          {images.map((img, i) => (
             <button
               key={img.id}
               type="button"
-              onClick={() => setImgIdx(i)}
-              className={`size-16 border overflow-hidden shrink-0 ${imgIdx === i ? "border-foreground" : "border-border"}`}
+              onClick={() => setViewerIdx(i)}
+              aria-label={`View review photo ${i + 1}`}
+              className="size-16 border border-border hover:border-foreground overflow-hidden shrink-0 cursor-zoom-in"
             >
               <img
                 src={img.url}
                 alt={`Review image ${i + 1}`}
+                loading="lazy"
                 className="w-full h-full object-cover"
               />
             </button>
           ))}
         </div>
       )}
+      <Dialog open={viewerIdx !== null} onOpenChange={(open) => !open && setViewerIdx(null)}>
+        <DialogContent
+          className="max-w-3xl rounded-none sm:rounded-none p-4"
+          onKeyDown={(e) => {
+            if (e.key === "ArrowLeft") showPhoto(-1);
+            if (e.key === "ArrowRight") showPhoto(1);
+          }}
+        >
+          <DialogHeader>
+            <DialogTitle className="text-sm font-medium">{review.name}</DialogTitle>
+            <DialogDescription>
+              Photo {(viewerIdx ?? 0) + 1} of {images.length}
+            </DialogDescription>
+          </DialogHeader>
+          {viewerIdx !== null && images[viewerIdx] && (
+            <div className="relative flex items-center justify-center">
+              <img
+                src={images[viewerIdx].url}
+                alt={`Review image ${viewerIdx + 1}`}
+                className="max-h-[75vh] w-auto max-w-full object-contain"
+              />
+              {images.length > 1 && (
+                <>
+                  <button
+                    type="button"
+                    onClick={() => showPhoto(-1)}
+                    aria-label="Previous photo"
+                    className="absolute left-1 top-1/2 -translate-y-1/2 p-2 bg-background/80 hover:bg-background border border-border"
+                  >
+                    <ChevronLeft className="size-5" />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => showPhoto(1)}
+                    aria-label="Next photo"
+                    className="absolute right-1 top-1/2 -translate-y-1/2 p-2 bg-background/80 hover:bg-background border border-border"
+                  >
+                    <ChevronRight className="size-5" />
+                  </button>
+                </>
+              )}
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
