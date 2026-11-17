@@ -183,7 +183,56 @@ describe("toUserMessage", () => {
 
   it("humanizes the code when the message is empty", () => {
     const e = new ApiError("", { kind: "business", code: "INSUFFICIENT_STOCK" });
-    expect(toUserMessage(e)).toBe("insufficient stock");
+    expect(toUserMessage(e)).toBe("Insufficient stock");
+  });
+
+  it.each([
+    ["Not authenticated", 401, "Please sign in to continue."],
+    ["Session expired", 401, "Your session has expired. Please sign in again."],
+    ["Insufficient permissions", 403, "You don't have permission to do that."],
+    ["The requested resource was not found", 404, /couldn't find/],
+    ["Validation failed", 422, /missing or invalid/],
+    ["Too Many Requests", 429, /Too many attempts/],
+    ["Payload Too Large", 413, /file is too large/],
+  ])("replaces technical wording %j (%i)", (message, status, expected) => {
+    const e = new ApiError(message, { kind: "http", status });
+    expect(toUserMessage(e)).toMatch(expected);
+  });
+
+  it("never shows server-error bodies", () => {
+    const e = new ApiError("An internal error occurred", {
+      kind: "http",
+      status: 500,
+      code: "INTERNAL_ERROR",
+    });
+    expect(toUserMessage(e)).toBe("Something went wrong on our side. Please try again in a moment.");
+    expect(toUserMessage(new ApiError("Bad Gateway", { kind: "http", status: 502 }))).toMatch(
+      /on our side/,
+    );
+  });
+
+  it("maps session codes whatever the message says", () => {
+    const e = new ApiError("Not authenticated", {
+      kind: "http",
+      status: 401,
+      code: "SESSION_INVALID",
+    });
+    expect(toUserMessage(e)).toBe("Your session has expired. Please sign in again.");
+  });
+
+  it("falls back to the status when only the client's status wording is left", () => {
+    const e = new ApiError("Request failed (413)", { kind: "http", status: 413 });
+    expect(toUserMessage(e)).toMatch(/file is too large/);
+  });
+
+  it("keeps customer-facing backend messages", () => {
+    const blocked = new ApiError("You can post up to 5 reviews per hour.", {
+      kind: "http",
+      status: 429,
+    });
+    expect(toUserMessage(blocked)).toBe("You can post up to 5 reviews per hour.");
+    const notYours = new ApiError("Review not found", { kind: "http", status: 404 });
+    expect(toUserMessage(notYours)).toBe("Review not found");
   });
 
   it("uses the message of a plain Error", () => {

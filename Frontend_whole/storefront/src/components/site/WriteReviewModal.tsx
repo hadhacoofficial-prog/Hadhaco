@@ -1,7 +1,19 @@
-import { useRef, useState } from "react";
-import { Star, Upload, X } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { Loader2, Star, Upload, X } from "lucide-react";
 import { toast } from "sonner";
 import { api } from "@/lib/api/client";
+import { toUserMessage } from "@/lib/api/errors";
+import { prepareReviewPhoto, ReviewPhotoError } from "@/lib/reviewPhoto";
+
+// File inputs fire `cancel` when the picker is dismissed (Chrome 113+,
+// Safari 16.4+); older browsers fall back to a focus timer.
+const SUPPORTS_FILE_CANCEL =
+  typeof HTMLInputElement !== "undefined" && "oncancel" in HTMLInputElement.prototype;
+const PICKER_FALLBACK_MS = 4000;
+const MAX_REVIEW_PHOTOS = 3;
+const REVIEW_UPLOAD_TIMEOUT_MS = 60_000;
+
+type ReviewPhoto = { file: File; preview: string };
 
 // Shared review widgets — used by the product page's Reviews tab and the
 // account page's post-delivery review reminders.
@@ -58,20 +70,101 @@ export function WriteReviewModal({
 }) {
   const [rating, setRating] = useState(0);
   const [body, setBody] = useState("");
-  const [image, setImage] = useState<File | null>(null);
-  const [imagePreview, setImagePreview] = useState<string | null>(null);
+  const [photos, setPhotos] = useState<ReviewPhoto[]>([]);
+  // "picking": the file picker is open, or closed but the browser has not
+  // delivered the files yet (mobile pickers close well before `change` fires
+  // for cloud-backed photos). "preparing": reading the picked files.
+  const [photoState, setPhotoState] = useState<"idle" | "picking" | "preparing">("idle");
   const [submitting, setSubmitting] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const photoBusy = photoState !== "idle";
+  const slotsLeft = MAX_REVIEW_PHOTOS - photos.length;
 
-  const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    setImage(file);
-    setImagePreview(URL.createObjectURL(file));
+  // Revoke preview URLs when the modal closes; removePhoto revokes its own.
+  const photosRef = useRef(photos);
+  photosRef.current = photos;
+  useEffect(() => () => photosRef.current.forEach((p) => URL.revokeObjectURL(p.preview)), []);
+
+  // Browsers without the input `cancel` event: when focus comes back and no
+  // file has arrived after a grace period, treat the picker as dismissed.
+  useEffect(() => {
+    if (photoState !== "picking" || SUPPORTS_FILE_CANCEL) return;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const onFocus = () => {
+      timer = setTimeout(() => {
+        if (!fileInputRef.current?.files?.length) setPhotoState("idle");
+      }, PICKER_FALLBACK_MS);
+    };
+    window.addEventListener("focus", onFocus);
+    return () => {
+      window.removeEventListener("focus", onFocus);
+      clearTimeout(timer);
+    };
+  }, [photoState]);
+
+  useEffect(() => {
+    const input = fileInputRef.current;
+    if (!input) return;
+    const onCancel = () => setPhotoState("idle");
+    input.addEventListener("cancel", onCancel);
+    return () => input.removeEventListener("cancel", onCancel);
+  }, []);
+
+  const openPicker = () => {
+    const input = fileInputRef.current;
+    if (!input || slotsLeft <= 0) return;
+    // Cleared so picking the same file again still fires `change`.
+    input.value = "";
+    setPhotoState("picking");
+    input.click();
+  };
+
+  const removePhoto = (index: number) => {
+    setPhotos((prev) => {
+      const removed = prev[index];
+      if (removed) URL.revokeObjectURL(removed.preview);
+      return prev.filter((_, i) => i !== index);
+    });
+  };
+
+  const handleImageChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const picked = Array.from(e.target.files ?? []);
+    if (picked.length === 0) {
+      setPhotoState("idle");
+      return;
+    }
+    if (picked.length > slotsLeft) {
+      toast.error(`You can add up to ${MAX_REVIEW_PHOTOS} photos.`);
+    }
+    setPhotoState("preparing");
+    // Decoding each photo also downloads cloud-backed ones and rejects bad
+    // ones now, before the customer can submit.
+    const results = await Promise.allSettled(
+      picked.slice(0, slotsLeft).map(async (file): Promise<ReviewPhoto> => {
+        const ready = await prepareReviewPhoto(file);
+        return { file: ready, preview: URL.createObjectURL(ready) };
+      }),
+    );
+    const loaded = results.flatMap((r) => (r.status === "fulfilled" ? [r.value] : []));
+    const failure = results.find((r) => r.status === "rejected");
+    if (failure) {
+      const reason = failure.reason;
+      toast.error(
+        reason instanceof ReviewPhotoError
+          ? reason.message
+          : "We couldn't read this photo. Please choose a JPG, PNG or WebP image.",
+      );
+    }
+    setPhotos((prev) => [...prev, ...loaded]);
+    setPhotoState("idle");
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (photoBusy) {
+      toast.error("Please wait for your photos to finish attaching.");
+      return;
+    }
     if (rating === 0) {
       toast.error("Please select a rating.");
       return;
@@ -87,15 +180,16 @@ export function WriteReviewModal({
       form.append("rating", String(rating));
       form.append("body", body.trim());
       if (orderId) form.append("order_id", orderId);
-      if (image) form.append("images", image);
+      photos.forEach((p) => form.append("images", p.file));
 
-      await api.upload("/reviews", form);
+      // Photos are already shrunk, but a slow mobile link can still need
+      // longer than the default 20s for three of them.
+      await api.upload("/reviews", form, { timeoutMs: REVIEW_UPLOAD_TIMEOUT_MS });
       toast.success("Review posted!");
       onSuccess();
       onClose();
     } catch (err: unknown) {
-      const msg = (err as { message?: string })?.message ?? "Failed to submit review.";
-      toast.error(msg);
+      toast.error(toUserMessage(err, "We couldn't post your review. Please try again."));
     } finally {
       setSubmitting(false);
     }
@@ -147,51 +241,59 @@ export function WriteReviewModal({
           </div>
           <div>
             <label className="text-[11px] uppercase tracking-[0.22em] text-muted-foreground block mb-2">
-              Photo (optional)
+              Photos (optional, up to {MAX_REVIEW_PHOTOS})
             </label>
-            {imagePreview ? (
-              <div className="relative inline-block">
-                <img
-                  src={imagePreview}
-                  alt="Preview"
-                  className="size-20 object-cover border border-border"
-                />
+            <div className="flex flex-wrap gap-3">
+              {photos.map((p, i) => (
+                <div key={p.preview} className="relative">
+                  <img
+                    src={p.preview}
+                    alt={`Photo ${i + 1} preview`}
+                    className="size-20 object-cover border border-border"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => removePhoto(i)}
+                    disabled={submitting}
+                    className="absolute -top-2 -right-2 bg-destructive text-destructive-foreground rounded-full size-5 flex items-center justify-center"
+                    aria-label={`Remove photo ${i + 1}`}
+                  >
+                    <X className="size-3" />
+                  </button>
+                </div>
+              ))}
+              {slotsLeft > 0 && (
                 <button
                   type="button"
-                  onClick={() => {
-                    setImage(null);
-                    setImagePreview(null);
-                  }}
-                  className="absolute -top-2 -right-2 bg-destructive text-destructive-foreground rounded-full size-5 flex items-center justify-center"
-                  aria-label="Remove image"
+                  onClick={openPicker}
+                  disabled={photoBusy || submitting}
+                  aria-busy={photoBusy}
+                  className="size-20 flex flex-col items-center justify-center gap-1 border border-dashed border-border text-[11px] text-muted-foreground hover:border-foreground hover:text-foreground transition disabled:cursor-wait"
                 >
-                  <X className="size-3" />
+                  {photoBusy ? (
+                    <Loader2 className="size-4 animate-spin" />
+                  ) : (
+                    <Upload className="size-4" />
+                  )}
+                  {photoBusy ? "Attaching…" : photos.length ? "Add photo" : "Upload photo"}
                 </button>
-              </div>
-            ) : (
-              <button
-                type="button"
-                onClick={() => fileInputRef.current?.click()}
-                className="flex items-center gap-2 border border-dashed border-border px-4 py-3 text-sm text-muted-foreground hover:border-foreground hover:text-foreground transition"
-              >
-                <Upload className="size-4" />
-                Upload photo
-              </button>
-            )}
+              )}
+            </div>
             <input
               ref={fileInputRef}
               type="file"
               accept="image/*"
+              multiple
               className="hidden"
               onChange={handleImageChange}
             />
           </div>
           <button
             type="submit"
-            disabled={submitting}
+            disabled={submitting || photoBusy}
             className="w-full bg-primary text-primary-foreground text-[11px] uppercase tracking-[0.22em] py-3.5 hover:bg-accent hover:text-accent-foreground transition disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            {submitting ? "Submitting…" : "Submit Review"}
+            {submitting ? "Submitting…" : photoBusy ? "Attaching photos…" : "Submit Review"}
           </button>
         </form>
       </div>

@@ -4,6 +4,7 @@ import { Mail, Phone, MapPin, MessageCircle, Clock } from "lucide-react";
 import { SiteLayout } from "@/components/site/SiteLayout";
 import { Breadcrumbs } from "@/components/site/Breadcrumbs";
 import { usePublicCompanyConfig } from "@/hooks/company/useCompanyConfig";
+import { ApiError, isApiError, toUserMessage } from "@/lib/api/errors";
 
 export const Route = createFileRoute("/contact")({
   head: () => ({
@@ -126,12 +127,19 @@ function ContactPage() {
       });
       if (!res.ok) {
         const body = await res.json().catch(() => null);
-        throw new Error(body?.message ?? `Request failed (${res.status})`);
+        throw new ApiError(body?.message ?? "", {
+          kind: "http",
+          status: res.status,
+          code: body?.code,
+        });
       }
       setSent(true);
       form.reset();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Something went wrong. Please try again.");
+      // Anything but our ApiError is fetch itself failing ("Failed to fetch").
+      setError(
+        toUserMessage(isApiError(err) ? err : new ApiError("", { kind: "network", cause: err })),
+      );
     } finally {
       setSubmitting(false);
     }
