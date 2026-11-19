@@ -165,6 +165,9 @@ interface LocalVariant {
   is_active: boolean;
 }
 
+/** Mirrors the backend's DEFAULT_RETURN_WINDOW_DAYS (catalog/models.py). */
+const DEFAULT_RETURN_WINDOW_DAYS = 7;
+
 interface LocalAttribute {
   id: string;
   name: string;
@@ -221,6 +224,9 @@ interface FormState {
   gender: string;
   is_customizable: boolean;
   requires_shipping: boolean;
+  is_returnable: boolean;
+  return_window_days: string;
+  return_policy_label: string;
   length_cm: string;
   width_cm: string;
   height_cm: string;
@@ -294,6 +300,9 @@ function emptyForm(): FormState {
     gender: "",
     is_customizable: false,
     requires_shipping: true,
+    is_returnable: false,
+    return_window_days: String(DEFAULT_RETURN_WINDOW_DAYS),
+    return_policy_label: "",
     length_cm: "",
     width_cm: "",
     height_cm: "",
@@ -344,6 +353,9 @@ function productToForm(p: ProductDetail, categoryTree: CategoryTreeNode[]): Form
     gender: p.gender ?? "",
     is_customizable: p.is_customizable,
     requires_shipping: p.requires_shipping,
+    is_returnable: p.is_returnable,
+    return_window_days: String(p.return_window_days ?? DEFAULT_RETURN_WINDOW_DAYS),
+    return_policy_label: p.return_policy_label ?? "",
     length_cm: p.length_cm ? String(p.length_cm) : "",
     width_cm: p.width_cm ? String(p.width_cm) : "",
     height_cm: p.height_cm ? String(p.height_cm) : "",
@@ -1362,6 +1374,45 @@ function JewellerySection({
           onChange={(v) => set({ is_customizable: v })}
           label="Customizable"
         />
+      </div>
+
+      <div className="flex flex-col gap-3">
+        <p className="text-[11px] uppercase tracking-[0.18em] text-muted-foreground">
+          Return policy
+        </p>
+        <ToggleSwitch
+          checked={form.is_returnable}
+          onChange={(v) => set({ is_returnable: v })}
+          label="Returnable"
+        />
+        {form.is_returnable ? (
+          <Field label="Return window (days after delivery)">
+            <TextInput
+              type="number"
+              value={form.return_window_days}
+              onChange={(v) => set({ return_window_days: v })}
+              placeholder={String(DEFAULT_RETURN_WINDOW_DAYS)}
+            />
+          </Field>
+        ) : (
+          <p className="text-xs text-muted-foreground">
+            Shown to customers as “No return, no refund”.
+          </p>
+        )}
+        <Field
+          label="Custom wording (optional)"
+          hint="Replaces the default line on the product page. Use {days} for the return window, e.g. “Easy {days}-day returns”."
+        >
+          <TextInput
+            value={form.return_policy_label}
+            onChange={(v) => set({ return_policy_label: v.slice(0, 100) })}
+            placeholder={
+              form.is_returnable
+                ? `${form.return_window_days || DEFAULT_RETURN_WINDOW_DAYS}-day returns`
+                : "No return, no refund"
+            }
+          />
+        </Field>
       </div>
 
       <div className="flex flex-col gap-2">
@@ -3189,6 +3240,11 @@ export function ProductForm({ mode, initialProduct, initialCollectionIds }: Prod
       gender: f.gender || undefined,
       is_customizable: f.is_customizable,
       requires_shipping: f.requires_shipping,
+      is_returnable: f.is_returnable,
+      return_window_days: f.is_returnable
+        ? Math.min(Math.max(parseInt(f.return_window_days) || DEFAULT_RETURN_WINDOW_DAYS, 1), 365)
+        : undefined,
+      return_policy_label: f.return_policy_label.trim() || null,
       length_cm: f.length_cm ? parseFloat(f.length_cm) : undefined,
       width_cm: f.width_cm ? parseFloat(f.width_cm) : undefined,
       height_cm: f.height_cm ? parseFloat(f.height_cm) : undefined,

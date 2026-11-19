@@ -1,11 +1,14 @@
 from __future__ import annotations
 
 import uuid
+from collections.abc import Collection
 from typing import Any
 
-from sqlalchemy import func, select, text
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.modules.catalog.models import DEFAULT_RETURN_WINDOW_DAYS, Product
+from app.modules.orders.models import Order, OrderItem
 from app.modules.returns.models import Return, ReturnItem
 
 
@@ -85,16 +88,35 @@ class ReturnRepository:
         return ret
 
     async def is_within_return_window(
-        self, db: AsyncSession, order_id: uuid.UUID, customer_id: uuid.UUID
+        self,
+        db: AsyncSession,
+        order_id: uuid.UUID,
+        customer_id: uuid.UUID,
+        order_item_ids: Collection[uuid.UUID],
     ) -> bool:
-        result = await db.execute(
-            text("""
-                SELECT 1 FROM orders
-                WHERE id = :order_id
-                  AND user_id = :customer_id
-                  AND status = 'delivered'
-                  AND delivered_at >= NOW() - INTERVAL '7 days'
-            """),
-            {"order_id": order_id, "customer_id": customer_id},
+        """True only when the order is the customer's, delivered, and EVERY
+        requested line is a returnable product still inside its own window
+        (``return_window_days``, store default when unset)."""
+        wanted = set(order_item_ids)
+        if not wanted:
+            return False
+        window = func.make_interval(
+            0,
+            0,
+            0,
+            func.coalesce(Product.return_window_days, DEFAULT_RETURN_WINDOW_DAYS),
         )
-        return result.fetchone() is not None
+        result = await db.execute(
+            select(func.count(OrderItem.id))
+            .join(Order, Order.id == OrderItem.order_id)
+            .join(Product, Product.id == OrderItem.product_id)
+            .where(
+                Order.id == order_id,
+                Order.user_id == customer_id,
+                Order.status == "delivered",
+                OrderItem.id.in_(wanted),
+                Product.is_returnable.is_(True),
+                Order.delivered_at >= func.now() - window,
+            )
+        )
+        return result.scalar_one() == len(wanted)

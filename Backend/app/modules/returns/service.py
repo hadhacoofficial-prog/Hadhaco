@@ -25,10 +25,16 @@ class ReturnService:
     async def create_return(
         self, db: AsyncSession, *, customer_id: uuid.UUID, data: ReturnCreate
     ) -> Return:
-        if not await self._repo.is_within_return_window(db, data.order_id, customer_id):
+        if not await self._repo.is_within_return_window(
+            db,
+            data.order_id,
+            customer_id,
+            [item.order_item_id for item in data.items],
+        ):
             raise HTTPException(
                 status.HTTP_400_BAD_REQUEST,
-                "Order not eligible for return (not delivered or outside 7-day window)",
+                "Order not eligible for return (not delivered, or an item is "
+                "non-returnable or outside its return window)",
             )
         await self._validate_return_items(db, data)
         ret = await self._repo.create(

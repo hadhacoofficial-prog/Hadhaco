@@ -25,6 +25,11 @@ if TYPE_CHECKING:
     from app.modules.categories.models import Category
 
 
+# Return window applied to a returnable product that has no explicit
+# ``return_window_days`` of its own.
+DEFAULT_RETURN_WINDOW_DAYS = 7
+
+
 class Product(Base):
     __tablename__ = "products"
 
@@ -106,6 +111,15 @@ class Product(Base):
         Boolean, nullable=False, server_default="true"
     )
 
+    # Return policy. Products are non-returnable ("no return, no refund")
+    # unless an admin opts them in; a NULL window means the store default.
+    is_returnable: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, server_default="false"
+    )
+    return_window_days: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    # Optional storefront wording; "{days}" is replaced with the window.
+    return_policy_label: Mapped[str | None] = mapped_column(String(100), nullable=True)
+
     # Dimensions (for shipping)
     length_cm: Mapped[float | None] = mapped_column(Numeric(8, 2), nullable=True)
     width_cm: Mapped[float | None] = mapped_column(Numeric(8, 2), nullable=True)
@@ -174,6 +188,10 @@ class Product(Base):
     )
 
     __table_args__ = (
+        CheckConstraint(
+            "return_window_days IS NULL OR return_window_days BETWEEN 1 AND 365",
+            name="ck_products_return_window_days",
+        ),
         Index("idx_products_slug", "slug"),
         Index("idx_products_sku", "sku"),
         Index("idx_products_category_id", "category_id"),
