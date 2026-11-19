@@ -54,6 +54,12 @@ export interface Product {
   maxOrderQty?: number;
   isNew?: boolean;
   isBestseller?: boolean;
+  /** Return policy. Undefined on list-card data that doesn't carry it. */
+  isReturnable?: boolean;
+  /** Days after delivery; undefined means the store default. */
+  returnWindowDays?: number;
+  /** Admin-written wording; replaces the generated return-policy line. */
+  returnPolicyLabel?: string;
   shortDescription?: string;
   description?: string;
   specifications?: ProductSpec[];

@@ -316,6 +316,11 @@ export interface ProductDetail {
   is_best_seller: boolean;
   is_customizable: boolean;
   requires_shipping: boolean;
+  is_returnable: boolean;
+  /** Days after delivery a returnable product may be returned; null = store default. */
+  return_window_days: number | null;
+  /** Custom storefront wording; "{days}" is replaced with the window. null = generated wording. */
+  return_policy_label: string | null;
   length_cm: number | null;
   width_cm: number | null;
   height_cm: number | null;

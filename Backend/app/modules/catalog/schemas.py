@@ -1,8 +1,14 @@
 import uuid
 from datetime import datetime
-from typing import Any, Literal
+from typing import Annotated, Any, Literal
 
-from pydantic import BaseModel, Field, field_validator, model_validator
+from pydantic import (
+    BaseModel,
+    BeforeValidator,
+    Field,
+    field_validator,
+    model_validator,
+)
 
 from app.modules.inventory.status import InventoryStatus, compute_inventory_status
 from app.modules.media import storage
@@ -190,6 +196,20 @@ class ProductAttributeCreateRequest(BaseModel):
 # ---------- Product ----------
 
 
+def _blank_to_none(value: object) -> object:
+    """Whitespace-only wording means "use the generated wording"."""
+    if isinstance(value, str):
+        return value.strip() or None
+    return value
+
+
+# Storefront wording for a product's return policy; "{days}" is replaced with
+# the return window. Blank input is stored as NULL (generated wording).
+ReturnPolicyLabel = Annotated[
+    Annotated[str, Field(max_length=100)] | None, BeforeValidator(_blank_to_none)
+]
+
+
 class ProductCreateRequest(BaseModel):
     sku: str = Field(..., min_length=1, max_length=100)
     name: str = Field(..., min_length=1, max_length=255)
@@ -225,6 +245,9 @@ class ProductCreateRequest(BaseModel):
     is_best_seller: bool = False
     is_customizable: bool = False
     requires_shipping: bool = True
+    is_returnable: bool = False
+    return_window_days: int | None = Field(None, ge=1, le=365)
+    return_policy_label: ReturnPolicyLabel = None
 
     length_cm: float | None = None
     width_cm: float | None = None
@@ -286,6 +309,9 @@ class ProductUpdateRequest(BaseModel):
     is_best_seller: bool | None = None
     is_customizable: bool | None = None
     requires_shipping: bool | None = None
+    is_returnable: bool | None = None
+    return_window_days: int | None = Field(None, ge=1, le=365)
+    return_policy_label: ReturnPolicyLabel = None
     length_cm: float | None = None
     width_cm: float | None = None
     height_cm: float | None = None
@@ -352,6 +378,9 @@ class ProductResponse(BaseModel):
     is_best_seller: bool
     is_customizable: bool
     requires_shipping: bool
+    is_returnable: bool
+    return_window_days: int | None
+    return_policy_label: str | None
     length_cm: float | None
     width_cm: float | None
     height_cm: float | None

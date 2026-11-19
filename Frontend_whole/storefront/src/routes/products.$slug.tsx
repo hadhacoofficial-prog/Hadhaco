@@ -51,7 +51,7 @@ import {
   DrawerTitle,
 } from "@/components/ui/drawer";
 import { useBreakpoint } from "@/hooks/useBreakpoint";
-import { formatINR } from "@/lib/format";
+import { formatINR, formatReturnPolicy } from "@/lib/format";
 import { api } from "@/lib/api/client";
 import { queryKeys } from "@/lib/api/queryKeys";
 import { toProductDetail, toProduct, toReview } from "@/lib/api/mappers";
@@ -868,7 +868,14 @@ function ProductPage() {
           <div className="mt-8 grid grid-cols-2 gap-3 border-t border-border pt-6">
             {[
               { icon: <Truck className="size-4" />, label: "Free shipping over Rs. 999" },
-              { icon: <RotateCcw className="size-4" />, label: "Returns vary by product" },
+              {
+                icon: <RotateCcw className="size-4" />,
+                label: formatReturnPolicy(
+                  liveProduct.isReturnable,
+                  liveProduct.returnWindowDays,
+                  liveProduct.returnPolicyLabel,
+                ),
+              },
               { icon: <ShieldCheck className="size-4" />, label: "Secure payments" },
               { icon: <BadgeCheck className="size-4" />, label: "BIS-hallmarked 92.5 silver" },
             ].map((t) => (

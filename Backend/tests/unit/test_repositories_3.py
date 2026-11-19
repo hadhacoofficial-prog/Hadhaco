@@ -286,18 +286,34 @@ class TestReturnRepository:
         assert ret.notes == "Looks good"
 
     async def test_is_within_return_window_true(self):
+        item_ids = [uuid.uuid4(), uuid.uuid4()]
         mock_result = MagicMock()
-        mock_result.fetchone.return_value = MagicMock()
+        mock_result.scalar_one.return_value = 2
         db = _db(mock_result)
-        result = await self.repo.is_within_return_window(db, uuid.uuid4(), uuid.uuid4())
+        result = await self.repo.is_within_return_window(
+            db, uuid.uuid4(), uuid.uuid4(), item_ids
+        )
         assert result is True
 
-    async def test_is_within_return_window_false(self):
+    async def test_is_within_return_window_false_when_item_not_eligible(self):
+        # One of two requested lines is non-returnable or past its window, so
+        # only one row matches.
+        item_ids = [uuid.uuid4(), uuid.uuid4()]
         mock_result = MagicMock()
-        mock_result.fetchone.return_value = None
+        mock_result.scalar_one.return_value = 1
         db = _db(mock_result)
-        result = await self.repo.is_within_return_window(db, uuid.uuid4(), uuid.uuid4())
+        result = await self.repo.is_within_return_window(
+            db, uuid.uuid4(), uuid.uuid4(), item_ids
+        )
         assert result is False
+
+    async def test_is_within_return_window_false_for_no_items_skips_db(self):
+        db = _db()
+        result = await self.repo.is_within_return_window(
+            db, uuid.uuid4(), uuid.uuid4(), []
+        )
+        assert result is False
+        db.execute.assert_not_called()
 
 
 # ─── FraudRepository ──────────────────────────────────────────────────────────
